@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 
 {% set zfish_views = [
   ("tanks",    "Tanks",    "tank"),
@@ -75,10 +76,10 @@
   </div>
 {% endmacro %}
 
-{% macro dialog_open(id, title, action, submit) %}
+{% macro dialog_open(id, title, action, submit, update_action=None, edit_title='Edit') %}
   <dialog id="{{ id }}" class="record-dialog" aria-labelledby="{{ id }}-title">
-    <form method="post" data-record-form data-create-action="{{ action }}" data-update-action="{{ action }}"
-          data-new-title="{{ title }}" data-new-submit="{{ submit }}">
+    <form method="post" data-record-form data-create-action="{{ action }}" data-update-action="{{ update_action or action }}"
+          data-new-title="{{ title }}" data-new-submit="{{ submit }}" data-edit-title="{{ edit_title }}" data-edit-submit="Save">
       <header class="record-dialog-head">
         <div><h3 id="{{ id }}-title" data-record-title>{{ title }}</h3></div>
         <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
@@ -180,29 +181,7 @@
     {{ sheet_bottom(tank_rows|length, 'tank', 'tanks') }}
   </section>
 
-  {{ dialog_open('tank-dialog', 'New tank', url_for('zebrafish_create_tank'), 'Create tank') }}
-    <fieldset class="record-group">
-      <legend>Tank</legend>
-      <label>Tank ID <input name="tank_id" placeholder="auto"></label>
-      <label>Purpose
-        <select name="purpose">{% for p in tank_purpose_options %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}</select>
-      </label>
-      <label>Line
-        <select name="line_id_fk"><option value="">Not set</option>{% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}</select>
-      </label>
-      <label>Owner <input name="owner"></label>
-    </fieldset>
-    <fieldset class="record-group">
-      <legend>Position</legend>
-      <label>Rack
-        <select name="rack_id_fk"><option value="">Not placed</option>{% for r in racks %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
-      </label>
-      <label>Card <input name="card_id"></label>
-      <label>Row <input name="row" type="number" min="0" max="19"></label>
-      <label>Column <input name="col" type="number" min="0" max="19"></label>
-    </fieldset>
-    <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
-  {{ dialog_close('Create tank') }}
+
 
   {# The sacrifice log sits under the tanks it belongs to. #}
   <details class="fold-card mt-4">
@@ -242,48 +221,49 @@
 
 {% if active_view == "tanks" and tanks_sub == 'grid' %}
   <section class="data-table-card">
-    <form id="rack-create-form" method="post" action="{{ url_for('zebrafish_create_rack') }}" class="dt-toolbar rack-toolbar">
-      <label class="field-label">New rack <input name="name" placeholder="Rack A" required></label>
-      <label class="field-label">System
-        <select name="system_id_fk"><option value="">–</option>{% for sys in systems %}<option value="{{ sys.id }}">{{ sys.name }}</option>{% endfor %}</select>
-      </label>
-      <label class="field-label">Rows <input type="number" name="rows" min="1" max="20" value="8"></label>
-      <label class="field-label">Columns <input type="number" name="cols" min="1" max="20" value="10"></label>
-      <button type="submit" class="btn">{{ icon('plus') }} Add rack</button>
-    </form>
-
-    {% if racks %}
-      <div class="zfish-rack-shell">
-        <div class="zfish-rack-picker">
-          <label class="field-label">Rack
-            <select id="zfish-rack-select">{% for r in racks %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
-          </label>
-          <span class="text-[12px] text-muted">Drag tanks between cells. Drop one on the tray to unplace it.</span>
-        </div>
-        <div class="zfish-rack-body">
-          <div class="zfish-rack-grid" id="zfish-rack-grid"></div>
-          <aside class="zfish-rack-tray" id="zfish-rack-tray">
-            <h4>Unplaced tanks</h4>
-            <div class="zfish-rack-tray-items" id="zfish-rack-tray-items"></div>
-          </aside>
-        </div>
-      </div>
-      <script id="zfish-rack-data" type="application/json">
-        {
-          "racks": [
-            {% for r in racks %}{ "id": {{ r.id }}, "name": {{ r.name|tojson }}, "rows": {{ r.rows }}, "cols": {{ r.cols }} }{% if not loop.last %},{% endif %}{% endfor %}
-          ],
-          "tanks": [
-            {% for t in tanks %}
-              { "id": {{ t.id }}, "tank_id": {{ t.tank_id|tojson }}, "rack_id_fk": {{ (t.rack_id_fk if t.rack_id_fk is not none else 'null') }}, "row": {{ (t.row if t.row is not none else 'null') }}, "col": {{ (t.col if t.col is not none else 'null') }}, "purpose": {{ t.purpose|tojson }}, "line": {{ ((t.line.name if t.line else '')|tojson) }} }{% if not loop.last %},{% endif %}
-            {% endfor %}
-          ]
-        }
-      </script>
-    {% else %}
-      <div class="empty-state m-4">Add a rack above to start placing tanks.</div>
-    {% endif %}
+    {{ rack_grid('zf-tanks', fish_racks,
+                 url_for('zebrafish_move_tank', tank_row_id=0)|replace('/0/', '/{id}/'),
+                 rack_noun='rack', rack_dialog_id='fish-rack-dialog', index_base=0,
+                 rack_field='rack_id_fk', row_field='row', col_field='col',
+                 empty_text='No racks yet. Use New rack to add one.') }}
   </section>
+
+  {% call rack_dialog('fish-rack-dialog', url_for('zebrafish_create_rack'),
+                      url_for('zebrafish_update_rack', rack_id=0), url_for('zebrafish_delete_rack', rack_id=0)) %}
+    <label class="col-span-full">Water system
+      <select name="system_id_fk">
+        <option value="">None</option>
+        {% for sys in systems %}<option value="{{ sys.id }}">{{ sys.name }}</option>{% endfor %}
+      </select>
+    </label>
+  {% endcall %}
+{% endif %}
+
+{% if active_view == "tanks" %}
+  {{ dialog_open('tank-dialog', 'New tank', url_for('zebrafish_create_tank'), 'Create tank',
+                 update_action=url_for('zebrafish_update_tank', tank_row_id=0), edit_title='Tank {label}') }}
+    <fieldset class="record-group">
+      <legend>Tank</legend>
+      <label>Tank ID <input name="tank_id" placeholder="auto"></label>
+      <label>Purpose
+        <select name="purpose">{% for p in tank_purpose_options %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}</select>
+      </label>
+      <label>Line
+        <select name="line_id_fk"><option value="">Not set</option>{% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}</select>
+      </label>
+      <label>Owner <input name="owner"></label>
+    </fieldset>
+    <fieldset class="record-group">
+      <legend>Position</legend>
+      <label>Rack
+        <select name="rack_id_fk"><option value="">Not placed</option>{% for r in racks %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
+      </label>
+      <label>Card <input name="card_id"></label>
+      <label>Row <input name="row" type="number" min="0" max="19"></label>
+      <label>Column <input name="col" type="number" min="0" max="19"></label>
+    </fieldset>
+    <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+  {{ dialog_close('Create tank') }}
 {% endif %}
 
 {% if active_view == "tanks" and tanks_sub == 'geno' %}
@@ -722,102 +702,7 @@
     });
   });
 
-{% if active_view == "tanks" and tanks_sub == "grid" %}
-  // ---- Rack grid view ----
-  (function () {
-    const dataEl = document.getElementById('zfish-rack-data');
-    const grid = document.getElementById('zfish-rack-grid');
-    const tray = document.getElementById('zfish-rack-tray-items');
-    const select = document.getElementById('zfish-rack-select');
-    if (!dataEl || !grid || !tray || !select) return;
 
-    let data;
-    try { data = JSON.parse(dataEl.textContent); } catch (_) { return; }
-    const racks = data.racks || [];
-    const tanks = data.tanks || [];
-    let active = racks[0] ? racks[0].id : null;
-
-    function tubeEl(t) {
-      const el = document.createElement('div');
-      el.className = `zfish-tube zfish-tube-${t.purpose || 'stock'}`;
-      el.draggable = true;
-      el.dataset.tankId = t.id;
-      el.title = `${t.tank_id}\n${t.line || ''}\n${t.purpose}`;
-      el.innerHTML = `<span class="zfish-tube-id">${t.tank_id}</span><span class="zfish-tube-line">${t.line || ''}</span>`;
-      el.addEventListener('dragstart', (ev) => {
-        ev.dataTransfer.setData('text/plain', String(t.id));
-        el.classList.add('is-dragging');
-      });
-      el.addEventListener('dragend', () => el.classList.remove('is-dragging'));
-      return el;
-    }
-
-    function moveTo(tankId, rackId, row, col) {
-      const fd = new FormData();
-      fd.append('rack_id_fk', rackId == null ? '' : String(rackId));
-      if (row !== null && row !== undefined) fd.append('row', String(row));
-      if (col !== null && col !== undefined) fd.append('col', String(col));
-      return fetch(`/zebrafish/tanks/${tankId}/move`, { method: 'POST', body: fd });
-    }
-
-    function render() {
-      const rack = racks.find((r) => r.id === active);
-      if (!rack) return;
-      grid.innerHTML = '';
-      grid.style.gridTemplateColumns = `28px repeat(${rack.cols}, minmax(64px, 1fr))`;
-      grid.style.gridTemplateRows = `24px repeat(${rack.rows}, minmax(52px, auto))`;
-
-      const blank = document.createElement('div'); blank.className = 'zfish-rack-corner'; grid.appendChild(blank);
-      for (let c = 0; c < rack.cols; c++) {
-        const h = document.createElement('div'); h.className = 'zfish-rack-col-label'; h.textContent = c + 1; grid.appendChild(h);
-      }
-      const letters = 'ABCDEFGHIJKLMNOPQRST';
-      for (let r = 0; r < rack.rows; r++) {
-        const lab = document.createElement('div'); lab.className = 'zfish-rack-row-label'; lab.textContent = letters[r] || (r + 1); grid.appendChild(lab);
-        for (let c = 0; c < rack.cols; c++) {
-          const cell = document.createElement('div');
-          cell.className = 'zfish-rack-cell';
-          cell.dataset.row = r; cell.dataset.col = c;
-          cell.addEventListener('dragover', (ev) => { ev.preventDefault(); cell.classList.add('is-drop-target'); });
-          cell.addEventListener('dragleave', () => cell.classList.remove('is-drop-target'));
-          cell.addEventListener('drop', async (ev) => {
-            ev.preventDefault(); cell.classList.remove('is-drop-target');
-            const tankId = ev.dataTransfer.getData('text/plain');
-            if (!tankId) return;
-            await moveTo(tankId, active, parseInt(cell.dataset.row, 10), parseInt(cell.dataset.col, 10));
-            location.reload();
-          });
-          grid.appendChild(cell);
-        }
-      }
-
-      tray.innerHTML = '';
-      tanks.forEach((t) => {
-        const inRack = t.rack_id_fk === active;
-        const placed = inRack && t.row != null && t.col != null && t.row < rack.rows && t.col < rack.cols;
-        if (placed) {
-          const cell = grid.querySelector(`.zfish-rack-cell[data-row="${t.row}"][data-col="${t.col}"]`);
-          if (cell) cell.appendChild(tubeEl(t));
-        } else if (inRack || t.rack_id_fk === null) {
-          tray.appendChild(tubeEl(t));
-        }
-      });
-    }
-
-    tray.addEventListener('dragover', (ev) => { ev.preventDefault(); tray.classList.add('is-drop-target'); });
-    tray.addEventListener('dragleave', () => tray.classList.remove('is-drop-target'));
-    tray.addEventListener('drop', async (ev) => {
-      ev.preventDefault(); tray.classList.remove('is-drop-target');
-      const tankId = ev.dataTransfer.getData('text/plain');
-      if (!tankId) return;
-      await moveTo(tankId, null, null, null);
-      location.reload();
-    });
-
-    select.addEventListener('change', () => { active = parseInt(select.value, 10); render(); });
-    render();
-  })();
-{% endif %}
 
 {% if active_view == "water" %}
   // Water trend chart. Apple system colours: temperature red, pH purple,

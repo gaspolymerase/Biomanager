@@ -9,10 +9,11 @@ Login is enforced for the whole blueprint in `before_request`; app.py's own
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 
 from flask import (
-    Blueprint, abort, flash, g, redirect, render_template, request, url_for,
+    Blueprint, abort, flash, g, jsonify, redirect, render_template, request, url_for,
 )
 from sqlalchemy import func, select
 
@@ -276,6 +277,9 @@ def module(key: str):
             ctx["locations"] = svc.location_tree(session, row.id)
             ctx["occupancy"] = _occupancy(session, row.id)
             ctx["next_code"] = svc.next_code(session, row, "housing")
+            if mv.has("housing_grid"):
+                ctx["housing_racks"] = housing_rack_payload(
+                    mv, ctx["locations"], housing, ctx["occupancy"], ctx["next_code"], ctx["today"])
 
         elif active == "lines":
             ctx["line_counts"] = _line_counts(session, row.id)
@@ -452,6 +456,94 @@ def save_housing(key: str):
         return _redirect_back(key, "housing")
 
 
+@bp.route("/<key>/housing/<int:unit_id>/place", methods=["POST"])
+def place_housing(key: str, unit_id: int):
+    """Move a vial / plate on the rack grid; answers JSON. An occupied cell
+    swaps; an empty rack id takes it out of its position (it stays in its
+    incubator)."""
+    with SessionLocal() as session:
+        module = _module_or_404(session, key)
+        unit = session.get(OrgHousing, unit_id)
+        if unit is None or unit.module_id_fk != module.id:
+            return jsonify({"ok": False, "error": "That record no longer exists."}), 404
+        if not access.can_edit(unit):
+            return jsonify({"ok": False, "error": access.reason_denied(unit)}), 403
+        rack_id = _int(request.form.get("rack_id"), 0)
+        if not rack_id:
+            unit.row = unit.col = None
+            session.commit()
+            return jsonify({"ok": True})
+        rack = session.get(OrgLocation, rack_id)
+        row, col = _int(request.form.get("row"), 0), _int(request.form.get("col"), 0)
+        if (rack is None or rack.module_id_fk != module.id or not rack.rows or not rack.cols
+                or not (1 <= row <= rack.rows and 1 <= col <= rack.cols)):
+            return jsonify({"ok": False, "error": "That position is not in the rack."}), 400
+        occupant = session.scalar(select(OrgHousing).where(
+            OrgHousing.location_id_fk == rack.id, OrgHousing.row == row,
+            OrgHousing.col == col, OrgHousing.id != unit.id))
+        if occupant is not None:
+            if not access.can_edit(occupant):
+                return jsonify({"ok": False, "error": f"That cell holds {occupant.code}, which you may not move."}), 403
+            occupant.location_id_fk, occupant.row, occupant.col = unit.location_id_fk, unit.row, unit.col
+        unit.location_id_fk, unit.row, unit.col = rack.id, row, col
+        session.commit()
+    return jsonify({"ok": True})
+
+
+def housing_rack_payload(mv, locations, units, occupancy, next_code, today) -> dict:
+    """Racks (locations with rows and columns) and the housing units, for
+    the rack grid. Clicking a tile or an empty cell opens the housing
+    dialog, the same one the table uses."""
+    names = {loc.id: loc.name for loc in locations}
+    racks = [loc for loc in locations if loc.rows and loc.cols]
+    grid_ids = {loc.id for loc in racks}
+    items = []
+    for unit in units:
+        attrs = unit.attrs_dict
+        payload = {
+            "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
+            "row": unit.row, "col": unit.col, "purpose": unit.purpose,
+            "line_id_fk": unit.line_id_fk, "owner": unit.owner,
+            "protocol": unit.protocol, "card_id": unit.card_id,
+            "established_on": unit.established_on.isoformat() if unit.established_on else "",
+            "last_serviced_on": unit.last_serviced_on.isoformat() if unit.last_serviced_on else "",
+            "retired": not unit.active, "needs_attention": unit.needs_attention,
+            "notes": unit.notes, "attrs": attrs,
+        }
+        in_grid = unit.location_id_fk in grid_ids
+        count = occupancy.get(unit.id, 0)
+        items.append({
+            "id": unit.id, "label": unit.code,
+            "sub": (unit.line.code if unit.line else "") or unit.purpose,
+            "badge": str(count) if count else "",
+            "tone": unit.purpose if unit.active else "inactive",
+            "flag": unit.needs_attention,
+            "rack": unit.location_id_fk if in_grid else None,
+            "row": unit.row if in_grid else None, "col": unit.col if in_grid else None,
+            "title": " · ".join(filter(None, [unit.code, unit.line.code if unit.line else "",
+                                             unit.purpose, names.get(unit.location_id_fk, ""),
+                                             f"{count} held" if count else ""])),
+            "search": " ".join(filter(None, [unit.code, unit.purpose, unit.owner, unit.card_id,
+                                             unit.line.code if unit.line else "",
+                                             unit.line.name if unit.line else ""])).lower(),
+            "edit": {"data-org-edit": "housing-dialog", "data-org-payload": json.dumps(payload)},
+        })
+    return {
+        "racks": [{
+            "id": loc.id,
+            "name": f"{names[loc.parent_id_fk]} › {loc.name}" if loc.parent_id_fk in names else loc.name,
+            "rows": loc.rows, "cols": loc.cols,
+            "edit": {"data-record-payload": json.dumps({
+                "id": loc.id, "_label": loc.name, "name": loc.name, "rows": loc.rows,
+                "cols": loc.cols, "kind": loc.kind, "parent_id_fk": loc.parent_id_fk or ""})},
+        } for loc in racks],
+        "items": items,
+        "create": {"attrs": {"data-org-edit": "housing-dialog"},
+                   "payload": {"code": next_code, "established_on": today},
+                   "rack_field": "location_id_fk", "row_field": "row", "col_field": "col"},
+    }
+
+
 @bp.route("/<key>/animal/save", methods=["POST"])
 def save_animal(key: str):
     with SessionLocal() as session:
@@ -611,7 +703,7 @@ def save_location(key: str):
         row.notes = (form.get("notes") or "").strip()
         session.commit()
         flash(f"Saved {row.name}.", "success")
-        return _redirect_back(key, request.form.get("return_view") or "housing")
+        return _redirect_back(key, "housing")
 
 
 @bp.route("/<key>/reading/save", methods=["POST"])
@@ -765,6 +857,12 @@ def delete_row(key: str, entity: str, row_id: int):
             flash(access.reason_denied(row), "error")
             return _redirect_back(key, DELETE_RETURN.get(entity, "animals"))
         label = getattr(row, "code", None) or getattr(row, "name", None) or f"#{row_id}"
+        if entity == "location":
+            # Whatever sat in it stays, just unplaced; children move up a level.
+            for unit in session.scalars(select(OrgHousing).where(OrgHousing.location_id_fk == row.id)):
+                unit.location_id_fk, unit.row, unit.col = row.parent_id_fk, None, None
+            for child in session.scalars(select(OrgLocation).where(OrgLocation.parent_id_fk == row.id)):
+                child.parent_id_fk = row.parent_id_fk
         session.delete(row)
         svc.log_event(session, module, entity, row_id, "delete",
                       recorded_by=g.user.username, notes=f"Deleted {label}")

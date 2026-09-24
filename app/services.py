@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -598,6 +599,40 @@ def get_or_create_litter(session, litter_code: str, dob: date | None = None) -> 
     elif dob:
         litter.date_of_birth = dob
     return litter
+
+
+ROW_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_POSITION_RE = re.compile(r"^\s*(?P<rack>.+?)\s*[-/: ]\s*(?P<row>[A-Za-z])\s*(?P<col>\d{1,2})\s*$")
+
+
+def cage_position_text(rack_name: str, row: int, col: int) -> str:
+    """"B", 4, 7 → "B-D7". Rows and columns are 1-based."""
+    return f"{rack_name}-{ROW_LETTERS[row - 1]}{col}"
+
+
+def parse_cage_position(text: str, racks_by_name: dict) -> tuple | None:
+    """"B-D7" → (rack, 4, 7) when rack "B" exists and D7 is inside it.
+
+    Accepts "-", "/", ":" or a space between rack and position, and any
+    letter case; rack names may themselves contain those characters,
+    because the position is read from the end. Anything else is None, which
+    the grid shows as unplaced rather than guessing."""
+    match = _POSITION_RE.match(text or "")
+    if not match:
+        return None
+    rack = racks_by_name.get(match.group("rack").strip().lower())
+    if rack is None:
+        return None
+    row = ROW_LETTERS.index(match.group("row").upper()) + 1
+    col = int(match.group("col"))
+    if not (1 <= row <= rack.rows and 1 <= col <= rack.cols):
+        return None
+    return rack, row, col
+
+
+def mouse_racks(session) -> list:
+    from .models import MouseRack
+    return list(session.scalars(select(MouseRack).order_by(MouseRack.position, MouseRack.name)))
 
 
 def get_or_create_cage(session, cage_code: str) -> CageRecord:
@@ -1269,7 +1304,8 @@ def seed_organism_modules() -> None:
     with SessionLocal() as session:
         created = organisms.seed_builtin_modules(session)
         repaired = organisms.repair_icon_names(session)
-        if created or repaired:
+        gridded = organisms.offer_housing_grid(session)
+        if created or repaired or gridded:
             session.commit()
 
 

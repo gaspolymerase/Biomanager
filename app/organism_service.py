@@ -364,6 +364,27 @@ def repair_icon_names(session) -> int:
     return changed
 
 
+def offer_housing_grid(session) -> int:
+    """Give the built-in fly and worm modules rack positions for their
+    vials and plates. Done once per module (remembered in its settings), so
+    a lab that switches positions off in Configure keeps that choice."""
+    changed = 0
+    for module in session.scalars(select(OrganismModule)):
+        if module.preset_key not in ("drosophila", "c_elegans"):
+            continue
+        settings = load_dict(module.settings)
+        if settings.get("housing_grid_offered"):
+            continue
+        capabilities = load_list(module.capabilities)
+        if "housing" in capabilities and "housing_grid" not in capabilities:
+            capabilities.insert(capabilities.index("housing") + 1, "housing_grid")
+            module.capabilities = dump(capabilities)
+        settings["housing_grid_offered"] = True
+        module.settings = dump(settings)
+        changed += 1
+    return changed
+
+
 # ---------------------------------------------------------------------------
 # Fields
 # ---------------------------------------------------------------------------

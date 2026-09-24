@@ -335,7 +335,7 @@ PRESETS: tuple[Preset, ...] = (
         identity_mode="group",
         age_unit="generations",
         capabilities=[
-            "housing", "group_counts", "lines", "crosses", "cohorts",
+            "housing", "housing_grid", "group_counts", "lines", "crosses", "cohorts",
             "schedule", "health", "cull_log", "samples",
         ],
         schedule_rules=[
@@ -397,7 +397,7 @@ PRESETS: tuple[Preset, ...] = (
         identity_mode="group",
         age_unit="generations",
         capabilities=[
-            "housing", "group_counts", "lines", "crosses", "schedule",
+            "housing", "housing_grid", "group_counts", "lines", "crosses", "schedule",
             "preservation", "genotyping", "health", "samples",
         ],
         schedule_rules=[

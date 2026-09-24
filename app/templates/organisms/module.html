@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "organisms/_fields.html" as F %}
+{% from "_rack_grid.html" import rack_grid, rack_dialog, view_switch with context %}
 
 {% set view_label = (views | selectattr('key', 'equalto', active_view) | map(attribute='label') | first) or 'Configure' %}
 
@@ -220,6 +221,25 @@
    ===================================================================== #}
 {% if active_view == 'housing' %}
   {% set own_fields = fields.get('housing', []) %}
+  <div data-layout-scope>
+  {% if module.has('housing_grid') %}
+    <div class="mb-3 flex flex-wrap items-center gap-2.5">
+      {{ view_switch('org-' ~ module.key ~ '-housing', 'Table', 'Rack grid') }}
+      <span class="text-[12px] text-muted">
+        The rack grid shows each {{ module.housing_noun }} where it sits. Drag to move, click to edit, click an empty cell to add one there.
+      </span>
+    </div>
+    <div data-layout-panel="grid" hidden>
+      <section class="data-table-card">
+        {{ rack_grid('org-' ~ module.key ~ '-housing', housing_racks,
+                     url_for('organisms.place_housing', key=module.key, unit_id=0)|replace('/0/', '/{id}/'),
+                     rack_noun=module.container_noun, rack_dialog_id='org-rack-dialog',
+                     new_rack_payload={'rows': 8, 'cols': 10, 'kind': module.container_noun},
+                     empty_text='No ' ~ module.container_noun ~ ' has rows and columns yet. Use New ' ~ module.container_noun ~ ' to add one.') }}
+      </section>
+    </div>
+  {% endif %}
+  <div data-layout-panel="table">
   <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-housing">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
@@ -270,7 +290,7 @@
               </td>
               <td>{{ unit.location.name if unit.location else '' }}</td>
               {% if module.has('housing_grid') %}
-                <td><span class="ident">{% if unit.row %}R{{ unit.row }}·C{{ unit.col }}{% endif %}</span></td>
+                <td><span class="ident">{% if unit.row and unit.col and unit.row <= 26 %}{{ 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[unit.row - 1] }}{{ unit.col }}{% endif %}</span></td>
               {% endif %}
               <td>{% if unit.purpose %}<span class="badge badge-quiet">{{ unit.purpose }}</span>{% endif %}</td>
               {% if module.has('lines') %}
@@ -310,6 +330,30 @@
       </table>
     </div>
   </section>
+
+  </div>
+  </div>
+
+  {% if module.has('housing_grid') %}
+    {% call rack_dialog('org-rack-dialog', url_for('organisms.save_location', key=module.key),
+                        url_for('organisms.save_location', key=module.key),
+                        url_for('organisms.delete_row', key=module.key, entity='location', row_id=0),
+                        noun=module.container_noun) %}
+      <label>Kind
+        <select name="kind">
+          {% for kind in ['rack', 'incubator', 'shelf', 'tray', 'system', 'room'] %}
+            <option value="{{ kind }}">{{ kind|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Inside
+        <select name="parent_id_fk">
+          <option value="">Nothing</option>
+          {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }}</option>{% endfor %}
+        </select>
+      </label>
+    {% endcall %}
+  {% endif %}
 
   <dialog id="housing-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
