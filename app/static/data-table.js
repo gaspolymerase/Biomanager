@@ -1,0 +1,411 @@
+/* Reusable data-table behavior.
+ *
+ * Activate by giving the wrapper a data-table-id attribute. The script
+ * auto-attaches on DOMContentLoaded:
+ *
+ *   <section class="data-table-card" data-table-id="orders">
+ *     <div class="dt-toolbar">
+ *       <input class="dt-search" />
+ *       <button class="dt-btn-sort">…</button>
+ *       <button class="dt-btn-hide">…</button>
+ *     </div>
+ *     <div class="dt-scroll">
+ *       <table class="dt" data-resizable="1">…</table>
+ *     </div>
+ *     <div class="dt-bottom-bar">
+ *       <span class="dt-count"></span>
+ *       <select class="dt-page-size"><option>50</option>…</select>
+ *       <button class="dt-prev"></button><button class="dt-next"></button>
+ *       <span class="dt-page-label"></span>
+ *     </div>
+ *   </section>
+ *
+ * Search filters rows by the union of all data-* attributes. Sort uses
+ * th.dt-sortable[data-sort-key]. Column widths and hidden columns are
+ * persisted to localStorage keyed by data-table-id.
+ */
+
+(function () {
+  'use strict';
+
+  // SVG glyphs for column-type icons. Inserted into .dt-col-type spans with
+  // a data-icon attribute (date/status/check/list — types where a unicode
+  // letter doesn't suffice). Text/number/id are handled by ::before in CSS.
+  const ICONS = {
+    date: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>',
+    status: '<svg viewBox="0 0 24 24"><path d="M2 12a10 10 0 0 1 10-10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M22 12a10 10 0 0 1-10 10"/><path d="M12 22A10 10 0 0 1 2 12"/></svg>',
+    check: '<svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="3"/><path d="m9 12 2 2 4-4"/></svg>',
+    list: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
+    file: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  };
+
+  function injectIconSvgs(root) {
+    root.querySelectorAll('.dt-col-type[data-icon]').forEach((el) => {
+      const kind = el.dataset.icon;
+      if (ICONS[kind] && !el.innerHTML.trim()) el.innerHTML = ICONS[kind];
+    });
+    root.querySelectorAll('.dt-row-icon').forEach((el) => {
+      if (!el.innerHTML.trim()) el.innerHTML = ICONS.file;
+    });
+  }
+
+  // Per-table state keyed by table id.
+  class DataTableController {
+    constructor(card) {
+      this.card = card;
+      this.id = card.dataset.tableId || 'data-table';
+      this.table = card.querySelector('table.dt');
+      this.tbody = this.table && this.table.tBodies[0];
+      this.rows = this.tbody ? Array.from(this.tbody.querySelectorAll('tr[data-id]')) : [];
+      this.filtered = this.rows.slice();
+      this.sortKey = null;
+      this.sortDir = 1;
+      this.page = 0;
+      this.hidden = this._loadHiddenCols();
+
+      this.search = card.querySelector('.dt-search');
+      this.count = card.querySelector('.dt-count');
+      this.pageSize = card.querySelector('.dt-page-size');
+      this.pageLabel = card.querySelector('.dt-page-label');
+      this.prev = card.querySelector('.dt-prev');
+      this.next = card.querySelector('.dt-next');
+      this.selectAll = card.querySelector('.dt-select-all');
+
+      injectIconSvgs(card);
+      this._wireHeaderSort();
+      this._wireSearch();
+      this._wireSelection();
+      this._wirePagination();
+      this._wireHideButton();
+      this._wireSortButton();
+      this._wireResize();
+      this._applyHidden();
+      this._applyResizedWidths();
+      this.render();
+    }
+
+    _wireHeaderSort() {
+      if (!this.table) return;
+      this.table.querySelectorAll('th.dt-sortable').forEach((th) => {
+        th.addEventListener('click', (event) => {
+          // Ignore clicks that started on the resize handle.
+          if (event.target.classList && event.target.classList.contains('dt-col-resize')) return;
+          const key = th.dataset.sortKey;
+          if (!key) return;
+          if (this.sortKey === key) this.sortDir = -this.sortDir;
+          else { this.sortKey = key; this.sortDir = 1; }
+          this.table.querySelectorAll('th.dt-sortable').forEach((other) => {
+            other.classList.remove('dt-sort-asc', 'dt-sort-desc');
+          });
+          th.classList.add(this.sortDir === 1 ? 'dt-sort-asc' : 'dt-sort-desc');
+          this._applySort();
+          this.render();
+        });
+      });
+    }
+
+    _wireSearch() {
+      if (!this.search) return;
+      this.search.addEventListener('input', () => {
+        const q = (this.search.value || '').trim().toLowerCase();
+        this.filtered = this.rows.filter((tr) => {
+          if (!q) return true;
+          // Build a search blob from all data-* attributes on the row plus
+          // the text content (so visible text matches too).
+          let blob = (tr.textContent || '').toLowerCase();
+          for (const key in tr.dataset) blob += ' ' + (tr.dataset[key] || '').toLowerCase();
+          return blob.includes(q);
+        });
+        if (this.sortKey) this._applySort();
+        this.page = 0;
+        this.render();
+      });
+    }
+
+    _applySort() {
+      const key = this.sortKey;
+      const dir = this.sortDir;
+      this.filtered.sort((a, b) => {
+        const av = a.dataset[key] || '';
+        const bv = b.dataset[key] || '';
+        const aNum = parseFloat(av), bNum = parseFloat(bv);
+        if (!isNaN(aNum) && !isNaN(bNum) && av.trim() && bv.trim()) return (aNum - bNum) * dir;
+        return av.localeCompare(bv) * dir;
+      });
+    }
+
+    _wireSelection() {
+      if (this.selectAll) {
+        this.selectAll.addEventListener('change', () => {
+          this.tbody.querySelectorAll('.dt-row-check').forEach((cb) => {
+            const tr = cb.closest('tr');
+            if (tr && tr.style.display !== 'none') {
+              cb.checked = this.selectAll.checked;
+              tr.classList.toggle('is-selected', this.selectAll.checked);
+            }
+          });
+        });
+      }
+      if (this.tbody) {
+        this.tbody.addEventListener('change', (event) => {
+          if (event.target.classList && event.target.classList.contains('dt-row-check')) {
+            const tr = event.target.closest('tr');
+            tr && tr.classList.toggle('is-selected', event.target.checked);
+          }
+        });
+      }
+    }
+
+    _wirePagination() {
+      if (this.pageSize) this.pageSize.addEventListener('change', () => { this.page = 0; this.render(); });
+      if (this.prev) this.prev.addEventListener('click', () => { if (this.page > 0) { this.page--; this.render(); } });
+      if (this.next) this.next.addEventListener('click', () => { this.page++; this.render(); });
+    }
+
+    _wireHideButton() {
+      const btn = this.card.querySelector('.dt-btn-hide');
+      if (!btn || !this.table) return;
+      btn.addEventListener('click', () => {
+        const headers = Array.from(this.table.tHead.rows[0].cells);
+        const labels = headers.map((th, i) => {
+          const head = th.querySelector('.dt-col-head');
+          const text = head ? head.textContent.trim() : (th.textContent || '').trim();
+          return `${i}. ${text || '(unlabeled)'}${this.hidden.has(i) ? '  [hidden]' : ''}`;
+        }).join('\n');
+        const choice = prompt(
+          'Toggle column visibility — enter comma-separated indices:\n\n' + labels + '\n\nExample: 3,5  ·  Leave blank to cancel.'
+        );
+        if (!choice) return;
+        choice.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n)).forEach((n) => {
+          if (n >= 0 && n < headers.length) {
+            if (this.hidden.has(n)) this.hidden.delete(n); else this.hidden.add(n);
+          }
+        });
+        this._saveHiddenCols();
+        this._applyHidden();
+        btn.classList.toggle('is-active', this.hidden.size > 0);
+      });
+      btn.classList.toggle('is-active', this.hidden.size > 0);
+    }
+
+    _wireSortButton() {
+      const btn = this.card.querySelector('.dt-btn-sort');
+      if (!btn || !this.table) return;
+      btn.addEventListener('click', () => {
+        const headers = Array.from(this.table.querySelectorAll('th.dt-sortable'));
+        if (!headers.length) return;
+        const labels = headers.map((th, i) => {
+          const head = th.querySelector('.dt-col-head');
+          const text = head ? head.textContent.trim() : (th.textContent || '').trim();
+          const indicator = th.classList.contains('dt-sort-asc') ? '↑' : (th.classList.contains('dt-sort-desc') ? '↓' : '');
+          return `${i + 1}. ${text} ${indicator}`;
+        }).join('\n');
+        const choice = prompt('Sort by which column? Enter number:\n\n' + labels);
+        const idx = parseInt((choice || '').trim(), 10);
+        if (idx >= 1 && idx <= headers.length) headers[idx - 1].click();
+      });
+    }
+
+    _applyHidden() {
+      if (!this.table) return;
+      const headers = Array.from(this.table.tHead.rows[0].cells);
+      headers.forEach((th, idx) => { th.style.display = this.hidden.has(idx) ? 'none' : ''; });
+      this.rows.forEach((tr) => {
+        Array.from(tr.cells).forEach((td, idx) => {
+          td.style.display = this.hidden.has(idx) ? 'none' : '';
+        });
+      });
+    }
+
+    _loadHiddenCols() {
+      try {
+        const raw = localStorage.getItem(`dt:${this.id}:hidden`);
+        if (!raw) return new Set();
+        return new Set(JSON.parse(raw));
+      } catch (_) { return new Set(); }
+    }
+
+    _saveHiddenCols() {
+      try { localStorage.setItem(`dt:${this.id}:hidden`, JSON.stringify([...this.hidden])); } catch (_) {}
+    }
+
+    // -------- column resize ----------------------------------------------
+    _wireResize() {
+      if (!this.table || this.table.dataset.resizable !== '1') return;
+      const headers = Array.from(this.table.tHead.rows[0].cells);
+      headers.forEach((th, idx) => {
+        if (idx === headers.length - 1) return; // no handle on last col
+        const handle = document.createElement('div');
+        handle.className = 'dt-col-resize';
+        handle.dataset.colIndex = idx;
+        th.appendChild(handle);
+        handle.addEventListener('mousedown', (event) => this._startResize(event, th, idx));
+      });
+    }
+
+    _startResize(event, th, idx) {
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startWidth = th.getBoundingClientRect().width;
+      this.table.classList.add('is-resizing');
+      const handle = event.currentTarget; // the resize handle, not pseudo
+      handle.classList.add('is-dragging');
+      const onMove = (ev) => {
+        const delta = ev.clientX - startX;
+        const newWidth = Math.max(48, startWidth + delta);
+        th.style.width = `${newWidth}px`;
+        th.style.minWidth = `${newWidth}px`;
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        this.table.classList.remove('is-resizing');
+        handle.classList.remove('is-dragging');
+        this._saveColWidth(idx, parseInt(th.style.width || '', 10));
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+
+    _saveColWidth(idx, width) {
+      if (!width || isNaN(width)) return;
+      try {
+        const raw = localStorage.getItem(`dt:${this.id}:widths`) || '{}';
+        const map = JSON.parse(raw);
+        map[idx] = width;
+        localStorage.setItem(`dt:${this.id}:widths`, JSON.stringify(map));
+      } catch (_) {}
+    }
+
+    _applyResizedWidths() {
+      if (!this.table || this.table.dataset.resizable !== '1') return;
+      try {
+        const raw = localStorage.getItem(`dt:${this.id}:widths`);
+        if (!raw) return;
+        const map = JSON.parse(raw);
+        const headers = Array.from(this.table.tHead.rows[0].cells);
+        Object.keys(map).forEach((idxStr) => {
+          const idx = parseInt(idxStr, 10);
+          const width = map[idxStr];
+          if (headers[idx] && width) {
+            headers[idx].style.width = `${width}px`;
+            headers[idx].style.minWidth = `${width}px`;
+          }
+        });
+      } catch (_) {}
+    }
+
+    // -------- render -----------------------------------------------------
+    render() {
+      const size = this.pageSize ? parseInt(this.pageSize.value, 10) : 50;
+      const start = this.page * size;
+      const end = start + size;
+      this.rows.forEach((tr) => { tr.style.display = 'none'; });
+      this.filtered.slice(start, end).forEach((tr) => { tr.style.display = ''; });
+      const total = this.filtered.length;
+      if (this.count) {
+        const noun = total === 1 ? 'entry' : 'entries';
+        this.count.textContent = `${total} ${noun}${total !== this.rows.length ? ` (of ${this.rows.length})` : ''}`;
+      }
+      const totalPages = Math.max(1, Math.ceil(total / size));
+      if (this.pageLabel) this.pageLabel.textContent = `Page ${this.page + 1} of ${totalPages}`;
+      if (this.prev) this.prev.disabled = this.page === 0;
+      if (this.next) this.next.disabled = this.page >= totalPages - 1;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Standalone resize binding. Works on any <table data-resizable="1"> that
+  // isn't already managed by a DataTableController. The table id is taken
+  // from the `data-resize-id` attribute (or the element id) — that's the
+  // key used in localStorage for persisted widths.
+  // ---------------------------------------------------------------------
+  function makeTableResizable(table) {
+    if (table.dataset.dtResizeBound === '1') return;
+    table.dataset.dtResizeBound = '1';
+    const tableId = table.dataset.resizeId || table.id || 'unnamed';
+    const headers = Array.from(table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells : []);
+    if (!headers.length) return;
+
+    // Apply persisted widths.
+    try {
+      const raw = localStorage.getItem(`dt:${tableId}:widths`);
+      if (raw) {
+        const map = JSON.parse(raw);
+        Object.keys(map).forEach((idxStr) => {
+          const idx = parseInt(idxStr, 10);
+          if (headers[idx] && map[idxStr]) {
+            headers[idx].style.width = `${map[idxStr]}px`;
+            headers[idx].style.minWidth = `${map[idxStr]}px`;
+          }
+        });
+      }
+    } catch (_) {}
+
+    headers.forEach((th, idx) => {
+      if (idx === headers.length - 1) return;
+      // Skip if a handle is already there (e.g. DataTableController added it).
+      if (th.querySelector('.dt-col-resize')) return;
+      const handle = document.createElement('div');
+      handle.className = 'dt-col-resize';
+      handle.dataset.colIndex = idx;
+      th.appendChild(handle);
+      handle.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const startX = event.clientX;
+        const startWidth = th.getBoundingClientRect().width;
+        table.classList.add('is-resizing');
+        handle.classList.add('is-dragging');
+        const onMove = (ev) => {
+          const delta = ev.clientX - startX;
+          const newWidth = Math.max(40, startWidth + delta);
+          th.style.width = `${newWidth}px`;
+          th.style.minWidth = `${newWidth}px`;
+        };
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          table.classList.remove('is-resizing');
+          handle.classList.remove('is-dragging');
+          const width = parseInt(th.style.width || '', 10);
+          if (width) {
+            try {
+              const raw = localStorage.getItem(`dt:${tableId}:widths`) || '{}';
+              const map = JSON.parse(raw);
+              map[idx] = width;
+              localStorage.setItem(`dt:${tableId}:widths`, JSON.stringify(map));
+            } catch (_) {}
+          }
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  }
+
+  function init() {
+    document.querySelectorAll('.data-table-card[data-table-id]').forEach((card) => {
+      // Avoid double-initializing if data-table.js is loaded twice.
+      if (card.dataset.dtBound === '1') return;
+      card.dataset.dtBound = '1';
+      new DataTableController(card);
+    });
+    // Bind resize to any standalone <table data-resizable="1"> not inside a
+    // controlled .data-table-card (which already handles resize itself).
+    document.querySelectorAll('table[data-resizable="1"]').forEach((table) => {
+      if (table.closest('.data-table-card[data-table-id]')) return;
+      makeTableResizable(table);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Expose for templates that want to re-init after dynamic DOM changes.
+  window.BiomanagerDataTable = { init, makeTableResizable };
+})();

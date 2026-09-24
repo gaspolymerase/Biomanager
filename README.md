@@ -1,0 +1,409 @@
+# BioManager
+
+BioManager is a Python laboratory management starter app for biology workflows. The current first focus is mouse colony management with spreadsheet-like data entry. It includes:
+
+- Mouse colony table view with inline editing
+- Cage layout view grouped by `Cage_ID`
+- Litter records that manage DOB/cohort data for linked mice
+- Saved dropdown presets for frequently reused column values
+- Internal order tracking with catalog number records
+- General animal records for future expansion to mice, Drosophila, C. elegans, zebrafish, and custom organisms
+- Harvested sample records linked to the source animal
+- Experiment calendar and to-do tracking
+- Lab notebook entries linked to animals and calendar events, with image uploads
+- Molecular-weight reference data and a concentration-to-mass calculator
+
+## Stack
+
+- Python
+- Flask
+- SQLAlchemy
+- SQLite for local development
+- PostgreSQL-ready for shared server deployment
+- Tailwind CSS v4 for the interface (compiled, no CDN at runtime)
+
+## Interface design
+
+The interface follows Apple's macOS conventions: a translucent vibrant
+sidebar, a Finder-style tab strip, a unified toolbar whose separator only
+appears once content scrolls under it, 13px system type, AppKit control
+metrics (28px buttons, 6px radii) and Apple's system colour palette — with
+full dark mode.
+
+Two Apple things are deliberately **not** used, because their licences do
+not permit it outside Apple platforms:
+
+- **SF Symbols** — licensed for Apple-platform apps only, not web.
+- **Shipping SF Pro** — but the system font stack (`-apple-system`)
+  resolves to SF on Apple devices, which is both correct and allowed.
+
+### Icons
+
+One sprite, `app/static/icons.svg`, built by `scripts/build-icons.py`:
+
+```bash
+python scripts/build-icons.py path/to/fontawesome-free-6.7.2
+```
+
+Referenced as `{{ icon('mouse') }}` in templates, which emits
+`<svg class="icon"><use href="/static/icons.svg#mouse"></svg>` — one cached
+request, inherits `currentColor`, no JavaScript, works offline in the
+packaged app.
+
+Three sources, all permissively licensed:
+
+| Source | Licence | Covers |
+| --- | --- | --- |
+| [Font Awesome Free 6](https://fontawesome.com) | Icons CC BY 4.0 | the UI, plus `worm`, `mosquito`, `fish`, `frog`, `dna`, `vial`, `microscope`, `bacterium`, `virus`, `syringe` |
+| [game-icons.net](https://game-icons.net) by Delapouite | CC BY 3.0 | `mouse` (their *rat*) and `fly`, vendored in `scripts/icon-sources/` |
+| This project | — | `plasmid`, `petri`, `cage`, `tank`, `culture-vial` |
+
+Font Awesome has no laboratory mouse and no plasmid. The plasmid and the
+labware are drawn here; the mouse and the housefly are not, because both
+collapse into a blob below about 24px unless ears, snout, tail — or
+compound eyes and wings — are all resolved, which is more drawing than a
+16px mark can carry. Hand-drawn versions were tried three times and thrown
+away.
+
+Add an icon by adding a name to `FROM_FONTAWESOME`, `FROM_SOURCES` or
+`CUSTOM` in the build script and rebuilding. **Check any new icon at 15px**,
+not just large — that is where they fail.
+
+### App icon
+
+`app/static/icon.svg` is laid out on Apple's macOS icon grid — an 824×824
+rounded square inset in a 1024 canvas with a 185.4 corner radius — so it
+sits correctly beside native apps in the Dock. The mark is a double helix,
+the one symbol every organism in the app shares.
+
+## Interface
+
+The UI is a collapsible icon rail plus a persistent **workspace tab strip**:
+every page you open becomes a tab, tabs survive navigation (they live in
+`localStorage`), and they can be reordered by dragging, closed with middle
+click, and switched with `Alt+1…9` / `Alt+←` / `Alt+→` (`Alt+W` closes,
+`Cmd/Ctrl+B` collapses the rail, `Cmd/Ctrl+K` opens search).
+
+### Styling
+
+`frontend/src/tailwind.css` is the single source of truth: design tokens in
+`@theme`, composable primitives as `@utility` (`btn`, `field`, `card`,
+`badge`, …), and component classes for anything repeated or referenced by
+JavaScript (`dt-*` for data tables, `cmdk-*` for the command palette,
+`wtab*` for the tab strip, the `workbench` vocabulary for the dense module
+pages). It compiles to `app/static/tailwind.css`:
+
+```bash
+cd frontend
+npm install        # first time only
+npm run build:css  # one-off build
+npm run watch:css  # rebuild while editing templates
+```
+
+Rebuild after editing templates — Tailwind only emits the classes it finds in
+`app/templates/**/*.html` and `app/static/*.js`.
+
+A few pages (plasmids, zebrafish, calendar, notebook) have not been converted
+yet. They set `{% block legacy %}1{% endblock %}`, which loads
+`app/static/legacy.css` — the old stylesheet with every rule scoped under
+`.legacy-page` so it styles the page body without reaching the new shell.
+Regenerate it with `python scripts/scope-legacy-css.py` if `styles.css`
+changes; delete both once the last template is migrated.
+
+## Organism modules (configurable species databases)
+
+Mouse colony and zebrafish are hand-written modules with their own tables.
+Everything else is configurable: an **organism module** is a row in
+`organism_modules` that describes a species, and one generic engine serves it.
+
+A module declares:
+
+- **Vocabulary** — cage/tank/vial/plate, strain/line/stock, litter/clutch/progeny.
+  These are what the UI calls things, so a fly database says "vial" and "stock".
+- **Identity mode** — individuals (mice), groups with a headcount (flies, worms),
+  or hybrid (fish: groups that can resolve into named individuals).
+- **Capabilities** — 19 switches covering crosses, cohorts, a nursery stage,
+  genotyping, environment logs, cryo inventory, protocol/census, billing and more.
+  See `app/organisms.py`.
+- **Schedule rules** — `anchor date + offset`, optionally varying by rearing
+  temperature. One rule covers "flip flies every 14 days at 25 °C, 28 at 18 °C".
+- **Custom fields** — typed per-module columns stored in each row's `attrs`
+  JSON, which generate their own form inputs, table columns and validation.
+
+Drosophila and C. elegans are seeded automatically on first run
+(`organisms.AUTO_SEED_PRESETS`). Zebrafish and mouse exist as presets so the
+engine can be checked against the hand-written modules.
+
+Build a new one at **Add database** in the sidebar (`/organisms/new`): pick a
+preset or a blank sheet, name the nouns, choose the capabilities, done — no
+migration.
+
+### Shape of the schema
+
+| Table | Holds |
+| --- | --- |
+| `organism_modules` | one species database + its configuration |
+| `organism_module_fields` | user-defined fields per module and entity |
+| `organism_locations` | location tree: facility / room / system / rack / incubator |
+| `organism_lines` | strains, lines, stocks |
+| `organism_housing` | cages, tanks, vials, plates |
+| `organisms` | the tracked unit — one animal, or a group with `count` |
+| `organism_crosses` | matings and crosses |
+| `organism_cohorts` | litters, clutches, progeny batches |
+| `organism_events` | append-only lifecycle log |
+| `organism_due` | materialised schedule items |
+| `organism_measurements` | weights, water chemistry, temperatures |
+| `organism_genotypes` | genotyping calls |
+| `organism_preservation` | frozen lots, vials remaining, recovery tests |
+
+Every row carries `module_id_fk`, and every relation is resolved through
+`_ref()` in `app/organism_routes.py` so a reference can never cross modules.
+
+## Access control
+
+Who may change what lives in one place, `app/access.py`:
+
+- **You manage your own colony.** A record whose `owner` is you is yours to
+  edit or delete.
+- **Shared resources are everyone's.** Breeder cages are shared implicitly
+  (`purpose` of breeder/breeding), and any cage can be shared explicitly with
+  its `is_shared` flag. The whole lab can edit them and pick mice out of them.
+- **Unowned records stay open**, so records predating ownership don't lock
+  anyone out.
+- **Admins can do anything.**
+
+Visibility is deliberately *not* restricted — a census with holes is not a
+census. The **My colony / Shared / Everyone** switch on the colony page is a
+view filter; edit rights are per record and don't change with it.
+
+Admins get **Colony overview** (`/admin/colony`): every cage in the facility
+grouped by who manages it, with occupancy, shared-cage pooling, idle-time
+flags and a warning for living mice with no cage. That's the page for
+reassigning animals when someone leaves.
+
+Cage ownership is backfilled on first run from the mice each cage holds; a
+cage whose mice disagree is left unowned rather than guessed at.
+
+## Change history
+
+Every create, edit and delete on a tracked table writes an `audit_log` row
+with a field-level diff (`genotype: DBH-Cre → ∅`). This is done with a
+SQLAlchemy `before_flush` listener in `app/audit.py`, not per-route calls, so
+it covers the whole app including the organism engine, and the audit row is
+written in the same transaction as the change it describes. Passwords and
+tokens are redacted; high-churn tables are excluded. Admins read it at
+`/audit`.
+
+## Keeping the data safe
+
+**A SQLite file must not live in a cloud-synced folder.** OneDrive, Dropbox
+and Google Drive do not honour SQLite's file locking: a sync mid-write, or
+two machines with the folder open, corrupts the file outright. The app logs a
+loud warning at startup if it detects this.
+
+```bash
+python scripts/dbtool.py check                      # location, integrity, sync risk
+python scripts/dbtool.py backup                     # consistent snapshot, keeps 30
+python scripts/dbtool.py relocate ~/BioManagerData  # move it somewhere local
+python scripts/dbtool.py restore <file>
+```
+
+`relocate` copies, verifies with an integrity check, and only then retires
+the original — then prints the `BIOMANAGER_DATA_DIR` to export. Backups use
+SQLite's backup API, so they are consistent even while the app is running.
+
+Schema changes go through **Alembic** (`migrations/`). Existing databases are
+stamped at `0001_baseline` automatically on boot:
+
+```bash
+alembic revision --autogenerate -m "describe the change"
+alembic upgrade head
+```
+
+The old hand-written ALTERs in `services.ensure_schema_updates()` still run
+for backwards compatibility, but new changes belong in a revision.
+
+## Cage cards and QR labels
+
+Printable, correctly-sized cards with a QR that opens the record — so someone
+at the rack scans instead of walking back to type an ID.
+
+- Mouse cages: **Print cage cards** on the Cages view, or `/labels/cards/cages`
+- Organism modules: **Labels** on the Housing view, or `/labels/cards/<module>`
+
+Cards are laid out in millimetres and print without any app chrome. QR
+payloads are absolute URLs built from the incoming request, so a card printed
+on the lab server scans to the lab server. Rendering uses `segno` (pure
+Python, no image libraries), and cards still print without it — just without
+the code.
+
+## Reminder emails
+
+A daily digest of what is overdue or imminent: module schedule items (flips,
+chunks, re-freezes), litters reaching weaning, breeders past 30 weeks, and
+personal tasks. Configure by environment:
+
+```bash
+export BIOMANAGER_SMTP_HOST=smtp.example.edu
+export BIOMANAGER_SMTP_PORT=587
+export BIOMANAGER_SMTP_USER=biomanager@example.edu
+export BIOMANAGER_SMTP_PASSWORD='an app password'
+export BIOMANAGER_BASE_URL=http://lab-server:5055
+```
+
+```bash
+scripts/send-reminders.py --dry-run     # print digests, send nothing
+scripts/send-reminders.py               # send
+```
+
+Daily, via cron:
+
+```
+0 8 * * *  cd /path/to/Biomanager && .venv/bin/python scripts/send-reminders.py
+```
+
+With SMTP unconfigured the digests are logged rather than sent, so the job is
+safe to schedule before a mail server exists. People with no email address on
+their account are skipped. Settings shows the current delivery status.
+
+## Batch operations
+
+Two directions of the same idea: one specification applied to many records.
+
+**Acting on records that exist** — tick rows in the mice table and a
+selection bar rises from the bottom of the viewport:
+
+- **Set** one field (owner, status, genotype, cage, note, date of death)
+  across the selection
+- **Add to experiment** with a shared treatment group — this is the "N mice
+  under the same manipulation" case
+- **Sac**, with a confirmation naming the count
+
+Shift-click extends a range, the header checkbox selects everything
+*visible* (never filtered-out rows), and each action applies only to records
+you may edit, reporting how many were skipped rather than failing outright.
+
+The bar is generic — `static/selection-bar.js` reads a markup contract, so
+another table gets batch actions by adding `data-selection-scope`, row
+checkboxes, and a form marked `data-selection-form`. No JavaScript changes.
+
+**Creating records** — **Add many** on the colony page
+(`/colony/mice/batch`) is a two-step flow: describe one mouse and say how
+many, or upload a CSV, then check and edit an editable preview grid before
+anything is written.
+
+- Counts can be split by sex (`4 females, 2 males`) — the usual shape of a
+  litter or an order.
+- **IDs are assigned in ascending order** and shown in the preview
+  (`IDs #25 – #30`). They are allocated again at save time, so a preview left
+  open while someone else adds mice cannot collide.
+- `new` in the cage field puts the whole batch in **one** freshly allocated
+  cage; type numbers per row in the preview to split them.
+- **Fill down** copies the first row's value into empty cells below — the
+  usual fix after a CSV that only filled the first line.
+- Tick **Skip** to leave a row out without deleting it.
+
+CSV headers are matched loosely: `sex`, `dob`, `cage`, `litter` and `notes`
+map onto the real columns, unknown columns are ignored, and `mouse_id` should
+be left out entirely so IDs are assigned for you.
+
+The older `/import/<entity>` endpoint still serves plasmid and order imports,
+and also assigns ascending mouse IDs from a single reserved block via
+`services.reserve_mouse_ids()`.
+
+> Previously this path was broken: `next_mouse_id()` was called per row, and
+> because the session runs with `autoflush=False` the `max()` query could not
+> see pending rows, so every row was handed the same ID and the import died
+> on the unique index. Any CSV without explicit `mouse_id` values failed
+> outright. The allocators now flush first, and batch paths reserve a
+> contiguous block up front.
+
+### Batches and undo
+
+Every bulk action is recorded as a **batch** — one row in `batches` saying
+who ran it, what it did and to how many records — and its audit entries
+point back at it. **Batches** in the sidebar (`/batches`) lists them with
+what undoing each would do.
+
+Undo reverses the recorded changes, newest first:
+
+| The batch | Undo does |
+| --- | --- |
+| created records | deletes them |
+| edited records | puts every column back to its previous value |
+| deleted records | re-inserts them from the stored snapshot |
+
+It refuses in two cases, loudly rather than silently: a batch already undone,
+and a record **changed again after the batch** — reverting then would discard
+whoever's later edit. That second case offers *Undo anyway*. The undo is
+itself recorded as a batch, so undoing an undo is a redo.
+
+This needed audit entries to carry a machine-readable diff, not just prose:
+`audit_log.changes_json` holds `{"changes": {field: [before, after]}}` for an
+edit and `{"snapshot": {...}}` for a delete. Parsing
+`genotype: ∅ → C57BL/6` back into a value would have been guesswork.
+
+Two ordering details worth knowing if you touch `app/audit.py`:
+
+- **Inserts are logged in `after_flush`, not `before_flush`.** A new row has
+  no primary key until the INSERT runs, so logging it earlier records
+  `record_id = 0` and undo has nothing to find.
+- **`audit.batch()` flushes on the way out**, so callers that commit after
+  the block still get their audit rows attached to the batch.
+
+## Run locally
+
+1. Create and activate a virtual environment.
+2. Install dependencies with `pip install -r requirements.txt`.
+3. Optionally set a secret key:
+   `export SECRET_KEY='change-this-for-real-use'`
+4. Build the stylesheet once: `cd frontend && npm install && npm run build:css && cd ..`.
+5. Start the app with `python run.py`. On macOS port 5000 is taken by
+   AirPlay/Control Center, so use `PORT=5055 python run.py` if the page does
+   not load.
+6. Open `http://127.0.0.1:5000` (or the port you set).
+7. Register the first user. That first account becomes `admin`.
+
+The SQLite database is created automatically at `data/biomanager.db`.
+
+## Desktop App
+
+Build a clickable native app (no terminal needed to launch):
+
+```bash
+./scripts/build-desktop.sh
+open dist/BioManager.app
+```
+
+The script installs `pywebview` + `pyinstaller`, ensures the frontend bundle is built, and produces `dist/BioManager.app` (macOS) or `dist/BioManager/` (Windows/Linux). The app's SQLite database and uploads live in `~/Library/Application Support/Biomanager/` so rebuilds don't wipe your data. To skip the bundling step and just run a desktop window from source: `python desktop.py`.
+
+## Shared Server Setup
+
+To let multiple people use the same database, point the app at a central PostgreSQL server:
+
+```bash
+export DATABASE_URL='postgresql://USERNAME:PASSWORD@HOST:5432/biomanager'
+export SECRET_KEY='a-long-random-secret'
+python run.py
+```
+
+The app automatically converts `postgresql://...` or `postgres://...` into the SQLAlchemy driver format it needs.
+
+Recommended production stack:
+
+- PostgreSQL on a shared server
+- Flask app behind Gunicorn or another WSGI server
+- Nginx or a reverse proxy in front
+- HTTPS enabled
+- regular database backups
+
+## Multi-User Notes
+
+- The first registered account becomes `admin`.
+- Later accounts become `member`.
+- All main data pages now require login.
+- This is a good first shared-lab setup, but later we should add stronger role permissions, audit history, and schema migrations.
+
+## Notes
+
+The home route redirects to the mouse colony module. Mouse IDs are auto-generated and unique, `Active` is derived from the absence of a `Date of Death`, and cage/litter views calculate related dates automatically. This version supports image uploads into `app/static/uploads` and can also store an external file path. A next step could add multi-select editing, stronger validation, and deeper species-specific modules beyond mice.

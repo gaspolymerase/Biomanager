@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block page_title %}Settings{% endblock %}
+{% block page_heading %}Account settings{% endblock %}
+{% block page_subtitle %}
+  Signed in as <strong class="font-semibold text-ink-soft">{{ user_settings.username }}</strong>
+  · {{ user_settings.role }} · joined {{ user_settings.created_at }}
+{% endblock %}
+
+{% block content %}
+<div class="grid max-w-[880px] grid-cols-1 gap-3">
+
+  {# ---- Profile ---- #}
+  <article class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#user"></use></svg> Profile</h2>
+    </header>
+    <form method="post" class="grid grid-cols-1 gap-3.5 p-4 sm:grid-cols-2">
+      <input type="hidden" name="action" value="profile">
+
+      <label class="field-label">Username
+        <input value="{{ user_settings.username }}" readonly>
+        <span class="field-hint normal-case tracking-normal">Cannot be changed.</span>
+      </label>
+
+      <label class="field-label">Full name
+        <input name="display_name" value="{{ user_settings.display_name }}" placeholder="e.g. Hao-Xuan Tang">
+        <span class="field-hint normal-case tracking-normal">Shown in the account menu and greeting.</span>
+      </label>
+
+      <label class="field-label">Short name
+        <input name="short_name" value="{{ user_settings.short_name }}" maxlength="5" placeholder="HXT">
+        <span class="field-hint normal-case tracking-normal">Up to 5 characters — used as the owner badge in tables.</span>
+      </label>
+
+      <label class="field-label">Email
+        <input type="email" name="email" value="{{ user_settings.email }}" placeholder="you@lab.harvard.edu">
+        <span class="field-hint normal-case tracking-normal">For password reset and notifications.</span>
+      </label>
+
+      <label class="field-label">Job / position
+        <input name="role_title" value="{{ user_settings.role_title }}" placeholder="PhD Year 3">
+        <span class="field-hint normal-case tracking-normal">e.g. PhD Year 3, Postdoc, RA.</span>
+      </label>
+
+      <label class="field-label">Default landing page
+        <select name="default_landing">
+          <option value="" {% if not user_settings.default_landing %}selected{% endif %}>Colony (default)</option>
+          {% for endpoint in landing_choices %}
+            <option value="{{ endpoint }}" {% if user_settings.default_landing == endpoint %}selected{% endif %}>{{ endpoint|title }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-hint normal-case tracking-normal">Where you arrive after signing in.</span>
+      </label>
+
+      <div class="sm:col-span-2">
+        <button type="submit" class="btn btn-primary">Save profile</button>
+      </div>
+    </form>
+  </article>
+
+  {# ---- Notifications ---- #}
+  <article class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#bell"></use></svg> Notifications</h2>
+    </header>
+    <form method="post" class="flex flex-col gap-2 p-4">
+      <input type="hidden" name="action" value="notifications">
+
+      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-sand-50 px-3.5 py-3 transition-colors hover:border-sand-300">
+        <input type="checkbox" name="notify_transfer" value="1" class="mt-0.5 size-3.5 accent-brand-600"
+               {% if user_settings.notify_transfer %}checked{% endif %}>
+        <span class="min-w-0">
+          <span class="block text-[13px] font-semibold text-ink">Mouse transfers</span>
+          <span class="block text-[12px] leading-snug text-muted">When someone transfers a mouse to you, get a copy in your colony with a notification.</span>
+        </span>
+      </label>
+
+      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-sand-50 px-3.5 py-3 transition-colors hover:border-sand-300">
+        <input type="checkbox" name="notify_picked" value="1" class="mt-0.5 size-3.5 accent-brand-600"
+               {% if user_settings.notify_picked %}checked{% endif %}>
+        <span class="min-w-0">
+          <span class="block text-[13px] font-semibold text-ink">Picks from your breeder cages</span>
+          <span class="block text-[12px] leading-snug text-muted">Alert when another lab member picks a mouse out of a breeder cage you own.</span>
+        </span>
+      </label>
+
+      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-sand-50 px-3.5 py-3 transition-colors hover:border-sand-300">
+        <input type="checkbox" name="notify_breeder_aging" value="1" class="mt-0.5 size-3.5 accent-brand-600"
+               {% if user_settings.notify_breeder_aging %}checked{% endif %}>
+        <span class="min-w-0">
+          <span class="block text-[13px] font-semibold text-ink">Breeder aging reminders
+            <span class="badge badge-quiet ml-1 align-middle">planned</span></span>
+          <span class="block text-[12px] leading-snug text-muted">A heads-up when a breeder cage's oldest mouse crosses 30 weeks.</span>
+        </span>
+      </label>
+
+      <div class="mt-1">
+        <button type="submit" class="btn btn-primary">Save notifications</button>
+      </div>
+    </form>
+  </article>
+
+  {# ---- Email delivery ---- #}
+  <article class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#mail"></use></svg> Reminder emails</h2>
+      {% if mail_configured %}
+        <span class="badge badge-ok">configured</span>
+      {% else %}
+        <span class="badge badge-warn">not configured</span>
+      {% endif %}
+    </header>
+    <div class="flex flex-col gap-3 p-4">
+      <p class="text-[12.5px] leading-snug text-muted">{{ mail_status }}</p>
+      <p class="text-[12.5px] leading-snug text-muted">
+        A daily digest of what is overdue or coming up — flips, chunks, weanings,
+        aging breeders and your own tasks — goes to the address on your profile.
+        Clear the email field above to stop receiving it.
+      </p>
+      <div class="inset">
+        <p class="mb-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-sand-400">
+          Sending it daily
+        </p>
+        <pre class="overflow-x-auto whitespace-pre text-[11.5px] leading-relaxed text-ink-soft"><code>0 8 * * *  cd {{ config.get('PROJECT_ROOT', '/path/to/Biomanager') }} \
+  && .venv/bin/python scripts/send-reminders.py</code></pre>
+        <p class="mt-2 text-[11.5px] leading-snug text-muted">
+          Preview without sending anything:
+          <code class="ident">scripts/send-reminders.py --dry-run</code>
+        </p>
+      </div>
+    </div>
+  </article>
+
+  {# ---- Password ---- #}
+  <article class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg> Change password</h2>
+    </header>
+    <form method="post" class="grid grid-cols-1 gap-3.5 p-4 sm:grid-cols-3">
+      <input type="hidden" name="action" value="password">
+      <label class="field-label">Current password
+        <input type="password" name="current_password" autocomplete="current-password" required>
+      </label>
+      <label class="field-label">New password
+        <input type="password" name="new_password" autocomplete="new-password" minlength="6" required>
+        <span class="field-hint normal-case tracking-normal">At least 6 characters.</span>
+      </label>
+      <label class="field-label">Confirm new password
+        <input type="password" name="confirm_password" autocomplete="new-password" required>
+      </label>
+      <div class="sm:col-span-3">
+        <button type="submit" class="btn btn-primary">Update password</button>
+      </div>
+    </form>
+  </article>
+
+  {# ---- Data + admin ---- #}
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+    <article class="card">
+      <header class="card-head">
+        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#download"></use></svg> Export my data</h2>
+      </header>
+      <div class="flex flex-col items-start gap-3 p-4">
+        <p class="text-[12.5px] leading-snug text-muted">
+          A ZIP of everything tied to your username — mice and plasmids you own, your notebook
+          pages as Markdown, and a <code class="ident">profile.json</code> snapshot.
+        </p>
+        <a class="btn" href="{{ url_for('export_my_data') }}">
+          <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#file-archive"></use></svg> Download .zip
+        </a>
+      </div>
+    </article>
+
+    {% if current_user and current_user.role == 'admin' %}
+      <article class="card">
+        <header class="card-head">
+          <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#shield"></use></svg> Admin tools</h2>
+          <span class="badge badge-brand">admin</span>
+        </header>
+        <div class="flex flex-col items-start gap-3 p-4">
+          <p class="text-[12.5px] leading-snug text-muted">
+            Promote or disable lab members and reset their passwords.
+          </p>
+          <a class="btn" href="{{ url_for('admin_users') }}">
+            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg> Manage users
+          </a>
+        </div>
+      </article>
+    {% endif %}
+  </div>
+
+  {# ---- Roadmap ---- #}
+  <article class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#signpost"></use></svg> Coming next</h2>
+    </header>
+    <ul class="grid grid-cols-1 gap-x-6 gap-y-2 p-4 sm:grid-cols-2">
+      {% for title, detail in [
+        ('Display density', 'compact / cozy / spacious table rows'),
+        ('Sessions', 'sign out of all devices, view active sessions'),
+        ('Two-factor', 'TOTP for shared lab accounts'),
+        ('API token', 'for scripts pushing data into your colony'),
+      ] %}
+        <li class="flex items-baseline gap-2 text-[12.5px]">
+          <svg class="icon size-4 shrink-0 text-sand-300" aria-hidden="true"><use href="/static/icons.svg#circle"></use></svg>
+          <span><strong class="font-semibold text-ink-soft">{{ title }}</strong>
+            <span class="text-muted">— {{ detail }}</span></span>
+        </li>
+      {% endfor %}
+    </ul>
+  </article>
+</div>
+{% endblock %}

@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <title>{% block page_title %}BioManager{% endblock %} · BioManager</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.svg') }}">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='tailwind.css') }}?v={{ asset_version('tailwind.css') }}">
+
+    {# Templates still awaiting migration set `{% block legacy %}1{% endblock %}`.
+       legacy.css is generated from the old styles.css with every rule scoped
+       under .legacy-page. See scripts/scope-legacy-css.py. #}
+    <!-- legacy:{% block legacy %}{% endblock %} -->
+    {% set uses_legacy = self.legacy()|trim %}
+    {% if uses_legacy %}
+      <link rel="stylesheet"
+            href="{{ url_for('static', filename='legacy.css') }}?v={{ asset_version('legacy.css') }}">
+    {% endif %}
+    {% block head_extra %}{% endblock %}
+
+    <script>
+      (function () {
+        var state = 'open';
+        try { state = localStorage.getItem('biomanager:rail') || 'open'; } catch (e) {}
+        document.documentElement.dataset.railBoot = state;
+      })();
+    </script>
+  </head>
+
+  <body data-rail="open">
+    <script>
+      document.body.dataset.rail = document.documentElement.dataset.railBoot || 'open';
+    </script>
+
+    {% if current_user %}
+      {% set heading_text = self.page_heading()|striptags|trim %}
+      {% set subtitle_text = self.page_subtitle()|striptags|trim %}
+      {% set title_text = self.page_title()|striptags|trim %}
+
+      <div class="shell">
+        <div class="rail-scrim" data-drawer-close aria-hidden="true"></div>
+
+        {# ---- Sidebar ---- #}
+        <aside class="rail" aria-label="Sidebar">
+          <a class="rail-brand" href="{{ url_for('home_dashboard') }}">
+            <img src="{{ url_for('static', filename='icon.svg') }}" alt="">
+            <span class="rail-brand-word">BioManager</span>
+          </a>
+
+          {% for section in nav_sections %}
+            <div class="rail-group">
+              <div class="rail-group-label">{{ section.label }}</div>
+              {% for item in section.links %}
+                {% if item.url %}
+                  <a class="rail-item {% if item.active %}is-active{% endif %}"
+                     href="{{ item.url }}" data-label="{{ item.label }}"
+                     {% if item.active %}aria-current="page"{% endif %}>
+                    {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
+                  </a>
+                {% else %}
+                  <button type="button" class="rail-item" data-label="{{ item.label }}"
+                          data-soon="{{ item.soon }}">
+                    {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
+                  </button>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% endfor %}
+
+          <div class="rail-foot">
+            {% for item in nav_footer %}
+              <a class="rail-item {% if item.active %}is-active{% endif %}"
+                 href="{{ item.url }}" data-label="{{ item.label }}">
+                {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
+              </a>
+            {% endfor %}
+            <button type="button" class="rail-toggle" data-rail-toggle
+                    aria-label="Hide or show the sidebar">
+              {{ icon('chevrons-right') }}<span class="rail-label">Hide sidebar</span>
+            </button>
+          </div>
+        </aside>
+
+        <div class="shell-main">
+
+          {# ---- Tab strip ---- #}
+          {% set current_url = request.path + ('?' + request.query_string.decode('utf-8') if request.query_string else '') %}
+          <nav class="topstrip" aria-label="Open tabs">
+            <div class="wtab-strip">
+              <nav class="wtabs" id="app-tabbar"
+                   data-current-url="{{ current_url }}"
+                   data-current-title="{{ title_text }}"></nav>
+              <button type="button" class="wtab-add" data-new-tab
+                      aria-label="New tab" title="New tab">{{ icon('plus') }}</button>
+            </div>
+          </nav>
+
+          {# ---- Unified toolbar ---- #}
+          <header class="toolbar" id="app-toolbar">
+            <button type="button" class="strip-btn drawer-trigger" data-drawer-toggle
+                    aria-label="Show sidebar">{{ icon('menu') }}</button>
+
+            <div class="min-w-0">
+              <div class="toolbar-title">{{ heading_text or title_text }}</div>
+              {% if subtitle_text %}
+                <div class="toolbar-sub">{% block page_subtitle %}{% endblock %}</div>
+              {% endif %}
+            </div>
+
+            <div class="toolbar-spacer"></div>
+
+            <div class="toolbar-actions">{% block page_actions %}{% endblock %}</div>
+
+            <div class="strip-actions">
+              <button type="button" class="omnibox" id="app-global-search"
+                      aria-label="Search everything">
+                {{ icon('search') }}
+                <span class="omnibox-label">Search</span>
+                <span class="kbd">⌘K</span>
+              </button>
+
+              <div class="account" data-account>
+                <button type="button" class="account-btn" data-account-toggle
+                        aria-haspopup="menu" aria-expanded="false">
+                  {{ current_user.username | owner_badge }}
+                  {{ icon('chevron-down') }}
+                </button>
+                <div class="menu" data-account-menu hidden role="menu">
+                  <div class="menu-head">
+                    <span class="menu-head-name">{{ current_user.display_name or current_user.username }}</span>
+                    <span class="menu-head-meta">{{ current_user.role_title or current_user.role }}</span>
+                  </div>
+                  <div class="menu-rule"></div>
+                  <a class="menu-item" href="{{ url_for('settings') }}" role="menuitem">
+                    {{ icon('user-gear') }} Profile &amp; settings
+                  </a>
+                  <a class="menu-item" href="{{ url_for('batches_view') }}" role="menuitem">
+                    {{ icon('layers') }} Batch history
+                  </a>
+                  <a class="menu-item" href="{{ url_for('export_my_data') }}" role="menuitem">
+                    {{ icon('download') }} Export my data
+                  </a>
+                  {% if current_user.role == 'admin' %}
+                    <a class="menu-item" href="{{ url_for('admin_users') }}" role="menuitem">
+                      {{ icon('users') }} Manage users
+                    </a>
+                  {% endif %}
+                  <div class="menu-rule"></div>
+                  <a class="menu-item menu-item-danger" href="{{ url_for('logout') }}" role="menuitem">
+                    {{ icon('sign-out') }} Sign out
+                  </a>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {# ---- Content ---- #}
+          <div class="shell-scroll" id="app-scroll">
+            <div class="{% block page_shell_class %}shell-page{% endblock %}{% if uses_legacy %} legacy-page{% endif %}">
+              {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                  <section class="flash-stack">
+                    {% for category, message in messages %}
+                      <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                  </section>
+                {% endif %}
+              {% endwith %}
+
+              {# The heading lives in the toolbar; this block still has to be
+                 declared so `self.page_heading()` can be read above. #}
+              <div hidden>{% block page_heading %}{% endblock %}</div>
+
+              {% block page_nav %}{% endblock %}
+              {% block content %}{% endblock %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script id="tab-icon-rules" type="application/json">{{ tab_icon_rules | tojson }}</script>
+
+    {% else %}
+      {# ---- Sign in / register ---- #}
+      <main class="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12">
+        <a class="flex flex-col items-center gap-3 no-underline" href="{{ url_for('login') }}">
+          <img src="{{ url_for('static', filename='icon.svg') }}" alt="" class="size-16">
+          <span class="text-[17px] font-semibold tracking-[-0.02em] text-ink">BioManager</span>
+        </a>
+
+        <div class="w-full max-w-[340px]">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              <section class="flash-stack">
+                {% for category, message in messages %}
+                  <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+              </section>
+            {% endif %}
+          {% endwith %}
+          {{ self.content() }}
+        </div>
+
+        <p class="text-[11px] text-muted">Lab inventory, colonies and notebook in one place.</p>
+      </main>
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='shell.js') }}?v={{ asset_version('shell.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='tab-bar.js') }}?v={{ asset_version('tab-bar.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='selection-bar.js') }}?v={{ asset_version('selection-bar.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='data-table.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='csv-import.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='global-search.js') }}" defer></script>
+    {% block body_end %}{% endblock %}
+  </body>
+</html>

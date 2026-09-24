@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Data — the SQLite database is not source
+data/
+app/static/uploads/
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store

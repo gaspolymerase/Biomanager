@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block page_title %}Overview{% endblock %}
+{% block page_heading %}Overview{% endblock %}
+{% block page_subtitle %}Legacy summary view · the current dashboard lives on <a href="{{ url_for('home_dashboard') }}">Home</a>{% endblock %}
+
+{% block content %}
+<section class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+  {% for label, value in [
+    ('Orders', counts.orders), ('Animals', counts.animals), ('Samples', counts.samples),
+    ('Events', counts.events), ('Tasks', counts.tasks), ('Notebook', counts.notebook_entries),
+  ] %}
+    <div class="stat">
+      <span class="stat-label">{{ label }}</span>
+      <span class="stat-value">{{ value }}</span>
+    </div>
+  {% endfor %}
+</section>
+
+<section class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+  <article class="card">
+    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg> Upcoming experiments</h2></header>
+    {% if recent_events %}
+      <div class="flex flex-col">
+        {% for event in recent_events %}
+          <div class="row-line">
+            <span class="min-w-0 flex-1 truncate text-ink">{{ event.title }}</span>
+            <span class="ident shrink-0">{{ event.event_date }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg><p>No events yet.</p></div>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#list-check"></use></svg> Recent tasks</h2></header>
+    {% if recent_tasks %}
+      <div class="flex flex-col">
+        {% for task in recent_tasks %}
+          <div class="row-line">
+            <span class="min-w-0 flex-1 truncate text-ink">{{ task.title }}</span>
+            <span class="dt-status shrink-0" data-status="{{ task.status }}">{{ task.status }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#list-check"></use></svg><p>No tasks yet.</p></div>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

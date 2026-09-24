@@ -1,0 +1,105 @@
+{#
+  Rendering for module-defined fields.
+
+  A module's custom fields are rows in organism_module_fields; their values
+  live in the entity's `attrs` JSON. These macros are the only place that
+  knows how each field type turns into an input or a cell, so adding a type
+  means touching one file.
+
+  Inputs are named `attr_<key>` so they cannot collide with fixed columns —
+  organism_service.read_attrs() reads them back out.
+#}
+
+{% macro field_input(field, attrs, lines=[], usernames=[]) %}
+  {% set value = attrs.get(field.key) %}
+  {% set name = 'attr_' ~ field.key %}
+  <label class="field-label">
+    {{ field.label }}{% if field.required %} <span class="text-danger-600">*</span>{% endif %}
+
+    {% if field.field_type == 'textarea' %}
+      <textarea name="{{ name }}" rows="2" {% if field.required %}required{% endif %}>{{ value or '' }}</textarea>
+
+    {% elif field.field_type == 'select' %}
+      <select name="{{ name }}" {% if field.required %}required{% endif %}>
+        <option value="">—</option>
+        {% for option in field.options_list %}
+          <option value="{{ option }}" {% if value|string == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+
+    {% elif field.field_type == 'checkbox' %}
+      <span class="mt-1 inline-flex h-8.5 items-center">
+        <input type="checkbox" name="{{ name }}" value="1" {% if value %}checked{% endif %}>
+      </span>
+
+    {% elif field.field_type == 'number' %}
+      <input type="number" step="any" name="{{ name }}" value="{{ '' if value is none else value }}"
+             {% if field.required %}required{% endif %}>
+
+    {% elif field.field_type == 'date' %}
+      <input type="date" name="{{ name }}" value="{{ value or '' }}" {% if field.required %}required{% endif %}>
+
+    {% elif field.field_type == 'url' %}
+      <input type="url" name="{{ name }}" value="{{ value or '' }}" placeholder="https://">
+
+    {% elif field.field_type == 'user' %}
+      <select name="{{ name }}">
+        <option value="">—</option>
+        {% for username in usernames %}
+          <option value="{{ username }}" {% if value == username %}selected{% endif %}>{{ username }}</option>
+        {% endfor %}
+      </select>
+
+    {% elif field.field_type == 'line' %}
+      <select name="{{ name }}">
+        <option value="">—</option>
+        {% for line in lines %}
+          <option value="{{ line.code }}" {% if value == line.code %}selected{% endif %}>{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>
+        {% endfor %}
+      </select>
+
+    {% elif field.field_type == 'mono' %}
+      <input name="{{ name }}" value="{{ value or '' }}" class="font-mono text-[12px]"
+             {% if field.required %}required{% endif %}>
+
+    {% else %}
+      <input name="{{ name }}" value="{{ value or '' }}" {% if field.required %}required{% endif %}>
+    {% endif %}
+
+    {% if field.help_text %}
+      <span class="field-hint normal-case tracking-normal">{{ field.help_text }}</span>
+    {% endif %}
+  </label>
+{% endmacro %}
+
+
+{% macro field_cell(field, attrs) %}
+  {% set value = attrs.get(field.key) %}
+  {% if field.field_type == 'checkbox' %}
+    {% if value %}<svg class="icon size-3.5 text-ok-600" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% endif %}
+  {% elif value is none or value == '' %}
+    <span class="text-sand-300">—</span>
+  {% elif field.field_type == 'mono' %}
+    <span class="ident">{{ value }}</span>
+  {% elif field.field_type == 'url' %}
+    <a href="{{ value }}" target="_blank" rel="noopener">link</a>
+  {% else %}
+    {{ value }}
+  {% endif %}
+{% endmacro %}
+
+
+{# Fields flagged show_in_table, for the list header and rows. #}
+{% macro table_headers(fields) %}
+  {% for field in fields if field.show_in_table %}
+    <th style="width: 130px;">
+      <span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ field.label }}</span>
+    </th>
+  {% endfor %}
+{% endmacro %}
+
+{% macro table_cells(fields, attrs) %}
+  {% for field in fields if field.show_in_table %}
+    <td>{{ field_cell(field, attrs) }}</td>
+  {% endfor %}
+{% endmacro %}

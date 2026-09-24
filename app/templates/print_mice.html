@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Mouse Export</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; }
+      h1 { margin-bottom: 6px; }
+      p { margin-top: 0; color: #555; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { border: 1px solid #ccc; padding: 6px; text-align: left; vertical-align: top; }
+      th { background: #f3f3f3; }
+      @media print { button { display: none; } }
+    </style>
+  </head>
+  <body>
+    <button onclick="window.print()">Print / Save as PDF</button>
+    <h1>Mouse Export</h1>
+    <p>Printed on {{ printed_on }}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Mouse_ID</th>
+          <th>Active</th>
+          <th>Gender</th>
+          <th>TG1</th>
+          <th>TG2</th>
+          <th>TG3</th>
+          <th>TG4</th>
+          <th>Cage_ID</th>
+          <th>Owner</th>
+          <th>Litter_ID</th>
+          <th>Status</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in mouse_rows %}
+          <tr>
+            <td>{{ row.mouse_id }}</td>
+            <td>{{ row.active_label }}</td>
+            <td>{{ row.gender }}</td>
+            <td>{{ row.transgene_1 }}</td>
+            <td>{{ row.transgene_2 }}</td>
+            <td>{{ row.transgene_3 }}</td>
+            <td>{{ row.transgene_4 }}</td>
+            <td>{{ row.cage_id }}</td>
+            <td>{{ row.owner }}</td>
+            <td>{{ row.litter_id }}</td>
+            <td>{{ row.status }}</td>
+            <td>{{ row.note }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+</html>

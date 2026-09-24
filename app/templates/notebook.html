@@ -1,0 +1,436 @@
+{% extends "base.html" %}
+
+{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
+{% block legacy %}1{% endblock %}
+
+{% block page_title %}{% if selected_page %}{{ selected_page.title }}{% else %}Notebook{% endif %}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/notebook-app.css') }}">
+
+<section class="notebook-shell">
+  <aside class="notebook-sidebar">
+    <div class="notebook-sidebar-head">
+      <div class="notebook-search-row">
+        <svg class="icon notebook-search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+        <input id="notebook-page-filter" type="text" placeholder="Filter pages…" autocomplete="off">
+      </div>
+      <div class="sidebar-head-actions">
+        <button type="button" class="notebook-new-btn" onclick="createQuickPage()" title="New blank page">
+          <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg><span>New page</span>
+        </button>
+        <button type="button" class="notebook-new-btn notebook-new-btn-secondary"
+                onclick="openTemplatePicker()" title="Pick a template">
+          <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#template"></use></svg>
+        </button>
+      </div>
+    </div>
+
+    {% set recent_pages = [] %}
+    {% for tab in tabs %}
+      {% for page in tab.pages %}{% set _ = recent_pages.append({'page': page, 'tab': tab}) %}{% endfor %}
+    {% endfor %}
+    {% set recent_pages = recent_pages | sort(attribute='page.updated_at', reverse=true) %}
+
+    {% if recent_pages %}
+      <div class="notebook-section-label">Recents</div>
+      <ul class="notebook-page-list">
+        {% for item in recent_pages[:6] %}
+          <li class="notebook-page-item {% if selected_page and item.page.id == selected_page.id %}active{% endif %}"
+              data-page-id="{{ item.page.id }}" data-page-title="{{ item.page.title|lower }}">
+            <a href="{{ url_for('notebook', tab=item.tab.id, page=item.page.id) }}">
+              <svg class="icon notebook-page-icon" aria-hidden="true"><use href="/static/icons.svg#file"></use></svg>
+              <span class="page-title-label">{{ item.page.title }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <div class="notebook-section-label">Topics</div>
+    <div class="notebook-tabs" id="notebook-tabs">
+      {% for tab in tabs %}
+        <details class="notebook-tab" {% if tab.id == selected_tab_id %}open{% endif %} data-tab-id="{{ tab.id }}">
+          <summary>
+            <svg class="icon notebook-tab-caret" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
+            <span class="tab-title" ondblclick="event.stopPropagation(); renameTab({{ tab.id }})">{{ tab.title }}</span>
+            <span class="tab-actions" onclick="event.stopPropagation()">
+              <button type="button" title="Add page" onclick="event.preventDefault(); event.stopPropagation(); createPage({{ tab.id }})">
+                <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg>
+              </button>
+              <button type="button" title="Rename topic" onclick="event.preventDefault(); event.stopPropagation(); renameTab({{ tab.id }})">
+                <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
+              </button>
+              <form method="post" action="{{ url_for('notebook_delete_tab', tab_id=tab.id) }}" onsubmit="event.stopPropagation(); return confirm('Delete topic and all its pages?')" onclick="event.stopPropagation()" style="display:inline">
+                <button type="submit" title="Delete topic" class="danger-link"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+              </form>
+            </span>
+          </summary>
+          <ul class="notebook-page-list notebook-tab-pages">
+            {% for page in tab.pages %}
+              <li class="notebook-page-item {% if selected_page and page.id == selected_page.id %}active{% endif %}"
+                  data-page-id="{{ page.id }}" data-page-title="{{ page.title|lower }}">
+                <a href="{{ url_for('notebook', tab=tab.id, page=page.id) }}">
+                  <svg class="icon notebook-page-icon" aria-hidden="true"><use href="/static/icons.svg#file"></use></svg>
+                  <span class="page-title-label">{{ page.title }}</span>
+                </a>
+                <form method="post" action="{{ url_for('notebook_delete_page', page_id=page.id) }}" onsubmit="return confirm('Delete this page?')">
+                  <button type="submit" title="Delete page" class="danger-link"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                </form>
+              </li>
+            {% else %}
+              <li class="notebook-empty muted-inline">No pages yet.</li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% else %}
+        <p class="muted-inline notebook-empty-topics">No topics yet. Click <strong>+ Topic</strong>.</p>
+      {% endfor %}
+    </div>
+
+    <div class="notebook-sidebar-footer">
+      <button type="button" class="notebook-sidebar-foot-btn" onclick="createTab()" title="Create a new topic">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#folder-plus"></use></svg> New topic
+      </button>
+    </div>
+  </aside>
+
+  {# Template picker modal — hidden until openTemplatePicker() runs. #}
+  <div class="notebook-modal" id="notebook-template-modal" hidden>
+    <div class="notebook-modal-backdrop" onclick="closeTemplatePicker()"></div>
+    <div class="notebook-modal-card" role="dialog" aria-label="Pick a template">
+      <header class="notebook-modal-head">
+        <h3>Start from a template</h3>
+        <button type="button" class="notebook-modal-close" onclick="closeTemplatePicker()" aria-label="Close">×</button>
+      </header>
+      <div class="notebook-modal-body">
+        <div id="notebook-template-list" class="notebook-template-list">
+          <div class="notebook-template-loading">Loading…</div>
+        </div>
+        <details class="notebook-template-new">
+          <summary><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Create a new template</summary>
+          <form id="notebook-template-form" onsubmit="event.preventDefault(); submitNewTemplate();">
+            <label>Title <input name="title" required placeholder="e.g. PCR protocol"></label>
+            <label>Icon <input name="icon" maxlength="4" placeholder="🧪 (optional)"></label>
+            <label>Body (Markdown)
+              <textarea name="body" rows="6" placeholder="# Goal&#10;&#10;## Materials&#10;&#10;## Steps&#10;1. ..."></textarea>
+            </label>
+            <div class="notebook-template-form-actions">
+              <button type="submit" class="dt-bottom-action is-primary">Save template</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <div class="notebook-main">
+    {% if selected_page %}
+      <div class="notebook-editor" data-page-id="{{ selected_page.id }}">
+        <input
+          id="page-title"
+          class="page-title"
+          value="{{ selected_page.title }}"
+          placeholder="Untitled page"
+          autocomplete="off"
+        >
+        <div class="page-meta" id="page-meta">
+          <input
+            type="date"
+            id="page-entry-date"
+            class="page-date-input"
+            value="{{ selected_page.entry_date }}"
+            aria-label="Page date"
+          >
+          <span class="meta-sep">·</span>
+          <label class="topic-mover">
+            Topic
+            <select id="page-topic-select">
+              {% for tab in tabs %}
+                <option value="{{ tab.id }}" {% if tab.id == selected_page.tab_id %}selected{% endif %}>{{ tab.title }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <span class="meta-sep">·</span>
+          <button type="button" class="page-meta-action" onclick="saveCurrentPageAsTemplate()" title="Save this page's content as a reusable template">
+            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#template"></use></svg> Save as template
+          </button>
+          <span class="meta-sep">·</span>
+          <span id="page-saved-state" class="page-saved-state" aria-live="polite"></span>
+        </div>
+        <div id="editor-mount" class="tiptap-editor-host"></div>
+        <textarea id="initial-body" style="display:none" aria-hidden="true">{{ selected_page.body }}</textarea>
+      </div>
+    {% else %}
+      <div class="notebook-empty-state">
+        <h2>No page selected</h2>
+        <p>Pick a page on the left, or create a topic and add a page to start writing.</p>
+        {% if not tabs %}
+          <button type="button" onclick="createTab()">+ Create your first topic</button>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<script>
+// Always-runs script: tab/page CRUD, title autosave, topic mover.
+// Independent of the editor bundle so the page is functional even if the
+// build hasn't been generated yet.
+
+function nbDebounce(fn, delay) {
+  let t = null;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), delay);
+  };
+}
+
+const nbTitleInput = document.getElementById('page-title');
+const nbEditorMount = document.getElementById('editor-mount');
+const nbInitialBody = document.getElementById('initial-body');
+const nbPageId = nbEditorMount ? nbEditorMount.closest('.notebook-editor').dataset.pageId : null;
+
+async function nbAutosave(field, value) {
+  if (!nbPageId) return;
+  const body = new URLSearchParams();
+  body.set(field, value);
+  try {
+    const response = await fetch(`/notebook/pages/${nbPageId}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Autosave': '1' },
+      body: body.toString(),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (data.ok && data.updated_at) {
+      const meta = document.getElementById('page-saved-state');
+      if (meta) meta.textContent = `Saved ${data.updated_at.replace('T', ' ').slice(0, 19)}`;
+    }
+  } catch (err) {
+    const meta = document.getElementById('page-saved-state');
+    if (meta) meta.textContent = 'Save failed — retrying on next edit';
+    console.error(err);
+  }
+}
+
+window.notebookSaveBody = nbDebounce((md) => nbAutosave('body', md), 200);
+
+const nbDebouncedTitleSave = nbDebounce(() => {
+  nbAutosave('title', nbTitleInput.value);
+  document.querySelectorAll(`.notebook-page-item[data-page-id="${nbPageId}"] .page-title-label`).forEach((el) => {
+    el.textContent = nbTitleInput.value || 'Untitled page';
+  });
+}, 250);
+
+if (nbTitleInput) {
+  nbTitleInput.addEventListener('input', () => nbDebouncedTitleSave());
+  nbTitleInput.addEventListener('blur', () => nbAutosave('title', nbTitleInput.value));
+}
+
+// Date stamp — defaults to today on first interaction if empty; otherwise
+// saves whatever the user picks via the native date picker.
+const nbDateInput = document.getElementById('page-entry-date');
+if (nbDateInput) {
+  if (!nbDateInput.value) {
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    nbDateInput.value = iso;
+    nbAutosave('entry_date', iso);
+  }
+  nbDateInput.addEventListener('change', () => nbAutosave('entry_date', nbDateInput.value));
+}
+
+document.getElementById('page-topic-select')?.addEventListener('change', async (event) => {
+  if (!nbPageId) return;
+  const newTabId = event.target.value;
+  const formData = new FormData();
+  formData.append('tab_id', newTabId);
+  try {
+    const response = await fetch(`/notebook/pages/${nbPageId}/move`, { method: 'POST', body: formData });
+    const data = await response.json();
+    if (data.ok) window.location.href = `/notebook?tab=${data.tab_id}&page=${data.page_id}`;
+  } catch (err) { console.error(err); }
+});
+
+async function createTab() {
+  const title = prompt('Topic name:');
+  if (!title || !title.trim()) return;
+  const formData = new FormData();
+  formData.append('title', title.trim());
+  const response = await fetch('/notebook/tabs/create', { method: 'POST', body: formData });
+  const data = await response.json();
+  if (data.ok) window.location.href = `/notebook?tab=${data.id}`;
+}
+
+async function renameTab(tabId) {
+  const current = document.querySelector(`.notebook-tab[data-tab-id="${tabId}"] .tab-title`)?.textContent || '';
+  const title = prompt('Rename topic:', current);
+  if (!title || !title.trim()) return;
+  const formData = new FormData();
+  formData.append('title', title.trim());
+  const response = await fetch(`/notebook/tabs/${tabId}/rename`, { method: 'POST', body: formData });
+  const data = await response.json();
+  if (data.ok) {
+    document.querySelectorAll(`.notebook-tab[data-tab-id="${tabId}"] .tab-title`).forEach((el) => { el.textContent = data.title; });
+  }
+}
+
+async function createPage(tabId) {
+  const formData = new FormData();
+  formData.append('tab_id', tabId);
+  const response = await fetch('/notebook/pages/create', { method: 'POST', body: formData });
+  const data = await response.json();
+  if (data.ok && data.page) window.location.href = `/notebook?tab=${tabId}&page=${data.page.id}`;
+}
+
+async function createQuickPage() {
+  const response = await fetch('/notebook/pages/create-quick', { method: 'POST' });
+  const data = await response.json();
+  if (data.ok && data.page) window.location.href = `/notebook?tab=${data.tab_id}&page=${data.page.id}`;
+}
+
+// ---- Templates ------------------------------------------------------
+async function openTemplatePicker() {
+  const modal = document.getElementById('notebook-template-modal');
+  if (!modal) return;
+  modal.hidden = false;
+  const list = document.getElementById('notebook-template-list');
+  list.innerHTML = '<div class="notebook-template-loading">Loading…</div>';
+  try {
+    const r = await fetch('/notebook/templates');
+    const data = await r.json();
+    if (!data.ok) throw new Error('load failed');
+    if (!data.templates.length) {
+      list.innerHTML = '<div class="notebook-template-empty">No templates yet. Create one below.</div>';
+    } else {
+      list.innerHTML = data.templates.map((t) => `
+        <div class="notebook-template-row" data-id="${t.id}">
+          <button type="button" class="notebook-template-pick" onclick="useTemplate(${t.id})">
+            <span class="notebook-template-icon">${t.icon || '📄'}</span>
+            <span class="notebook-template-meta">
+              <span class="notebook-template-title">${escapeHtml(t.title)}</span>
+              <span class="notebook-template-preview">${escapeHtml(t.body_preview || '')}</span>
+            </span>
+          </button>
+          <button type="button" class="notebook-template-del" title="Delete template" onclick="deleteTemplate(${t.id})">×</button>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    list.innerHTML = '<div class="notebook-template-empty">Couldn\'t load templates.</div>';
+  }
+}
+
+function closeTemplatePicker() {
+  const modal = document.getElementById('notebook-template-modal');
+  if (modal) modal.hidden = true;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+async function useTemplate(templateId) {
+  const fd = new FormData();
+  fd.append('template_id', templateId);
+  const r = await fetch('/notebook/pages/create-from-template', { method: 'POST', body: fd });
+  const data = await r.json();
+  if (data.ok && data.page) window.location.href = `/notebook?tab=${data.tab_id}&page=${data.page.id}`;
+}
+
+async function deleteTemplate(templateId) {
+  if (!confirm('Delete this template?')) return;
+  await fetch(`/notebook/templates/${templateId}/delete`, { method: 'POST' });
+  openTemplatePicker();
+}
+
+async function submitNewTemplate() {
+  const form = document.getElementById('notebook-template-form');
+  if (!form) return;
+  const fd = new FormData(form);
+  const r = await fetch('/notebook/templates/create', { method: 'POST', body: fd });
+  const data = await r.json();
+  if (data.ok) {
+    form.reset();
+    openTemplatePicker();
+  }
+}
+
+async function saveCurrentPageAsTemplate() {
+  if (!nbPageId) return;
+  const titleInput = document.getElementById('page-title');
+  const suggested = (titleInput && titleInput.value) || 'Untitled template';
+  const title = prompt('Save this page as a template named:', suggested);
+  if (!title) return;
+  const fd = new FormData();
+  fd.append('title', title);
+  fd.append('from_page_id', nbPageId);
+  const r = await fetch('/notebook/templates/create', { method: 'POST', body: fd });
+  const data = await r.json();
+  if (data.ok) {
+    const meta = document.getElementById('page-saved-state');
+    if (meta) { meta.textContent = `Saved as template "${title}"`; setTimeout(() => { meta.textContent = ''; }, 3000); }
+  }
+}
+
+// Sidebar filter — hides pages whose title doesn't include the query.
+// Topics whose pages are all hidden collapse automatically.
+const nbPageFilter = document.getElementById('notebook-page-filter');
+if (nbPageFilter) {
+  nbPageFilter.addEventListener('input', () => {
+    const q = nbPageFilter.value.trim().toLowerCase();
+    document.querySelectorAll('.notebook-page-item[data-page-title]').forEach((li) => {
+      const match = !q || (li.dataset.pageTitle || '').includes(q);
+      li.style.display = match ? '' : 'none';
+    });
+    // Auto-open topics that have any visible page.
+    document.querySelectorAll('.notebook-tab').forEach((tab) => {
+      const visible = tab.querySelectorAll('.notebook-page-item[data-page-title]:not([style*="display: none"])').length;
+      if (q && visible > 0) tab.setAttribute('open', '');
+    });
+  });
+}
+</script>
+
+<script src="{{ url_for('static', filename='notebook-build/notebook-app.js') }}" defer onerror="window.__notebookBundleMissing = true"></script>
+
+<script defer>
+window.addEventListener('DOMContentLoaded', () => {
+  const mount = document.getElementById('editor-mount');
+  const initialBody = document.getElementById('initial-body');
+  if (!mount || !initialBody) return;
+
+  if (window.__notebookBundleMissing || !window.BiomanagerNotebook || typeof window.BiomanagerNotebook.mount !== 'function') {
+    // Bundle missing — show a banner and a textarea fallback.
+    const wrapper = mount.parentElement;
+    const banner = document.createElement('div');
+    banner.innerHTML = `
+      <strong>Editor bundle not built.</strong>
+      Run the following in your terminal once, then refresh this page:
+      <pre style="margin:0.5rem 0 0;font-size:0.85rem;background:#fff;padding:0.55rem 0.75rem;border-radius:8px;border:1px solid rgba(245,158,11,0.3);">cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>
+    `;
+    banner.style.cssText = 'padding:0.85rem 1rem;margin-bottom:0.85rem;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;color:#92400e;font-size:0.88rem;line-height:1.5;';
+    wrapper.insertBefore(banner, mount);
+
+    const ta = document.createElement('textarea');
+    ta.value = initialBody.value;
+    ta.spellcheck = false;
+    ta.style.cssText = 'width:100%;min-height:60vh;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.92rem;line-height:1.6;padding:1rem 1.2rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;outline:none;resize:vertical;';
+    mount.replaceWith(ta);
+    ta.addEventListener('input', () => {
+      if (window.notebookSaveBody) window.notebookSaveBody(ta.value);
+    });
+    return;
+  }
+
+  window.BiomanagerNotebook.mount({
+    element: mount,
+    initialMarkdown: initialBody.value,
+    onChange: (md) => {
+      if (window.notebookSaveBody) window.notebookSaveBody(md);
+    },
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block page_title %}Users{% endblock %}
+{% block page_heading %}User management{% endblock %}
+{% block page_subtitle %}Promote, disable and reset passwords for everyone in the lab · {{ users|length }} account{{ '' if users|length == 1 else 's' }}{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('settings') }}">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Back to settings
+  </a>
+{% endblock %}
+
+{% block content %}
+<section class="data-table-card">
+  <div class="dt-scroll">
+    <table class="dt">
+      <thead>
+        <tr>
+          <th style="width: 44px;"></th>
+          <th style="width: 150px;">Username</th>
+          <th style="width: 170px;">Display name</th>
+          <th style="width: 80px;">Short</th>
+          <th style="width: 200px;">Email</th>
+          <th style="width: 140px;">Position</th>
+          <th style="width: 100px;">Role</th>
+          <th style="width: 100px;">Status</th>
+          <th style="width: 120px;">Joined</th>
+          <th style="width: 210px;">Reset password</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+          <tr class="{% if u.disabled %}opacity-55{% endif %}">
+            <td>{{ u.username | owner_badge }}</td>
+            <td><span class="font-medium text-ink">{{ u.username }}</span></td>
+            <td>{{ u.display_name }}</td>
+            <td><span class="ident">{{ u.short_name }}</span></td>
+            <td class="text-muted">{{ u.email }}</td>
+            <td class="text-muted">{{ u.role_title }}</td>
+            <td>
+              <span class="badge {{ 'badge-brand' if u.role == 'admin' else 'badge-quiet' }}">{{ u.role }}</span>
+            </td>
+            <td>
+              {% if u.disabled %}
+                <span class="badge badge-danger">disabled</span>
+              {% else %}
+                <span class="dt-status" data-status="active">active</span>
+              {% endif %}
+            </td>
+            <td class="text-muted">{{ u.created_at }}</td>
+            <td>
+              <form method="post" action="{{ url_for('admin_reset_password', user_id=u.id) }}"
+                    class="flex items-center gap-1.5">
+                <input type="password" name="new_password" class="field h-7 text-[12px]"
+                       placeholder="new password (≥6)" minlength="6" required>
+                <button type="submit" class="btn btn-sm">Set</button>
+              </form>
+            </td>
+            <td>
+              {% if u.id != current_user.id %}
+                <div class="flex items-center gap-1.5">
+                  <form method="post" action="{{ url_for('admin_toggle_role', user_id=u.id) }}"
+                        onsubmit="return confirm('Change this user\'s role?')">
+                    <button type="submit" class="btn btn-sm">{{ 'Demote' if u.role == 'admin' else 'Promote' }}</button>
+                  </form>
+                  <form method="post" action="{{ url_for('admin_toggle_disabled', user_id=u.id) }}"
+                        onsubmit="return confirm('Toggle this account\'s disabled state?')">
+                    <button type="submit" class="btn btn-sm {% if not u.disabled %}btn-danger{% endif %}">
+                      {{ 'Enable' if u.disabled else 'Disable' }}
+                    </button>
+                  </form>
+                </div>
+              {% else %}
+                <span class="text-[11.5px] text-muted">this is you</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block page_title %}Audit log{% endblock %}
+{% block page_heading %}Audit log{% endblock %}
+{% block page_subtitle %}Every tracked create, edit and delete · admin only · {{ entries|length }} entries (last 200){% endblock %}
+
+{% block content %}
+<section class="data-table-card" data-table-id="audit">
+  <div class="dt-toolbar">
+    <div class="dt-toolbar-search">
+      <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+      <input type="text" class="dt-search" placeholder="Search entries…" autocomplete="off">
+    </div>
+    <div class="dt-toolbar-spacer"></div>
+    <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
+  </div>
+
+  <div class="dt-scroll">
+    <table class="dt" data-resizable="1">
+      <thead>
+        <tr>
+          <th class="dt-sortable" data-sort-key="when" style="width: 170px;">
+            <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>When<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="action" style="width: 100px;">
+            <span class="dt-col-head"><span class="dt-col-type" data-icon="status"></span>Action<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="table" style="width: 110px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Table<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="record" style="width: 220px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Record<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="who" style="width: 140px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Changed by<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="details">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Details<span class="dt-sort-indicator"></span></span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+          <tr data-id="{{ e.id }}"
+              data-when="{{ e.changed_at }}"
+              data-action="{{ e.action }}"
+              data-table="{{ e.table_name }}"
+              data-record="{{ e.record_label|lower }}"
+              data-who="{{ e.changed_by|lower }}"
+              data-details="{{ e.details|lower }}">
+            <td>{{ e.changed_at }}</td>
+            <td>
+              <span class="dt-status"
+                    data-status="{{ {'create': 'active', 'update': 'ordered', 'delete': 'cancelled'}.get(e.action, e.action) }}">
+                {{ e.action }}
+              </span>
+            </td>
+            <td>{{ e.table_name }}</td>
+            <td><span class="dt-row-icon"></span><span class="dt-row-name">{{ e.record_label }}</span></td>
+            <td>{{ e.changed_by }}</td>
+            <td class="whitespace-normal break-words font-mono text-[11.5px] leading-snug text-muted">{{ e.details }}</td>
+          </tr>
+        {% else %}
+          <tr><td class="dt-empty" colspan="6">No audit entries yet. Deletions in the colony / plasmids tables will show up here.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

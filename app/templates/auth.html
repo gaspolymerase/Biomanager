@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ 'Sign in' if mode == 'login' else 'Create account' }}{% endblock %}
+
+{% block content %}
+<article class="card p-6">
+  {% if mode == "login" %}
+    <h1 class="text-[17px]">Sign in</h1>
+    <p class="mt-1 text-[12.5px] leading-snug text-muted">
+      Use your shared lab account to work on the central BioManager database.
+    </p>
+    <form method="post" class="mt-5 flex flex-col gap-3">
+      <label class="field-label">Username
+        <input name="username" autocomplete="username" required autofocus>
+      </label>
+      <label class="field-label">Password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="btn btn-primary btn-lg mt-1 w-full">Sign in</button>
+    </form>
+    <p class="mt-4 text-center text-[12.5px] text-muted">
+      Need an account? <a href="{{ url_for('register') }}">Create one</a>.
+    </p>
+  {% else %}
+    <h1 class="text-[17px]">Create account</h1>
+    <p class="mt-1 text-[12.5px] leading-snug text-muted">
+      The first registered user becomes admin automatically. Later users join as members.
+    </p>
+    <form method="post" class="mt-5 flex flex-col gap-3">
+      <label class="field-label">Display name
+        <input name="display_name" autocomplete="name">
+      </label>
+      <label class="field-label">Username
+        <input name="username" autocomplete="username" required>
+      </label>
+      <label class="field-label">Password
+        <input type="password" name="password" autocomplete="new-password" required>
+      </label>
+      <label class="field-label">Confirm password
+        <input type="password" name="confirm_password" autocomplete="new-password" required>
+      </label>
+      <button type="submit" class="btn btn-primary btn-lg mt-1 w-full">Create account</button>
+    </form>
+    <p class="mt-4 text-center text-[12.5px] text-muted">
+      Already have an account? <a href="{{ url_for('login') }}">Sign in</a>.
+    </p>
+  {% endif %}
+</article>
+{% endblock %}

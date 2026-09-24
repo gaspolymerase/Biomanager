@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block page_title %}Home{% endblock %}
+{% block page_heading %}{{ greeting }}, {{ current_user.display_name or current_user.username }}{% endblock %}
+{% block page_subtitle %}{{ today_str }} · what needs attention today{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('notebook') }}">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#notebook"></use></svg> Notebook
+  </a>
+  <a class="btn btn-primary" href="{{ url_for('colony', view='mice') }}">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#mouse"></use></svg> Open colony
+  </a>
+{% endblock %}
+
+{% block content %}
+
+{# ---- Stat row ---------------------------------------------------------- #}
+<section class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+  <a class="stat" href="{{ url_for('colony', view='mice') }}">
+    <span class="stat-label">Total mice</span>
+    <span class="stat-value">{{ counts.total_mice }}</span>
+    <span class="stat-sub">{{ counts.active_mice }} active · {{ counts.my_mice }} yours</span>
+  </a>
+  <a class="stat" href="{{ url_for('colony', view='breeders') }}">
+    <span class="stat-label">Sac candidates</span>
+    <span class="stat-value">{{ sac_candidates|length }}</span>
+    <span class="stat-sub">older than 30 weeks</span>
+  </a>
+  <a class="stat" href="{{ url_for('orders') }}">
+    <span class="stat-label">Pending orders</span>
+    <span class="stat-value">{{ counts.pending_orders }}</span>
+    <span class="stat-sub">requested + ordered</span>
+  </a>
+  <a class="stat" href="{{ url_for('colony', view='litters') }}">
+    <span class="stat-label">Weanings</span>
+    <span class="stat-value">{{ weanings|length }}</span>
+    <span class="stat-sub">within ±7 days of P21</span>
+  </a>
+  <a class="stat col-span-2 sm:col-span-1" href="{{ url_for('notebook') }}">
+    <span class="stat-label">Notebook pages</span>
+    <span class="stat-value">{{ counts.notebook_pages }}</span>
+    <span class="stat-sub">your pages</span>
+  </a>
+</section>
+
+{# ---- Two-column body -------------------------------------------------- #}
+<section class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+
+  {# Sac candidates #}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#warning"></use></svg> Mice older than 30 weeks</h2>
+      <a class="card-head-link" href="{{ url_for('colony', view='mice') }}">View all</a>
+    </header>
+    {% if sac_candidates %}
+      <div class="flex flex-col">
+        {% for m in sac_candidates %}
+          <a class="row-line" href="{{ url_for('colony', view='mice') }}">
+            <span class="ident w-11 shrink-0">#{{ m.mouse_id }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">
+              {{ m.gender or '?' }} · {{ m.genotype or 'no genotype' }}{% if m.cage_id %} · cage {{ m.cage_id }}{% endif %}
+            </span>
+            <span class="badge badge-danger shrink-0">{{ m.age_weeks }}w</span>
+            {% if m.owner %}{{ m.owner | owner_badge }}{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>
+        <p>No mice past 30 weeks.</p>
+      </div>
+    {% endif %}
+  </article>
+
+  {# Upcoming weanings #}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#baby"></use></svg> Upcoming weanings</h2>
+      <a class="card-head-link" href="{{ url_for('colony', view='litters') }}">View litters</a>
+    </header>
+    {% if weanings %}
+      <div class="flex flex-col">
+        {% for w in weanings %}
+          <a class="row-line" href="{{ url_for('colony', view='litters') }}">
+            <span class="ident w-16 shrink-0 truncate">{{ w.litter_id }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">
+              DOB {{ w.dob }}{% if w.cohort %} · {{ w.cohort }}{% endif %}{% if w.pups %} · {{ w.pups }} pups{% endif %}
+            </span>
+            {% if w.overdue %}
+              <span class="badge badge-warn shrink-0">{{ -w.days_to_wean }}d overdue</span>
+            {% elif w.days_to_wean == 0 %}
+              <span class="badge badge-brand shrink-0">today</span>
+            {% else %}
+              <span class="badge shrink-0">in {{ w.days_to_wean }}d</span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#baby"></use></svg>
+        <p>No weanings due in the next week.</p>
+      </div>
+    {% endif %}
+  </article>
+
+  {# Genotyping queue #}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#microscope"></use></svg> Genotyping queue</h2>
+      <a class="card-head-link" href="{{ url_for('colony', view='mice') }}">View mice</a>
+    </header>
+    {% if geno_queue %}
+      <div class="flex flex-col">
+        {% for m in geno_queue %}
+          <a class="row-line" href="{{ url_for('colony', view='mice') }}">
+            <span class="ident w-11 shrink-0">#{{ m.mouse_id }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">
+              {{ m.gender or '?' }}{% if m.cage_id %} · cage {{ m.cage_id }}{% endif %}{% if m.genotype %} · {{ m.genotype }}{% endif %}
+            </span>
+            {% if m.owner %}{{ m.owner | owner_badge }}{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#microscope"></use></svg>
+        <p>Nothing waiting on genotyping.</p>
+      </div>
+    {% endif %}
+  </article>
+
+  {# Upcoming events #}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg> Next 14 days</h2>
+      <a class="card-head-link" href="{{ url_for('calendar') }}">Open calendar</a>
+    </header>
+    {% if events_list %}
+      <div class="flex flex-col">
+        {% for e in events_list %}
+          <a class="row-line" href="{{ url_for('calendar') }}">
+            <span class="ident w-[74px] shrink-0">{{ e.event_date }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">{{ e.title }}</span>
+            <span class="shrink-0 text-[11.5px] text-muted">
+              {% if e.days_until == 0 %}today{% elif e.days_until == 1 %}tomorrow{% else %}in {{ e.days_until }}d{% endif %}
+            </span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg>
+        <p>No events scheduled in the next 2 weeks.</p>
+      </div>
+    {% endif %}
+  </article>
+</section>
+
+{# ---- Recent orders ---------------------------------------------------- #}
+<section class="mt-3">
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#cart"></use></svg> Recent orders</h2>
+      <a class="card-head-link" href="{{ url_for('orders') }}">View all</a>
+    </header>
+    {% if orders_list %}
+      <div class="flex flex-col">
+        {% for o in orders_list %}
+          <a class="row-line" href="{{ url_for('orders') }}">
+            <span class="ident w-11 shrink-0">#{{ o.id }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink">{{ o.item }}</span>
+            <span class="hidden min-w-0 max-w-[180px] truncate text-[12px] text-muted sm:block">{{ o.vendor }}</span>
+            <span class="dt-status shrink-0" data-status="{{ o.status }}">{{ o.status }}</span>
+            <span class="hidden shrink-0 text-[11.5px] text-muted sm:block">{{ o.created_at }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#cart"></use></svg>
+        <p>No orders yet. <a href="{{ url_for('orders') }}">Create one</a>.</p>
+      </div>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}
