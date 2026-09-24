@@ -9,7 +9,7 @@ from pathlib import Path
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import String, func, inspect, select, text
 
 from .db import BASE_DIR, Base, SessionLocal, engine
 from .paths import uploads_dir
@@ -83,6 +83,7 @@ def parse_date(raw_value: str | None) -> date | None:
 def init_database() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_schema_updates()
+    rebuild_samples_table()
     backfill_cage_owners()
     stamp_alembic_baseline()
     warn_if_database_is_synced()
@@ -1178,6 +1179,84 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
     return items
 
 
+def rebuild_samples_table() -> None:
+    """Bring an older `samples` table up to the current model.
+
+    Older databases have animal_id_fk NOT NULL and no source/owner columns.
+    SQLite cannot relax NOT NULL in place, so the table is rebuilt: renamed
+    aside, recreated from the model, rows copied across, old copy dropped,
+    all in one transaction. Idempotent; a no-op once the table is current.
+    """
+    inspector = inspect(engine)
+    if "samples" not in inspector.get_table_names():
+        return
+    columns = {col["name"]: col for col in inspector.get_columns("samples")}
+    wanted = set(SampleRecord.__table__.columns.keys())
+    if not columns["animal_id_fk"]["nullable"] or not wanted <= set(columns):
+        if engine.dialect.name != "sqlite":
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE samples ALTER COLUMN animal_id_fk DROP NOT NULL"))
+                for name in sorted(wanted - set(columns)):
+                    column = SampleRecord.__table__.columns[name]
+                    conn.execute(text(f"ALTER TABLE samples ADD COLUMN {name} {column.type.compile(engine.dialect)}"))
+            return
+        table = SampleRecord.__table__
+        shared = sorted(set(columns) & wanted)
+        # New NOT NULL columns have only Python-side defaults, so the copy
+        # supplies them: empty text for strings, 0 for anything else.
+        added = [name for name in sorted(wanted - set(columns)) if not table.columns[name].nullable]
+        column_list = ", ".join(shared + added)
+        select_list = ", ".join(shared + [
+            "''" if isinstance(table.columns[name].type, String) else "0" for name in added])
+        # Index names are global in SQLite and follow the table on rename,
+        # so collect them first and drop them once it has moved aside.
+        old_indexes = [index["name"] for index in inspector.get_indexes("samples")]
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE samples RENAME TO samples_old"))
+            for name in old_indexes:
+                conn.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+            table.create(conn)
+            conn.execute(text(
+                f"INSERT INTO samples ({column_list}) SELECT {select_list} FROM samples_old"))
+            conn.execute(text("DROP TABLE samples_old"))
+            # Rows from the old animal link keep a readable source.
+            if "animals" in inspector.get_table_names():
+                conn.execute(text(
+                    "UPDATE samples SET source_kind = 'other', source_ref = "
+                    "(SELECT animal_id FROM animals WHERE animals.id = samples.animal_id_fk) "
+                    "WHERE animal_id_fk IS NOT NULL AND source_kind = ''"))
+
+
+def sample_sources(session) -> list[dict]:
+    """Where a sample can come from: each colony, with the identifiers it
+    uses, for the source picker. Order follows the sidebar."""
+    from . import organism_service as organisms
+    from .models import Organism, OrgHousing, OrgLine
+
+    sources = [{
+        "kind": "mouse", "label": "Mouse",
+        "refs": [str(m) for m in session.scalars(select(MouseRecord.mouse_id).order_by(MouseRecord.mouse_id))],
+    }]
+    fish_refs = list(session.scalars(select(TankRecord.tank_id).order_by(TankRecord.tank_id)))
+    fish_refs += [i for i in session.scalars(select(FishRecord.individual_id).order_by(FishRecord.individual_id)) if i]
+    sources.append({"kind": "fish", "label": "Fish", "refs": fish_refs})
+    for module in organisms.list_modules(session):
+        refs = []
+        for model in (OrgLine, OrgHousing, Organism):
+            refs += [c for c in session.scalars(
+                select(model.code).where(model.module_id_fk == module.id).order_by(model.code)) if c]
+        sources.append({"kind": f"organism:{module.key}", "label": module.label, "refs": refs})
+    sources.append({"kind": "other", "label": "Other", "refs": []})
+    return sources
+
+
+def sample_source_label(kind: str, sources: list[dict]) -> str:
+    for source in sources:
+        if source["kind"] == kind:
+            return source["label"]
+    return kind.split(":", 1)[-1].replace("_", " ").title() if kind else ""
+
+
 def seed_organism_modules() -> None:
     """Create the configurable organism modules that ship with the app.
 
@@ -1189,7 +1268,8 @@ def seed_organism_modules() -> None:
 
     with SessionLocal() as session:
         created = organisms.seed_builtin_modules(session)
-        if created:
+        repaired = organisms.repair_icon_names(session)
+        if created or repaired:
             session.commit()
 
 

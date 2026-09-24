@@ -1,84 +1,77 @@
 {% extends "base.html" %}
 
-{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
-{% block legacy %}1{% endblock %}
-
 {% block page_title %}Line · {{ line.name }}{% endblock %}
+{% block page_heading %}{{ line.name }}{% endblock %}
+{% block page_subtitle %}Zebrafish line{% if line.zfin_name %} · {{ line.zfin_name }}{% endif %}{% if line.background %} · {{ line.background }}{% endif %}{% endblock %}
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('zebrafish', view='lines') }}">{{ icon('chevron-left') }} All lines</a>
+{% endblock %}
 
 {% block content %}
-<div class="page-table-header">
-  <div>
-    <h1>{{ line.name }}</h1>
-    <p class="page-subtitle">
-      <a href="{{ url_for('zebrafish', view='lines') }}">← All lines</a>
-      {% if line.zfin_name %} · {{ line.zfin_name }}{% endif %}
-      {% if line.background %} · {{ line.background }}{% endif %}
-    </p>
-  </div>
-</div>
-
-<section class="zfish-lineage">
-  <h3>Founder lineage</h3>
-  <div class="zfish-lineage-chain">
-    {% for a in ancestors %}
-      <a class="zfish-lineage-node" href="{{ url_for('zebrafish_line_detail', line_id=a.id) }}">{{ a.name }}</a>
-      <span class="zfish-lineage-arrow">→</span>
-    {% endfor %}
-    <span class="zfish-lineage-node is-self">{{ line.name }}</span>
-    {% if children %}
-      <span class="zfish-lineage-arrow">→</span>
-      <span class="zfish-lineage-children">
-        {% for c in children %}
-          <a class="zfish-lineage-node" href="{{ url_for('zebrafish_line_detail', line_id=c.id) }}">{{ c.name }}</a>
+<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+  <div class="flex flex-col gap-4">
+    <section class="card overflow-hidden">
+      <header class="card-head border-b border-sand-100 px-4 py-3"><h2>{{ icon('sitemap') }} Founder lineage</h2></header>
+      <div class="lineage">
+        {% for a in ancestors %}
+          <a class="lineage-node" href="{{ url_for('zebrafish_line_detail', line_id=a.id) }}">{{ a.name }}</a>
+          <span class="lineage-arrow">{{ icon('chevron-right') }}</span>
         {% endfor %}
-      </span>
-    {% endif %}
+        <span class="lineage-node is-self">{{ line.name }}</span>
+        {% if children %}
+          <span class="lineage-arrow">{{ icon('chevron-right') }}</span>
+          <span class="flex flex-wrap gap-1.5">
+            {% for c in children %}
+              <a class="lineage-node" href="{{ url_for('zebrafish_line_detail', line_id=c.id) }}">{{ c.name }}</a>
+            {% endfor %}
+          </span>
+        {% endif %}
+      </div>
+      {% if not ancestors and not children %}
+        <p class="px-4 pb-4 text-[12.5px] text-muted">No parent or child lines are recorded for this line.</p>
+      {% endif %}
+    </section>
+
+    <section class="card overflow-hidden">
+      <header class="card-head border-b border-sand-100 px-4 py-3"><h2>{{ icon('edit') }} Details</h2></header>
+      <form method="post" action="{{ url_for('zebrafish_update_line', line_id=line.id) }}" class="modal-grid p-4">
+        <label>Name <input name="name" value="{{ line.name }}"></label>
+        <label>ZFIN name <input name="zfin_name" value="{{ line.zfin_name }}"></label>
+        <label>Background <input name="background" value="{{ line.background }}"></label>
+        <label>Allele <input name="allele" value="{{ line.allele }}"></label>
+        <label>IACUC # <input name="iacuc_protocol" value="{{ line.iacuc_protocol }}"></label>
+        <label>Parent line
+          <select name="parent_line_id_fk">
+            <option value="">None</option>
+            {% for other in all_lines if other.id != line.id %}<option value="{{ other.id }}" {% if line.parent_line_id_fk == other.id %}selected{% endif %}>{{ other.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="col-span-full">Transgenes <input name="transgene_summary" value="{{ line.transgene_summary }}"></label>
+        <label class="col-span-full">Founder notes <textarea name="founder_info" rows="3">{{ line.founder_info }}</textarea></label>
+        <label class="col-span-full">Notes <textarea name="notes" rows="3">{{ line.notes }}</textarea></label>
+        <button type="submit">Save</button>
+      </form>
+    </section>
   </div>
-  {% if not ancestors and not children %}
-    <p class="muted-inline">This line has no parent or children recorded.</p>
-  {% endif %}
-</section>
 
-<section class="zfish-line-edit form-panel">
-  <h3>Edit details</h3>
-  <form method="post" action="{{ url_for('zebrafish_update_line', line_id=line.id) }}" class="modal-grid">
-    <label>Name <input name="name" value="{{ line.name }}"></label>
-    <label>ZFIN name <input name="zfin_name" value="{{ line.zfin_name }}"></label>
-    <label>Background <input name="background" value="{{ line.background }}"></label>
-    <label>Allele <input name="allele" value="{{ line.allele }}"></label>
-    <label>IACUC # <input name="iacuc_protocol" value="{{ line.iacuc_protocol }}"></label>
-    <label>Parent line
-      <select name="parent_line_id_fk">
-        <option value="">— (none)</option>
-        {% for other in all_lines if other.id != line.id %}<option value="{{ other.id }}" {% if line.parent_line_id_fk == other.id %}selected{% endif %}>{{ other.name }}</option>{% endfor %}
-      </select>
-    </label>
-    <label style="grid-column: 1 / -1;">Transgenes
-      <input name="transgene_summary" value="{{ line.transgene_summary }}">
-    </label>
-    <label style="grid-column: 1 / -1;">Founder notes
-      <textarea name="founder_info" rows="3">{{ line.founder_info }}</textarea>
-    </label>
-    <label style="grid-column: 1 / -1;">Notes
-      <textarea name="notes" rows="3">{{ line.notes }}</textarea>
-    </label>
-    <button type="submit">Save</button>
-  </form>
-</section>
-
-<section class="zfish-line-tanks">
-  <h3>Tanks holding this line ({{ line_tanks|length }})</h3>
-  {% if line_tanks %}
-    <ul class="zfish-line-tank-list">
-      {% for t in line_tanks %}
-        <li>
-          <strong>{{ t.tank_id }}</strong>
-          <span class="muted-inline">{{ t.purpose }}{% if t.rack %} · {{ t.rack.name }}{% endif %}</span>
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="muted-inline">No tanks currently assigned to this line.</p>
-  {% endif %}
-</section>
+  <section class="card self-start overflow-hidden">
+    <header class="card-head border-b border-sand-100 px-4 py-3">
+      <h2>{{ icon('tank') }} Tanks</h2>
+      <span class="badge badge-quiet">{{ line_tanks|length }}</span>
+    </header>
+    {% if line_tanks %}
+      <ul class="divide-y divide-sand-100">
+        {% for t in line_tanks %}
+          <li class="flex items-center gap-2 px-4 py-2.5">
+            <span class="ident font-semibold text-ink">{{ t.tank_id }}</span>
+            <span class="status-pill-static" data-status="{{ t.purpose }}">{{ t.purpose }}</span>
+            {% if t.rack %}<span class="ml-auto text-[12px] text-muted">{{ t.rack.name }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="px-4 py-4 text-[12.5px] text-muted">No tanks hold this line right now.</p>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

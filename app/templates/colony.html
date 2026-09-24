@@ -98,142 +98,221 @@
     {% endif %}
 
     {% if active_view == "mice" %}
-      <section class="panel" data-selection-scope="mice"
+      {% set sheet = mouse_sheet %}
+      {# The mouse sheet. Same card, toolbar and bottom bar as every other
+         database (data-table.js drives search, sort, columns, paging);
+         cells edit in place and autosave. Widths are sized to their
+         content so dates, statuses and IDs never truncate — the sheet
+         scrolls sideways instead, with the ID column and row actions
+         pinned. #}
+      <section class="data-table-card sheet" data-table-id="mice-v2"
+               data-selection-scope="mice"
                data-selection-noun="mouse" data-selection-noun-plural="mice">
-        <div class="section-head">
-          <div>
-            <h2>Mice Table</h2>
-            <p>Use up to four transgene columns. Typing `new` in `Cage_ID` allocates the next cage automatically.</p>
+        <div class="dt-toolbar">
+          <div class="dt-toolbar-search">
+            {{ icon('search', 'search-icon') }}
+            <input type="text" class="dt-search" placeholder="Search ID, genotype, cage, note…"
+                   autocomplete="off" aria-label="Search mice">
           </div>
+          <div class="dt-chips" role="group" aria-label="Show">
+            <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">
+              All <span class="dt-chip-count">{{ mouse_rows|length }}</span>
+            </button>
+            <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false">
+              Alive <span class="dt-chip-count">{{ sheet.active_count }}</span>
+            </button>
+          </div>
+          <div class="dt-toolbar-spacer"></div>
+          <span class="sheet-save" data-save-status aria-live="polite"></span>
+          <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
+          <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+          <button type="button" class="dt-toolbar-btn" onclick="openExportModal()">{{ icon('download') }} Export</button>
+          <button type="button" class="dt-toolbar-btn" onclick="printMouseTable()">{{ icon('print') }} Print</button>
+          <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">{{ icon('duplicate') }} Add many</a>
+          <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+                  data-mouse-edit data-mouse-payload='{{ {"owner": current_user.username, "status": "experiment"} | tojson }}'>
+            {{ icon('plus') }} New mouse
+          </button>
         </div>
 
-        <div class="table-toolbar">
-          <form method="post" action="{{ url_for('create_blank_mouse') }}">
-            <button type="submit">Add New Record</button>
-          </form>
-          <a class="btn" href="{{ url_for('batch_mice') }}">
-            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#duplicate"></use></svg> Add many
-          </a>
-          <button type="button" onclick="toggleFilterRow()">Find</button>
-          <button type="button" onclick="showActiveOnly()">Find Active</button>
-          <button type="button" onclick="resetMouseFilters()">Reset</button>
-          <button type="button" onclick="openExportModal()">Export</button>
-          <button type="button" onclick="printMouseTable()">Print</button>
-        </div>
-
-        <div class="table-wrap">
-          <table class="dense-table fit-table mouse-table" id="mouse-table" data-resizable="1" data-resize-id="colony-mice">
+        <div class="dt-scroll">
+          <table class="dt sheet-table" data-resizable="1">
             <thead>
               <tr>
-                <th title="Select rows for a batch action">
+                <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
                   <input type="checkbox" data-select-all aria-label="Select all visible mice">
                 </th>
-                <th title="Mouse ID — auto-incrementing integer identifier">MID</th>
-                <th title="Active — Y if no Date of Death and status is not sac/transfer">Live</th>
-                <th title="Age in weeks (computed from litter Date of Birth)">Age</th>
-                <th title="Gender (F / M / Unknown)">Sex</th>
-                <th title="Transgene 1 — first allele / construct">TG1</th>
-                <th title="Transgene 2">TG2</th>
-                <th title="Transgene 3">TG3</th>
-                <th title="Transgene 4">TG4</th>
-                <th title="Cage ID — type 'new' to allocate the next cage">CID</th>
-                <th title="Cage Location (rack / room slot)">Loc</th>
-                <th title="Owner — username of the responsible lab member">Owner</th>
-                <th title="Litter ID — cohort the mouse was born in">Litter</th>
-                <th title="Date of Birth (inherited from litter)">DOB</th>
-                <th title="Status (experiment / breeder / geno / transfer / sac)">Status</th>
-                <th title="Date of Death">DOD</th>
-                <th title="Note — free-text annotation">Note</th>
-                <th title="Duplicate this mouse record"></th>
-                <th title="Delete this mouse record"></th>
-              </tr>
-              <tr id="mouse-filter-row" class="filter-row hidden-row">
-                <th></th>
-                <th><input data-filter-col="1"></th>
-                <th><input data-filter-col="2"></th>
-                <th><input data-filter-col="3"></th>
-                <th><input data-filter-col="4"></th>
-                <th><input data-filter-col="5"></th>
-                <th><input data-filter-col="6"></th>
-                <th><input data-filter-col="7"></th>
-                <th><input data-filter-col="8"></th>
-                <th><input data-filter-col="9"></th>
-                <th><input data-filter-col="10"></th>
-                <th><input data-filter-col="11"></th>
-                <th><input data-filter-col="12"></th>
-                <th><input data-filter-col="13"></th>
-                <th><input data-filter-col="14"></th>
-                <th><input data-filter-col="15"></th>
-                <th><input data-filter-col="16"></th>
-                <th></th>
-                <th></th>
+                <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="mouse_id" style="width: 88px; min-width: 88px;"
+                    title="Mouse ID. The dot is green while the mouse is alive.">
+                  <span class="dt-col-head"><span class="dt-col-type is-id"></span>Mouse<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="gender" style="width: 76px;">
+                  <span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Sex<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="age" style="width: 76px;" title="Age from the litter's date of birth">
+                  <span class="dt-col-head"><span class="dt-col-type is-number"></span>Age<span class="dt-sort-indicator"></span></span>
+                </th>
+                {% for n in range(1, 5) %}
+                  <th class="dt-sortable" data-sort-key="transgene_{{ n }}" style="width: 150px;"
+                      {% if n > 2 and not sheet.tg_used[n - 1] %}data-default-hidden="1"{% endif %}>
+                    <span class="dt-col-head"><span class="dt-col-type is-text"></span>Transgene {{ n }}<span class="dt-sort-indicator"></span></span>
+                  </th>
+                {% endfor %}
+                <th class="dt-sortable" data-sort-key="cage_id" style="width: 92px;" title="Type “new” to allocate the next cage">
+                  <span class="dt-col-head"><span class="dt-col-type is-id"></span>Cage<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="cage_location" style="width: 120px;">
+                  <span class="dt-col-head"><span class="dt-col-type is-text"></span>Location<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="owner" style="width: 84px;">
+                  <span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="litter_id" style="width: 128px;">
+                  <span class="dt-col-head"><span class="dt-col-type is-id"></span>Litter<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 140px;">
+                  <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Born<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="status" style="width: 144px;">
+                  <span class="dt-col-head"><span class="dt-col-type" data-icon="status"></span>Status<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="date_of_death" style="width: 140px;">
+                  <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Died<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="note" style="min-width: 240px;">
+                  <span class="dt-col-head"><span class="dt-col-type is-text"></span>Note<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
-              <tr class="create-row mouse-row">
-                <td></td>
-                <td><input form="mouse-create-form" value="{{ next_mouse_id_value }}" readonly></td>
-                <td><input form="mouse-create-form" value="Y" readonly></td>
-                <td><input form="mouse-create-form" value="auto" readonly></td>
-                <td><input form="mouse-create-form" name="gender" list="options-gender"></td>
-                <td><input form="mouse-create-form" name="transgene_1" list="strain-name-options"></td>
-                <td><input form="mouse-create-form" name="transgene_2" list="strain-name-options"></td>
-                <td><input form="mouse-create-form" name="transgene_3" list="strain-name-options"></td>
-                <td><input form="mouse-create-form" name="transgene_4" list="strain-name-options"></td>
-                <td><input form="mouse-create-form" name="cage_id" placeholder="number or new"></td>
-                <td><input form="mouse-create-form" name="cage_location" list="options-cage_location"></td>
-                <td><input form="mouse-create-form" name="owner" value="{{ current_user.username }}" list="owner-name-options"></td>
-                <td><input form="mouse-create-form" name="litter_id"></td>
-                <td><input form="mouse-create-form" type="date" name="date_of_birth"></td>
-                <td><input form="mouse-create-form" name="status" list="options-status" value="experiment"></td>
-                <td><input form="mouse-create-form" type="date" name="date_of_death"></td>
-                <td><input form="mouse-create-form" name="note"></td>
-                <td><button form="mouse-create-form" type="submit">Add</button></td>
-                <td></td>
-              </tr>
-              <form id="mouse-create-form" method="post" action="{{ url_for('create_mouse') }}"></form>
               {% for row in mouse_rows %}
-                <tr class="mouse-row" data-active="{{ 'true' if row.active else 'false' }}">
-                  <td><input type="checkbox" class="mouse-select" value="{{ row.id }}"></td>
-                  <td><input value="{{ row.mouse_id }}" readonly></td>
-                  <td><input value="{{ row.active_label }}" readonly></td>
-                  <td><input value="{{ row.age_weeks if row.age_weeks is not none else '' }}" readonly></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="gender" value="{{ row.gender }}" list="options-gender" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="transgene_1" value="{{ row.transgene_1 }}" list="strain-name-options" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="transgene_2" value="{{ row.transgene_2 }}" list="strain-name-options" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="transgene_3" value="{{ row.transgene_3 }}" list="strain-name-options" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="transgene_4" value="{{ row.transgene_4 }}" list="strain-name-options" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="cage_id" value="{{ row.cage_id }}" placeholder="number or new" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="cage_location" value="{{ row.cage_location }}" list="options-cage_location" data-autosave="1"></td>
-                  <td class="owner-cell-wrap{% if row.owner %} has-badge{% endif %}">
-                    {% if row.owner %}{{ row.owner | owner_badge }}{% endif %}
-                    <input form="mouse-update-{{ row.id }}" name="owner" value="{{ row.owner }}" list="owner-name-options" data-autosave="1">
+                {% set f = 'mouse-update-' ~ row.id %}
+                {% set locked = not row.editable %}
+                <tr data-id="{{ row.id }}"
+                    data-active="{{ 'true' if row.active else 'false' }}"
+                    data-mouse_id="{{ row.mouse_id }}"
+                    data-age="{{ row.age_days if row.age_days is not none else '' }}"
+                    class="{% if not row.active %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+                  <td class="sheet-pin sheet-pin-0">
+                    <input type="checkbox" class="mouse-select" value="{{ row.id }}" aria-label="Select mouse {{ row.mouse_id }}">
                   </td>
-                  <td><input form="mouse-update-{{ row.id }}" name="litter_id" value="{{ row.litter_id }}" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" type="date" name="date_of_birth" value="{{ row.date_of_birth }}" data-autosave="1" data-original-dob="{{ row.date_of_birth }}" data-original-litter="{{ row.litter_id }}"></td>
-                  <td><input form="mouse-update-{{ row.id }}" name="status" value="{{ row.status }}" list="options-status" data-autosave="1"></td>
-                  <td><input form="mouse-update-{{ row.id }}" type="date" name="date_of_death" value="{{ row.date_of_death }}" data-autosave="1"></td>
-                  <td><input class="note-cell" form="mouse-update-{{ row.id }}" name="note" value="{{ row.note }}" title="{{ row.note }}" data-autosave="1"></td>
-                  <td>
-                    <form method="post" action="{{ url_for('duplicate_mouse', mouse_row_id=row.id) }}">
-                      <button type="submit" class="row-icon-btn" title="Duplicate this mouse"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#copy"></use></svg></button>
-                    </form>
+                  <td class="sheet-pin sheet-pin-1">
+                    <span class="sheet-id">
+                      <span class="life-dot{% if row.active %} is-alive{% endif %}"
+                            title="{{ 'Alive' if row.active else 'Not alive' }}"></span>
+                      <span class="ident">{{ row.mouse_id }}</span>
+                      {% if locked %}<span class="sheet-lock" title="{{ row.owner }}’s mouse: read only">{{ icon('lock') }}</span>{% endif %}
+                    </span>
                   </td>
                   <td>
-                    <form method="post" action="{{ url_for('delete_mouse', mouse_row_id=row.id) }}" onsubmit="return confirm('Delete this mouse record?')">
-                      <button type="submit" class="row-icon-btn danger-button" title="Delete this mouse"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
-                    </form>
+                    <select class="sex-pill" name="gender" form="{{ f }}" data-sex="{{ row.gender }}" data-autosave="1"
+                            aria-label="Sex" {% if locked %}disabled{% endif %}>
+                      <option value="" {% if not row.gender %}selected{% endif %}>–</option>
+                      {% for g_value in sheet.gender_choices %}
+                        <option value="{{ g_value }}" {% if g_value == row.gender %}selected{% endif %}>{{ 'U' if g_value == 'Unknown' else g_value }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td class="sheet-num" title="{% if row.age_weeks is not none %}{{ row.age_weeks }} weeks · {{ row.age_days }} days{% endif %}">
+                    {% if row.age_weeks is not none %}{{ row.age_weeks }}<span class="sheet-unit">w</span>{% else %}<span class="sheet-empty">–</span>{% endif %}
+                  </td>
+                  {% for n in range(1, 5) %}
+                    <td><input name="transgene_{{ n }}" form="{{ f }}" value="{{ row['transgene_' ~ n] }}"
+                               list="strain-name-options" data-autosave="1" aria-label="Transgene {{ n }}"
+                               {% if locked %}disabled{% endif %}></td>
+                  {% endfor %}
+                  <td><input class="ident" name="cage_id" form="{{ f }}" value="{{ row.cage_id }}" placeholder="–"
+                             data-autosave="1" aria-label="Cage" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="cage_location" form="{{ f }}" value="{{ row.cage_location }}"
+                             list="options-cage_location" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
+                  <td>
+                    <div class="owner-cell-wrap{% if row.owner %} has-badge{% endif %}">
+                      {% if row.owner %}{{ row.owner | owner_badge }}{% endif %}
+                      <input name="owner" form="{{ f }}" value="{{ row.owner }}" list="owner-name-options"
+                             data-autosave="1" aria-label="Owner" {% if locked %}disabled{% endif %}>
+                    </div>
+                  </td>
+                  <td><input class="ident" name="litter_id" form="{{ f }}" value="{{ row.litter_id }}" placeholder="–"
+                             data-autosave="1" aria-label="Litter" {% if locked %}disabled{% endif %}></td>
+                  <td><input type="date" name="date_of_birth" form="{{ f }}" value="{{ row.date_of_birth }}" data-empty="{{ '0' if row.date_of_birth else '1' }}"
+                             data-autosave="1" data-original-dob="{{ row.date_of_birth }}" data-original-litter="{{ row.litter_id }}"
+                             aria-label="Date of birth" {% if locked %}disabled{% endif %}></td>
+                  <td>
+                    <select class="status-pill" name="status" form="{{ f }}" data-status="{{ row.status|lower }}"
+                            data-autosave="1" aria-label="Status" {% if locked %}disabled{% endif %}>
+                      <option value="" {% if not row.status %}selected{% endif %}>–</option>
+                      {% for s_value in sheet.status_choices %}
+                        <option value="{{ s_value }}" {% if s_value == row.status %}selected{% endif %}>{{ s_value }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td><input type="date" name="date_of_death" form="{{ f }}" value="{{ row.date_of_death }}" data-empty="{{ '0' if row.date_of_death else '1' }}"
+                             data-autosave="1" aria-label="Date of death" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="note-cell" name="note" form="{{ f }}" value="{{ row.note }}" title="{{ row.note }}" placeholder="Add a note"
+                             data-autosave="1" aria-label="Note" {% if locked %}disabled{% endif %}></td>
+                  <td class="sheet-pin sheet-pin-end">
+                    <div class="sheet-actions">
+                      <button type="button" class="row-icon-btn" title="Open mouse {{ row.mouse_id }}"
+                              data-mouse-edit data-mouse-payload='{{ {
+                                "id": row.id, "mouse_id": row.mouse_id, "locked": locked,
+                                "gender": row.gender, "transgene_1": row.transgene_1, "transgene_2": row.transgene_2,
+                                "transgene_3": row.transgene_3, "transgene_4": row.transgene_4,
+                                "cage_id": row.cage_id, "cage_location": row.cage_location, "owner": row.owner,
+                                "litter_id": row.litter_id, "date_of_birth": row.date_of_birth, "status": row.status,
+                                "date_of_death": row.date_of_death, "note": row.note } | tojson }}'>
+                        {{ icon('edit') }}
+                      </button>
+                      <form method="post" action="{{ url_for('duplicate_mouse', mouse_row_id=row.id) }}">
+                        <button type="submit" class="row-icon-btn" title="Duplicate mouse {{ row.mouse_id }}">{{ icon('copy') }}</button>
+                      </form>
+                      <form method="post" action="{{ url_for('delete_mouse', mouse_row_id=row.id) }}"
+                            onsubmit="return confirm('Delete mouse {{ row.mouse_id }}? This can be undone from Batch history only if it was part of a batch.')">
+                        <button type="submit" class="row-icon-btn danger-button" title="Delete mouse {{ row.mouse_id }}"
+                                {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
+                      </form>
+                    </div>
                   </td>
                 </tr>
-                <form id="mouse-update-{{ row.id }}" method="post" action="{{ url_for('update_mouse', mouse_row_id=row.id) }}">
-                  <input type="hidden" name="confirm_cohort_dob_change" value="0">
-                </form>
               {% else %}
-                <tr><td colspan="19">No mice yet. Use the top row or Add New Record.</td></tr>
+                <tr><td class="dt-empty" colspan="18">
+                  No mice here yet. Use <strong>New mouse</strong>, or <strong>Add many</strong> to import a batch.
+                </td></tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
+
+        {# One form per row. They live outside the table so the markup stays
+           valid; each cell joins its row's form through form="…". #}
+        {% for row in mouse_rows %}
+          <form id="mouse-update-{{ row.id }}" method="post" action="{{ url_for('update_mouse', mouse_row_id=row.id) }}"
+                data-mouse-label="{{ row.mouse_id }}">
+            <input type="hidden" name="confirm_cohort_dob_change" value="0">
+          </form>
+        {% endfor %}
+
+        <div class="dt-bottom-bar">
+          <span class="dt-bottom-count dt-count">{{ mouse_rows|length }} {{ 'mouse' if mouse_rows|length == 1 else 'mice' }}</span>
+          <button type="button" class="dt-bottom-action"
+                  data-mouse-edit data-mouse-payload='{{ {"owner": current_user.username, "status": "experiment"} | tojson }}'>
+            {{ icon('plus') }} New mouse
+          </button>
+          <div class="dt-bottom-spacer"></div>
+          <div class="dt-pagination">
+            <span class="dt-page-label">Page 1</span>
+            <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+            <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+            <select class="dt-page-size" aria-label="Rows per page">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="250">250</option>
+              <option value="100000">All</option>
+            </select>
+            <span>per page</span>
+          </div>
+        </div>
+
         {# Batch actions. Appears only when rows are ticked; every form here
            receives the checked ids from static/selection-bar.js. #}
         <div class="selbar" data-selection-bar hidden>
@@ -277,8 +356,63 @@
           <div class="selbar-spacer"></div>
           <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
         </div>
-
       </section>
+
+      {# New / open mouse. The same dialog shows every field at full width,
+         which is where a long note or a four-transgene genotype is easiest
+         to read and edit. #}
+      <dialog id="mouse-edit-dialog" class="record-dialog" aria-labelledby="mouse-edit-title">
+        <form method="post" data-mouse-form
+              data-create-action="{{ url_for('create_mouse') }}"
+              data-update-action="{{ url_for('update_mouse', mouse_row_id=0) }}">
+          <header class="record-dialog-head">
+            <div>
+              <h3 id="mouse-edit-title" data-mouse-title>New mouse</h3>
+              <p class="record-dialog-sub" data-mouse-sub>The next free ID ({{ next_mouse_id_value }}) is assigned when you save.</p>
+            </div>
+            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+          </header>
+          <div class="record-dialog-body">
+            <input type="hidden" name="confirm_cohort_dob_change" value="0">
+            <fieldset class="record-group">
+              <legend>Identity</legend>
+              <label>Sex
+                <select name="gender">
+                  <option value="">Not set</option>
+                  {% for g_value in sheet.gender_choices %}<option value="{{ g_value }}">{{ g_value }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Status
+                <select name="status">
+                  <option value="">No status</option>
+                  {% for s_value in sheet.status_choices %}<option value="{{ s_value }}">{{ s_value }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Owner <input name="owner" list="owner-name-options"></label>
+            </fieldset>
+            <fieldset class="record-group">
+              <legend>Genotype</legend>
+              {% for n in range(1, 5) %}
+                <label>Transgene {{ n }} <input name="transgene_{{ n }}" list="strain-name-options"></label>
+              {% endfor %}
+            </fieldset>
+            <fieldset class="record-group">
+              <legend>Housing and dates</legend>
+              <label>Cage <input name="cage_id" placeholder="number, or “new”"></label>
+              <label>Location <input name="cage_location" list="options-cage_location"></label>
+              <label>Litter <input name="litter_id"></label>
+              <label>Born <input type="date" name="date_of_birth"></label>
+              <label>Died <input type="date" name="date_of_death"></label>
+            </fieldset>
+            <label class="record-wide">Note <textarea name="note" rows="3"></textarea></label>
+          </div>
+          <footer class="record-dialog-foot">
+            <span class="record-dialog-hint" data-mouse-hint></span>
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-mouse-submit>Create mouse</button>
+          </footer>
+        </form>
+      </dialog>
     {% elif active_view == "cages" %}
       <section class="panel">
         <div class="section-head">
@@ -860,39 +994,6 @@
 <script>
 const autosaveTimers = new Map();
 
-function toggleFilterRow() {
-  const row = document.getElementById('mouse-filter-row');
-  row.classList.toggle('hidden-row');
-  if (!row.classList.contains('hidden-row')) {
-    row.querySelector('input')?.focus();
-  } else {
-    resetMouseFilters();
-  }
-}
-
-function applyGridFilters() {
-  const filterRow = document.getElementById('mouse-filter-row');
-  const filters = Array.from(filterRow.querySelectorAll('input')).map((input) => input.value.toLowerCase().trim());
-  document.querySelectorAll('#mouse-table tbody tr.mouse-row').forEach((row) => {
-    const cells = Array.from(row.querySelectorAll('td input, td')).map((cell) => (cell.value || cell.innerText || '').toLowerCase());
-    const matched = filters.every((value, index) => !value || (cells[index + 1] || '').includes(value));
-    row.style.display = matched ? '' : 'none';
-  });
-}
-
-function showActiveOnly() {
-  document.querySelectorAll('#mouse-table tbody tr.mouse-row').forEach((row) => {
-    row.style.display = row.dataset.active === 'true' ? '' : 'none';
-  });
-}
-
-function resetMouseFilters() {
-  document.querySelectorAll('#mouse-filter-row input').forEach((input) => { input.value = ''; });
-  document.querySelectorAll('#mouse-table tbody tr.mouse-row').forEach((row) => {
-    row.style.display = '';
-  });
-}
-
 /* Batch actions now live in the selection bar (selection-bar.js). */
 
 function openMouseModal(kind, recordId, cageId, litterId) {
@@ -1010,32 +1111,128 @@ function autosaveInput(input, options) {
   }
 }
 
+/* The sheet's save indicator. One line in the toolbar, so a refused or
+   failed save is visible where you are working instead of surfacing on
+   the next page load. */
+const saveStatus = document.querySelector('[data-save-status]');
+let saveStatusTimer = null;
+let savesInFlight = 0;
+function showSaveStatus(state, text) {
+  if (!saveStatus) return;
+  clearTimeout(saveStatusTimer);
+  saveStatus.dataset.state = state;
+  saveStatus.textContent = text;
+  if (state === 'saved') {
+    saveStatusTimer = setTimeout(() => { saveStatus.textContent = ''; saveStatus.dataset.state = ''; }, 2400);
+  }
+}
+
+function rowsForForm(form) {
+  return document.querySelectorAll(`[form="${form.id}"]`);
+}
+
 async function saveFormInBackground(form) {
   form.dataset.saveState = 'saving';
+  savesInFlight += 1;
+  showSaveStatus('saving', 'Saving…');
+  const label = form.dataset.mouseLabel ? `mouse ${form.dataset.mouseLabel}` : 'this change';
   try {
     const response = await fetch(form.action, {
       method: form.method || 'POST',
       body: new FormData(form),
       headers: { 'X-Autosave': '1' },
     });
-    if (!response.ok) {
-      throw new Error(`Autosave failed: ${response.status}`);
+    let body = {};
+    try { body = await response.json(); } catch (_) { /* a redirect or HTML page */ }
+    if (!response.ok || body.ok === false) {
+      throw new Error(body.error || `The server answered ${response.status}.`);
     }
     form.dataset.saveState = 'saved';
+    rowsForForm(form).forEach((el) => el.closest('td')?.classList.remove('has-error'));
+    savesInFlight -= 1;
+    if (savesInFlight === 0) showSaveStatus('saved', 'All changes saved');
   } catch (error) {
+    savesInFlight -= 1;
     form.dataset.saveState = 'error';
+    rowsForForm(form).forEach((el) => {
+      if (el === document.activeElement || el.dataset.dirty === '1') el.closest('td')?.classList.add('has-error');
+    });
+    showSaveStatus('error', `Couldn’t save ${label}: ${error.message}`);
     console.error(error);
   }
 }
 
 document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
-  input.addEventListener('input', () => autosaveInput(input));
-  input.addEventListener('change', () => autosaveInput(input, { immediate: true }));
+  input.addEventListener('input', () => { input.dataset.dirty = '1'; autosaveInput(input); });
+  input.addEventListener('change', () => {
+    input.dataset.dirty = '1';
+    // Pills recolour as soon as the value changes.
+    if (input.classList.contains('sex-pill')) input.dataset.sex = input.value;
+    if (input.classList.contains('status-pill')) input.dataset.status = input.value.toLowerCase();
+    if (input.type === 'date') input.dataset.empty = input.value ? '0' : '1';
+    autosaveInput(input, { immediate: true });
+  });
 });
 
-document.querySelectorAll('#mouse-filter-row input').forEach((input) => {
-  input.addEventListener('input', applyGridFilters);
-});
+/* New / open mouse dialog. Buttons carry the row as data attributes; the
+   same form creates (no id) or updates (id present). */
+(function () {
+  const dialog = document.getElementById('mouse-edit-dialog');
+  if (!dialog) return;
+  const form = dialog.querySelector('form[data-mouse-form]');
+  const title = dialog.querySelector('[data-mouse-title]');
+  const sub = dialog.querySelector('[data-mouse-sub]');
+  const submit = dialog.querySelector('[data-mouse-submit]');
+  const hint = dialog.querySelector('[data-mouse-hint]');
+  const createSub = sub.textContent;
+  let original = {};
+
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-mouse-edit]');
+    if (!button) return;
+    let data = {};
+    try { data = JSON.parse(button.dataset.mousePayload || '{}'); } catch (e) { console.error(e); }
+    original = data;
+    form.reset();
+    form.elements.confirm_cohort_dob_change.value = '0';
+    Array.from(form.elements).forEach((el) => {
+      if (!el.name || el.type === 'hidden') return;
+      el.value = data[el.name] ?? '';
+      el.disabled = Boolean(data.locked);
+    });
+    if (data.id) {
+      form.action = form.dataset.updateAction.replace('/0/', `/${data.id}/`);
+      title.textContent = `Mouse ${data.mouse_id}`;
+      sub.textContent = data.locked ? `Read only: this is ${data.owner || 'another member'}’s mouse.` : 'Changes save when you press Save.';
+      submit.textContent = 'Save';
+      submit.hidden = Boolean(data.locked);
+    } else {
+      form.action = form.dataset.createAction;
+      title.textContent = 'New mouse';
+      sub.textContent = createSub;
+      submit.textContent = 'Create mouse';
+      submit.hidden = false;
+    }
+    hint.textContent = '';
+    dialog.showModal();
+    form.querySelector('select, input:not([type=hidden])')?.focus();
+  });
+
+  form.addEventListener('submit', (event) => {
+    // Changing the birth date of a mouse that belongs to a litter moves it
+    // to a new solo litter; ask first, exactly as the sheet does.
+    const dob = form.elements.date_of_birth.value;
+    if (original.id && original.litter_id && original.date_of_birth && dob
+        && dob !== original.date_of_birth && form.elements.litter_id.value === original.litter_id) {
+      if (!window.confirm('This mouse is in a cohort. Detach it to a new solo litter with the new birth date? Other cohort members keep theirs.')) {
+        event.preventDefault();
+        return;
+      }
+      form.elements.confirm_cohort_dob_change.value = '1';
+    }
+  });
+})();
+
 
 function normalizePurposeClass(value) {
   const normalized = (value || '').trim().toLowerCase();

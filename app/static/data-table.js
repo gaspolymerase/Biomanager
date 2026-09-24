@@ -49,6 +49,23 @@
     });
   }
 
+  // Only one toolbar menu is open at a time.
+  let openMenu = null;
+  function closeMenus() {
+    if (!openMenu) return;
+    if (openMenu._anchor) openMenu._anchor.setAttribute('aria-expanded', 'false');
+    openMenu.remove();
+    openMenu = null;
+  }
+  document.addEventListener('click', (event) => {
+    if (openMenu && !openMenu.contains(event.target)) closeMenus();
+  });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenus(); });
+  window.addEventListener('resize', closeMenus);
+  document.addEventListener('scroll', (event) => {
+    if (openMenu && !openMenu.contains(event.target)) closeMenus();
+  }, true);
+
   // Per-table state keyed by table id.
   class DataTableController {
     constructor(card) {
@@ -57,11 +74,17 @@
       this.table = card.querySelector('table.dt');
       this.tbody = this.table && this.table.tBodies[0];
       this.rows = this.tbody ? Array.from(this.tbody.querySelectorAll('tr[data-id]')) : [];
+      this.original = this.rows.slice();
       this.filtered = this.rows.slice();
       this.sortKey = null;
       this.sortDir = 1;
       this.page = 0;
+      this.query = '';
+      this.quick = null;   // {attr, value} from a .dt-chip
       this.hidden = this._loadHiddenCols();
+      this.noun = card.dataset.noun || card.dataset.selectionNoun || 'entry';
+      this.nounPlural = card.dataset.nounPlural || card.dataset.selectionNounPlural
+        || (this.noun === 'entry' ? 'entries' : this.noun + 's');
 
       this.search = card.querySelector('.dt-search');
       this.count = card.querySelector('.dt-count');
@@ -78,6 +101,7 @@
       this._wirePagination();
       this._wireHideButton();
       this._wireSortButton();
+      this._wireChips();
       this._wireResize();
       this._applyHidden();
       this._applyResizedWidths();
@@ -98,6 +122,8 @@
             other.classList.remove('dt-sort-asc', 'dt-sort-desc');
           });
           th.classList.add(this.sortDir === 1 ? 'dt-sort-asc' : 'dt-sort-desc');
+          const sortBtn = this.card.querySelector('.dt-btn-sort');
+          if (sortBtn) sortBtn.classList.add('is-active');
           this._applySort();
           this.render();
         });
@@ -107,27 +133,75 @@
     _wireSearch() {
       if (!this.search) return;
       this.search.addEventListener('input', () => {
-        const q = (this.search.value || '').trim().toLowerCase();
-        this.filtered = this.rows.filter((tr) => {
-          if (!q) return true;
-          // Build a search blob from all data-* attributes on the row plus
-          // the text content (so visible text matches too).
-          let blob = (tr.textContent || '').toLowerCase();
-          for (const key in tr.dataset) blob += ' ' + (tr.dataset[key] || '').toLowerCase();
-          return blob.includes(q);
-        });
-        if (this.sortKey) this._applySort();
-        this.page = 0;
-        this.render();
+        this.query = (this.search.value || '').trim().toLowerCase();
+        this._refilter();
       });
+    }
+
+    /* A row's searchable text: what it shows, its data-* attributes, and
+       the current value of any cell you can edit (an input's value is not
+       part of textContent, so an editable sheet would otherwise be
+       unsearchable). */
+    _rowText(tr) {
+      let blob = (tr.textContent || '').toLowerCase();
+      for (const key in tr.dataset) blob += ' ' + (tr.dataset[key] || '').toLowerCase();
+      tr.querySelectorAll('input:not([type=checkbox]):not([type=hidden]), select, textarea').forEach((el) => {
+        const shown = el.tagName === 'SELECT' && el.selectedOptions[0] ? el.selectedOptions[0].textContent : '';
+        blob += ' ' + String(el.value || '').toLowerCase() + ' ' + shown.toLowerCase();
+      });
+      return blob;
+    }
+
+    _refilter() {
+      const q = this.query;
+      const quick = this.quick;
+      this.filtered = this.original.filter((tr) => {
+        if (quick && (tr.dataset[quick.attr] || '') !== quick.value) return false;
+        return !q || this._rowText(tr).includes(q);
+      });
+      if (this.sortKey) this._applySort();
+      this.page = 0;
+      this.render();
+    }
+
+    /* Quick filter chips: <button class="dt-chip" data-dt-filter="active:true">.
+       An empty data-dt-filter means "everything". The choice is remembered. */
+    _wireChips() {
+      const chips = Array.from(this.card.querySelectorAll('.dt-chip[data-dt-filter]'));
+      if (!chips.length) return;
+      const apply = (chip, save) => {
+        chips.forEach((c) => c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'));
+        const spec = chip.dataset.dtFilter || '';
+        const at = spec.indexOf(':');
+        this.quick = at > 0 ? { attr: spec.slice(0, at), value: spec.slice(at + 1) } : null;
+        if (save) { try { localStorage.setItem(`dt:${this.id}:filter`, spec); } catch (_) {} }
+        this._refilter();
+      };
+      chips.forEach((chip) => chip.addEventListener('click', () => apply(chip, true)));
+      let saved = null;
+      try { saved = localStorage.getItem(`dt:${this.id}:filter`); } catch (_) {}
+      const initial = chips.find((c) => (c.dataset.dtFilter || '') === saved)
+        || chips.find((c) => c.getAttribute('aria-pressed') === 'true');
+      if (initial) apply(initial, false);
+    }
+
+    /* The value a row sorts by: an editable cell of that name if the row
+       has one (so a sort reflects edits made since the page loaded),
+       otherwise the data-* attribute. */
+    _sortValue(tr, key) {
+      const cell = tr.querySelector(`[name="${key}"]`);
+      if (cell) return String(cell.value || '');
+      return tr.dataset[key] || '';
     }
 
     _applySort() {
       const key = this.sortKey;
       const dir = this.sortDir;
       this.filtered.sort((a, b) => {
-        const av = a.dataset[key] || '';
-        const bv = b.dataset[key] || '';
+        const av = this._sortValue(a, key);
+        const bv = this._sortValue(b, key);
+        // Empty cells sink to the bottom whichever way the sort runs.
+        if (!av.trim() !== !bv.trim()) return av.trim() ? -1 : 1;
         const aNum = parseFloat(av), bNum = parseFloat(bv);
         if (!isNaN(aNum) && !isNaN(bNum) && av.trim() && bv.trim()) return (aNum - bNum) * dir;
         return av.localeCompare(bv) * dir;
@@ -162,54 +236,137 @@
       if (this.next) this.next.addEventListener('click', () => { this.page++; this.render(); });
     }
 
+    /* A small popover menu anchored under a toolbar button. Fixed
+       positioning, because the card clips overflow. */
+    _openMenu(anchor, build) {
+      closeMenus();
+      const menu = document.createElement('div');
+      menu.className = 'dt-menu';
+      menu.setAttribute('role', 'menu');
+      build(menu);
+      document.body.appendChild(menu);
+      const rect = anchor.getBoundingClientRect();
+      const width = menu.offsetWidth;
+      const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+      menu.style.left = `${left}px`;
+      menu.style.top = `${rect.bottom + 6}px`;
+      menu.style.maxHeight = `${Math.max(160, window.innerHeight - rect.bottom - 24)}px`;
+      anchor.setAttribute('aria-expanded', 'true');
+      menu._anchor = anchor;
+      openMenu = menu;
+      return menu;
+    }
+
+    _columnLabel(th) {
+      const head = th.querySelector('.dt-col-head');
+      return (head ? head.textContent : th.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
     _wireHideButton() {
       const btn = this.card.querySelector('.dt-btn-hide');
       if (!btn || !this.table) return;
-      btn.addEventListener('click', () => {
+      btn.setAttribute('aria-haspopup', 'menu');
+      // Pressed only when the columns differ from the page's defaults, so
+      // a table that simply starts with empty columns tucked away is calm.
+      const defaults = () => Array.from(this.table.tHead.rows[0].cells)
+        .map((th, idx) => (th.dataset.defaultHidden === '1' ? idx : -1)).filter((i) => i >= 0);
+      const sync = () => {
+        const d = defaults();
+        const same = d.length === this.hidden.size && d.every((i) => this.hidden.has(i));
+        btn.classList.toggle('is-active', !same);
+      };
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (openMenu && openMenu._anchor === btn) { closeMenus(); return; }
         const headers = Array.from(this.table.tHead.rows[0].cells);
-        const labels = headers.map((th, i) => {
-          const head = th.querySelector('.dt-col-head');
-          const text = head ? head.textContent.trim() : (th.textContent || '').trim();
-          return `${i}. ${text || '(unlabeled)'}${this.hidden.has(i) ? '  [hidden]' : ''}`;
-        }).join('\n');
-        const choice = prompt(
-          'Toggle column visibility — enter comma-separated indices:\n\n' + labels + '\n\nExample: 3,5  ·  Leave blank to cancel.'
-        );
-        if (!choice) return;
-        choice.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n)).forEach((n) => {
-          if (n >= 0 && n < headers.length) {
-            if (this.hidden.has(n)) this.hidden.delete(n); else this.hidden.add(n);
-          }
+        this._openMenu(btn, (menu) => {
+          const title = document.createElement('div');
+          title.className = 'dt-menu-title';
+          title.textContent = 'Columns';
+          menu.appendChild(title);
+          headers.forEach((th, idx) => {
+            const label = this._columnLabel(th);
+            if (!label) return;   // checkbox and action columns
+            const row = document.createElement('label');
+            row.className = 'dt-menu-item';
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = !this.hidden.has(idx);
+            box.addEventListener('change', () => {
+              if (box.checked) this.hidden.delete(idx); else this.hidden.add(idx);
+              this._saveHiddenCols();
+              this._applyHidden();
+              sync();
+            });
+            row.append(box, document.createTextNode(label));
+            menu.appendChild(row);
+          });
+          const all = document.createElement('button');
+          all.type = 'button';
+          all.className = 'dt-menu-action';
+          all.textContent = 'Show all columns';
+          all.addEventListener('click', () => {
+            this.hidden.clear();
+            this._saveHiddenCols();
+            this._applyHidden();
+            sync();
+            closeMenus();
+          });
+          menu.appendChild(all);
         });
-        this._saveHiddenCols();
-        this._applyHidden();
-        btn.classList.toggle('is-active', this.hidden.size > 0);
       });
-      btn.classList.toggle('is-active', this.hidden.size > 0);
+      sync();
     }
 
     _wireSortButton() {
       const btn = this.card.querySelector('.dt-btn-sort');
       if (!btn || !this.table) return;
-      btn.addEventListener('click', () => {
-        const headers = Array.from(this.table.querySelectorAll('th.dt-sortable'));
+      btn.setAttribute('aria-haspopup', 'menu');
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (openMenu && openMenu._anchor === btn) { closeMenus(); return; }
+        const headers = Array.from(this.table.querySelectorAll('th.dt-sortable'))
+          .filter((th) => th.style.display !== 'none');
         if (!headers.length) return;
-        const labels = headers.map((th, i) => {
-          const head = th.querySelector('.dt-col-head');
-          const text = head ? head.textContent.trim() : (th.textContent || '').trim();
-          const indicator = th.classList.contains('dt-sort-asc') ? '↑' : (th.classList.contains('dt-sort-desc') ? '↓' : '');
-          return `${i + 1}. ${text} ${indicator}`;
-        }).join('\n');
-        const choice = prompt('Sort by which column? Enter number:\n\n' + labels);
-        const idx = parseInt((choice || '').trim(), 10);
-        if (idx >= 1 && idx <= headers.length) headers[idx - 1].click();
+        this._openMenu(btn, (menu) => {
+          const title = document.createElement('div');
+          title.className = 'dt-menu-title';
+          title.textContent = 'Sort by';
+          menu.appendChild(title);
+          headers.forEach((th) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'dt-menu-item';
+            const active = this.sortKey === th.dataset.sortKey;
+            item.classList.toggle('is-active', active);
+            const arrow = active ? (this.sortDir === 1 ? ' ↑' : ' ↓') : '';
+            item.textContent = this._columnLabel(th) + arrow;
+            item.addEventListener('click', () => { th.click(); closeMenus(); });
+            menu.appendChild(item);
+          });
+          if (this.sortKey) {
+            const clear = document.createElement('button');
+            clear.type = 'button';
+            clear.className = 'dt-menu-action';
+            clear.textContent = 'Original order';
+            clear.addEventListener('click', () => {
+              this.sortKey = null;
+              this.table.querySelectorAll('th.dt-sortable').forEach((o) => o.classList.remove('dt-sort-asc', 'dt-sort-desc'));
+              btn.classList.remove('is-active');
+              this._refilter();
+              closeMenus();
+            });
+            menu.appendChild(clear);
+          }
+        });
       });
     }
 
     _applyHidden() {
       if (!this.table) return;
-      const headers = Array.from(this.table.tHead.rows[0].cells);
-      headers.forEach((th, idx) => { th.style.display = this.hidden.has(idx) ? 'none' : ''; });
+      Array.from(this.table.tHead.rows).forEach((row) => {
+        Array.from(row.cells).forEach((th, idx) => { th.style.display = this.hidden.has(idx) ? 'none' : ''; });
+      });
       this.rows.forEach((tr) => {
         Array.from(tr.cells).forEach((td, idx) => {
           td.style.display = this.hidden.has(idx) ? 'none' : '';
@@ -217,12 +374,20 @@
       });
     }
 
+    /* Saved choice if there is one, else the columns the page marks
+       data-default-hidden (e.g. transgene columns nobody has filled). */
     _loadHiddenCols() {
       try {
         const raw = localStorage.getItem(`dt:${this.id}:hidden`);
-        if (!raw) return new Set();
-        return new Set(JSON.parse(raw));
-      } catch (_) { return new Set(); }
+        if (raw) return new Set(JSON.parse(raw));
+      } catch (_) { /* storage unavailable */ }
+      const defaults = new Set();
+      if (this.table && this.table.tHead) {
+        Array.from(this.table.tHead.rows[0].cells).forEach((th, idx) => {
+          if (th.dataset.defaultHidden === '1') defaults.add(idx);
+        });
+      }
+      return defaults;
     }
 
     _saveHiddenCols() {
@@ -296,6 +461,24 @@
       } catch (_) {}
     }
 
+    _renderNoMatch(show) {
+      if (!this.tbody) return;
+      let row = this.tbody.querySelector('tr.dt-nomatch');
+      if (!show) { if (row) row.remove(); return; }
+      if (!row) {
+        row = document.createElement('tr');
+        row.className = 'dt-nomatch';
+        const cell = document.createElement('td');
+        cell.className = 'dt-empty';
+        cell.colSpan = this.table.tHead.rows[0].cells.length;
+        row.appendChild(cell);
+        this.tbody.appendChild(row);
+      }
+      row.firstChild.textContent = this.query
+        ? `Nothing matches “${this.search.value.trim()}”.`
+        : `No ${this.nounPlural} match this filter.`;
+    }
+
     // -------- render -----------------------------------------------------
     render() {
       const size = this.pageSize ? parseInt(this.pageSize.value, 10) : 50;
@@ -305,9 +488,11 @@
       this.filtered.slice(start, end).forEach((tr) => { tr.style.display = ''; });
       const total = this.filtered.length;
       if (this.count) {
-        const noun = total === 1 ? 'entry' : 'entries';
-        this.count.textContent = `${total} ${noun}${total !== this.rows.length ? ` (of ${this.rows.length})` : ''}`;
+        const noun = total === 1 ? this.noun : this.nounPlural;
+        this.count.textContent = `${total} ${noun}${total !== this.rows.length ? ` of ${this.rows.length}` : ''}`;
       }
+      this._renderNoMatch(total === 0 && this.rows.length > 0);
+      this.filtered.forEach((tr) => this.tbody.appendChild(tr));
       const totalPages = Math.max(1, Math.ceil(total / size));
       if (this.pageLabel) this.pageLabel.textContent = `Page ${this.page + 1} of ${totalPages}`;
       if (this.prev) this.prev.disabled = this.page === 0;

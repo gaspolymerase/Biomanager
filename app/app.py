@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date, datetime, timedelta
 from functools import wraps
 
-from flask import Flask, Response, flash, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, Response, flash, g, get_flashed_messages, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from markupsafe import Markup, escape
 from werkzeug.datastructures import ImmutableMultiDict
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -74,6 +76,8 @@ from .services import (
     cage_is_active,
     calculate_reagent_requirements,
     current_lab_usernames,
+    sample_source_label,
+    sample_sources,
     dropdown_options_map,
     dropdown_records_map,
     export_mouse_rows,
@@ -147,15 +151,36 @@ def admin_required(view):
 
 def autosave_response(default_view: str):
     if request.headers.get("X-Autosave") == "1":
+        # A background save has no page to show a flash on, so errors are
+        # returned to the sheet instead of surfacing on the next page load.
+        messages = get_flashed_messages(with_categories=True)
+        errors = [text for category, text in messages if category == "error"]
+        for category, text in messages:
+            if category != "error":
+                flash(text, category)
+        if errors:
+            return jsonify({"ok": False, "error": " ".join(errors)}), 409
         return jsonify({"ok": True})
+    # A regular form post (a dialog or a detail page) goes back where it
+    # came from — the fish line page, or the colony with its scope intact —
+    # but only to this site.
+    referrer = request.referrer or ""
+    if referrer.startswith(request.host_url):
+        return redirect(referrer)
     return redirect(url_for("colony", view=default_view))
 
 
 def log_delete(db_session, table_name: str, record_id: int, record_label: str = "", details: str = "") -> None:
     """Insert an AuditEntry capturing a deletion. The caller is responsible
     for the db_session commit (we just add the entry to the same transaction
-    as the delete itself)."""
-    if g.user is None:
+    as the delete itself).
+
+    Tables in audit.TRACKED_TABLES are skipped: the flush listener already
+    records their deletes, with the full snapshot undo needs, and a second
+    bare entry only doubled every delete in the audit log."""
+    from .audit import TRACKED_TABLES
+
+    if g.user is None or table_name in TRACKED_TABLES:
         return
     db_session.add(AuditEntry(
         table_name=table_name,
@@ -191,6 +216,28 @@ def load_current_user():
         g.user = user
 
 
+@app.errorhandler(IntegrityError)
+def handle_integrity_error(error: IntegrityError):
+    """A duplicate ID (or similar) is a message for the person, not a 500.
+
+    Routes open their session in a `with` block, so by the time this runs
+    the failed transaction has already been rolled back and closed.
+    """
+    detail = str(getattr(error, "orig", error))
+    match = re.search(r"UNIQUE constraint failed: \w+\.(\w+)", detail)
+    if match:
+        field = match.group(1).replace("_id", " ID").replace("_", " ")
+        message = f"That {field} is already used. Choose another."
+    else:
+        message = "That change conflicts with an existing record, so it was not saved."
+    app.logger.info("integrity error on %s: %s", request.path, detail)
+    if request.headers.get("X-Autosave") == "1":
+        return jsonify({"ok": False, "error": message}), 409
+    flash(message, "error")
+    referrer = request.referrer or ""
+    return redirect(referrer if referrer.startswith(request.host_url) else url_for("home_dashboard"))
+
+
 @app.context_processor
 def inject_icon():
     """`{{ icon('mouse') }}` renders one symbol from the sprite.
@@ -201,11 +248,13 @@ def inject_icon():
     """
     from markupsafe import Markup
 
+    from .icons import resolve
+
     def icon(name: str, extra: str = "") -> Markup:
         classes = ("icon " + extra).strip()
         return Markup(
             f'<svg class="{classes}" aria-hidden="true">'
-            f'<use href="/static/icons.svg#{name}"></use></svg>'
+            f'<use href="/static/icons.svg#{resolve(name)}"></use></svg>'
         )
 
     return {"icon": icon}
@@ -290,8 +339,8 @@ COLONY_VIEW_META: dict[str, dict[str, str]] = {
 
 # URL prefix -> lucide icon, longest prefix wins. Used for workspace tabs.
 TAB_ICON_RULES: list[tuple[str, str]] = [
-    ("/", "layout-dashboard"),
-    ("/home", "layout-dashboard"),
+    ("/", "home"),
+    ("/home", "home"),
     ("/calendar", "calendar"),
     ("/notebook", "notebook"),
     ("/colony", "mouse"),
@@ -337,6 +386,7 @@ def _organism_module_links() -> list[dict]:
     lab that adds a species sees it in the sidebar immediately.
     """
     from . import organism_service as organisms
+    from .icons import resolve as resolve_icon
 
     current_key = request.view_args.get("key") if request.view_args else None
     on_organisms = (request.endpoint or "").startswith("organisms.")
@@ -348,7 +398,7 @@ def _organism_module_links() -> list[dict]:
                     "key": f"organism:{module.key}",
                     "label": module.label,
                     "short": module.label,
-                    "icon": module.icon or "circle-dashed",
+                    "icon": resolve_icon(module.icon),
                     "soon": None,
                     "url": url_for("organisms.module", key=module.key),
                     "active": on_organisms and current_key == module.key,
@@ -368,6 +418,7 @@ def inject_nav():
 
     active = request.endpoint or ""
     sections = []
+    tab_icon_rules = list(TAB_ICON_RULES)
     for section in NAV_SECTIONS:
         links = [r for r in (_resolve_nav_item(i, active) for i in section["links"]) if r]
         if section["label"] == "Databases":
@@ -377,14 +428,16 @@ def inject_nav():
                 tail = [l for l in links if l["key"] in ("drosophila", "new-db")]
                 head = [l for l in links if l["key"] not in ("drosophila", "new-db")]
                 links = head + extras + [l for l in tail if l["key"] == "new-db"]
-    
+                # Each species' tabs show its own glyph, not the generic one.
+                tab_icon_rules += [(l["url"], l["icon"]) for l in extras]
+
         if links:
             sections.append({"label": section["label"], "links": links})
     footer = [r for r in (_resolve_nav_item(i, active) for i in NAV_FOOTER) if r]
     return {
         "nav_sections": sections,
         "nav_footer": footer,
-        "tab_icon_rules": TAB_ICON_RULES,
+        "tab_icon_rules": tab_icon_rules,
         "colony_view_meta": COLONY_VIEW_META,
     }
 
@@ -583,6 +636,35 @@ def create_transfer_copy(db_session, source_mouse: MouseRecord, recipient_userna
     return copied_mouse
 
 
+def _merged_choices(*groups) -> list[str]:
+    """Unique non-empty values in first-seen order, compared without case,
+    so the built-in values lead and a lab's own presets follow."""
+    seen, out = set(), []
+    for group in groups:
+        for value in group:
+            value = (value or "").strip()
+            if value and value.lower() not in seen:
+                seen.add(value.lower())
+                out.append(value)
+    return out
+
+
+def mouse_sheet_meta(mouse_rows: list[dict], dropdowns: dict) -> dict:
+    """What the mouse sheet needs beyond the rows themselves: the choices
+    for its dropdown cells, and which transgene columns hold anything (an
+    empty TG3/TG4 starts hidden, and one click brings it back)."""
+    return {
+        "status_choices": _merged_choices(
+            MOUSE_STATUS_OPTIONS, dropdowns.get("status", []),
+            (r["status"] for r in mouse_rows)),
+        "gender_choices": _merged_choices(
+            ["F", "M", "Unknown"], dropdowns.get("gender", []),
+            (r["gender"] for r in mouse_rows)),
+        "tg_used": [any(r[f"transgene_{n}"] for r in mouse_rows) for n in range(1, 5)],
+        "active_count": sum(1 for r in mouse_rows if r["active"]),
+    }
+
+
 def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[str, object]:
     """Build the colony page context.
 
@@ -614,6 +696,11 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         notifications = recent_notifications(db_session, g.user.username if g.user else "", limit=10) if g.user else []
 
         mouse_rows = [mouse_display_row(mouse, g.user.username if g.user else None, g.user.role if g.user else None) for mouse in mice]
+        # The sheet renders rows you may not edit as read-only, using the
+        # same rule the update routes enforce, rather than letting an edit
+        # appear to save and then be refused.
+        for mouse, row in zip(mice, mouse_rows):
+            row["editable"] = can_edit_mouse(mouse)
         cage_rows = []
         for cage in cages:
             derived = cage_derived_dates(cage)
@@ -707,6 +794,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         "active_view": active_view,
         "colony_views": COLONY_VIEWS,
         "mouse_rows": mouse_rows,
+        "mouse_sheet": mouse_sheet_meta(mouse_rows, dropdowns),
         "cage_rows": cage_rows,
         "litter_rows": litter_rows,
         "strain_rows": strain_rows,
@@ -1725,7 +1813,7 @@ def _selected_mice(db_session, form) -> list:
 
 def _report(changed: int, skipped: int, what: str) -> None:
     if changed:
-        flash(f"{what} on {changed} mouse{'' if changed == 1 else 'es'}."
+        flash(f"{what} on {changed} {'mouse' if changed == 1 else 'mice'}."
               + (f" {skipped} skipped — not yours to edit." if skipped else ""),
               "success")
     elif skipped:
@@ -1824,7 +1912,7 @@ def bulk_add_to_experiment():
         name = exp.name
         exp_id = exp.id
 
-    parts = [f"Added {added} mouse{'' if added == 1 else 'es'} to {name}"]
+    parts = [f"Added {added} {'mouse' if added == 1 else 'mice'} to {name}"]
     if group:
         parts.append(f"as “{group}”")
     if already:
@@ -2442,23 +2530,42 @@ def delete_option(option_id: int):
     return redirect(url_for("colony", view="settings"))
 
 
+# ---------------------------------------------------------------------------
+# Orders and samples. Both follow the same shape as the other databases:
+# a sheet, one dialog for new and edit, and delete from the row.
+# ---------------------------------------------------------------------------
+
+
+def _order_from_form(order: Order, form) -> str | None:
+    """Copy the order form onto `order`; return an error message or None."""
+    item = form.get("item_name", "").strip()
+    if not item:
+        return "An order needs an item name."
+    status = form.get("status", "requested").strip() or "requested"
+    order.item_name = item
+    order.requester_name = form.get("requester_name", "").strip() or (
+        g.user.display_name or g.user.username if g.user else "")
+    order.vendor_name = form.get("vendor_name", "").strip()
+    order.catalog_number = form.get("catalog_number", "").strip()
+    order.quantity = form.get("quantity", "").strip() or "1"
+    order.status = status if status in ORDER_STATUS_OPTIONS else "requested"
+    order.notes = form.get("notes", "").strip()
+    return None
+
+
 @app.route("/orders", methods=["GET", "POST"])
 @login_required
 def orders():
     if request.method == "POST":
         with SessionLocal() as db_session:
-            db_session.add(
-                Order(
-                    requester_name=request.form["requester_name"],
-                    vendor_name=request.form["vendor_name"],
-                    item_name=request.form["item_name"],
-                    catalog_number=request.form["catalog_number"],
-                    quantity=request.form.get("quantity", "1"),
-                    status=request.form.get("status", "requested"),
-                    notes=request.form.get("notes", ""),
-                )
-            )
-            db_session.commit()
+            order = Order()
+            error = _order_from_form(order, request.form)
+            if error:
+                flash(error, "error")
+            else:
+                db_session.add(order)
+                db_session.commit()
+                flash(f"Added {order.item_name}.", "success")
         return redirect(url_for("orders"))
 
     with SessionLocal() as db_session:
@@ -2466,28 +2573,144 @@ def orders():
     return render_template("orders.html", orders=all_orders, statuses=ORDER_STATUS_OPTIONS)
 
 
+@app.route("/orders/<int:order_id>/update", methods=["POST"])
+@login_required
+def update_order(order_id: int):
+    with SessionLocal() as db_session:
+        order = db_session.get(Order, order_id)
+        if order is None:
+            flash("That order no longer exists.", "error")
+            return redirect(url_for("orders"))
+        error = _order_from_form(order, request.form)
+        if error:
+            flash(error, "error")
+            return redirect(url_for("orders"))
+        stamp_updated(order)
+        db_session.commit()
+        flash(f"Saved {order.item_name}.", "success")
+    return redirect(url_for("orders"))
+
+
+@app.route("/orders/<int:order_id>/status", methods=["POST"])
+@login_required
+def update_order_status(order_id: int):
+    """Inline status change from the orders sheet; answers JSON."""
+    status = request.form.get("status", "").strip()
+    with SessionLocal() as db_session:
+        order = db_session.get(Order, order_id)
+        if order is None:
+            return jsonify({"ok": False, "error": "That order no longer exists."}), 404
+        if status not in ORDER_STATUS_OPTIONS:
+            return jsonify({"ok": False, "error": f"Unknown status “{status}”."}), 400
+        order.status = status
+        stamp_updated(order)
+        db_session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/orders/<int:order_id>/delete", methods=["POST"])
+@login_required
+def delete_order(order_id: int):
+    with SessionLocal() as db_session:
+        order = db_session.get(Order, order_id)
+        if order is not None:
+            label = order.item_name
+            log_delete(db_session, "orders", order.id, label)
+            db_session.delete(order)
+            db_session.commit()
+            flash(f"Deleted {label}.", "success")
+    return redirect(url_for("orders"))
+
+
+def _sample_from_form(db_session, sample: SampleRecord, form) -> str | None:
+    """Copy the sample form onto `sample`; return an error message or None."""
+    sample_id = form.get("sample_id", "").strip()
+    if not sample_id:
+        return "A sample needs an ID."
+    clash = db_session.scalar(select(SampleRecord.id).where(
+        SampleRecord.sample_id == sample_id, SampleRecord.id != (sample.id or 0)))
+    if clash:
+        return f"Sample ID {sample_id} is already used."
+    sample.sample_id = sample_id
+    sample.source_kind = form.get("source_kind", "").strip()
+    sample.source_ref = form.get("source_ref", "").strip()
+    sample.sample_type = form.get("sample_type", "").strip() or "custom"
+    sample.collection_date = parse_date(form.get("collection_date"))
+    sample.storage_location = form.get("storage_location", "").strip()
+    sample.amount = form.get("amount", "").strip()
+    sample.owner = form.get("owner", "").strip()
+    sample.notes = form.get("notes", "").strip()
+    return None
+
+
 @app.route("/samples", methods=["GET", "POST"])
 @login_required
 def samples():
     with SessionLocal() as db_session:
-        animals = db_session.scalars(select(AnimalRecord).order_by(AnimalRecord.animal_id)).all()
         if request.method == "POST":
-            db_session.add(
-                SampleRecord(
-                    sample_id=request.form["sample_id"],
-                    animal_id_fk=int(request.form["animal_id_fk"]),
-                    sample_type=request.form["sample_type"],
-                    collection_date=parse_date(request.form.get("collection_date")),
-                    storage_location=request.form.get("storage_location", ""),
-                    amount=request.form.get("amount", ""),
-                    notes=request.form.get("notes", ""),
-                )
-            )
-            db_session.commit()
+            sample = SampleRecord()
+            error = _sample_from_form(db_session, sample, request.form)
+            if error:
+                flash(error, "error")
+            else:
+                if not sample.owner and g.user:
+                    sample.owner = g.user.username
+                db_session.add(sample)
+                db_session.commit()
+                flash(f"Added sample {sample.sample_id}.", "success")
             return redirect(url_for("samples"))
 
         all_samples = db_session.scalars(select(SampleRecord).order_by(SampleRecord.created_at.desc())).all()
-    return render_template("samples.html", samples=all_samples, animals=animals, sample_types=SAMPLE_TYPE_OPTIONS)
+        sources = sample_sources(db_session)
+        usernames = current_lab_usernames(db_session)
+        rows = [{
+            "record": s,
+            "source_label": sample_source_label(s.source_kind, sources),
+            "editable": access.can_edit(s),
+        } for s in all_samples]
+    return render_template(
+        "samples.html", samples=rows, sources=sources, usernames=usernames,
+        sample_types=SAMPLE_TYPE_OPTIONS,
+    )
+
+
+@app.route("/samples/<int:sample_row_id>/update", methods=["POST"])
+@login_required
+def update_sample(sample_row_id: int):
+    with SessionLocal() as db_session:
+        sample = db_session.get(SampleRecord, sample_row_id)
+        if sample is None:
+            flash("That sample no longer exists.", "error")
+            return redirect(url_for("samples"))
+        if not access.can_edit(sample):
+            flash(access.reason_denied(sample), "error")
+            return redirect(url_for("samples"))
+        error = _sample_from_form(db_session, sample, request.form)
+        if error:
+            flash(error, "error")
+            return redirect(url_for("samples"))
+        stamp_updated(sample)
+        db_session.commit()
+        flash(f"Saved sample {sample.sample_id}.", "success")
+    return redirect(url_for("samples"))
+
+
+@app.route("/samples/<int:sample_row_id>/delete", methods=["POST"])
+@login_required
+def delete_sample(sample_row_id: int):
+    with SessionLocal() as db_session:
+        sample = db_session.get(SampleRecord, sample_row_id)
+        if sample is None:
+            return redirect(url_for("samples"))
+        if not access.can_edit(sample):
+            flash(access.reason_denied(sample), "error")
+            return redirect(url_for("samples"))
+        label = sample.sample_id
+        log_delete(db_session, "samples", sample.id, label)
+        db_session.delete(sample)
+        db_session.commit()
+        flash(f"Deleted sample {label}.", "success")
+    return redirect(url_for("samples"))
 
 
 @app.route("/calendar", methods=["GET"])
@@ -4441,8 +4664,15 @@ def _zebrafish_context(active_view: str):
             select(FishSacLog).order_by(FishSacLog.recorded_at.desc()).limit(100)
         ).all()
 
-        next_tank_n = (s.scalar(select(func.count(TankRecord.id))) or 0) + 1
-        next_clutch_n = (s.scalar(select(func.count(ClutchRecord.id))) or 0) + 1
+        # Next free IDs. count + 1 collides as soon as anything is deleted.
+        taken_tanks = set(s.scalars(select(TankRecord.tank_id)))
+        next_tank_n = len(taken_tanks) + 1
+        while f"T{next_tank_n:03d}" in taken_tanks:
+            next_tank_n += 1
+        taken_clutches = set(s.scalars(select(ClutchRecord.clutch_id)))
+        next_clutch_n = len(taken_clutches) + 1
+        while f"C{date.today().strftime('%y%m%d')}-{next_clutch_n}" in taken_clutches:
+            next_clutch_n += 1
 
     return {
         "active_view": active_view if active_view in ZEBRAFISH_VIEWS else "tanks",
@@ -4483,7 +4713,10 @@ def zebrafish_create_tank():
     with SessionLocal() as s:
         tank_id = (request.form.get("tank_id") or "").strip()
         if not tank_id:
-            n = (s.scalar(select(func.count(TankRecord.id))) or 0) + 1
+            taken = set(s.scalars(select(TankRecord.tank_id)))
+            n = len(taken) + 1
+            while f"T{n:03d}" in taken:
+                n += 1
             tank_id = f"T{n:03d}"
         rack_id = request.form.get("rack_id_fk") or None
         line_id = request.form.get("line_id_fk") or None
@@ -4722,7 +4955,11 @@ def zebrafish_line_detail(line_id: int):
         children = s.scalars(select(FishLine).where(FishLine.parent_line_id_fk == ln.id)).all()
 
         # Tanks currently holding this line.
-        line_tanks = s.scalars(select(TankRecord).where(TankRecord.line_id_fk == ln.id)).all()
+        # Racks are read after the session closes, so load them now.
+        line_tanks = s.scalars(
+            select(TankRecord).options(joinedload(TankRecord.rack))
+            .where(TankRecord.line_id_fk == ln.id).order_by(TankRecord.tank_id)
+        ).all()
 
         all_lines = s.scalars(select(FishLine).order_by(FishLine.name)).all()
 

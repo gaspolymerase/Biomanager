@@ -32,6 +32,7 @@ from .models import (
 )
 from . import access
 from . import organism_service as svc
+from .icons import housing_icon
 from .organisms import (
     AGE_UNITS,
     FIELD_ENTITIES,
@@ -46,16 +47,18 @@ bp = Blueprint("organisms", __name__, url_prefix="/organisms")
 
 # The sub-views a module can show, in order, each gated on a capability.
 # `None` means always available.
+# The icon for "animals" and "housing" is filled in per module (see
+# _views_for), so flies get a fly and vials, worms a worm and plates.
 MODULE_VIEWS = [
-    ("animals", "Animals", "layers", None),
-    ("housing", "Housing", "box", "housing"),
-    ("lines", "Lines", "git-branch", "lines"),
-    ("crosses", "Crosses", "heart-handshake", "crosses"),
+    ("animals", "Animals", None, None),
+    ("housing", "Housing", None, "housing"),
+    ("lines", "Lines", "sitemap", "lines"),
+    ("crosses", "Crosses", "heart", "crosses"),
     ("cohorts", "Cohorts", "baby", "cohorts"),
     ("schedule", "Schedule", "calendar-clock", "schedule"),
-    ("environment", "Environment", "droplets", "environment"),
+    ("environment", "Environment", "droplet", "environment"),
     ("preservation", "Cryo", "snowflake", "preservation"),
-    ("settings", "Configure", "settings-2", None),
+    ("settings", "Configure", "sliders", None),
 ]
 
 
@@ -122,6 +125,10 @@ def _views_for(mv: svc.ModuleView) -> list[dict]:
         # "Animals" is meaningless if the module tracks neither.
         if key == "animals" and not mv.any_of("individuals", "group_counts"):
             continue
+        if key == "animals":
+            icon = mv.icon
+        elif key == "housing":
+            icon = housing_icon(mv.housing_noun)
         out.append({"key": key, "label": label, "icon": icon})
     return out
 

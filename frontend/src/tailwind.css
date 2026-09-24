@@ -162,6 +162,17 @@
     --color-warn-50:    #35280F;
     --color-danger-50:  #3A1C1A;
     --color-info-50:    #10263E;
+    /* Text and border shades on tinted backgrounds. Without these, every
+       warning, success and danger badge kept its light-mode dark text. */
+    --color-ok-700:     #4ADE80;
+    --color-warn-700:   #FFB340;
+    --color-danger-700: #FF6961;
+    --color-brand-800:  #5FD8C2;
+    --color-brand-900:  #8EE6D6;
+    --color-ok-200:     #1E4A2A;
+    --color-warn-200:   #5A4115;
+    --color-danger-200: #5C2622;
+    --color-info-200:   #173E66;
 
     --material-sidebar: rgba(32, 32, 34, 0.72);
     --material-bar:     rgba(38, 38, 40, 0.72);
@@ -897,6 +908,475 @@
 }
 
 /* ===========================================================================
+   TOOLBAR MENUS, CHIPS AND THE EDITABLE SHEET
+   Shared by every database page. The mouse sheet is the fullest user:
+   editable cells, pinned columns, pill dropdowns and a save indicator.
+   =========================================================================== */
+
+@layer components {
+
+  /* A pressed toolbar button (a sort or hidden columns are in effect). */
+  .dt-toolbar-btn.is-active { @apply bg-brand-50 text-brand-700; }
+  .dt-toolbar-btn.is-active svg { @apply text-brand-600; }
+
+  /* --- Quick filter chips ---------------------------------------------- */
+
+  .dt-chips { @apply inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-sand-100 p-0.5; }
+  .dt-chip {
+    @apply inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border-0
+           bg-transparent px-2.5 text-[12px] font-medium text-muted transition-colors;
+  }
+  .dt-chip:hover { @apply text-ink-soft; }
+  .dt-chip[aria-pressed="true"] { @apply bg-surface text-ink shadow-xs; }
+  .dt-chip-count { @apply text-[11px] font-semibold tabular-nums text-sand-400; }
+  .dt-chip[aria-pressed="true"] .dt-chip-count { @apply text-brand-600; }
+
+  /* --- Popover menu (Columns, Sort) ------------------------------------ */
+
+  .dt-menu {
+    @apply fixed z-100 flex min-w-[200px] max-w-[280px] flex-col overflow-y-auto
+           rounded-xl border border-hairline bg-surface p-1 shadow-pop;
+    animation: pop-in 0.12s var(--ease-out-soft);
+  }
+  .dt-menu-title {
+    @apply px-2.5 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.07em]
+           text-sand-400;
+  }
+  .dt-menu-item {
+    @apply flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent
+           px-2.5 py-1.5 text-left text-[12.5px] text-ink-soft transition-colors;
+  }
+  .dt-menu-item:hover { @apply bg-sand-100 text-ink; }
+  .dt-menu-item.is-active { @apply font-semibold text-brand-700; }
+  .dt-menu-item input { @apply size-3.5 shrink-0 accent-brand-600; }
+  .dt-menu-action {
+    @apply mt-1 w-full cursor-pointer rounded-md border-0 border-t border-sand-100
+           bg-transparent px-2.5 py-1.5 text-left text-[12px] font-medium text-brand-700;
+  }
+  .dt-menu-action:hover { @apply bg-brand-50; }
+
+  /* --- The sheet --------------------------------------------------------- */
+
+  /* The sheet scrolls inside its card, both ways, so the header row stays
+     visible down a long colony and the ID column stays visible across. */
+  .sheet .dt-scroll {
+    @apply overflow-auto;
+    max-height: max(360px, calc(100dvh - 250px));
+  }
+  .sheet-table { @apply w-max min-w-full table-fixed; }
+  .sheet-table thead th { @apply z-20 bg-sand-50; }
+
+  /* Cells are solid, not translucent, so pinned columns hide what slides
+     beneath them. */
+  .sheet-table tbody td { @apply h-9 bg-surface px-1.5 py-0; }
+  .sheet-table tbody tr:hover td { @apply bg-sand-50; }
+  .sheet-table tbody tr.is-selected td { @apply bg-brand-50; }
+  .sheet-table tbody tr.is-inactive td { @apply text-sand-400; }
+  .sheet-table tbody tr.is-inactive :is(input, select) { @apply text-sand-400; }
+
+  /* Pinned columns: the checkbox and ID on the left, actions on the right. */
+  .sheet-pin { @apply sticky z-10; }
+  .sheet-table thead .sheet-pin { @apply z-30; }
+  .sheet-pin-0 { @apply left-0 text-center; }
+  .sheet-pin-1 { left: 40px; box-shadow: inset -1px 0 0 var(--color-hairline); }
+  .sheet-pin-end { @apply right-0; box-shadow: inset 1px 0 0 var(--color-hairline); }
+  /* On a phone, pinning both edges leaves no room for the data between
+     them; keep the ID pinned and let the actions scroll. */
+  @media (max-width: 640px) {
+    .sheet-pin-end { @apply static; box-shadow: none; }
+  }
+  /* The first column pinned on its own (sheets without a checkbox). */
+  .sheet-pin-start { @apply left-0; box-shadow: inset -1px 0 0 var(--color-hairline); }
+
+  /* Read-only cells: long text stays on one line and shows in full on hover. */
+  .sheet-table td.sheet-text { @apply max-w-0 truncate px-2.5; }
+  .sheet-table tbody td:not(:has(input, select, .sheet-actions, .sheet-id)) { @apply px-2.5; }
+  .sheet-title { @apply truncate text-[12.5px] font-semibold text-ink; }
+
+  /* "Mouse · 12" — where a sample came from. */
+  .source-chip { @apply inline-flex max-w-full items-center gap-1.5 truncate; }
+  .source-chip-kind {
+    @apply shrink-0 rounded-md bg-sand-100 px-1.5 py-px text-[11px] font-medium text-muted;
+  }
+
+  .sheet-table input[type="checkbox"] { @apply size-3.5 cursor-pointer accent-brand-600; }
+
+  /* Editable cells read as plain text until hovered or focused. */
+  .sheet-table td > input:not([type="checkbox"]),
+  .sheet-table td > select,
+  .sheet-table .owner-cell-wrap > input {
+    @apply h-7 w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5
+           text-[12.5px] text-ink-soft shadow-none transition-colors duration-100;
+  }
+  .sheet-table td > input:not([type="checkbox"]):not(:disabled):hover,
+  .sheet-table td > select:not(:disabled):hover {
+    @apply border-hairline bg-surface;
+  }
+  .sheet-table td > input:not([type="checkbox"]):focus,
+  .sheet-table td > select:focus {
+    @apply border-brand-400 bg-surface text-ink;
+  }
+  .sheet-table td > input::placeholder { @apply text-sand-300; }
+  .sheet-table td > :is(input, select):disabled { @apply cursor-default opacity-100; }
+  .sheet-table input.ident { @apply font-mono text-[12px]; }
+  .sheet-table input.note-cell { @apply truncate; }
+
+  /* A native date field keeps its full "mm/dd/yyyy"; the picker glyph
+     only appears when you reach for it. */
+  .sheet-table input[type="date"] { @apply tabular-nums; }
+  .sheet-table input[type="date"]::-webkit-calendar-picker-indicator {
+    @apply cursor-pointer opacity-0 transition-opacity;
+  }
+  .sheet-table td:hover input[type="date"]::-webkit-calendar-picker-indicator,
+  .sheet-table input[type="date"]:focus::-webkit-calendar-picker-indicator { @apply opacity-50; }
+  /* An empty date shows nothing, not a row of "mm/dd/yyyy", until you
+     reach for it. data-empty is kept current by the sheet's script. */
+  .sheet-table input[type="date"][data-empty="1"]:not(:focus)::-webkit-datetime-edit { @apply opacity-0; }
+  .sheet-table td:hover input[type="date"][data-empty="1"]::-webkit-datetime-edit { @apply opacity-40; }
+
+  /* The same for the note placeholder. */
+  .sheet-table input.note-cell::placeholder { @apply text-transparent; }
+  .sheet-table tbody tr:hover input.note-cell::placeholder,
+  .sheet-table input.note-cell:focus::placeholder { @apply text-sand-300; }
+
+  /* ID cell: life dot, mono id, and a lock when the row is read only. */
+  .sheet-id { @apply flex items-center gap-2 pl-1; }
+  .sheet-id .ident { @apply text-[12.5px] font-semibold text-ink; }
+  .life-dot { @apply size-[7px] shrink-0 rounded-full bg-sand-300; }
+  .life-dot.is-alive { @apply bg-ok-600; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ok-600) 16%, transparent); }
+  .sheet-lock { @apply ml-auto text-sand-400; }
+  .sheet-lock svg { @apply size-3; }
+
+  .sheet-num { @apply px-2.5 text-right font-medium tabular-nums text-ink-soft; }
+  .sheet-unit { @apply ml-0.5 text-[11px] font-normal text-sand-400; }
+  .sheet-empty { @apply text-sand-300; }
+
+  /* Pill dropdowns. appearance:none drops the native arrow; a quiet
+     chevron returns on hover so they still read as choosable. */
+  .sheet-table select.sex-pill,
+  .sheet-table select.status-pill {
+    @apply h-6 cursor-pointer appearance-none rounded-full border-transparent px-2.5
+           text-[11.5px] font-semibold;
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 9px;
+  }
+  .sheet-table select.sex-pill { @apply w-11 px-0 text-center; text-align-last: center; }
+  .sheet-table select.status-pill { @apply w-auto max-w-full pr-5 capitalize; }
+  .sheet-table select.status-pill:not(:disabled):hover,
+  .sheet-table select.status-pill:focus {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+
+  .sex-pill { @apply bg-sand-100 text-muted; }
+  .sex-pill[data-sex="F"] { @apply bg-pink-50 text-pink-700; }
+  .sex-pill[data-sex="M"] { @apply bg-sky-50 text-sky-700; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .sex-pill[data-sex="F"] { @apply bg-pink-500/15 text-pink-300; }
+    :root:not([data-theme="light"]) .sex-pill[data-sex="M"] { @apply bg-sky-500/15 text-sky-300; }
+    :root:not([data-theme="light"]) :is(.status-pill, .status-pill-static)[data-status="transfer"],
+    :root:not([data-theme="light"]) .status-pill[data-status="retired"] { @apply bg-violet-500/15 text-violet-300; }
+  }
+  :root[data-theme="dark"] .sex-pill[data-sex="F"] { @apply bg-pink-500/15 text-pink-300; }
+  :root[data-theme="dark"] .sex-pill[data-sex="M"] { @apply bg-sky-500/15 text-sky-300; }
+  :root[data-theme="dark"] :is(.status-pill, .status-pill-static)[data-status="transfer"],
+  :root[data-theme="dark"] .status-pill[data-status="retired"] { @apply bg-violet-500/15 text-violet-300; }
+
+  .status-pill { @apply bg-sand-100 text-muted; }
+  .status-pill[data-status="experiment"],
+  .status-pill[data-status="experimental"] { @apply bg-info-50 text-info-600; }
+  .status-pill[data-status="breeder"],
+  .status-pill[data-status="breeding"] { @apply bg-brand-50 text-brand-700; }
+  .status-pill[data-status="geno"] { @apply bg-warn-50 text-warn-700; }
+  .status-pill[data-status="stock"] { @apply bg-ok-50 text-ok-700; }
+  .status-pill[data-status="transfer"],
+  .status-pill[data-status="retired"] { @apply bg-violet-50 text-violet-700; }
+  .status-pill[data-status="sac"] { @apply bg-danger-50 text-danger-700; }
+  /* Orders */
+  .status-pill[data-status="requested"] { @apply bg-warn-50 text-warn-700; }
+  .status-pill[data-status="ordered"] { @apply bg-info-50 text-info-600; }
+  .status-pill[data-status="received"] { @apply bg-ok-50 text-ok-700; }
+  .status-pill[data-status="cancelled"] { @apply bg-sand-100 text-sand-500 line-through; }
+  .sheet-table select.status-pill:focus,
+  .sheet-table select.sex-pill:focus { @apply ring-2 ring-brand-400/40; }
+
+  /* Row actions: always visible on touch, revealed on hover elsewhere. */
+  .sheet-actions { @apply flex items-center justify-end gap-0.5 pr-1; }
+  .sheet-actions form { @apply m-0; }
+  .sheet-actions .row-icon-btn:disabled { @apply cursor-not-allowed opacity-30; }
+  @media (hover: hover) {
+    .sheet-table tbody tr .sheet-actions { @apply opacity-40 transition-opacity; }
+    .sheet-table tbody tr:hover .sheet-actions,
+    .sheet-table tbody tr:focus-within .sheet-actions { @apply opacity-100; }
+  }
+  .sheet .row-icon-btn.danger-button:hover { @apply bg-danger-50 text-danger-600; }
+
+  /* Owner badge cell inside the sheet. */
+  .sheet-table .owner-cell-wrap { @apply relative h-7 pl-1.5; }
+  .sheet-table .owner-cell-wrap.has-badge > input {
+    @apply absolute inset-0 z-10 size-full cursor-pointer border-transparent bg-transparent
+           p-0 text-transparent;
+    caret-color: transparent;
+  }
+  .sheet-table .owner-cell-wrap.has-badge > input:focus {
+    @apply z-30 border-brand-400 bg-surface px-1.5 text-ink;
+    caret-color: currentColor;
+    cursor: text;
+  }
+
+  /* A cell whose save was refused. A tint, not a border stripe. */
+  .sheet-table td.has-error,
+  .sheet-table tbody tr:hover td.has-error { @apply bg-danger-50; }
+
+  /* Toolbar save indicator. */
+  .sheet-save { @apply max-w-[40ch] truncate text-[11.5px] text-muted; }
+  .sheet-save[data-state="saving"] { @apply text-sand-400; }
+  .sheet-save[data-state="saved"] { @apply text-ok-700; }
+  .sheet-save[data-state="error"] { @apply font-medium text-danger-700; }
+
+  /* The selection bar sits under the sheet rather than floating over it. */
+  .sheet .selbar { @apply rounded-none border-x-0 border-b-0; }
+}
+
+/* ===========================================================================
+   RECORD DIALOG — New / open record, used by the mouse sheet. Grouped
+   fields in a two-column grid, header and footer fixed, body scrolls.
+   =========================================================================== */
+
+@layer components {
+
+  .record-dialog { @apply w-[min(640px,calc(100vw-2rem))]; }
+  .record-dialog > form { @apply flex max-h-[86vh] flex-col; }
+
+  .record-dialog-head {
+    @apply flex items-start justify-between gap-3 border-b border-sand-100 px-5 pb-3 pt-4;
+  }
+  .record-dialog-head h3 { @apply text-[15px] font-semibold text-ink; }
+  .record-dialog-sub { @apply mt-0.5 text-[12px] text-muted; }
+
+  .record-dialog-body { @apply flex flex-col gap-4 overflow-y-auto px-5 py-4; }
+
+  .record-group {
+    @apply m-0 grid grid-cols-1 gap-x-3 gap-y-2.5 border-0 p-0 sm:grid-cols-2;
+  }
+  .record-group legend {
+    @apply mb-2 p-0 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-sand-400;
+  }
+  .record-dialog-body label { @apply field-label; }
+  .record-dialog-body label > :is(input, select, textarea) {
+    @apply field mt-1 normal-case tracking-normal;
+  }
+  .record-dialog-body label > :is(input, select, textarea):disabled {
+    @apply cursor-default bg-sand-50 text-ink-soft;
+  }
+  .record-wide { @apply col-span-full; }
+  .record-dialog-body textarea { @apply min-h-20 resize-y; }
+
+  .record-dialog-foot {
+    @apply flex items-center justify-end gap-2 border-t border-sand-100 bg-sand-50/60
+           px-5 py-3;
+  }
+  .record-dialog-hint { @apply mr-auto text-[12px] text-muted; }
+}
+
+/* ===========================================================================
+   FISH — segmented sub-views, flags, fold-out panels, rack grid, water.
+   =========================================================================== */
+
+@layer components {
+
+  /* Secondary segmented row (e.g. Tanks: table / rack grid / queue). */
+  .seg-sub { @apply bg-transparent p-0 shadow-none; }
+  .seg-sub .seg-item { @apply h-7 text-[12px]; }
+
+  /* A pill that is only a label (no dropdown). */
+  .status-pill-static {
+    @apply inline-flex h-6 items-center rounded-full bg-sand-100 px-2.5 text-[11.5px]
+           font-semibold capitalize text-muted;
+  }
+
+  /* Tank purposes and fish statuses share the status pill palette. */
+  :is(.status-pill, .status-pill-static)[data-status="alive"],
+  :is(.status-pill, .status-pill-static)[data-status="stock"] { @apply bg-ok-50 text-ok-700; }
+  :is(.status-pill, .status-pill-static)[data-status="breeding"],
+  :is(.status-pill, .status-pill-static)[data-status="mating"] { @apply bg-brand-50 text-brand-700; }
+  :is(.status-pill, .status-pill-static)[data-status="experiment"] { @apply bg-info-50 text-info-600; }
+  :is(.status-pill, .status-pill-static)[data-status="quarantine"] { @apply bg-warn-50 text-warn-700; }
+  :is(.status-pill, .status-pill-static)[data-status="geno"] { @apply bg-warn-50 text-warn-700; }
+  :is(.status-pill, .status-pill-static)[data-status="transfer"] { @apply bg-violet-50 text-violet-700; }
+  :is(.status-pill, .status-pill-static)[data-status="sac"] { @apply bg-danger-50 text-danger-700; }
+
+  /* On/off flag (a tank waiting for genotyping). */
+  .flag-toggle {
+    @apply inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-full border-0
+           bg-sand-100 px-2.5 text-[11.5px] font-medium text-muted transition-colors;
+  }
+  .flag-toggle:hover { @apply bg-sand-200 text-ink-soft; }
+  .flag-toggle-dot { @apply size-[7px] rounded-full bg-sand-300 transition-colors; }
+  .flag-toggle[aria-pressed="true"] { @apply bg-warn-50 text-warn-700; }
+  .flag-toggle[aria-pressed="true"] .flag-toggle-dot { @apply bg-warn-600; }
+
+  /* Link in a pinned name cell. */
+  .sheet-link { @apply block truncate px-1.5 text-[12.5px] font-semibold text-ink no-underline; }
+  .sheet-link:hover { @apply text-brand-700 underline; }
+
+  /* A secondary panel that folds away (sacrifice log, mating, new system). */
+  .fold-card { @apply card overflow-hidden; }
+  .fold-card > summary {
+    @apply flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[13px] font-semibold
+           text-ink-soft select-none;
+  }
+  .fold-card > summary::-webkit-details-marker { display: none; }
+  .fold-card > summary svg { @apply size-[14px] text-sand-400; }
+  .fold-card > summary::after {
+    content: ""; @apply ml-auto size-2 rotate-45 border-b-[1.5px] border-r-[1.5px] border-sand-400
+                        transition-transform;
+  }
+  .fold-card[open] > summary::after { @apply -rotate-[135deg]; }
+  .fold-card[open] > summary { @apply border-b border-sand-100; }
+  .fold-card-form {
+    @apply grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] items-end gap-3 px-4 py-3.5;
+  }
+  .fold-card-form label { @apply field-label; }
+  .fold-card-form label > :is(input, select) { @apply field mt-1 normal-case tracking-normal; }
+  .fold-card-form .btn { @apply h-8 justify-self-start; }
+
+  /* --- Rack grid ---------------------------------------------------- */
+
+  .rack-toolbar { @apply grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] items-end gap-3 px-4 py-3; }
+  .rack-toolbar label > :is(input, select) { @apply field mt-1 normal-case tracking-normal; }
+  .rack-toolbar .btn { @apply h-8 justify-self-start; }
+
+  .zfish-rack-shell { @apply flex flex-col gap-3 p-4; }
+  .zfish-rack-picker { @apply flex flex-wrap items-end gap-4; }
+  .zfish-rack-picker select { @apply field mt-1 w-auto min-w-40 normal-case tracking-normal; }
+  .zfish-rack-body { @apply grid gap-4 lg:grid-cols-[1fr_220px]; }
+  .zfish-rack-grid { @apply grid gap-1 overflow-x-auto rounded-xl bg-sand-100 p-2; }
+  .zfish-rack-corner { @apply size-full; }
+  .zfish-rack-col-label, .zfish-rack-row-label {
+    @apply grid place-items-center text-[10.5px] font-semibold text-sand-400;
+  }
+  .zfish-rack-cell {
+    @apply flex min-h-[52px] flex-col gap-1 rounded-lg border border-dashed border-sand-300
+           bg-surface/60 p-1 transition-colors;
+  }
+  .zfish-rack-cell.is-drop-target, .zfish-rack-tray.is-drop-target {
+    @apply border-brand-400 bg-brand-50;
+  }
+  .zfish-rack-tray { @apply flex flex-col gap-2 rounded-xl border border-dashed border-sand-300 p-3; }
+  .zfish-rack-tray h4 { @apply text-[11px] font-semibold uppercase tracking-[0.07em] text-sand-400; }
+  .zfish-rack-tray-items { @apply flex flex-wrap gap-1.5; }
+
+  .zfish-tube {
+    @apply flex min-w-0 cursor-grab flex-col rounded-md border border-hairline bg-surface px-1.5
+           py-1 shadow-xs active:cursor-grabbing;
+  }
+  .zfish-tube.is-dragging { @apply opacity-40; }
+  .zfish-tube-id { @apply font-mono text-[11px] font-semibold text-ink; }
+  .zfish-tube-line { @apply truncate text-[10px] text-muted; }
+  .zfish-tube-stock { @apply border-ok-200 bg-ok-50; }
+  .zfish-tube-breeding, .zfish-tube-mating { @apply border-brand-200 bg-brand-50; }
+  .zfish-tube-experiment { @apply border-info-200 bg-info-50; }
+  .zfish-tube-quarantine { @apply border-warn-200 bg-warn-50; }
+
+  /* --- Line lineage ------------------------------------------------- */
+
+  .lineage { @apply flex flex-wrap items-center gap-1.5 p-4; }
+  .lineage-node {
+    @apply rounded-lg border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-medium
+           text-ink-soft no-underline transition-colors;
+  }
+  a.lineage-node:hover { @apply border-brand-300 text-brand-700; }
+  .lineage-node.is-self { @apply border-brand-200 bg-brand-50 font-semibold text-brand-800; }
+  .lineage-arrow { @apply text-sand-300; }
+  .lineage-arrow svg { @apply size-3; }
+
+  /* --- Water systems ------------------------------------------------ */
+
+  .water-grid { @apply grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]; }
+  .water-log-form { @apply grid grid-cols-2 content-start gap-x-3 gap-y-2.5; }
+  .water-log-form label { @apply field-label; }
+  .water-log-form label > input:not([type="checkbox"]) { @apply field mt-1 normal-case tracking-normal; }
+  .water-alarm { @apply flex items-center gap-2 normal-case tracking-normal text-[12.5px] text-ink-soft; }
+  .water-alarm input { @apply size-3.5 accent-danger-600; }
+  .water-chart { @apply flex min-h-40 flex-col justify-center rounded-xl bg-sand-50 p-3; }
+  .water-chart-svg { @apply h-[140px] w-full; }
+  .water-chart-empty { @apply text-center text-[12.5px] text-muted; }
+  .water-legend { @apply mt-2 flex gap-4 text-[11.5px] text-muted; }
+  .water-legend span { @apply inline-flex items-center gap-1.5; }
+  .water-legend i { @apply inline-block size-2 rounded-full; }
+}
+
+/* ===========================================================================
+   PLASMIDS — view switcher, storage-box grid, list view, sequence drop zone.
+   =========================================================================== */
+
+@layer components {
+
+  .plasmid-view-switcher .dt-chip { @apply w-8 justify-center px-0; }
+  .plasmid-view-switcher .dt-chip svg { @apply size-[14px]; }
+  .plasmid-view-switcher .dt-chip.is-active { @apply bg-surface text-ink shadow-xs; }
+
+  .plasmid-view { @apply hidden; }
+  .plasmid-view.is-active { @apply block; }
+
+  /* Storage box grid */
+  .plasmid-box-header { @apply flex flex-wrap items-end gap-3 border-b border-sand-100 px-4 py-3; }
+  .plasmid-box-header :is(select, input) { @apply field mt-1 w-auto min-w-20 normal-case tracking-normal; }
+  .plasmid-box-shell { @apply grid gap-4 p-4 lg:grid-cols-[1fr_240px]; }
+  .plasmid-box-grid { @apply grid gap-1 overflow-x-auto rounded-xl bg-sand-100 p-2; }
+  .plasmid-box-corner { @apply size-full; }
+  .plasmid-box-col-label, .plasmid-box-row-label {
+    @apply grid place-items-center text-[10.5px] font-semibold text-sand-400;
+  }
+  .plasmid-box-cell {
+    @apply flex min-h-[54px] min-w-[64px] rounded-lg border border-dashed border-sand-300
+           bg-surface/60 p-0.5 transition-colors;
+  }
+  .plasmid-box-cell.is-drop-target, .plasmid-box-tray.is-drop-target { @apply border-brand-400 bg-brand-50; }
+  .plasmid-box-tray { @apply flex flex-col gap-2 rounded-xl border border-dashed border-sand-300 p-3; }
+  .plasmid-box-tray h4 { @apply text-[11px] font-semibold uppercase tracking-[0.07em] text-sand-400; }
+  .plasmid-box-tray-items { @apply flex flex-col gap-1.5; }
+  .plasmid-box-tray-empty { @apply text-[12px] text-muted; }
+
+  .plasmid-tube {
+    @apply min-w-0 flex-1 cursor-grab rounded-md border border-brand-200 bg-brand-50 shadow-xs
+           active:cursor-grabbing;
+  }
+  .plasmid-tube.is-dragging { @apply opacity-40; }
+  .plasmid-tube.is-dimmed { @apply opacity-25; }
+  .plasmid-tube-link { @apply flex min-w-0 flex-col px-1.5 py-1 no-underline; }
+  .plasmid-tube-id { @apply font-mono text-[11px] font-semibold text-brand-800; }
+  .plasmid-tube-name { @apply truncate text-[10.5px] text-ink-soft; }
+  .plasmid-tube-resist { @apply text-[10px] font-medium text-brand-700; }
+
+  /* List view */
+  .plasmid-list { @apply m-0 list-none divide-y divide-sand-100 p-0; }
+  .plasmid-list-row a {
+    @apply flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 no-underline transition-colors;
+  }
+  .plasmid-list-row a:hover { @apply bg-sand-50; }
+  .plasmid-list-id { @apply w-12 shrink-0 font-mono text-[12px] font-semibold text-muted; }
+  .plasmid-list-name { @apply min-w-0 flex-1 truncate text-[13px] font-medium text-ink; }
+  .plasmid-list-meta { @apply flex flex-wrap items-center gap-2 text-[12px] text-muted; }
+
+  /* Sequence file drop zone (new plasmid dialog) */
+  .dropzone {
+    @apply flex items-center gap-3 rounded-xl border border-dashed border-sand-300 bg-sand-50
+           px-4 py-3.5 text-[12.5px] text-muted transition-colors;
+  }
+  .dropzone > svg { @apply size-5 shrink-0 text-sand-400; }
+  .dropzone strong { @apply block font-semibold text-ink-soft; }
+  .dropzone.is-drop-target { @apply border-brand-400 bg-brand-50; }
+  .dropzone-browse {
+    @apply cursor-pointer border-0 bg-transparent p-0 font-medium text-brand-700 underline;
+  }
+  .dropzone-file { @apply ml-auto truncate font-mono text-[11.5px] text-ink-soft; }
+  .dropzone-paste > summary { @apply cursor-pointer text-[12px] font-medium text-brand-700; }
+  .dropzone-paste textarea { @apply field mt-2 min-h-24 font-mono text-[11.5px]; }
+}
+
+/* ===========================================================================
    COMMAND PALETTE (⌘K) — markup is generated by global-search.js.
    =========================================================================== */
 
@@ -962,8 +1442,10 @@
 
 @layer components {
 
+  /* m-auto restores the centring the browser gives a modal dialog, which
+     Tailwind's reset (margin: 0 on everything) removes. */
   dialog {
-    @apply max-h-[86vh] w-[min(560px,calc(100vw-2rem))] rounded-2xl border
+    @apply m-auto max-h-[86vh] w-[min(560px,calc(100vw-2rem))] rounded-2xl border
            border-hairline bg-surface p-0 text-ink shadow-pop;
   }
   dialog::backdrop { @apply bg-sand-950/25; }
@@ -1289,11 +1771,29 @@
 
   /* --- Dialog helpers used by the module templates ---------------------- */
 
-  .mouse-modal { @apply w-[min(92vw,760px)] p-5; }
+  /* Record dialogs across the app share one look with .record-dialog:
+     a full-width header, fields in two columns, Save at the bottom right.
+     The dialog keeps its padding (several bodies rely on it) and the
+     header bleeds out to the edges. */
+  .mouse-modal { @apply w-[min(92vw,640px)] p-5; }
   .wean-modal { @apply w-[min(94vw,880px)]; }
-  .modal-grid { @apply grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] items-end gap-3; }
+  .mouse-modal > .modal-topbar { @apply -mx-5 -mt-5 mb-4 px-5 pb-3 pt-4; }
+  .mouse-modal > .modal-topbar h3 { @apply text-[15px] font-semibold text-ink; }
+  .mouse-modal > .modal-body { @apply max-h-[64vh] p-0.5; }
+  .modal-grid { @apply grid grid-cols-1 items-end gap-x-3 gap-y-2.5 sm:grid-cols-2; }
   .modal-grid label { @apply field-label; }
-  .modal-grid button[type="submit"] { @apply btn btn-primary btn-lg col-span-full mt-1; }
+  .modal-grid label > :is(input, select, textarea) { @apply mt-1; }
+  .modal-grid button[type="submit"] {
+    @apply btn btn-primary sticky bottom-0 col-span-full mt-2 justify-self-end px-4 shadow-sm;
+  }
+  /* A checkbox reads as one line: box, then its label. */
+  :is(.modal-grid, .record-dialog-body) label:has(> input[type="checkbox"]) {
+    @apply flex flex-row items-center gap-2 self-center text-[12.5px] font-normal normal-case
+           tracking-normal text-ink-soft;
+  }
+  :is(.modal-grid, .record-dialog-body) label > input[type="checkbox"] {
+    @apply m-0 size-3.5 shrink-0 accent-brand-600;
+  }
   .wean-actions { @apply mt-3 flex items-center gap-2; }
   .wean-actions-spacer { @apply flex-1; }
 

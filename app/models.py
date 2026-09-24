@@ -70,19 +70,32 @@ class AnimalRecord(Base):
 
 
 class SampleRecord(Base):
+    """A harvested sample and where it came from.
+
+    The source used to be a required link to `animals`, a generic table the
+    app never fills, which made samples impossible to create. It is now a
+    kind (mouse, fish, organism:<module key>, other) plus the identifier
+    used in that colony, so a sample can come from any database.
+    """
+
     __tablename__ = "samples"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sample_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
-    animal_id_fk: Mapped[int] = mapped_column(ForeignKey("animals.id"))
+    animal_id_fk: Mapped[int | None] = mapped_column(ForeignKey("animals.id"), nullable=True)
+    source_kind: Mapped[str] = mapped_column(String(60), default="", index=True)
+    source_ref: Mapped[str] = mapped_column(String(120), default="")
     sample_type: Mapped[str] = mapped_column(String(80))
     collection_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     storage_location: Mapped[str] = mapped_column(String(120), default="")
     amount: Mapped[str] = mapped_column(String(80), default="")
+    owner: Mapped[str] = mapped_column(String(80), default="", index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_by: Mapped[str] = mapped_column(String(80), default="")
 
-    animal: Mapped["AnimalRecord"] = relationship(back_populates="samples")
+    animal: Mapped["AnimalRecord | None"] = relationship(back_populates="samples")
 
 
 class CalendarEvent(Base):

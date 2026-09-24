@@ -339,6 +339,31 @@ def seed_builtin_modules(session) -> list[str]:
     return created
 
 
+def repair_icon_names(session) -> int:
+    """Rewrite icon names the sprite no longer has, in module rows and their
+    schedule rules. Returns how many rows changed; idempotent."""
+    from .icons import known, resolve
+
+    names = known()
+    if not names:
+        return 0
+    changed = 0
+    for module in session.scalars(select(OrganismModule)):
+        dirty = False
+        if module.icon not in names:
+            module.icon = resolve(module.icon)
+            dirty = True
+        rules = load_list(module.schedule_rules)
+        for rule in rules:
+            if rule.get("icon") and rule["icon"] not in names:
+                rule["icon"] = resolve(rule["icon"])
+                dirty = True
+        if dirty:
+            module.schedule_rules = dump(rules)
+            changed += 1
+    return changed
+
+
 # ---------------------------------------------------------------------------
 # Fields
 # ---------------------------------------------------------------------------

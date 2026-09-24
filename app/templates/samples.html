@@ -2,111 +2,201 @@
 
 {% block page_title %}Samples{% endblock %}
 {% block page_heading %}Samples{% endblock %}
-{% block page_subtitle %}Harvested samples linked to source animals · {{ samples|length }} entr{{ 'y' if samples|length == 1 else 'ies' }}{% endblock %}
+{% block page_subtitle %}Harvested samples and the animal or line each came from{% endblock %}
+{% block page_shell_class %}shell-page-wide{% endblock %}
 
 {% block content %}
-<section class="data-table-card" data-table-id="samples">
+{% for source in sources %}
+  <datalist id="sample-src-{{ loop.index0 }}">
+    {% for ref in source.refs %}<option value="{{ ref }}"></option>{% endfor %}
+  </datalist>
+{% endfor %}
+<datalist id="sample-owner-options">
+  {% for username in usernames %}<option value="{{ username }}"></option>{% endfor %}
+</datalist>
+
+<section class="data-table-card sheet" data-table-id="samples-v2" data-noun="sample">
   <div class="dt-toolbar">
-    <button type="button" class="dt-view-pill" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#grid"></use></svg> Master view</button>
     <div class="dt-toolbar-search">
-      <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-      <input type="text" class="dt-search" placeholder="Search samples…" autocomplete="off">
+      {{ icon('search', 'search-icon') }}
+      <input type="text" class="dt-search" placeholder="Search ID, source, type, storage…" autocomplete="off" aria-label="Search samples">
     </div>
     <div class="dt-toolbar-spacer"></div>
-    <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
-    <button type="button" class="dt-toolbar-btn dt-btn-hide"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye-off"></use></svg> Hide</button>
-  </div>
-
-  <div class="dt-inline-form" id="sample-new-form">
-    <form method="post">
-      <label>Sample ID <input name="sample_id" required></label>
-      <label>Source Animal
-        <select name="animal_id_fk" required>
-          {% for animal in animals %}<option value="{{ animal.id }}">{{ animal.animal_id }} ({{ animal.species }})</option>{% endfor %}
-        </select>
-      </label>
-      <label>Sample Type
-        <select name="sample_type">
-          {% for sample_type in sample_types %}<option value="{{ sample_type }}">{{ sample_type }}</option>{% endfor %}
-        </select>
-      </label>
-      <label>Collection Date <input type="date" name="collection_date"></label>
-      <label>Storage Location <input name="storage_location"></label>
-      <label>Amount <input name="amount" placeholder="e.g. 250 uL"></label>
-      <label style="grid-column: 1 / -1;">Notes <textarea name="notes" rows="2"></textarea></label>
-      <div class="dt-inline-form-actions">
-        <button type="button" class="dt-bottom-action" onclick="document.getElementById('sample-new-form').classList.remove('is-open')">Cancel</button>
-        <button type="submit" class="dt-bottom-action is-primary">Save sample</button>
-      </div>
-    </form>
+    <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
+    <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+    <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+            data-record-edit="sample-dialog" data-record-payload='{{ {"owner": current_user.username} | tojson }}'>
+      {{ icon('plus') }} New sample
+    </button>
   </div>
 
   <div class="dt-scroll">
-    <table class="dt" data-resizable="1">
+    <table class="dt sheet-table" data-resizable="1">
       <thead>
         <tr>
-          <th style="width: 36px; min-width: 36px;"><input type="checkbox" class="dt-select-all" aria-label="Select all"></th>
-          <th class="dt-sortable" data-sort-key="sid" style="width: 200px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Sample<span class="dt-sort-indicator"></span></span>
+          <th class="dt-sortable sheet-pin sheet-pin-start" data-sort-key="sid" style="width: 150px; min-width: 150px;">
+            <span class="dt-col-head"><span class="dt-col-type is-id"></span>Sample<span class="dt-sort-indicator"></span></span>
           </th>
-          <th class="dt-sortable" data-sort-key="animal" style="width: 160px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Source animal<span class="dt-sort-indicator"></span></span>
+          <th class="dt-sortable" data-sort-key="source" style="width: 190px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Source<span class="dt-sort-indicator"></span></span>
           </th>
-          <th class="dt-sortable" data-sort-key="type" style="width: 140px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Type<span class="dt-sort-indicator"></span></span>
+          <th class="dt-sortable" data-sort-key="type" style="width: 120px;">
+            <span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Type<span class="dt-sort-indicator"></span></span>
           </th>
-          <th class="dt-sortable" data-sort-key="storage" style="width: 200px;">
+          <th class="dt-sortable" data-sort-key="date" style="width: 130px;">
+            <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Collected<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="storage" style="width: 190px;">
             <span class="dt-col-head"><span class="dt-col-type is-text"></span>Storage<span class="dt-sort-indicator"></span></span>
           </th>
           <th class="dt-sortable" data-sort-key="amount" style="width: 110px;">
             <span class="dt-col-head"><span class="dt-col-type is-text"></span>Amount<span class="dt-sort-indicator"></span></span>
           </th>
-          <th class="dt-sortable" data-sort-key="date" style="width: 140px;">
-            <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Collected<span class="dt-sort-indicator"></span></span>
+          <th class="dt-sortable" data-sort-key="owner" style="width: 84px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner<span class="dt-sort-indicator"></span></span>
           </th>
+          <th style="min-width: 240px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Notes</span>
+          </th>
+          <th class="sheet-pin sheet-pin-end" style="width: 72px; min-width: 72px;"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
       <tbody>
-        {% for s in samples %}
+        {% for row in samples %}
+          {% set s = row.record %}
           <tr data-id="{{ s.id }}"
-              data-sid="{{ (s.sample_id or '')|lower }}"
-              data-animal="{{ (s.animal.animal_id if s.animal else '')|lower }}"
+              data-sid="{{ s.sample_id|lower }}"
+              data-source="{{ (row.source_label ~ ' ' ~ s.source_ref)|lower }}"
               data-type="{{ (s.sample_type or '')|lower }}"
               data-storage="{{ (s.storage_location or '')|lower }}"
               data-amount="{{ (s.amount or '')|lower }}"
+              data-owner="{{ s.owner or '' }}"
               data-date="{{ s.collection_date or '' }}">
-            <td><input type="checkbox" class="dt-row-check" aria-label="Select row"></td>
-            <td><span class="dt-row-icon"></span><span class="dt-row-name">{{ s.sample_id }}</span></td>
-            <td>{{ s.animal.animal_id if s.animal else '' }}</td>
-            <td>{{ s.sample_type }}</td>
+            <td class="sheet-pin sheet-pin-start"><span class="sheet-id"><span class="ident">{{ s.sample_id }}</span></span></td>
+            <td>
+              {% if row.source_label or s.source_ref %}
+                <span class="source-chip">
+                  {% if row.source_label %}<span class="source-chip-kind">{{ row.source_label }}</span>{% endif %}
+                  <span class="ident">{{ s.source_ref or '—' }}</span>
+                </span>
+              {% else %}<span class="sheet-empty">–</span>{% endif %}
+            </td>
+            <td>{% if s.sample_type %}<span class="badge badge-quiet capitalize">{{ s.sample_type }}</span>{% endif %}</td>
+            <td class="tabular-nums">{{ s.collection_date.strftime('%b %d, %Y') if s.collection_date else '' }}</td>
             <td>{{ s.storage_location }}</td>
-            <td>{{ s.amount }}</td>
-            <td>{{ s.collection_date.strftime('%b %d, %Y') if s.collection_date else '' }}</td>
+            <td class="tabular-nums">{{ s.amount }}</td>
+            <td>{% if s.owner %}{{ s.owner | owner_badge }}{% endif %}</td>
+            <td class="sheet-text" title="{{ s.notes }}">{{ s.notes }}</td>
+            <td class="sheet-pin sheet-pin-end">
+              <div class="sheet-actions">
+                <button type="button" class="row-icon-btn" title="Open sample {{ s.sample_id }}"
+                        data-record-edit="sample-dialog"
+                        data-record-payload='{{ {
+                          "id": s.id, "_label": s.sample_id, "_locked": not row.editable,
+                          "sample_id": s.sample_id, "source_kind": s.source_kind, "source_ref": s.source_ref,
+                          "sample_type": s.sample_type,
+                          "collection_date": s.collection_date.isoformat() if s.collection_date else "",
+                          "storage_location": s.storage_location, "amount": s.amount,
+                          "owner": s.owner, "notes": s.notes } | tojson }}'>{{ icon('edit') }}</button>
+                <form method="post" action="{{ url_for('delete_sample', sample_row_id=s.id) }}"
+                      onsubmit="return confirm('Delete sample {{ s.sample_id }}?')">
+                  <button type="submit" class="row-icon-btn danger-button" title="Delete sample {{ s.sample_id }}"
+                          {% if not row.editable %}disabled{% endif %}>{{ icon('trash') }}</button>
+                </form>
+              </div>
+            </td>
           </tr>
         {% else %}
-          <tr><td class="dt-empty" colspan="7">No samples yet. Click <strong>+ Add entry</strong> below to create one.</td></tr>
+          <tr><td class="dt-empty" colspan="9">
+            No samples yet. Use <strong>New sample</strong> to record one. It can come from any colony: a mouse, a fish tank, a fly stock or a worm strain.
+          </td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
   <div class="dt-bottom-bar">
-    <span class="dt-bottom-count dt-count">{{ samples|length }} entr{{ 'y' if samples|length == 1 else 'ies' }}</span>
-    <button type="button" class="dt-bottom-action is-primary" onclick="document.getElementById('sample-new-form').classList.add('is-open')">
-      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add entry
-    </button>
+    <span class="dt-bottom-count dt-count">{{ samples|length }} {{ 'sample' if samples|length == 1 else 'samples' }}</span>
     <div class="dt-bottom-spacer"></div>
     <div class="dt-pagination">
       <span class="dt-page-label">Page 1</span>
-      <button type="button" class="dt-prev" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-left"></use></svg></button>
-      <button type="button" class="dt-next" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg></button>
-      <select class="dt-page-size">
-        <option value="25">25</option>
-        <option value="50" selected>50</option>
-        <option value="100">100</option>
+      <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+      <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+      <select class="dt-page-size" aria-label="Rows per page">
+        <option value="50">50</option>
+        <option value="100" selected>100</option>
+        <option value="100000">All</option>
       </select>
-      <span>per page</span>
     </div>
   </div>
 </section>
+
+<dialog id="sample-dialog" class="record-dialog" aria-labelledby="sample-dialog-title">
+  <form method="post" data-record-form
+        data-create-action="{{ url_for('samples') }}"
+        data-update-action="{{ url_for('update_sample', sample_row_id=0) }}"
+        data-new-title="New sample" data-edit-title="Sample {label}"
+        data-new-submit="Create sample" data-edit-submit="Save">
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="sample-dialog-title" data-record-title>New sample</h3>
+        <p class="record-dialog-sub">Pick the colony it came from, then the animal, tank, stock or strain.</p>
+      </div>
+      <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <fieldset class="record-group">
+        <legend>Sample</legend>
+        <label>Sample ID <input name="sample_id" required autocomplete="off"></label>
+        <label>Type
+          <select name="sample_type">
+            {% for sample_type in sample_types %}<option value="{{ sample_type }}">{{ sample_type|capitalize }}</option>{% endfor %}
+          </select>
+        </label>
+      </fieldset>
+      <fieldset class="record-group">
+        <legend>Source</legend>
+        <label>From
+          <select name="source_kind" data-source-kind>
+            <option value="">Not recorded</option>
+            {% for source in sources %}
+              <option value="{{ source.kind }}" data-list="sample-src-{{ loop.index0 }}">{{ source.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>ID in that colony <input name="source_ref" data-source-ref autocomplete="off" placeholder="e.g. mouse 12, tank T004"></label>
+      </fieldset>
+      <fieldset class="record-group">
+        <legend>Storage</legend>
+        <label>Collected <input type="date" name="collection_date"></label>
+        <label>Amount <input name="amount" placeholder="e.g. 250 µL"></label>
+        <label>Location <input name="storage_location" placeholder="freezer · rack · box"></label>
+        <label>Owner <input name="owner" list="sample-owner-options"></label>
+      </fieldset>
+      <label class="record-wide">Notes <textarea name="notes" rows="3"></textarea></label>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary" data-record-submit>Create sample</button>
+    </footer>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block body_end %}
+<script>
+  /* The ID field suggests identifiers from whichever colony is chosen. */
+  (function () {
+    const dialog = document.getElementById('sample-dialog');
+    const kind = dialog.querySelector('[data-source-kind]');
+    const ref = dialog.querySelector('[data-source-ref]');
+    const sync = () => {
+      const option = kind.selectedOptions[0];
+      const list = option && option.dataset.list;
+      if (list) ref.setAttribute('list', list); else ref.removeAttribute('list');
+    };
+    kind.addEventListener('change', sync);
+    dialog.addEventListener('record-dialog:open', sync);
+  })();
+</script>
 {% endblock %}

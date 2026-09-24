@@ -212,7 +212,8 @@
     <script src="{{ url_for('static', filename='shell.js') }}?v={{ asset_version('shell.js') }}" defer></script>
     <script src="{{ url_for('static', filename='tab-bar.js') }}?v={{ asset_version('tab-bar.js') }}" defer></script>
     <script src="{{ url_for('static', filename='selection-bar.js') }}?v={{ asset_version('selection-bar.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='data-table.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='data-table.js') }}?v={{ asset_version('data-table.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='record-dialog.js') }}?v={{ asset_version('record-dialog.js') }}" defer></script>
     <script src="{{ url_for('static', filename='csv-import.js') }}" defer></script>
     <script src="{{ url_for('static', filename='global-search.js') }}" defer></script>
     {% block body_end %}{% endblock %}
