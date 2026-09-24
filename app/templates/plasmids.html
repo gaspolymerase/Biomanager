@@ -1,205 +1,125 @@
 {% extends "base.html" %}
 
-{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
-{% block legacy %}1{% endblock %}
-
 {% block page_title %}Plasmids{% endblock %}
 {% block page_heading %}Plasmids{% endblock %}
-{% block page_subtitle %}Reference a plasmid in the notebook with <code class="ident">@plasmid 123</code> · {{ plasmids|length }} entr{{ 'y' if plasmids|length == 1 else 'ies' }}{% endblock %}
+{% block page_subtitle %}Reference a plasmid in the notebook with <code class="ident">@plasmid 123</code>{% endblock %}
+{% block page_shell_class %}shell-page-wide{% endblock %}
 
 {% block content %}
 <datalist id="plasmid-resistance">
   <option value="Amp"></option><option value="Kan"></option><option value="Cam"></option>
   <option value="Spec"></option><option value="Hyg"></option><option value="Puro"></option>
 </datalist>
+<datalist id="plasmid-existing-boxes">
+  {% for b in boxes %}<option value="{{ b }}"></option>{% endfor %}
+</datalist>
 
-<section class="data-table-card" data-table-id="plasmids" id="plasmids-section">
+<section class="data-table-card sheet" data-table-id="plasmids-v2" data-noun="plasmid" id="plasmids-section">
   <div class="dt-toolbar">
-    <div class="plasmid-view-switcher" role="tablist" aria-label="View mode">
-      <button type="button" class="plasmid-view-btn is-active" data-view="table" title="Table view">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#table"></use></svg>
-      </button>
-      <button type="button" class="plasmid-view-btn" data-view="cards" title="Card view">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#grid"></use></svg>
-      </button>
-      <button type="button" class="plasmid-view-btn" data-view="list" title="List view">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#list"></use></svg>
-      </button>
+    <div class="dt-chips plasmid-view-switcher" role="tablist" aria-label="View">
+      <button type="button" class="dt-chip plasmid-view-btn is-active" data-view="table" title="Table" aria-label="Table view">{{ icon('table') }}</button>
+      <button type="button" class="dt-chip plasmid-view-btn" data-view="cards" title="Storage boxes" aria-label="Storage box view">{{ icon('grid') }}</button>
+      <button type="button" class="dt-chip plasmid-view-btn" data-view="list" title="List" aria-label="List view">{{ icon('list') }}</button>
     </div>
     <div class="dt-toolbar-search">
-      <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-      <input type="text" class="dt-search" placeholder="Search plasmids…" autocomplete="off">
+      {{ icon('search', 'search-icon') }}
+      <input type="text" class="dt-search" placeholder="Search name, backbone, insert…" autocomplete="off" aria-label="Search plasmids">
     </div>
     <div class="dt-toolbar-spacer"></div>
-    <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
-    <button type="button" class="dt-toolbar-btn dt-btn-hide"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye-off"></use></svg> Hide</button>
-    <button type="button" class="dt-toolbar-btn" onclick="openCsvImport('plasmid')" title="Bulk-load plasmids from a CSV file">
-      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg> Import
+    <span class="sheet-save" data-save-status aria-live="polite"></span>
+    <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
+    <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+    <button type="button" class="dt-toolbar-btn" onclick="openCsvImport('plasmid')" title="Load plasmids from a CSV file">{{ icon('import') }} Import</button>
+    <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]" onclick="document.getElementById('plasmid-new-modal').showModal()">
+      {{ icon('plus') }} New plasmid
     </button>
   </div>
 
-  <dialog id="plasmid-new-modal" class="mouse-modal plasmid-new-modal">
-    <form method="dialog" class="modal-topbar">
-      <h3>New plasmid</h3>
-      <button type="submit" class="ghost-button">Close</button>
-    </form>
-    <form method="post" enctype="multipart/form-data" class="plasmid-new-form-grid" id="plasmid-new-form">
-      <div class="plasmid-new-section">
-        <div class="plasmid-new-section-title">Identity</div>
-        <div class="plasmid-new-fields">
-          <label>PID <input name="plasmid_id" value="{{ next_plasmid_id }}" readonly></label>
-          <label class="is-wide">Name <input name="name" required autofocus placeholder="e.g. pCMV-mCherry-NLS"></label>
-          <label>Backbone <input name="backbone" placeholder="e.g. pcDNA3.1"></label>
-          <label>Insert <input name="insert_seq" placeholder="What's cloned in"></label>
-          <label>Resistance <input name="resistance" list="plasmid-resistance"></label>
-          <label>Owner <input name="owner" value="{{ current_user.username if current_user else '' }}"></label>
-          <label class="is-wide">Notes <input name="notes" placeholder="Source, ref, etc."></label>
-        </div>
-      </div>
-
-      <div class="plasmid-new-section">
-        <div class="plasmid-new-section-title">Physical storage</div>
-        <div class="plasmid-new-fields">
-          <label class="is-wide">Location label <input name="location" placeholder="e.g. -80 freezer, shelf 2"></label>
-          <label>Box <input name="storage_box" list="plasmid-existing-boxes" placeholder="e.g. Plasmid box A"></label>
-          <label>Row <input name="box_row" type="number" min="0" max="19" placeholder="0–19"></label>
-          <label>Col <input name="box_col" type="number" min="0" max="19" placeholder="0–19"></label>
-        </div>
-        <datalist id="plasmid-existing-boxes">
-          {% for b in boxes %}<option value="{{ b }}"></option>{% endfor %}
-        </datalist>
-      </div>
-
-      <div class="plasmid-new-section">
-        <div class="plasmid-new-section-title">Sequence <span class="muted-inline">(optional)</span></div>
-        <div id="plasmid-new-dropzone" class="plasmid-dropzone">
-          <input type="file" id="plasmid-new-file" name="sequence_file" accept=".dna,.fasta,.fa,.gb,.gbk,.txt" hidden>
-          <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg>
-          <div class="plasmid-dropzone-text">
-            <strong>Drop a .dna / .gb / .gbk / .fasta file here</strong>
-            <span>or <button type="button" class="plasmid-dropzone-browse" onclick="document.getElementById('plasmid-new-file').click()">browse</button> to upload</span>
-          </div>
-          <div class="plasmid-dropzone-filename" id="plasmid-new-filename"></div>
-        </div>
-        <details class="plasmid-paste-details">
-          <summary>…or paste the sequence text</summary>
-          <textarea name="sequence_text" rows="5" placeholder="LOCUS … (GenBank), >name … (FASTA), or raw ATGC"></textarea>
-        </details>
-      </div>
-
-      <div class="plasmid-new-actions">
-        <button type="button" class="dt-bottom-action" onclick="document.getElementById('plasmid-new-modal').close()">Cancel</button>
-        <button type="submit" class="dt-bottom-action is-primary">Save plasmid</button>
-      </div>
-    </form>
-  </dialog>
-
   <div class="plasmid-view plasmid-view-table is-active" data-view="table">
-  <div class="dt-scroll">
-    <table class="dt" data-resizable="1">
-      <thead>
-        <tr>
-          <th style="width: 36px; min-width: 36px;"><input type="checkbox" class="dt-select-all" aria-label="Select all"></th>
-          <th class="dt-sortable" data-sort-key="pid" style="width: 90px;">
-            <span class="dt-col-head"><span class="dt-col-type is-id"></span>PID<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th class="dt-sortable" data-sort-key="name" style="width: 240px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Name<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th class="dt-sortable" data-sort-key="backbone" style="width: 180px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Backbone<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th class="dt-sortable" data-sort-key="insert" style="width: 200px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Insert<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th class="dt-sortable" data-sort-key="resistance" style="width: 130px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Resistance<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th class="dt-sortable" data-sort-key="owner" style="width: 140px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th class="dt-sortable" data-sort-key="location" style="width: 160px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Location<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th class="dt-sortable" data-sort-key="notes" style="width: 220px;">
-            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Notes<span class="dt-sort-indicator"></span></span>
-          </th>
-          <th style="width: 56px;"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in plasmids %}
-          <tr data-id="{{ p.id }}"
-              data-pid="{{ p.plasmid_id }}"
-              data-name="{{ (p.name or '')|lower }}"
-              data-backbone="{{ (p.backbone or '')|lower }}"
-              data-insert="{{ (p.insert_seq or '')|lower }}"
-              data-resistance="{{ (p.resistance or '')|lower }}"
-              data-owner="{{ (p.owner or '')|lower }}"
-              data-location="{{ (p.location or '')|lower }}"
-              data-notes="{{ (p.notes or '')|lower }}">
-            <td><input type="checkbox" class="dt-row-check" aria-label="Select row"></td>
-            <td><a href="{{ url_for('plasmid_detail', row_id=p.id) }}" class="plasmid-id-link" title="Open plasmid detail"><span class="dt-row-icon"></span>#{{ p.plasmid_id }}</a></td>
-            <td class="dt-edit">
-              <input form="plasmid-{{ p.id }}" name="name" value="{{ p.name }}" data-autosave="1">
-            </td>
-            <td class="dt-edit"><input form="plasmid-{{ p.id }}" name="backbone" value="{{ p.backbone }}" data-autosave="1"></td>
-            <td class="dt-edit"><input form="plasmid-{{ p.id }}" name="insert_seq" value="{{ p.insert_seq }}" data-autosave="1"></td>
-            <td class="dt-edit"><input form="plasmid-{{ p.id }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1"></td>
-            <td class="dt-edit"><input form="plasmid-{{ p.id }}" name="owner" value="{{ p.owner }}" data-autosave="1"></td>
-            <td class="dt-edit"><input form="plasmid-{{ p.id }}" name="location" value="{{ p.location }}" data-autosave="1"></td>
-            <td class="dt-edit"><input form="plasmid-{{ p.id }}" name="notes" value="{{ p.notes }}" data-autosave="1"></td>
-            <td>
-              <form method="post" action="{{ url_for('delete_plasmid', row_id=p.id) }}" onsubmit="return confirm('Delete this plasmid?')">
-                <button type="submit" class="dt-toolbar-btn" title="Delete">×</button>
-              </form>
-            </td>
+    <div class="dt-scroll">
+      <table class="dt sheet-table" data-resizable="1">
+        <thead>
+          <tr>
+            <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;"><input type="checkbox" class="dt-select-all" aria-label="Select all"></th>
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="pid" style="width: 76px; min-width: 76px;">
+              <span class="dt-col-head"><span class="dt-col-type is-id"></span>PID<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="name" style="width: 260px;">
+              <span class="dt-col-head"><span class="dt-col-type is-text"></span>Name<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="backbone" style="width: 160px;">
+              <span class="dt-col-head"><span class="dt-col-type is-text"></span>Backbone<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="insert_seq" style="width: 180px;">
+              <span class="dt-col-head"><span class="dt-col-type is-text"></span>Insert<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="resistance" style="width: 120px;">
+              <span class="dt-col-head"><span class="dt-col-type is-text"></span>Resistance<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="owner" style="width: 110px;">
+              <span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="location" style="width: 170px;">
+              <span class="dt-col-head"><span class="dt-col-type is-text"></span>Location<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="notes" style="min-width: 220px;">
+              <span class="dt-col-head"><span class="dt-col-type is-text"></span>Notes<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
           </tr>
-          <form id="plasmid-{{ p.id }}" method="post" action="{{ url_for('update_plasmid', row_id=p.id) }}"></form>
-        {% else %}
-          <tr><td class="dt-empty" colspan="10">No plasmids yet. Click <strong>+ Add entry</strong> below to create your first one.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          {% for p in plasmids %}
+            {% set f = 'plasmid-' ~ p.id %}
+            <tr data-id="{{ p.id }}" data-pid="{{ p.plasmid_id }}">
+              <td class="sheet-pin sheet-pin-0"><input type="checkbox" class="dt-row-check" aria-label="Select plasmid {{ p.plasmid_id }}"></td>
+              <td class="sheet-pin sheet-pin-1"><a href="{{ url_for('plasmid_detail', row_id=p.id) }}" class="sheet-link ident" title="Open plasmid #{{ p.plasmid_id }}">#{{ p.plasmid_id }}</a></td>
+              <td><input form="{{ f }}" name="name" value="{{ p.name }}" title="{{ p.name }}" data-autosave="1" aria-label="Name"></td>
+              <td><input form="{{ f }}" name="backbone" value="{{ p.backbone }}" data-autosave="1" aria-label="Backbone"></td>
+              <td><input form="{{ f }}" name="insert_seq" value="{{ p.insert_seq }}" title="{{ p.insert_seq }}" data-autosave="1" aria-label="Insert"></td>
+              <td><input form="{{ f }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1" aria-label="Resistance"></td>
+              <td><input form="{{ f }}" name="owner" value="{{ p.owner }}" data-autosave="1" aria-label="Owner"></td>
+              <td><input form="{{ f }}" name="location" value="{{ p.location }}" title="{{ p.location }}" data-autosave="1" aria-label="Location"></td>
+              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ p.notes }}" title="{{ p.notes }}" data-autosave="1" aria-label="Notes"></td>
+              <td class="sheet-pin sheet-pin-end">
+                <div class="sheet-actions">
+                  <form method="post" action="{{ url_for('delete_plasmid', row_id=p.id) }}" onsubmit="return confirm('Delete plasmid #{{ p.plasmid_id }}?')">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete plasmid #{{ p.plasmid_id }}">{{ icon('trash') }}</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="10">No plasmids yet. Use <strong>New plasmid</strong>, or <strong>Import</strong> a CSV.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% for p in plasmids %}
+      <form id="plasmid-{{ p.id }}" method="post" action="{{ url_for('update_plasmid', row_id=p.id) }}" data-record-label="plasmid #{{ p.plasmid_id }}"></form>
+    {% endfor %}
   </div>{# /plasmid-view-table #}
 
   <div class="plasmid-view plasmid-view-cards" data-view="cards" data-active-box="{{ active_box }}">
-    {# Box switcher row: pick which storage box to view + grid size + new box. #}
     <div class="plasmid-box-header">
-      <div class="plasmid-box-picker">
-        <label class="plasmid-box-label">Box</label>
+      <label class="field-label">Box
         <select id="plasmid-box-select">
-          {% if not boxes %}
-            <option value="">— no boxes yet —</option>
-          {% endif %}
-          {% for b in boxes %}
-            <option value="{{ b }}" {% if b == active_box %}selected{% endif %}>{{ b }}</option>
-          {% endfor %}
-          <option value="__new__">+ New box…</option>
+          {% if not boxes %}<option value="">No boxes yet</option>{% endif %}
+          {% for b in boxes %}<option value="{{ b }}" {% if b == active_box %}selected{% endif %}>{{ b }}</option>{% endfor %}
+          <option value="__new__">New box…</option>
         </select>
-        <div class="plasmid-box-meta">
-          <label>Rows <input id="plasmid-box-rows" type="number" min="1" max="20" value="9"></label>
-          <label>Cols <input id="plasmid-box-cols" type="number" min="1" max="20" value="9"></label>
-        </div>
-      </div>
+      </label>
+      <label class="field-label">Rows <input id="plasmid-box-rows" type="number" min="1" max="20" value="9"></label>
+      <label class="field-label">Columns <input id="plasmid-box-cols" type="number" min="1" max="20" value="9"></label>
     </div>
-
-    {# Render two zones: the box grid + the "unplaced" pool (plasmids that
-       have no box position yet, draggable into a cell). #}
     <div class="plasmid-box-shell">
-      <div class="plasmid-box-grid" id="plasmid-box-grid" data-active-box="{{ active_box }}">
-        {# JS will populate cells with positioned plasmids. The grid layout
-           sizing is set via inline style by the JS. #}
-      </div>
+      <div class="plasmid-box-grid" id="plasmid-box-grid" data-active-box="{{ active_box }}"></div>
       <aside class="plasmid-box-tray" id="plasmid-box-tray">
         <h4>Unplaced</h4>
-        <p class="muted-inline">Drag a plasmid into a cell, or drag back here to remove from the box.</p>
+        <p class="text-[12px] text-muted">Drag a plasmid into a cell, or back here to take it out of the box.</p>
         <div class="plasmid-box-tray-items" id="plasmid-box-tray-items"></div>
       </aside>
     </div>
-
-    {# Hidden data: every plasmid as a draggable, the JS picks them up. #}
     <script id="plasmid-box-data" type="application/json">
       [
         {% for p in plasmids %}
@@ -230,56 +150,125 @@
               <span class="plasmid-list-name">{{ p.name or 'Unnamed' }}</span>
               <span class="plasmid-list-meta">
                 {% if p.backbone %}<span>{{ p.backbone }}</span>{% endif %}
-                {% if p.resistance %}<span class="plasmid-list-resist">{{ p.resistance }}</span>{% endif %}
-                {% if p.owner %}<span>{{ p.owner | owner_badge }}</span>{% endif %}
-                {% if p.location %}<span class="plasmid-list-loc">{{ p.location }}</span>{% endif %}
-                {% if p.full_sequence %}<span class="plasmid-list-bp">{{ p.full_sequence|length }} bp</span>{% endif %}
+                {% if p.resistance %}<span class="badge badge-brand">{{ p.resistance }}</span>{% endif %}
+                {% if p.location %}<span>{{ p.location }}</span>{% endif %}
+                {% if p.full_sequence %}<span class="tabular-nums">{{ p.full_sequence|length }} bp</span>{% endif %}
+                {% if p.owner %}{{ p.owner | owner_badge }}{% endif %}
               </span>
             </a>
           </li>
         {% endfor %}
       </ul>
     {% else %}
-      <p class="muted-inline" style="padding: 20px;">No plasmids yet.</p>
+      <div class="empty-state m-4">No plasmids yet.</div>
     {% endif %}
   </div>
 
   <div class="dt-bottom-bar">
-    <span class="dt-bottom-count dt-count">{{ plasmids|length }} entr{{ 'y' if plasmids|length == 1 else 'ies' }}</span>
-    <button type="button" class="dt-bottom-action is-primary" onclick="document.getElementById('plasmid-new-modal').showModal()">
-      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add entry
-    </button>
+    <span class="dt-bottom-count dt-count">{{ plasmids|length }} {{ 'plasmid' if plasmids|length == 1 else 'plasmids' }}</span>
     <div class="dt-bottom-spacer"></div>
     <div class="dt-pagination">
       <span class="dt-page-label">Page 1</span>
-      <button type="button" class="dt-prev" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-left"></use></svg></button>
-      <button type="button" class="dt-next" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg></button>
-      <select class="dt-page-size">
-        <option value="25">25</option>
-        <option value="50" selected>50</option>
-        <option value="100">100</option>
-        <option value="1000">1000</option>
+      <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+      <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+      <select class="dt-page-size" aria-label="Rows per page">
+        <option value="100" selected>100</option>
+        <option value="100000">All</option>
       </select>
-      <span>per page</span>
     </div>
   </div>
 </section>
 
+<dialog id="plasmid-new-modal" class="record-dialog" aria-labelledby="plasmid-new-title">
+  <form method="post" enctype="multipart/form-data" id="plasmid-new-form">
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="plasmid-new-title">New plasmid</h3>
+        <p class="record-dialog-sub">It will be plasmid #{{ next_plasmid_id }}.</p>
+      </div>
+      <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <input type="hidden" name="plasmid_id" value="{{ next_plasmid_id }}">
+      <label class="record-wide">Name <input name="name" required placeholder="e.g. pCMV-mCherry-NLS"></label>
+      <fieldset class="record-group">
+        <legend>Construct</legend>
+        <label>Backbone <input name="backbone" placeholder="e.g. pcDNA3.1"></label>
+        <label>Insert <input name="insert_seq" placeholder="What is cloned in"></label>
+        <label>Resistance <input name="resistance" list="plasmid-resistance"></label>
+        <label>Owner <input name="owner" value="{{ current_user.username if current_user else '' }}"></label>
+      </fieldset>
+      <fieldset class="record-group">
+        <legend>Storage</legend>
+        <label class="record-wide">Location <input name="location" placeholder="e.g. −80 freezer, shelf 2"></label>
+        <label>Box <input name="storage_box" list="plasmid-existing-boxes" placeholder="e.g. Plasmid box A"></label>
+        <label>Row / column
+          <span class="flex gap-2">
+            <input name="box_row" type="number" min="0" max="19" placeholder="row" aria-label="Box row">
+            <input name="box_col" type="number" min="0" max="19" placeholder="col" aria-label="Box column">
+          </span>
+        </label>
+      </fieldset>
+      <fieldset class="record-group">
+        <legend>Sequence (optional)</legend>
+        <div id="plasmid-new-dropzone" class="dropzone record-wide">
+          <input type="file" id="plasmid-new-file" name="sequence_file" accept=".dna,.fasta,.fa,.gb,.gbk,.txt" hidden>
+          {{ icon('upload') }}
+          <div>
+            <strong>Drop a .dna, .gb, .gbk or .fasta file</strong>
+            <span>or <button type="button" class="dropzone-browse" onclick="document.getElementById('plasmid-new-file').click()">choose one</button></span>
+          </div>
+          <div class="dropzone-file" id="plasmid-new-filename"></div>
+        </div>
+        <details class="record-wide dropzone-paste">
+          <summary>Paste sequence text instead</summary>
+          <textarea name="sequence_text" rows="5" placeholder="LOCUS … (GenBank), >name … (FASTA), or raw ATGC"></textarea>
+        </details>
+      </fieldset>
+      <label class="record-wide">Notes <input name="notes" placeholder="Source, reference…"></label>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Create plasmid</button>
+    </footer>
+  </form>
+</dialog>
+
 <script>
-  // Plasmids supports per-cell autosave editing (the original behavior).
-  document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
-    let timer = null;
-    const fire = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
+  /* Autosave with the same toolbar indicator as the other sheets. */
+  (function () {
+    const status = document.querySelector('[data-save-status]');
+    let clear = null;
+    const say = (state, text) => {
+      if (!status) return;
+      clearTimeout(clear);
+      status.dataset.state = state;
+      status.textContent = text;
+      if (state === 'saved') clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
+    };
+    const timers = new Map();
+    async function save(form) {
+      say('saving', 'Saving…');
+      try {
+        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
+        say('saved', 'All changes saved');
+      } catch (error) {
+        say('error', `Couldn’t save ${form.dataset.recordLabel || 'this change'}: ${error.message}`);
+      }
+    }
+    document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
+      const queue = (delay) => {
         const form = input.form || document.getElementById(input.getAttribute('form'));
         if (!form) return;
-        fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
-      }, 250);
-    };
-    input.addEventListener('input', fire);
-    input.addEventListener('change', fire);
-  });
+        clearTimeout(timers.get(form.id));
+        timers.set(form.id, setTimeout(() => save(form), delay));
+      };
+      input.addEventListener('input', () => queue(400));
+      input.addEventListener('change', () => queue(0));
+    });
+  })();
 
   // View mode switcher (Table / Box / List). Persisted to localStorage.
   (function () {

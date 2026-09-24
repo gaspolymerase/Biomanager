@@ -3,11 +3,11 @@
   "configurations": [
     {
       "name": "biomanager-dev",
-      "runtimeExecutable": "/private/tmp/claude-501/-Users-polymerase-Library-CloudStorage-OneDrive-HarvardUniversity-Code-Biomanager/25e0d5b4-b113-48cf-94ad-88d98c38e005/scratchpad/venv/bin/python",
-      "runtimeArgs": ["run.py"],
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": ["-c", "cd /Users/polymerase/Code/Biomanager && exec .venv/bin/python run.py"],
       "port": 5055,
       "env": {
-        "DATABASE_URL": "sqlite:////private/tmp/claude-501/-Users-polymerase-Library-CloudStorage-OneDrive-HarvardUniversity-Code-Biomanager/25e0d5b4-b113-48cf-94ad-88d98c38e005/scratchpad/devdata/biomanager.db",
+        "DATABASE_URL": "sqlite:////Users/polymerase/Code/Biomanager/data/biomanager-dev.db",
         "SECRET_KEY": "dev-preview-key",
         "FLASK_DEBUG": "0",
         "PORT": "5055"

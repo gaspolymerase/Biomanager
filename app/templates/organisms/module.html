@@ -45,7 +45,7 @@
    ===================================================================== #}
 {% if active_view == 'animals' %}
   {% set own_fields = fields.get('organism', []) %}
-  <section class="data-table-card" data-table-id="org-{{ module.key }}-animals">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-animals">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
         <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
@@ -53,15 +53,15 @@
       </div>
       <div class="dt-toolbar-spacer"></div>
       <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
-      <button type="button" class="dt-toolbar-btn dt-btn-hide"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye-off"></use></svg> Hide</button>
-      <button type="button" class="dt-toolbar-btn is-primary"
-              onclick="orgEdit('animal-dialog', {{ {'count': 1, 'code': next_code} | tojson }})">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add
+      <button type="button" class="dt-toolbar-btn dt-btn-hide"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#columns"></use></svg> Columns</button>
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+              data-org-edit="animal-dialog" data-org-payload='{{ {'count': 1, 'code': next_code} | tojson }}'>
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.organism_noun }}
       </button>
     </div>
 
     <div class="dt-scroll">
-      <table class="dt" data-resizable="1">
+      <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
             {% if module.tracks_individuals %}
@@ -112,21 +112,21 @@
               {{ F.table_cells(own_fields, attrs) }}
               <td>{% if row.owner %}{{ row.owner | owner_badge }}{% endif %}</td>
               <td>
-                <div class="flex items-center gap-1">
+                <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Edit"
-                          onclick='orgEdit("animal-dialog", {{ {
+                          data-org-edit="animal-dialog" data-org-payload='{{ {
                             "id": row.id, "code": row.code, "count": row.count,
                             "housing_id_fk": row.housing_id_fk, "line_id_fk": row.line_id_fk,
                             "cohort_id_fk": row.cohort_id_fk, "sex": row.sex, "status": row.status,
                             "birth_on": row.birth_on.isoformat() if row.birth_on else "",
                             "death_on": row.death_on.isoformat() if row.death_on else "",
                             "genotype": row.genotype, "owner": row.owner, "protocol": row.protocol,
-                            "notes": row.notes, "attrs": attrs } | tojson }})'>
+                            "notes": row.notes, "attrs": attrs } | tojson }}'>
                     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
                   </button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='animal', row_id=row.id) }}"
                         onsubmit="return confirm('Delete this record?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                   </form>
                 </div>
               </td>
@@ -146,7 +146,7 @@
 
   <dialog id="animal-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
-      <h3>{{ module.organism_noun|title }} record</h3>
+      <h3>{{ module.organism_noun|capitalize }}</h3>
       <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_animal', key=module.key) }}"
@@ -220,7 +220,7 @@
    ===================================================================== #}
 {% if active_view == 'housing' %}
   {% set own_fields = fields.get('housing', []) %}
-  <section class="data-table-card" data-table-id="org-{{ module.key }}-housing">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-housing">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
         <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
@@ -235,14 +235,14 @@
       <a class="dt-toolbar-btn" href="{{ url_for('labels.module_cards', module_key=module.key) }}">
         <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> Labels
       </a>
-      <button type="button" class="dt-toolbar-btn is-primary"
-              onclick="orgEdit('housing-dialog', {{ {'code': next_code, 'established_on': today} | tojson }})">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add {{ module.housing_noun }}
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+              data-org-edit="housing-dialog" data-org-payload='{{ {'code': next_code, 'established_on': today} | tojson }}'>
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.housing_noun }}
       </button>
     </div>
 
     <div class="dt-scroll">
-      <table class="dt" data-resizable="1">
+      <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
             <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>{{ module.housing_noun|title }}</span></th>
@@ -281,9 +281,9 @@
               {{ F.table_cells(own_fields, attrs) }}
               <td>{% if unit.owner %}{{ unit.owner | owner_badge }}{% endif %}</td>
               <td>
-                <div class="flex items-center gap-1">
+                <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Edit"
-                          onclick='orgEdit("housing-dialog", {{ {
+                          data-org-edit="housing-dialog" data-org-payload='{{ {
                             "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
                             "row": unit.row, "col": unit.col, "purpose": unit.purpose,
                             "line_id_fk": unit.line_id_fk, "owner": unit.owner,
@@ -291,12 +291,12 @@
                             "established_on": unit.established_on.isoformat() if unit.established_on else "",
                             "last_serviced_on": unit.last_serviced_on.isoformat() if unit.last_serviced_on else "",
                             "retired": not unit.active, "needs_attention": unit.needs_attention,
-                            "notes": unit.notes, "attrs": attrs } | tojson }})'>
+                            "notes": unit.notes, "attrs": attrs } | tojson }}'>
                     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
                   </button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='housing', row_id=unit.id) }}"
                         onsubmit="return confirm('Delete {{ unit.code }}? Records inside it go too.')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                   </form>
                 </div>
               </td>
@@ -313,7 +313,7 @@
 
   <dialog id="housing-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
-      <h3>{{ module.housing_noun|title }}</h3>
+      <h3>{{ module.housing_noun|capitalize }}</h3>
       <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_housing', key=module.key) }}"
@@ -383,7 +383,7 @@
                   <td>
                     <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='location', row_id=loc.id) }}"
                           onsubmit="return confirm('Delete {{ loc.name }}?')">
-                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                     </form>
                   </td>
                 </tr>
@@ -423,7 +423,7 @@
    ===================================================================== #}
 {% if active_view == 'lines' %}
   {% set own_fields = fields.get('line', []) %}
-  <section class="data-table-card" data-table-id="org-{{ module.key }}-lines">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-lines">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
         <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
@@ -431,14 +431,14 @@
       </div>
       <div class="dt-toolbar-spacer"></div>
       <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
-      <button type="button" class="dt-toolbar-btn is-primary"
-              onclick="orgEdit('line-dialog', {{ {'code': next_code} | tojson }})">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add {{ module.line_noun }}
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+              data-org-edit="line-dialog" data-org-payload='{{ {'code': next_code} | tojson }}'>
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.line_noun }}
       </button>
     </div>
 
     <div class="dt-scroll">
-      <table class="dt" data-resizable="1">
+      <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
             <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
@@ -467,9 +467,9 @@
               {% endif %}
               <td>{% if line.owner %}{{ line.owner | owner_badge }}{% endif %}</td>
               <td>
-                <div class="flex items-center gap-1">
+                <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Edit"
-                          onclick='orgEdit("line-dialog", {{ {
+                          data-org-edit="line-dialog" data-org-payload='{{ {
                             "id": line.id, "code": line.code, "name": line.name,
                             "genotype": line.genotype, "owner": line.owner,
                             "protocol": line.protocol, "source": line.source,
@@ -477,12 +477,12 @@
                             "parent_line_id_fk": line.parent_line_id_fk,
                             "last_refreshed_on": line.last_refreshed_on.isoformat() if line.last_refreshed_on else "",
                             "last_frozen_on": line.last_frozen_on.isoformat() if line.last_frozen_on else "",
-                            "retired": line.retired, "notes": line.notes, "attrs": attrs } | tojson }})'>
+                            "retired": line.retired, "notes": line.notes, "attrs": attrs } | tojson }}'>
                     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
                   </button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='line', row_id=line.id) }}"
                         onsubmit="return confirm('Delete {{ line.code }}?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                   </form>
                 </div>
               </td>
@@ -497,7 +497,7 @@
 
   <dialog id="line-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
-      <h3>{{ module.line_noun|title }}</h3>
+      <h3>{{ module.line_noun|capitalize }}</h3>
       <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_line', key=module.key) }}"
@@ -542,20 +542,20 @@
    ===================================================================== #}
 {% if active_view == 'crosses' %}
   {% set own_fields = fields.get('cross', []) %}
-  <section class="data-table-card" data-table-id="org-{{ module.key }}-crosses">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-crosses">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
         <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
         <input type="text" class="dt-search" placeholder="Search {{ module.cross_noun }}es…" autocomplete="off">
       </div>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn is-primary"
-              onclick="orgEdit('cross-dialog', {{ {'code': next_code, 'set_up_on': today, 'cross_type': 'pair'} | tojson }})">
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+              data-org-edit="cross-dialog" data-org-payload='{{ {'code': next_code, 'set_up_on': today, 'cross_type': 'pair'} | tojson }}'>
         <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.cross_noun }}
       </button>
     </div>
     <div class="dt-scroll">
-      <table class="dt" data-resizable="1">
+      <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
             <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
@@ -589,9 +589,9 @@
               {{ F.table_cells(own_fields, attrs) }}
               <td>{% if cross.owner %}{{ cross.owner | owner_badge }}{% endif %}</td>
               <td>
-                <div class="flex items-center gap-1">
+                <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Edit"
-                          onclick='orgEdit("cross-dialog", {{ {
+                          data-org-edit="cross-dialog" data-org-payload='{{ {
                             "id": cross.id, "code": cross.code, "cross_type": cross.cross_type,
                             "housing_id_fk": cross.housing_id_fk,
                             "sire_line_id_fk": cross.sire_line_id_fk, "dam_line_id_fk": cross.dam_line_id_fk,
@@ -599,12 +599,12 @@
                             "set_up_on": cross.set_up_on.isoformat() if cross.set_up_on else "",
                             "expected_on": cross.expected_on.isoformat() if cross.expected_on else "",
                             "collected_on": cross.collected_on.isoformat() if cross.collected_on else "",
-                            "owner": cross.owner, "notes": cross.notes, "attrs": attrs } | tojson }})'>
+                            "owner": cross.owner, "notes": cross.notes, "attrs": attrs } | tojson }}'>
                     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
                   </button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='cross', row_id=cross.id) }}"
                         onsubmit="return confirm('Delete {{ cross.code }}?')">
-                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                   </form>
                 </div>
               </td>
@@ -619,7 +619,7 @@
 
   <dialog id="cross-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
-      <h3>{{ module.cross_noun|title }}</h3>
+      <h3>{{ module.cross_noun|capitalize }}</h3>
       <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_cross', key=module.key) }}"
@@ -681,20 +681,20 @@
    ===================================================================== #}
 {% if active_view == 'cohorts' %}
   {% set own_fields = fields.get('cohort', []) %}
-  <section class="data-table-card" data-table-id="org-{{ module.key }}-cohorts">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-cohorts">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
         <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
         <input type="text" class="dt-search" placeholder="Search {{ module.cohort_noun_plural }}…" autocomplete="off">
       </div>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn is-primary"
-              onclick="orgEdit('cohort-dialog', {{ {'code': next_code, 'birth_on': today} | tojson }})">
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+              data-org-edit="cohort-dialog" data-org-payload='{{ {'code': next_code, 'birth_on': today} | tojson }}'>
         <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.cohort_noun }}
       </button>
     </div>
     <div class="dt-scroll">
-      <table class="dt" data-resizable="1">
+      <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
             <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
@@ -729,20 +729,20 @@
               {{ F.table_cells(own_fields, attrs) }}
               <td>{% if cohort.owner %}{{ cohort.owner | owner_badge }}{% endif %}</td>
               <td>
-                <div class="flex items-center gap-1">
+                <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Edit"
-                          onclick='orgEdit("cohort-dialog", {{ {
+                          data-org-edit="cohort-dialog" data-org-payload='{{ {
                             "id": cohort.id, "code": cohort.code, "line_id_fk": cohort.line_id_fk,
                             "cross_id_fk": cohort.cross_id_fk,
                             "birth_on": cohort.birth_on.isoformat() if cohort.birth_on else "",
                             "stage": cohort.stage, "location_id_fk": cohort.location_id_fk,
                             "count_initial": cohort.count_initial, "count_current": cohort.count_current,
-                            "owner": cohort.owner, "notes": cohort.notes, "attrs": attrs } | tojson }})'>
+                            "owner": cohort.owner, "notes": cohort.notes, "attrs": attrs } | tojson }}'>
                     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
                   </button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='cohort', row_id=cohort.id) }}"
                         onsubmit="return confirm('Delete {{ cohort.code }}?')">
-                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                   </form>
                 </div>
               </td>
@@ -759,7 +759,7 @@
 
   <dialog id="cohort-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
-      <h3>{{ module.cohort_noun|title }}</h3>
+      <h3>{{ module.cohort_noun|capitalize }}</h3>
       <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_cohort', key=module.key) }}"
@@ -961,20 +961,20 @@
    PRESERVATION
    ===================================================================== #}
 {% if active_view == 'preservation' %}
-  <section class="data-table-card" data-table-id="org-{{ module.key }}-lots">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-lots">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
         <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
         <input type="text" class="dt-search" placeholder="Search frozen lots…" autocomplete="off">
       </div>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn is-primary"
-              onclick="orgEdit('lot-dialog', {{ {'frozen_on': today} | tojson }})">
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+              data-org-edit="lot-dialog" data-org-payload='{{ {'frozen_on': today} | tojson }}'>
         <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Freeze a lot
       </button>
     </div>
     <div class="dt-scroll">
-      <table class="dt" data-resizable="1">
+      <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
             <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Lot</span></th>
@@ -1006,9 +1006,9 @@
                 {% endif %}
               </td>
               <td>
-                <div class="flex items-center gap-1">
+                <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Edit"
-                          onclick='orgEdit("lot-dialog", {{ {
+                          data-org-edit="lot-dialog" data-org-payload='{{ {
                             "id": lot.id, "line_id_fk": lot.line_id_fk, "code": lot.code,
                             "method": lot.method,
                             "frozen_on": lot.frozen_on.isoformat() if lot.frozen_on else "",
@@ -1016,12 +1016,12 @@
                             "storage_text": lot.storage_text, "position": lot.position,
                             "recovery_tested_on": lot.recovery_tested_on.isoformat() if lot.recovery_tested_on else "",
                             "recovery_ok": ("" if lot.recovery_ok is none else ("yes" if lot.recovery_ok else "no")),
-                            "notes": lot.notes } | tojson }})'>
+                            "notes": lot.notes } | tojson }}'>
                     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
                   </button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='lot', row_id=lot.id) }}"
                         onsubmit="return confirm('Delete this lot?')">
-                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                   </form>
                 </div>
               </td>
@@ -1216,7 +1216,7 @@
                   <td>
                     <form method="post" action="{{ url_for('organisms.delete_field', key=module.key, field_id=field.id) }}"
                           onsubmit="return confirm('Remove {{ field.label }}? Stored values stay in the database.')">
-                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                     </form>
                   </td>
                 </tr>
@@ -1285,7 +1285,7 @@
                     <td>
                       <form method="post" action="{{ url_for('organisms.delete_rule', key=module.key, rule_key=rule.key) }}"
                             onsubmit="return confirm('Remove this rule?')">
-                        <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                        <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
                       </form>
                     </td>
                   </tr>
@@ -1356,6 +1356,8 @@
 
 {% block body_end %}
 <script>
+  const CURRENT_USER = {{ (current_user.username if current_user else '') | tojson }};
+
   /* Fill a dialog's form from a row payload and open it.
    *
    * Inputs are matched by name, so the same helper drives every entity;
@@ -1382,8 +1384,33 @@
       set('attr_' + key, value);
     });
 
+    // A new record belongs to whoever creates it. Unowned records are
+    // editable by everyone under the sharing rules, so blank is not a
+    // neutral default.
+    const isNew = !(payload && payload.id);
+    if (isNew && form.elements.owner && !(payload && payload.owner)) set('owner', CURRENT_USER);
+
+    // "New vial" / "Edit vial" rather than a bare noun.
+    const heading = dialog.querySelector('.modal-topbar h3');
+    if (heading) {
+      heading.dataset.base = heading.dataset.base || heading.textContent.trim();
+      const base = heading.dataset.base;
+      heading.textContent = (isNew ? 'New ' : 'Edit ') + base.charAt(0).toLowerCase() + base.slice(1);
+    }
+
     dialog.showModal();
   }
+
+  /* Buttons carry the dialog id and the row as data attributes. JSON is
+     never placed inside an onclick attribute: tojson leaves double quotes
+     unescaped, which silently broke every Add button. */
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-org-edit]');
+    if (!button) return;
+    let payload = {};
+    try { payload = JSON.parse(button.dataset.orgPayload || '{}'); } catch (e) { console.error(e); }
+    orgEdit(button.dataset.orgEdit, payload);
+  });
 
   /* In the rule builder, only show anchors that belong to the chosen
      subject — a cohort has no "last flip" date. */
