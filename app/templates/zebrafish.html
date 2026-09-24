@@ -1,0 +1,774 @@
+{% extends "base.html" %}
+
+{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
+{% block legacy %}1{% endblock %}
+
+{% block page_title %}Zebrafish · {{ active_view|title }}{% endblock %}
+
+{% block content %}
+{# 5 main views with sub-modes inside Tanks. Matches the mouse colony's
+   layout-sidebar / layout-tile pattern for visual parity. #}
+{% set zfish_main_views = [
+  ("tanks",    "Tanks",    "All tanks · grid · genotyping queue"),
+  ("fish",     "Fish",     "Individuals and group rows"),
+  ("clutches", "Clutches", "Crosses + embryo cohorts"),
+  ("lines",    "Lines",    "Strain catalog + lineage"),
+  ("water",    "Water",    "Systems + daily readings"),
+] %}
+{% set tanks_sub = request.args.get('mode', 'table') %}
+
+<section class="colony-shell">
+  <aside class="layout-sidebar">
+    {% for view_key, view_label, view_sub in zfish_main_views %}
+      <a class="layout-tile {% if active_view == view_key %}active{% endif %}"
+         href="{{ url_for('zebrafish', view=view_key) }}" title="{{ view_label }}">
+        <span>{{ view_label }}</span>
+        <small>{{ view_sub }}</small>
+      </a>
+    {% endfor %}
+  </aside>
+
+  <div class="colony-main">
+    <div class="page-table-header">
+      <div>
+        <h1>{{ active_view|title }}</h1>
+        <p class="page-subtitle">
+          {% if active_view == "tanks" %}Tanks on racks · use the sub-mode to switch between table, rack grid, and the genotyping queue.{% endif %}
+          {% if active_view == "fish" %}Group-count fish or opt-in individual fish.{% endif %}
+          {% if active_view == "clutches" %}Crosses + embryo cohorts. DOF drives the auto calendar items.{% endif %}
+          {% if active_view == "lines" %}Strain catalog with founder lineage.{% endif %}
+          {% if active_view == "water" %}System health: pH, conductivity, temperature, alarm log.{% endif %}
+        </p>
+      </div>
+    </div>
+
+    <datalist id="options-line">
+      {% for ln in lines %}<option value="{{ ln.name }}"></option>{% endfor %}
+    </datalist>
+
+    {# =================================== TANKS ============================ #}
+    {% if active_view == "tanks" %}
+      <nav class="zfish-submode">
+        <a class="zfish-submode-btn {% if tanks_sub == 'table' %}is-active{% endif %}"
+           href="{{ url_for('zebrafish', view='tanks', mode='table') }}">Table</a>
+        <a class="zfish-submode-btn {% if tanks_sub == 'grid' %}is-active{% endif %}"
+           href="{{ url_for('zebrafish', view='tanks', mode='grid') }}">Rack grid</a>
+        <a class="zfish-submode-btn {% if tanks_sub == 'geno' %}is-active{% endif %}"
+           href="{{ url_for('zebrafish', view='tanks', mode='geno') }}">
+          Genotyping queue
+          {% if geno_queue %}<span class="zfish-submode-badge">{{ geno_queue|length }}</span>{% endif %}
+        </a>
+      </nav>
+
+      {# ---- TABLE MODE ---- #}
+      {% if tanks_sub == 'table' %}
+        <form id="tank-create-form" method="post" action="{{ url_for('zebrafish_create_tank') }}"></form>
+        <section class="data-table-card">
+          <div class="dt-scroll">
+            <table class="dt zfish-table">
+              <thead>
+                <tr>
+                  <th style="width: 100px;">Tank ID</th>
+                  <th style="width: 130px;">Rack</th>
+                  <th style="width: 50px;">R</th>
+                  <th style="width: 50px;">C</th>
+                  <th style="width: 110px;">Purpose</th>
+                  <th style="width: 180px;">Line</th>
+                  <th style="width: 60px;">Fish</th>
+                  <th style="width: 100px;">Owner</th>
+                  <th style="width: 100px;">Card</th>
+                  <th>Notes</th>
+                  <th style="width: 50px;">⚑</th>
+                  <th style="width: 80px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {# Inline create row — mouse-style. #}
+                <tr class="create-row zfish-create-row">
+                  <td><input form="tank-create-form" name="tank_id" value="{{ next_tank_id }}" placeholder="auto"></td>
+                  <td>
+                    <select form="tank-create-form" name="rack_id_fk">
+                      <option value="">—</option>
+                      {% for r in racks %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td><input form="tank-create-form" name="row" type="number" min="0" max="19"></td>
+                  <td><input form="tank-create-form" name="col" type="number" min="0" max="19"></td>
+                  <td>
+                    <select form="tank-create-form" name="purpose">
+                      {% for p in tank_purpose_options %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td>
+                    <select form="tank-create-form" name="line_id_fk">
+                      <option value="">—</option>
+                      {% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td></td>
+                  <td><input form="tank-create-form" name="owner" value="{{ current_user.username if current_user else '' }}"></td>
+                  <td><input form="tank-create-form" name="card_id"></td>
+                  <td><input form="tank-create-form" name="notes"></td>
+                  <td></td>
+                  <td><button form="tank-create-form" type="submit" class="zfish-row-add">Add</button></td>
+                </tr>
+
+                {% for tr in tank_rows %}
+                  {% set t = tr.row %}
+                  <tr id="tank-{{ t.id }}">
+                    <td>
+                      <form method="post" action="{{ url_for('zebrafish_update_tank', tank_row_id=t.id) }}" id="utank-{{ t.id }}"></form>
+                      <input form="utank-{{ t.id }}" name="tank_id" value="{{ t.tank_id }}" data-autosave="1">
+                    </td>
+                    <td>
+                      <select form="utank-{{ t.id }}" name="rack_id_fk" data-autosave="1">
+                        <option value="">—</option>
+                        {% for r in racks %}<option value="{{ r.id }}" {% if t.rack_id_fk == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+                      </select>
+                    </td>
+                    <td><input form="utank-{{ t.id }}" name="row" type="number" value="{{ t.row if t.row is not none else '' }}" data-autosave="1"></td>
+                    <td><input form="utank-{{ t.id }}" name="col" type="number" value="{{ t.col if t.col is not none else '' }}" data-autosave="1"></td>
+                    <td>
+                      <select form="utank-{{ t.id }}" name="purpose" data-autosave="1">
+                        {% for p in tank_purpose_options %}<option value="{{ p }}" {% if t.purpose == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+                      </select>
+                    </td>
+                    <td>
+                      <select form="utank-{{ t.id }}" name="line_id_fk" data-autosave="1">
+                        <option value="">—</option>
+                        {% for ln in lines %}<option value="{{ ln.id }}" {% if t.line_id_fk == ln.id %}selected{% endif %}>{{ ln.name }}</option>{% endfor %}
+                      </select>
+                    </td>
+                    <td><strong>{{ tr.total_fish }}</strong></td>
+                    <td><input form="utank-{{ t.id }}" name="owner" value="{{ t.owner }}" data-autosave="1"></td>
+                    <td><input form="utank-{{ t.id }}" name="card_id" value="{{ t.card_id }}" data-autosave="1"></td>
+                    <td><input form="utank-{{ t.id }}" name="notes" value="{{ t.notes }}" data-autosave="1"></td>
+                    <td>
+                      <button type="button" class="zfish-geno-toggle {% if t.needs_genotyping %}is-on{% endif %}" data-tank-id="{{ t.id }}" title="Toggle 'needs genotyping'">
+                        {% if t.needs_genotyping %}●{% else %}○{% endif %}
+                      </button>
+                    </td>
+                    <td class="zfish-row-actions">
+                      <a class="zfish-iconlink" href="{{ url_for('zebrafish_tank_card', tank_row_id=t.id) }}" target="_blank" title="Print card">🖨</a>
+                      <form method="post" action="{{ url_for('zebrafish_delete_tank', tank_row_id=t.id) }}" style="display: inline;" onsubmit="return confirm('Delete tank {{ t.tank_id }}?')">
+                        <button type="submit" class="zfish-iconlink" title="Delete">✕</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {# Sac log lives as a footer panel under the tanks table, no longer a separate tab. #}
+        <details class="zfish-sac-panel">
+          <summary>Sacrifice log ({{ sac_log|length }})</summary>
+          <form method="post" action="{{ url_for('zebrafish_create_sac_log') }}" class="zfish-sac-form">
+            <label>Tank
+              <select name="tank_id_fk">
+                <option value="">—</option>
+                {% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Line
+              <select name="line_id_fk">
+                <option value="">—</option>
+                {% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Count <input type="number" name="count" min="1" value="1"></label>
+            <label>Reason <input name="reason"></label>
+            <button type="submit">Log sac</button>
+          </form>
+          <table class="dt zfish-sac-table">
+            <thead><tr><th>When</th><th>Tank</th><th>Line</th><th>Count</th><th>Reason</th><th>By</th></tr></thead>
+            <tbody>
+              {% for s in sac_log[:10] %}
+                <tr>
+                  <td>{{ s.recorded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                  <td>{% for t in tanks if t.id == s.tank_id_fk %}{{ t.tank_id }}{% endfor %}</td>
+                  <td>{% for ln in lines if ln.id == s.line_id_fk %}{{ ln.name }}{% endfor %}</td>
+                  <td>{{ s.count }}</td>
+                  <td>{{ s.reason }}</td>
+                  <td>{{ s.recorded_by }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6"><em class="muted-inline">No sac entries yet.</em></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      {% endif %}
+
+      {# ---- RACK GRID MODE ---- #}
+      {% if tanks_sub == 'grid' %}
+        <section class="data-table-card">
+          <form id="rack-create-form" method="post" action="{{ url_for('zebrafish_create_rack') }}" class="zfish-rack-create">
+            <label>New rack <input name="name" placeholder="Rack A" required></label>
+            <label>System
+              <select name="system_id_fk">
+                <option value="">—</option>
+                {% for sys in systems %}<option value="{{ sys.id }}">{{ sys.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <label>Rows <input type="number" name="rows" min="1" max="20" value="8"></label>
+            <label>Cols <input type="number" name="cols" min="1" max="20" value="10"></label>
+            <button type="submit">Add rack</button>
+          </form>
+
+          {% if racks %}
+            <div class="zfish-rack-shell">
+              <div class="zfish-rack-picker">
+                <label>Rack
+                  <select id="zfish-rack-select">
+                    {% for r in racks %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+                  </select>
+                </label>
+                <span class="muted-inline">Drag tanks between cells; drop onto the tray to unplace.</span>
+              </div>
+              <div class="zfish-rack-body">
+                <div class="zfish-rack-grid" id="zfish-rack-grid"></div>
+                <aside class="zfish-rack-tray" id="zfish-rack-tray">
+                  <h4>Unplaced tanks</h4>
+                  <div class="zfish-rack-tray-items" id="zfish-rack-tray-items"></div>
+                </aside>
+              </div>
+            </div>
+            <script id="zfish-rack-data" type="application/json">
+              {
+                "racks": [
+                  {% for r in racks %}{ "id": {{ r.id }}, "name": {{ r.name|tojson }}, "rows": {{ r.rows }}, "cols": {{ r.cols }} }{% if not loop.last %},{% endif %}{% endfor %}
+                ],
+                "tanks": [
+                  {% for t in tanks %}
+                    { "id": {{ t.id }}, "tank_id": {{ t.tank_id|tojson }}, "rack_id_fk": {{ (t.rack_id_fk if t.rack_id_fk is not none else 'null') }}, "row": {{ (t.row if t.row is not none else 'null') }}, "col": {{ (t.col if t.col is not none else 'null') }}, "purpose": {{ t.purpose|tojson }}, "line": {{ ((t.line.name if t.line else '')|tojson) }} }{% if not loop.last %},{% endif %}
+                  {% endfor %}
+                ]
+              }
+            </script>
+          {% else %}
+            <p class="muted-inline" style="padding: 14px;">Add a rack to begin.</p>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {# ---- GENOTYPING QUEUE MODE ---- #}
+      {% if tanks_sub == 'geno' %}
+        <section class="data-table-card">
+          <p class="muted-inline" style="padding: 8px 12px;">Tanks flagged with ⚑ in the Table view. Click the dot there to remove from the queue.</p>
+          <div class="dt-scroll">
+            <table class="dt">
+              <thead>
+                <tr><th>Tank</th><th>Line</th><th>Purpose</th><th>Notes</th><th>Card</th></tr>
+              </thead>
+              <tbody>
+                {% for t in geno_queue %}
+                  <tr>
+                    <td><strong>{{ t.tank_id }}</strong></td>
+                    <td>{{ t.line.name if t.line else '—' }}</td>
+                    <td>{{ t.purpose }}</td>
+                    <td>{{ t.notes }}</td>
+                    <td><a href="{{ url_for('zebrafish_tank_card', tank_row_id=t.id) }}" target="_blank">🖨 card</a></td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5"><em class="muted-inline">Queue empty.</em></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+    {% endif %}
+
+    {# =================================== FISH ============================= #}
+    {% if active_view == "fish" %}
+      <form id="fish-create-form" method="post" action="{{ url_for('zebrafish_create_fish') }}"></form>
+      <section class="data-table-card">
+        <div class="dt-scroll">
+          <table class="dt zfish-table">
+            <thead>
+              <tr>
+                <th style="width: 90px;">Tank</th>
+                <th style="width: 160px;">Line</th>
+                <th style="width: 110px;">Individual</th>
+                <th style="width: 60px;">Count</th>
+                <th style="width: 80px;">Sex</th>
+                <th style="width: 80px;">Status</th>
+                <th style="width: 110px;">DOF</th>
+                <th>Genotype</th>
+                <th>Notes</th>
+                <th style="width: 60px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="create-row zfish-create-row">
+                <td>
+                  <select form="fish-create-form" name="tank_id_fk" required>
+                    <option value="">—</option>
+                    {% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <select form="fish-create-form" name="line_id_fk">
+                    <option value="">—</option>
+                    {% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td><input form="fish-create-form" name="individual_id" placeholder="optional"></td>
+                <td><input form="fish-create-form" type="number" name="count" min="1" value="1"></td>
+                <td>
+                  <select form="fish-create-form" name="sex">
+                    {% for x in fish_sex_options %}<option value="{{ x }}">{{ x }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <select form="fish-create-form" name="status">
+                    {% for x in fish_status_options %}<option value="{{ x }}">{{ x }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td><input form="fish-create-form" type="date" name="date_of_fertilization"></td>
+                <td><input form="fish-create-form" name="genotype" list="options-line"></td>
+                <td><input form="fish-create-form" name="notes"></td>
+                <td><button form="fish-create-form" type="submit" class="zfish-row-add">Add</button></td>
+              </tr>
+              {% for f in fish %}
+                <tr>
+                  <td>
+                    <form method="post" action="{{ url_for('zebrafish_update_fish', fish_row_id=f.id) }}" id="ufish-{{ f.id }}"></form>
+                    <select form="ufish-{{ f.id }}" name="tank_id_fk" data-autosave="1">
+                      {% for t in tanks %}<option value="{{ t.id }}" {% if f.tank_id_fk == t.id %}selected{% endif %}>{{ t.tank_id }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td>
+                    <select form="ufish-{{ f.id }}" name="line_id_fk" data-autosave="1">
+                      <option value="">—</option>
+                      {% for ln in lines %}<option value="{{ ln.id }}" {% if f.line_id_fk == ln.id %}selected{% endif %}>{{ ln.name }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td><input form="ufish-{{ f.id }}" name="individual_id" value="{{ f.individual_id }}" data-autosave="1"></td>
+                  <td><input form="ufish-{{ f.id }}" type="number" min="0" name="count" value="{{ f.count }}" data-autosave="1"></td>
+                  <td>
+                    <select form="ufish-{{ f.id }}" name="sex" data-autosave="1">
+                      {% for x in fish_sex_options %}<option value="{{ x }}" {% if f.sex == x %}selected{% endif %}>{{ x }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td>
+                    <select form="ufish-{{ f.id }}" name="status" data-autosave="1">
+                      {% for x in fish_status_options %}<option value="{{ x }}" {% if f.status == x %}selected{% endif %}>{{ x }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td><input form="ufish-{{ f.id }}" type="date" name="date_of_fertilization" value="{{ f.date_of_fertilization or '' }}" data-autosave="1"></td>
+                  <td><input form="ufish-{{ f.id }}" name="genotype" value="{{ f.genotype }}" data-autosave="1"></td>
+                  <td><input form="ufish-{{ f.id }}" name="notes" value="{{ f.notes }}" data-autosave="1"></td>
+                  <td class="zfish-row-actions">
+                    <form method="post" action="{{ url_for('zebrafish_delete_fish', fish_row_id=f.id) }}" onsubmit="return confirm('Delete fish row?')">
+                      <button type="submit" class="zfish-iconlink">✕</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {# =================================== CLUTCHES ========================= #}
+    {% if active_view == "clutches" %}
+      <form method="post" action="{{ url_for('zebrafish_set_up_mating') }}" class="zfish-mating-form">
+        <h3>Set up a mating</h3>
+        <div class="zfish-mating-row">
+          <label>♂ tank
+            <select name="father_tank_id" required>
+              <option value="">— pick male tank —</option>
+              {% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>♀ tank
+            <select name="mother_tank_id" required>
+              <option value="">— pick female tank —</option>
+              {% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>Return in (days) <input type="number" name="return_days" min="1" max="14" value="1"></label>
+          <label>Notes <input name="notes"></label>
+          <button type="submit" class="dt-bottom-action is-primary">Set up</button>
+        </div>
+      </form>
+
+      <form id="clutch-create-form" method="post" action="{{ url_for('zebrafish_create_clutch') }}"></form>
+      <section class="data-table-card">
+        <div class="dt-scroll">
+          <table class="dt zfish-table">
+            <thead>
+              <tr>
+                <th style="width: 110px;">Clutch ID</th>
+                <th style="width: 120px;">DOF</th>
+                <th style="width: 80px;">Age</th>
+                <th style="width: 160px;">Line</th>
+                <th style="width: 80px;">♂</th>
+                <th style="width: 80px;">♀</th>
+                <th style="width: 80px;">Embryos</th>
+                <th style="width: 80px;">Larvae</th>
+                <th style="width: 80px;">Adults</th>
+                <th style="width: 100px;">Tank-up</th>
+                <th style="width: 100px;">Fin clip</th>
+                <th style="width: 100px;">Adult</th>
+                <th>Notes</th>
+                <th style="width: 60px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="create-row zfish-create-row">
+                <td><input form="clutch-create-form" name="clutch_id" value="{{ next_clutch_id }}"></td>
+                <td><input form="clutch-create-form" type="date" name="date_of_fertilization" value="{{ today_iso }}" required></td>
+                <td></td>
+                <td>
+                  <select form="clutch-create-form" name="line_id_fk">
+                    <option value="">—</option>
+                    {% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <select form="clutch-create-form" name="father_tank_id">
+                    <option value="">—</option>
+                    {% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td>
+                  <select form="clutch-create-form" name="mother_tank_id">
+                    <option value="">—</option>
+                    {% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td><input form="clutch-create-form" type="number" min="0" name="embryo_count" value="0"></td>
+                <td><input form="clutch-create-form" type="number" min="0" name="larvae_count" value="0"></td>
+                <td><input form="clutch-create-form" type="number" min="0" name="adults_count" value="0"></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td><input form="clutch-create-form" name="notes"></td>
+                <td><button form="clutch-create-form" type="submit" class="zfish-row-add">Add</button></td>
+              </tr>
+              {% for cr in clutch_rows %}
+                {% set c = cr.row %}
+                <tr id="clutch-{{ c.id }}">
+                  <td>
+                    <form method="post" action="{{ url_for('zebrafish_update_clutch', clutch_row_id=c.id) }}" id="uclutch-{{ c.id }}"></form>
+                    <input form="uclutch-{{ c.id }}" name="clutch_id" value="{{ c.clutch_id }}" data-autosave="1">
+                  </td>
+                  <td><input form="uclutch-{{ c.id }}" type="date" name="date_of_fertilization" value="{{ c.date_of_fertilization }}" data-autosave="1"></td>
+                  <td><strong>{{ cr.age }}</strong></td>
+                  <td>
+                    <select form="uclutch-{{ c.id }}" name="line_id_fk" data-autosave="1">
+                      <option value="">—</option>
+                      {% for ln in lines %}<option value="{{ ln.id }}" {% if c.line_id_fk == ln.id %}selected{% endif %}>{{ ln.name }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td>{% if c.father_tank_id %}{% for t in tanks if t.id == c.father_tank_id %}{{ t.tank_id }}{% endfor %}{% endif %}</td>
+                  <td>{% if c.mother_tank_id %}{% for t in tanks if t.id == c.mother_tank_id %}{{ t.tank_id }}{% endfor %}{% endif %}</td>
+                  <td><input form="uclutch-{{ c.id }}" type="number" min="0" name="embryo_count" value="{{ c.embryo_count }}" data-autosave="1"></td>
+                  <td><input form="uclutch-{{ c.id }}" type="number" min="0" name="larvae_count" value="{{ c.larvae_count }}" data-autosave="1"></td>
+                  <td><input form="uclutch-{{ c.id }}" type="number" min="0" name="adults_count" value="{{ c.adults_count }}" data-autosave="1"></td>
+                  <td class="muted-inline">{{ cr.tank_up or '' }}</td>
+                  <td class="muted-inline">{{ cr.fin_clip or '' }}</td>
+                  <td class="muted-inline">{{ cr.adult or '' }}</td>
+                  <td><input form="uclutch-{{ c.id }}" name="notes" value="{{ c.notes }}" data-autosave="1"></td>
+                  <td class="zfish-row-actions">
+                    <form method="post" action="{{ url_for('zebrafish_delete_clutch', clutch_row_id=c.id) }}" onsubmit="return confirm('Delete clutch?')">
+                      <button type="submit" class="zfish-iconlink">✕</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {# =================================== LINES ============================ #}
+    {% if active_view == "lines" %}
+      <form id="line-create-form" method="post" action="{{ url_for('zebrafish_create_line') }}"></form>
+      <section class="data-table-card">
+        <div class="dt-scroll">
+          <table class="dt zfish-table">
+            <thead>
+              <tr>
+                <th style="width: 180px;">Name</th>
+                <th style="width: 200px;">ZFIN</th>
+                <th style="width: 100px;">Background</th>
+                <th>Transgenes</th>
+                <th style="width: 140px;">Allele</th>
+                <th style="width: 110px;">IACUC #</th>
+                <th style="width: 160px;">Parent</th>
+                <th style="width: 60px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="create-row zfish-create-row">
+                <td><input form="line-create-form" name="name" required placeholder="line name"></td>
+                <td><input form="line-create-form" name="zfin_name" placeholder="Tg(huc:GFP)^x5"></td>
+                <td><input form="line-create-form" name="background" placeholder="AB / TU"></td>
+                <td><input form="line-create-form" name="transgene_summary"></td>
+                <td><input form="line-create-form" name="allele"></td>
+                <td><input form="line-create-form" name="iacuc_protocol"></td>
+                <td>
+                  <select form="line-create-form" name="parent_line_id_fk">
+                    <option value="">—</option>
+                    {% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}
+                  </select>
+                </td>
+                <td><button form="line-create-form" type="submit" class="zfish-row-add">Add</button></td>
+              </tr>
+              {% for ln in lines %}
+                <tr>
+                  <td>
+                    <form method="post" action="{{ url_for('zebrafish_update_line', line_id=ln.id) }}" id="uline-{{ ln.id }}"></form>
+                    <a href="{{ url_for('zebrafish_line_detail', line_id=ln.id) }}" class="entity-mention" style="display:inline-block;">{{ ln.name }}</a>
+                  </td>
+                  <td><input form="uline-{{ ln.id }}" name="zfin_name" value="{{ ln.zfin_name }}" data-autosave="1"></td>
+                  <td><input form="uline-{{ ln.id }}" name="background" value="{{ ln.background }}" data-autosave="1"></td>
+                  <td><input form="uline-{{ ln.id }}" name="transgene_summary" value="{{ ln.transgene_summary }}" data-autosave="1"></td>
+                  <td><input form="uline-{{ ln.id }}" name="allele" value="{{ ln.allele }}" data-autosave="1"></td>
+                  <td><input form="uline-{{ ln.id }}" name="iacuc_protocol" value="{{ ln.iacuc_protocol }}" data-autosave="1"></td>
+                  <td>
+                    <select form="uline-{{ ln.id }}" name="parent_line_id_fk" data-autosave="1">
+                      <option value="">—</option>
+                      {% for other in lines if other.id != ln.id %}<option value="{{ other.id }}" {% if ln.parent_line_id_fk == other.id %}selected{% endif %}>{{ other.name }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td class="zfish-row-actions">
+                    <form method="post" action="{{ url_for('zebrafish_delete_line', line_id=ln.id) }}" onsubmit="return confirm('Delete line?')">
+                      <button type="submit" class="zfish-iconlink">✕</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {# =================================== WATER ============================ #}
+    {% if active_view == "water" %}
+      <form method="post" action="{{ url_for('zebrafish_create_system') }}" class="zfish-system-create">
+        <label>System name <input name="name" required></label>
+        <label>Room <input name="room"></label>
+        <label>Target °C <input type="number" step="0.1" name="target_temp_c"></label>
+        <label>Target pH <input type="number" step="0.01" name="target_ph"></label>
+        <label>Target μS/cm <input type="number" step="1" name="target_conductivity"></label>
+        <label>Notes <input name="notes"></label>
+        <button type="submit">Add system</button>
+      </form>
+
+      {% for sys in systems %}
+        <section class="zfish-system-card">
+          <header>
+            <h3>{{ sys.name }} <span class="muted-inline">{{ sys.room }}</span></h3>
+            <div class="muted-inline">
+              Target: {{ sys.target_temp_c or '—' }} °C · pH {{ sys.target_ph or '—' }} · {{ sys.target_conductivity or '—' }} μS/cm
+            </div>
+          </header>
+          <div class="zfish-system-grid">
+            <form method="post" action="{{ url_for('zebrafish_log_water') }}" class="zfish-log-form">
+              <input type="hidden" name="system_id_fk" value="{{ sys.id }}">
+              <label>°C <input type="number" step="0.1" name="temperature_c"></label>
+              <label>pH <input type="number" step="0.01" name="ph"></label>
+              <label>μS/cm <input type="number" step="1" name="conductivity"></label>
+              <label>Salinity <input type="number" step="0.01" name="salinity"></label>
+              <label class="zfish-check"><input type="checkbox" name="alarm"> Alarm</label>
+              <label>Notes <input name="notes"></label>
+              <button type="submit" class="dt-bottom-action is-primary">Log now</button>
+            </form>
+            <div class="zfish-log-chart" data-system-id="{{ sys.id }}"></div>
+          </div>
+          {% set log = latest_logs.get(sys.id) %}
+          {% if log %}
+            <p class="muted-inline">Latest: {{ log.recorded_at.strftime('%Y-%m-%d %H:%M') }}
+              · {{ log.temperature_c }}°C · pH {{ log.ph }} · {{ log.conductivity }} μS · {{ log.salinity or '—' }}
+              {% if log.alarm %}· <strong style="color:#b91c1c">⚠ alarm</strong>{% endif %}
+            </p>
+          {% else %}
+            <p class="muted-inline">No readings yet.</p>
+          {% endif %}
+        </section>
+      {% else %}
+        <p class="muted-inline" style="padding: 14px;">No systems yet.</p>
+      {% endfor %}
+    {% endif %}
+  </div>{# /colony-main #}
+</section>
+
+<script>
+  // Shared autosave
+  document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
+    let timer = null;
+    const fire = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const form = input.form || document.getElementById(input.getAttribute('form'));
+        if (!form) return;
+        fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
+      }, 250);
+    };
+    input.addEventListener('input', fire);
+    input.addEventListener('change', fire);
+  });
+
+  // Genotype-flag dot toggle
+  document.querySelectorAll('.zfish-geno-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      fetch(`/zebrafish/tanks/${btn.dataset.tankId}/toggle-geno`, { method: 'POST' })
+        .then((r) => r.json())
+        .then((j) => {
+          if (j && j.ok) {
+            btn.classList.toggle('is-on', j.needs_genotyping);
+            btn.textContent = j.needs_genotyping ? '●' : '○';
+          }
+        });
+    });
+  });
+
+{% if active_view == "tanks" and tanks_sub == "grid" %}
+  // ---- Rack grid view ----
+  (function () {
+    const dataEl = document.getElementById('zfish-rack-data');
+    const grid = document.getElementById('zfish-rack-grid');
+    const tray = document.getElementById('zfish-rack-tray-items');
+    const select = document.getElementById('zfish-rack-select');
+    if (!dataEl || !grid || !tray || !select) return;
+
+    let data;
+    try { data = JSON.parse(dataEl.textContent); } catch (_) { return; }
+    const racks = data.racks || [];
+    const tanks = data.tanks || [];
+    let active = racks[0] ? racks[0].id : null;
+
+    function tubeEl(t) {
+      const el = document.createElement('div');
+      el.className = `zfish-tube zfish-tube-${t.purpose || 'stock'}`;
+      el.draggable = true;
+      el.dataset.tankId = t.id;
+      el.title = `${t.tank_id}\n${t.line || ''}\n${t.purpose}`;
+      el.innerHTML = `<span class="zfish-tube-id">${t.tank_id}</span><span class="zfish-tube-line">${t.line || ''}</span>`;
+      el.addEventListener('dragstart', (ev) => {
+        ev.dataTransfer.setData('text/plain', String(t.id));
+        el.classList.add('is-dragging');
+      });
+      el.addEventListener('dragend', () => el.classList.remove('is-dragging'));
+      return el;
+    }
+
+    function moveTo(tankId, rackId, row, col) {
+      const fd = new FormData();
+      fd.append('rack_id_fk', rackId == null ? '' : String(rackId));
+      if (row !== null && row !== undefined) fd.append('row', String(row));
+      if (col !== null && col !== undefined) fd.append('col', String(col));
+      return fetch(`/zebrafish/tanks/${tankId}/move`, { method: 'POST', body: fd });
+    }
+
+    function render() {
+      const rack = racks.find((r) => r.id === active);
+      if (!rack) return;
+      grid.innerHTML = '';
+      grid.style.gridTemplateColumns = `28px repeat(${rack.cols}, 1fr)`;
+      grid.style.gridTemplateRows = `28px repeat(${rack.rows}, 1fr)`;
+
+      const blank = document.createElement('div'); blank.className = 'zfish-rack-corner'; grid.appendChild(blank);
+      for (let c = 0; c < rack.cols; c++) {
+        const h = document.createElement('div'); h.className = 'zfish-rack-col-label'; h.textContent = c + 1; grid.appendChild(h);
+      }
+      const letters = 'ABCDEFGHIJKLMNOPQRST';
+      for (let r = 0; r < rack.rows; r++) {
+        const lab = document.createElement('div'); lab.className = 'zfish-rack-row-label'; lab.textContent = letters[r] || (r + 1); grid.appendChild(lab);
+        for (let c = 0; c < rack.cols; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'zfish-rack-cell';
+          cell.dataset.row = r; cell.dataset.col = c;
+          cell.addEventListener('dragover', (ev) => { ev.preventDefault(); cell.classList.add('is-drop-target'); });
+          cell.addEventListener('dragleave', () => cell.classList.remove('is-drop-target'));
+          cell.addEventListener('drop', async (ev) => {
+            ev.preventDefault(); cell.classList.remove('is-drop-target');
+            const tankId = ev.dataTransfer.getData('text/plain');
+            if (!tankId) return;
+            await moveTo(tankId, active, parseInt(cell.dataset.row, 10), parseInt(cell.dataset.col, 10));
+            location.reload();
+          });
+          grid.appendChild(cell);
+        }
+      }
+
+      tray.innerHTML = '';
+      tanks.forEach((t) => {
+        const inRack = t.rack_id_fk === active;
+        const placed = inRack && t.row != null && t.col != null && t.row < rack.rows && t.col < rack.cols;
+        if (placed) {
+          const cell = grid.querySelector(`.zfish-rack-cell[data-row="${t.row}"][data-col="${t.col}"]`);
+          if (cell) cell.appendChild(tubeEl(t));
+        } else if (inRack || t.rack_id_fk === null) {
+          tray.appendChild(tubeEl(t));
+        }
+      });
+      tray.addEventListener('dragover', (ev) => { ev.preventDefault(); tray.classList.add('is-drop-target'); });
+      tray.addEventListener('dragleave', () => tray.classList.remove('is-drop-target'));
+      tray.addEventListener('drop', async (ev) => {
+        ev.preventDefault(); tray.classList.remove('is-drop-target');
+        const tankId = ev.dataTransfer.getData('text/plain');
+        if (!tankId) return;
+        await moveTo(tankId, null, null, null);
+        location.reload();
+      });
+    }
+
+    select.addEventListener('change', () => { active = parseInt(select.value, 10); render(); });
+    render();
+  })();
+{% endif %}
+
+{% if active_view == "water" %}
+  // Water trend chart
+  document.querySelectorAll('.zfish-log-chart[data-system-id]').forEach((host) => {
+    const sysId = host.dataset.systemId;
+    fetch(`/zebrafish/water/${sysId}/series.json`)
+      .then((r) => r.json())
+      .then((j) => {
+        const s = (j && j.series) || [];
+        host.innerHTML = renderChart(s);
+      });
+  });
+  function renderChart(series) {
+    if (!series.length) return '<div class="muted-inline" style="padding:12px;">No readings in the last 30 days.</div>';
+    const W = 460, H = 140, P = 24;
+    const xs = series.map((p) => new Date(p.t).getTime());
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const xRange = Math.max(1, xMax - xMin);
+    function line(key, color) {
+      const pts = series.filter((p) => p[key] != null).map((p) => ({ x: new Date(p.t).getTime(), y: p[key] }));
+      if (!pts.length) return '';
+      const yMin = Math.min(...pts.map((p) => p.y)), yMax = Math.max(...pts.map((p) => p.y));
+      const yRange = Math.max(0.01, yMax - yMin);
+      const path = pts.map((p, i) => {
+        const x = P + (p.x - xMin) / xRange * (W - 2 * P);
+        const y = H - P - (p.y - yMin) / yRange * (H - 2 * P);
+        return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+      }).join(' ');
+      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"></path>`;
+    }
+    return `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%; height:140px;">
+        ${line('temp', '#ef4444')}
+        ${line('ph', '#7c3aed')}
+        ${line('cond', '#0ea5e9')}
+      </svg>
+      <div class="zfish-log-legend">
+        <span><span class="dot" style="background:#ef4444"></span>°C</span>
+        <span><span class="dot" style="background:#7c3aed"></span>pH</span>
+        <span><span class="dot" style="background:#0ea5e9"></span>μS</span>
+      </div>`;
+  }
+{% endif %}
+</script>
+{% endblock %}

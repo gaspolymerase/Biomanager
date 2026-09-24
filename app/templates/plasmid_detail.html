@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
+{% block legacy %}1{% endblock %}
+
+{% block page_title %}Plasmid · #{{ plasmid.plasmid_id }} {{ plasmid.name }}{% endblock %}
+
+{% block content %}
+{# Open Vector Editor stylesheet — the UMD bundle's matching CSS. ?v= is the
+   file mtime so the browser refetches whenever we rebuild. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/plasmid-app.css') }}?v={{ asset_version('notebook-build/plasmid-app.css') }}">
+
+<div class="page-table-header">
+  <div>
+    <h1>Plasmid #{{ plasmid.plasmid_id }} · {{ plasmid.name or 'Unnamed' }}</h1>
+    <p class="page-subtitle">
+      <a href="{{ url_for('plasmids') }}">← All plasmids</a>
+      {% if plasmid.length_bp %} · {{ plasmid.length_bp }} bp{% endif %}
+      {% if plasmid.is_circular %} · circular{% else %}{% if plasmid.length_bp %} · linear{% endif %}{% endif %}
+      {% if plasmid.sequence_format %} · {{ plasmid.sequence_format }}{% endif %}
+      {% if plasmid.owner %} · {{ plasmid.owner | owner_badge }}{% endif %}
+    </p>
+  </div>
+</div>
+
+<section class="plasmid-detail">
+  <nav class="plasmid-tabs" role="tablist">
+    <button type="button" class="plasmid-tab is-active" data-tab="sequence">Sequence</button>
+    <button type="button" class="plasmid-tab" data-tab="storage">Storage</button>
+    <button type="button" class="plasmid-tab" data-tab="properties">Properties</button>
+  </nav>
+
+  {# ============ Sequence (working) tab — Open Vector Editor ============ #}
+  <article class="plasmid-tab-panel is-active" data-panel="sequence">
+    <div id="ove-root" class="ove-root" data-plasmid-id="{{ plasmid.row_id }}"
+         data-plasmid-name="{{ plasmid.name or ('Plasmid #' ~ plasmid.plasmid_id) }}">
+      <div class="ove-loading">Loading sequence editor…</div>
+    </div>
+
+    {# Quick "replace from file" form — still useful for bulk loading a
+       .dna / .gbk file, since OVE's own import is also good but this
+       persists in one step. #}
+    <form method="post" action="{{ url_for('plasmid_upload_sequence', row_id=plasmid.row_id) }}"
+          enctype="multipart/form-data" class="seqviz-upload">
+      <label class="seqviz-upload-file">
+        <span>Replace sequence from .dna (SnapGene) · .gb / .gbk · .fasta</span>
+        <input type="file" name="file" accept=".dna,.fasta,.fa,.gb,.gbk,.txt">
+      </label>
+      <details class="seqviz-paste">
+        <summary>or paste annotated text (FASTA / GenBank)</summary>
+        <textarea name="sequence_text" rows="4" placeholder="&gt;pTest&#10;ATGCGTAAACCC…&#10;&#10;…or paste GenBank LOCUS … // here"></textarea>
+      </details>
+      <button type="submit">Replace sequence</button>
+    </form>
+  </article>
+
+  {# ============ Storage tab ============ #}
+  <article class="plasmid-tab-panel" data-panel="storage">
+    <form method="post" action="{{ url_for('update_plasmid', row_id=plasmid.row_id) }}" class="plasmid-storage-form form-panel">
+      <label>Owner <input name="owner" value="{{ plasmid.owner }}"></label>
+      <label>Storage location <input name="location" value="{{ plasmid.location }}" placeholder="-80 box A, slot 7"></label>
+      <label style="grid-column: 1 / -1;">Notes
+        <textarea name="notes" rows="4" placeholder="Stock concentration, lot info, related orders…">{{ plasmid.notes }}</textarea>
+      </label>
+      <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="submit" class="dt-bottom-action is-primary">Save storage</button>
+      </div>
+    </form>
+    {% if plasmid.updated_at %}
+      <p class="plasmid-storage-meta">Last edited {{ plasmid.updated_at }}{% if plasmid.updated_by %} by {{ plasmid.updated_by | owner_badge }}{% endif %}</p>
+    {% endif %}
+  </article>
+
+  {# ============ Properties tab ============ #}
+  <article class="plasmid-tab-panel" data-panel="properties">
+    <form method="post" action="{{ url_for('update_plasmid', row_id=plasmid.row_id) }}" class="plasmid-storage-form form-panel">
+      <label>Name <input name="name" value="{{ plasmid.name }}"></label>
+      <label>Backbone <input name="backbone" value="{{ plasmid.backbone }}"></label>
+      <label>Insert <input name="insert_seq" value="{{ plasmid.insert_seq }}"></label>
+      <label>Resistance <input name="resistance" value="{{ plasmid.resistance }}"></label>
+      <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="submit" class="dt-bottom-action is-primary">Save properties</button>
+      </div>
+    </form>
+  </article>
+</section>
+
+{# OVE UMD bundle. Exposes window.createVectorEditor. Loaded BEFORE the
+   inline script so the global is in place when we read it. #}
+<script src="{{ url_for('static', filename='notebook-build/plasmid-app.js') }}?v={{ asset_version('notebook-build/plasmid-app.js') }}" defer
+        onload="window.__oveLoaded = true"
+        onerror="window.__oveMissing = true"></script>
+
+<script>
+(function () {
+  // Tab switching ----------------------------------------------------------
+  const tabs = document.querySelectorAll('.plasmid-tab');
+  const panels = document.querySelectorAll('.plasmid-tab-panel');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((t) => t.classList.toggle('is-active', t === tab));
+      panels.forEach((p) => p.classList.toggle('is-active', p.dataset.panel === tab.dataset.tab));
+    });
+  });
+
+  // Open Vector Editor mount -----------------------------------------------
+  const root = document.getElementById('ove-root');
+  if (!root) return;
+  const plasmidId = root.dataset.plasmidId;
+  const plasmidName = root.dataset.plasmidName;
+
+  // Wait for the deferred UMD bundle to register window.createVectorEditor.
+  function waitForOve() {
+    return new Promise((resolve) => {
+      if (window.createVectorEditor) return resolve('ready');
+      const start = Date.now();
+      const tick = () => {
+        if (window.createVectorEditor) return resolve('ready');
+        if (window.__oveMissing) return resolve('missing');
+        if (window.__oveLoaded && !window.createVectorEditor) {
+          // Bundle finished but global not set → runtime crash.
+          return setTimeout(() => resolve(window.createVectorEditor ? 'ready' : 'broken'), 200);
+        }
+        if (Date.now() - start > 20000) return resolve('missing');
+        setTimeout(tick, 80);
+      };
+      tick();
+    });
+  }
+
+  Promise.all([
+    fetch(`/plasmids/${plasmidId}/sequence.json`).then((r) => r.ok ? r.json() : null),
+    waitForOve(),
+  ]).then(([data, status]) => {
+    if (status === 'missing') {
+      root.innerHTML = '<div class="ove-error">Open Vector Editor bundle didn\'t load. Run <code>cd frontend &amp;&amp; npm run build:plasmid</code>, then hard-refresh.</div>';
+      return;
+    }
+    if (status === 'broken') {
+      root.innerHTML = '<div class="ove-error">OVE crashed at startup. Open DevTools → Console for the error.</div>';
+      return;
+    }
+    // Clear our placeholder. OVE renders into an empty container.
+    root.innerHTML = '';
+
+    const editor = window.createVectorEditor(root, {
+      editorName: `plasmid-${plasmidId}`,
+      showMenuBar: true,
+      shouldAutosave: true,  // calls onSave after every edit
+      doNotUseAbsolutePosition: true,
+      onSave: function (event, sequenceData, editorState, onSuccess) {
+        fetch(`/plasmids/${plasmidId}/sequence-save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sequenceData }),
+        })
+          .then((r) => r.json())
+          .then((j) => {
+            if (j && j.ok) {
+              if (onSuccess) onSuccess();
+            } else {
+              console.error('Save failed:', j);
+            }
+          })
+          .catch((err) => console.error('Save network error:', err));
+      },
+    });
+
+    if (data && data.ok) {
+      editor.updateEditor({
+        sequenceData: {
+          name: data.name || plasmidName,
+          sequence: data.sequence || '',
+          circular: !!data.circular,
+          features: data.features || [],
+        },
+      });
+    } else {
+      // Empty plasmid — start with a blank sequence so user can begin typing.
+      editor.updateEditor({
+        sequenceData: {
+          name: plasmidName,
+          sequence: '',
+          circular: true,
+          features: [],
+        },
+      });
+    }
+  });
+})();
+</script>
+{% endblock %}

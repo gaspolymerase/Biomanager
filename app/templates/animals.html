@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block page_title %}Animals{% endblock %}
+{% block page_heading %}Animal registry{% endblock %}
+{% block page_subtitle %}Generic records for species without a dedicated module · {{ animals|length }} entr{{ 'y' if animals|length == 1 else 'ies' }}{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+
+  <form method="post" class="card self-start">
+    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New animal record</h2></header>
+    <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+      <label class="field-label">Animal ID <input name="animal_id" required></label>
+      <label class="field-label">Species
+        <select name="species">
+          {% for species in species_options %}<option value="{{ species }}">{{ species }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-label">Strain / line <input name="strain_or_line"></label>
+      <label class="field-label">Sex <input name="sex"></label>
+      <label class="field-label">Birth date <input type="date" name="birth_date"></label>
+      <label class="field-label">Status <input name="status" value="active"></label>
+      <label class="field-label">Location <input name="location"></label>
+      <label class="field-label">Protocol <input name="protocol"></label>
+      <label class="field-label sm:col-span-2">Genotype <input name="genotype"></label>
+      <label class="field-label sm:col-span-2">Species-specific details
+        <textarea name="species_details" rows="2"
+                  placeholder="Mouse cage number, fly stock, worm stage, tank number…"></textarea>
+      </label>
+      <label class="field-label sm:col-span-2">Custom attributes
+        <textarea name="custom_attributes" rows="2" placeholder="JSON or free text"></textarea>
+      </label>
+      <label class="field-label sm:col-span-2">Notes <textarea name="notes" rows="2"></textarea></label>
+      <div class="sm:col-span-2">
+        <button type="submit" class="btn btn-primary">Save animal</button>
+      </div>
+    </div>
+  </form>
+
+  <section class="data-table-card">
+    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#paw"></use></svg> Registry</h2></header>
+    {% if animals %}
+      <div class="dt-scroll">
+        <table class="dt">
+          <thead>
+            <tr>
+              <th style="width: 160px;">ID</th>
+              <th style="width: 140px;">Species</th>
+              <th style="width: 120px;">Status</th>
+              <th>Location</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for animal in animals %}
+              <tr>
+                <td><span class="dt-row-name">{{ animal.animal_id }}</span></td>
+                <td>{{ animal.species }}</td>
+                <td><span class="dt-status" data-status="{{ animal.status }}">{{ animal.status }}</span></td>
+                <td class="text-muted">{{ animal.location }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#paw"></use></svg><p>No animals yet.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

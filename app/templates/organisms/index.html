@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block page_title %}Databases{% endblock %}
+{% block page_heading %}Organism databases{% endblock %}
+{% block page_subtitle %}Each one is a species module you can reshape — nouns, capabilities, fields and schedule{% endblock %}
+
+{% block page_actions %}
+  <a class="btn btn-primary" href="{{ url_for('organisms.new_module') }}">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New database
+  </a>
+{% endblock %}
+
+{% block content %}
+{% if cards %}
+  <section class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+    {% for card in cards %}
+      {% set m = card.module %}
+      <article class="card flex flex-col">
+        <header class="card-head">
+          <h2>
+            {{ icon(m.icon) }}
+            <a class="text-ink no-underline hover:text-brand-700"
+               href="{{ url_for('organisms.module', key=m.key) }}">{{ m.label }}</a>
+          </h2>
+          {% if not card.module.row.enabled %}
+            <span class="badge badge-quiet">disabled</span>
+          {% else %}
+            <span class="badge badge-quiet">{{ m.identity_mode }}</span>
+          {% endif %}
+        </header>
+
+        <div class="flex flex-col gap-3 p-4">
+          {% if m.blurb %}
+            <p class="text-[12.5px] leading-snug text-muted">{{ m.blurb }}</p>
+          {% endif %}
+
+          <div class="grid grid-cols-3 gap-2">
+            <div class="inset py-2">
+              <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.organism_noun_plural }}</span>
+              <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.animals }}</span>
+            </div>
+            <div class="inset py-2">
+              <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.housing_noun_plural }}</span>
+              <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.housing }}</span>
+            </div>
+            <div class="inset py-2">
+              <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.line_noun_plural }}</span>
+              <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.lines }}</span>
+            </div>
+          </div>
+
+          {% if card.census.overdue %}
+            <p class="flash-message flash-warning mb-0 py-2 text-[12px]">
+              <svg class="icon size-3.5 shrink-0" aria-hidden="true"><use href="/static/icons.svg#alarm"></use></svg>
+              {{ card.census.overdue }} overdue item{{ '' if card.census.overdue == 1 else 's' }}
+            </p>
+          {% endif %}
+
+          <div class="flex flex-wrap gap-1">
+            {% for label in card.capabilities[:7] %}
+              <span class="badge badge-quiet">{{ label }}</span>
+            {% endfor %}
+            {% if card.capabilities|length > 7 %}
+              <span class="badge badge-quiet">+{{ card.capabilities|length - 7 }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
+          <a class="btn btn-sm" href="{{ url_for('organisms.module', key=m.key) }}">Open</a>
+          <a class="btn btn-sm btn-ghost" href="{{ url_for('organisms.module', key=m.key, view='settings') }}">
+            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#settings"></use></svg> Configure
+          </a>
+        </footer>
+      </article>
+    {% endfor %}
+  </section>
+{% else %}
+  <div class="card empty-state">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#database"></use></svg>
+    <p>No configurable databases yet.</p>
+    <a class="btn btn-primary mt-2" href="{{ url_for('organisms.new_module') }}">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Create one
+    </a>
+  </div>
+{% endif %}
+
+<div class="mt-5 inset max-w-[720px]">
+  <p class="text-[12.5px] leading-snug text-muted">
+    The mouse colony and zebrafish modules are separate, hand-written pages with their
+    own tables — they are not listed here. Both are available as starting presets if you
+    would rather run them on this configurable engine.
+  </p>
+</div>
+{% endblock %}

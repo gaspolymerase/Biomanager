@@ -1,0 +1,1439 @@
+/* ===========================================================================
+   BioManager design system — Tailwind CSS v4 source.
+   ---------------------------------------------------------------------------
+   Compiled to app/static/tailwind.css by `npm run build:css` (see
+   frontend/package.json). Run `npm run watch:css` while editing templates.
+
+   Two layers of styling are used across the app:
+
+     1. Utilities in the markup — for layout and one-off composition. This is
+        the default; reach for it first.
+     2. Component classes defined here with @apply — for anything repeated
+        across templates or referenced by JavaScript (`.dt-*` by
+        data-table.js, `.cmdk-*` by global-search.js, `.wtab*` by
+        tab-bar.js). Keeping those class names stable means the behavior
+        scripts keep working untouched.
+
+   Colors: a soft teal brand over a warm neutral ("sand") grey ramp. Both are
+   real design tokens, so `bg-brand-600` / `text-sand-500` work in markup and
+   `var(--color-sand-200)` works from plain CSS.
+   =========================================================================== */
+
+@import "tailwindcss";
+
+@source "../../app/templates/**/*.html";
+@source "../../app/static/*.js";
+
+@theme {
+  /* --- Accent -----------------------------------------------------------
+     Apple apps tint with the system accent; this one keeps its own teal so
+     it matches the app icon. Swap these six values for Apple's systemBlue
+     (#007AFF / #0A84FF) and the whole interface follows. */
+  --color-brand-50:  #E9F8F5;
+  --color-brand-100: #CFF0EA;
+  --color-brand-200: #A2E1D6;
+  --color-brand-300: #6CCCBC;
+  --color-brand-400: #3EB8A4;
+  --color-brand-500: #1FA890;
+  --color-brand-600: #17A38F;
+  --color-brand-700: #0F8577;
+  --color-brand-800: #0B6A5F;
+  --color-brand-900: #09524A;
+  --color-brand-950: #05332E;
+
+  /* --- Neutrals: Apple's system grays -----------------------------------
+     Kept under the existing `sand-*` names so every component picks the new
+     palette up without being rewritten. */
+  --color-sand-25:  #FFFFFF;
+  --color-sand-50:  #F5F5F7;   /* grouped background */
+  --color-sand-100: #F2F2F7;   /* systemGray6 */
+  --color-sand-200: #E5E5EA;   /* systemGray5 */
+  --color-sand-300: #D1D1D6;   /* systemGray4 */
+  --color-sand-400: #C7C7CC;   /* systemGray3 */
+  --color-sand-500: #8E8E93;   /* systemGray  */
+  --color-sand-600: #6E6E73;   /* secondaryLabel */
+  --color-sand-700: #48484A;
+  --color-sand-800: #2C2C2E;
+  --color-sand-900: #1D1D1F;   /* label */
+  --color-sand-950: #000000;
+
+  /* --- Apple semantic colors -------------------------------------------- */
+  --color-ok-50:      #E7F8EC;
+  --color-ok-200:     #A7E3B8;
+  --color-ok-600:     #248A3D;
+  --color-ok-700:     #1C6B2F;
+  --color-warn-50:    #FFF4E5;
+  --color-warn-200:   #FFD8A8;
+  --color-warn-600:   #C06800;
+  --color-warn-700:   #94500B;
+  --color-danger-50:  #FFEBEA;
+  --color-danger-200: #FFC2BE;
+  --color-danger-600: #D70015;
+  --color-danger-700: #A60010;
+  --color-info-50:    #E8F1FF;
+  --color-info-200:   #BAD6FF;
+  --color-info-600:   #007AFF;
+
+  /* --- Surfaces ---------------------------------------------------------- */
+  --color-canvas:   #ECECEE;   /* window background behind content */
+  --color-surface:  #FFFFFF;   /* content / control background */
+  --color-recess:   #F5F5F7;
+  --color-hairline: #D2D2D7;   /* separator */
+  --color-ink:      #1D1D1F;
+  --color-ink-soft: #48484A;
+  --color-muted:    #6E6E73;
+
+  /* Translucent materials. macOS sidebars and toolbars sit on top of what
+     is behind them; these are the tints that go with backdrop-filter. */
+  --material-sidebar: rgba(246, 246, 248, 0.72);
+  --material-bar:     rgba(255, 255, 255, 0.72);
+  --material-popover: rgba(252, 252, 254, 0.86);
+
+  /* --- Type --------------------------------------------------------------
+     No webfont: the system stack resolves to SF Pro on Apple devices, which
+     is both the correct look and the only licensed way to get it. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+               "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, "JetBrains Mono", monospace;
+
+  /* --- Radii: macOS control geometry ------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 5px;
+  --radius-md: 6px;    /* push buttons, fields */
+  --radius-lg: 8px;
+  --radius-xl: 10px;   /* grouped boxes */
+  --radius-2xl: 12px;  /* sheets, cards */
+  --radius-3xl: 18px;
+
+  /* --- Shadows: Apple keeps these very tight ----------------------------- */
+  --shadow-xs:  0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px rgb(0 0 0 / 0.04);
+  --shadow-sm:  0 0 0 0.5px rgb(0 0 0 / 0.07), 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-md:  0 0 0 0.5px rgb(0 0 0 / 0.07), 0 4px 12px rgb(0 0 0 / 0.08);
+  --shadow-lg:  0 0 0 0.5px rgb(0 0 0 / 0.08), 0 12px 32px rgb(0 0 0 / 0.14);
+  --shadow-pop: 0 0 0 0.5px rgb(0 0 0 / 0.1), 0 16px 48px rgb(0 0 0 / 0.22);
+
+  --ease-out-soft: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --rail-w: 52px;
+  --rail-w-open: 220px;
+  --tabbar-h: 38px;
+  --toolbar-h: 52px;
+}
+
+/* ---------------------------------------------------------------------------
+   Dark mode. Apple's dark palette is not an inversion — the grays get
+   warmer and the separators nearly vanish, so they are set explicitly.
+   --------------------------------------------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-sand-25:  #000000;
+    --color-sand-50:  #1C1C1E;
+    --color-sand-100: #2C2C2E;
+    --color-sand-200: #3A3A3C;
+    --color-sand-300: #48484A;
+    --color-sand-400: #636366;
+    --color-sand-500: #8E8E93;
+    --color-sand-600: #98989D;
+    --color-sand-700: #C7C7CC;
+    --color-sand-800: #E5E5EA;
+    --color-sand-900: #F5F5F7;
+    --color-sand-950: #FFFFFF;
+
+    --color-canvas:   #1E1E1E;
+    --color-surface:  #2A2A2C;
+    --color-recess:   #232325;
+    --color-hairline: #3A3A3C;
+    --color-ink:      #F5F5F7;
+    --color-ink-soft: #C7C7CC;
+    --color-muted:    #98989D;
+
+    --color-brand-600: #2FC2A8;
+    --color-brand-700: #24A68F;
+    --color-brand-50:  #10312C;
+    --color-brand-100: #123B34;
+    --color-brand-200: #17544A;
+
+    --color-info-600:   #0A84FF;
+    --color-ok-600:     #30D158;
+    --color-warn-600:   #FF9F0A;
+    --color-danger-600: #FF453A;
+    --color-ok-50:      #16301D;
+    --color-warn-50:    #35280F;
+    --color-danger-50:  #3A1C1A;
+    --color-info-50:    #10263E;
+
+    --material-sidebar: rgba(32, 32, 34, 0.72);
+    --material-bar:     rgba(38, 38, 40, 0.72);
+    --material-popover: rgba(44, 44, 46, 0.9);
+
+    --shadow-xs:  0 0 0 0.5px rgb(255 255 255 / 0.06), 0 1px 1px rgb(0 0 0 / 0.3);
+    --shadow-sm:  0 0 0 0.5px rgb(255 255 255 / 0.07), 0 1px 3px rgb(0 0 0 / 0.4);
+    --shadow-md:  0 0 0 0.5px rgb(255 255 255 / 0.08), 0 4px 14px rgb(0 0 0 / 0.5);
+    --shadow-lg:  0 0 0 0.5px rgb(255 255 255 / 0.1), 0 14px 36px rgb(0 0 0 / 0.6);
+    --shadow-pop: 0 0 0 0.5px rgb(255 255 255 / 0.12), 0 18px 52px rgb(0 0 0 / 0.7);
+  }
+}
+
+/* ===========================================================================
+   BASE — macOS metrics: 13px body text, tight leading, no webfont.
+   =========================================================================== */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: light dark;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans text-[13px] antialiased;
+    line-height: 1.45;
+    letter-spacing: -0.003em;
+  }
+
+  /* Scrollbars stay out of the way; macOS overlays them anyway. */
+  * { scrollbar-width: none; -ms-overflow-style: none; }
+  *::-webkit-scrollbar { width: 0; height: 0; }
+
+  /* Apple's type ramp: large title, title, headline, body, footnote. */
+  h1 { @apply text-[22px] font-bold tracking-[-0.021em] text-ink; line-height: 1.2; }
+  h2 { @apply text-[15px] font-semibold tracking-[-0.012em] text-ink; line-height: 1.3; }
+  h3 { @apply text-[13px] font-semibold text-ink; }
+
+  a { @apply text-brand-700 no-underline; }
+  a:hover { @apply underline; text-underline-offset: 2px; }
+
+  :focus { outline: none; }
+  /* Keyboard focus only, and never a glowing box around a text field or
+     the notebook editor — those show focus through their own border. */
+  :focus-visible { @apply outline-none ring-[3px] ring-brand-500/35; }
+  input:focus-visible, textarea:focus-visible, select:focus-visible,
+  [contenteditable]:focus-visible, [contenteditable] :focus-visible,
+  .ProseMirror:focus-visible, .ProseMirror :focus-visible { @apply ring-0; }
+
+  td, th, .num { font-variant-numeric: tabular-nums; }
+  ::selection { @apply bg-brand-200/60; }
+
+  /* Every icon is one <use> of the shared sprite, so it inherits colour. */
+  svg.icon {
+    @apply inline-block size-4 shrink-0 align-[-0.15em];
+    fill: currentColor;
+  }
+}
+
+/* ===========================================================================
+   CONTROLS — modelled on AppKit: small, tightly radiused, quiet until
+   hovered. Declared with @utility so they can be composed with @apply.
+   =========================================================================== */
+
+/* --- Push button -------------------------------------------------------- */
+
+@utility btn {
+  @apply inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5
+         rounded-md border border-hairline bg-surface px-2.5 text-[13px]
+         font-medium text-ink shadow-xs transition-[background-color,box-shadow] duration-100
+         select-none;
+  & .icon { @apply size-[14px]; }
+  &:hover { @apply bg-sand-50; }
+  &:active { @apply bg-sand-200 shadow-none; }
+  &:disabled { @apply cursor-default bg-sand-50 text-sand-400 shadow-none; }
+}
+
+@utility btn-primary {
+  @apply border-transparent bg-brand-600 text-white shadow-sm;
+  &:hover { @apply border-transparent bg-brand-700 text-white; }
+  &:active { @apply bg-brand-800; }
+  &:disabled { @apply border-transparent bg-brand-600/35 text-white/70; }
+}
+
+@utility btn-ghost {
+  @apply border-transparent bg-transparent text-ink shadow-none;
+  &:hover { @apply border-transparent bg-sand-200/70; }
+  &:active { @apply bg-sand-300/70; }
+}
+
+@utility btn-danger {
+  @apply border-transparent bg-danger-600 text-white shadow-sm;
+  &:hover { @apply border-transparent bg-danger-700 text-white; }
+}
+
+@utility btn-icon { @apply size-7 px-0; }
+@utility btn-sm   { @apply h-6 px-2 text-[12px]; }
+@utility btn-lg   { @apply h-8 gap-2 px-3.5 text-[13px]; }
+
+/* --- Text field --------------------------------------------------------- */
+
+@utility field {
+  @apply h-7 w-full rounded-md border border-hairline bg-surface px-2 text-[13px]
+         text-ink transition-colors duration-100;
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.04);
+  &::placeholder { @apply text-sand-500; }
+  &:hover { @apply border-sand-400; }
+  &:focus { @apply border-brand-500; box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.04); }
+  &:disabled { @apply cursor-default bg-sand-100 text-sand-500; }
+}
+
+/* A label stacked over its control. */
+@utility field-label {
+  @apply flex flex-col gap-1 text-[11px] font-medium text-muted;
+}
+@utility field-hint { @apply text-[11px] leading-snug text-muted; }
+
+/* --- Badges ------------------------------------------------------------- */
+
+@utility badge {
+  @apply inline-flex items-center gap-1 rounded-full bg-sand-200/80 px-2 py-[1px]
+         text-[11px] font-medium leading-[17px] text-ink-soft;
+  & .icon { @apply size-3; }
+}
+@utility badge-brand  { @apply bg-brand-100 text-brand-800; }
+@utility badge-ok     { @apply bg-ok-50 text-ok-700; }
+@utility badge-warn   { @apply bg-warn-50 text-warn-700; }
+@utility badge-danger { @apply bg-danger-50 text-danger-700; }
+@utility badge-info   { @apply bg-info-50 text-info-600; }
+@utility badge-quiet  { @apply bg-sand-200/70 text-muted; }
+
+@utility ident { @apply font-mono text-[12px] tracking-[-0.01em] text-ink-soft; }
+
+@utility kbd-chip {
+  @apply inline-flex h-[17px] min-w-[17px] items-center justify-center rounded
+         bg-sand-200/80 px-1 font-sans text-[10.5px] font-medium leading-none text-muted;
+}
+
+/* --- Grouped box -------------------------------------------------------- */
+/* The System Settings container: a rounded panel with hairline separators
+   between rows rather than a border around every item. */
+
+@utility card {
+  @apply overflow-hidden rounded-xl border border-hairline bg-surface shadow-xs;
+}
+@utility card-pad { @apply p-4; }
+@utility inset { @apply rounded-lg bg-sand-100 px-3 py-2.5; }
+
+@utility empty-state {
+  @apply flex flex-col items-center justify-center gap-2 px-4 py-12 text-center;
+  & .icon { @apply size-6 text-sand-400; }
+  & p { @apply text-[13px] text-muted; }
+}
+
+@utility stat {
+  @apply flex min-w-0 flex-col gap-0.5 rounded-xl border border-hairline bg-surface
+         px-3.5 py-3 no-underline shadow-xs transition-colors duration-100;
+  &:hover { @apply bg-sand-50; }
+}
+
+@utility row-line {
+  @apply flex items-center gap-3 border-b border-hairline px-4 py-2 text-[13px]
+         no-underline transition-colors duration-75;
+  &:last-child { @apply border-b-0; }
+  &:hover { @apply bg-sand-100; }
+}
+
+/* ===========================================================================
+   COMPOSED COMPONENTS — element selectors, descendant rules, and anything
+   referenced by JavaScript.
+   =========================================================================== */
+
+@layer components {
+
+  select.field {
+    @apply cursor-pointer appearance-none bg-no-repeat pr-7;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b8981' stroke-width='1.75' stroke-linecap='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right 8px center;
+  }
+  textarea.field { @apply h-auto min-h-20 py-2 leading-relaxed; }
+
+  .field-label > input:not([type="checkbox"]):not([type="radio"]),
+  .field-label > select,
+  .field-label > textarea { @apply field mt-0.5 normal-case tracking-normal; }
+
+  /* Search field with a leading icon; wrap in .input-icon. */
+  .input-icon { @apply relative; }
+  .input-icon > svg,
+  .input-icon > .search-icon {
+    @apply pointer-events-none absolute left-2.5 top-1/2 size-[15px] -translate-y-1/2 text-sand-400;
+  }
+  .input-icon > input { @apply field pl-8; }
+
+  kbd, .kbd { @apply kbd-chip; }
+
+  .card-head {
+    @apply flex items-center justify-between gap-3 border-b border-sand-100 px-4 py-3;
+  }
+  .card-head h2 { @apply flex min-w-0 items-center gap-2 truncate; }
+  .card-head h2 svg { @apply size-[15px] shrink-0 text-sand-400; }
+  .card-head-link { @apply shrink-0 text-[12px] font-medium text-muted transition-colors; }
+  .card-head-link:hover { @apply text-brand-700; }
+
+  .stat-label {
+    @apply truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-sand-400;
+  }
+  .stat-value { @apply text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink; }
+  .stat-sub { @apply truncate text-[11.5px] text-muted; }
+  .stat:hover .stat-value { @apply text-brand-700; }
+
+  /* --- Page header (rendered by base.html above the content block) ------ */
+
+  .page-head {
+    @apply mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3;
+  }
+  .page-head-titles { @apply min-w-0; }
+  .page-head h1 { @apply truncate text-[21px] leading-tight; }
+  .page-head-sub { @apply mt-1 text-[12.5px] leading-snug text-muted; }
+  .page-head-actions { @apply flex shrink-0 flex-wrap items-center gap-2; }
+
+  /* Segmented sub-navigation — the in-page tab row (Mice / Cages / …). */
+  .seg {
+    @apply inline-flex items-center gap-0.5 rounded-xl border border-hairline
+           bg-recess p-0.5 shadow-xs;
+  }
+  .seg-item {
+    @apply inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-[9px] px-2.5
+           text-[12.5px] font-medium text-muted transition-all duration-150 select-none;
+    transition-timing-function: var(--ease-out-soft);
+  }
+  .seg-item svg { @apply size-[14px]; }
+  .seg-item:hover { @apply bg-surface/70 text-ink-soft; }
+  .seg-item.is-active { @apply bg-surface text-brand-700 shadow-xs ring-1 ring-sand-200/80; }
+  .seg-count { @apply ml-0.5 text-[10.5px] font-semibold text-sand-400; }
+  .seg-item.is-active .seg-count { @apply text-brand-600/70; }
+
+  /* --- Flash messages --------------------------------------------------- */
+
+  .flash-stack { @apply mb-4 flex flex-col gap-2; }
+  .flash-message {
+    @apply flex items-start gap-2 rounded-xl border border-hairline bg-sand-50 px-3.5 py-2.5
+           text-[12.5px] font-medium text-ink-soft;
+  }
+  .flash-success { @apply border-ok-200 bg-ok-50 text-ok-700; }
+  .flash-error   { @apply border-danger-200 bg-danger-50 text-danger-700; }
+  .flash-warning { @apply border-warn-200 bg-warn-50 text-warn-700; }
+  .flash-info    { @apply border-info-200 bg-info-50 text-info-600; }
+}
+
+/* ===========================================================================
+   APP SHELL — a macOS document window: translucent sidebar, unified
+   toolbar, Finder-style tab strip, content on the window background.
+
+     .shell            grid: sidebar | main
+       .rail           vibrant sidebar, full height
+       .shell-main
+         .topstrip     tab strip (Finder tabs)
+         .toolbar      title + actions, sticky, hairline appears on scroll
+         .shell-scroll the only vertical scroller
+   =========================================================================== */
+
+@layer components {
+
+  .shell {
+    @apply grid h-screen w-full overflow-hidden bg-canvas;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    transition: grid-template-columns 0.25s var(--ease-out-soft);
+  }
+  body[data-rail="open"] .shell { grid-template-columns: var(--rail-w-open) minmax(0, 1fr); }
+
+  /* --- Sidebar ---------------------------------------------------------- */
+
+  .rail {
+    @apply relative z-40 flex h-screen flex-col gap-px overflow-y-auto px-2 pb-2 pt-2.5;
+    background: var(--material-sidebar);
+    -webkit-backdrop-filter: saturate(180%) blur(30px);
+    backdrop-filter: saturate(180%) blur(30px);
+    box-shadow: inset -0.5px 0 0 var(--color-hairline);
+  }
+
+  .rail-brand {
+    @apply mb-2 flex h-8 shrink-0 items-center gap-2 rounded-md px-1.5 no-underline;
+  }
+  .rail-brand:hover { @apply no-underline; }
+  .rail-brand img { @apply size-[22px] shrink-0 rounded-md; }
+  .rail-brand-word {
+    @apply truncate text-[13px] font-semibold tracking-[-0.01em] text-ink;
+  }
+
+  .rail-group { @apply flex shrink-0 flex-col gap-px; }
+
+  /* macOS sidebar headers: small, semibold, secondary — not uppercase. */
+  .rail-group-label {
+    @apply truncate px-2 pb-1 pt-3.5 text-[11px] font-semibold text-muted;
+  }
+
+  .rail-item {
+    @apply relative flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md
+           border-0 bg-transparent px-2 text-[13px] font-normal text-ink no-underline
+           transition-colors duration-75 select-none;
+  }
+  .rail-item .icon { @apply size-[15px] shrink-0 text-muted transition-colors; }
+  .rail-item:hover { @apply bg-sand-300/45 no-underline; }
+  .rail-item.is-active { @apply bg-brand-600 font-medium text-white; }
+  .rail-item.is-active .icon { @apply text-white; }
+  .rail-item.is-active:hover { @apply bg-brand-700; }
+
+  .rail-label { @apply truncate; }
+  .rail-foot { @apply mt-auto flex shrink-0 flex-col gap-px pt-3; }
+
+  /* Collapsed: glyphs only, name on hover. */
+  body[data-rail="closed"] .rail-item { @apply justify-center px-0; }
+  body[data-rail="closed"] .rail-label,
+  body[data-rail="closed"] .rail-brand-word { @apply hidden; }
+  body[data-rail="closed"] .rail-brand { @apply justify-center px-0; }
+  body[data-rail="closed"] .rail-group-label { @apply h-2 overflow-hidden p-0 text-transparent; }
+
+  body[data-rail="closed"] .rail-item[data-label]::after {
+    content: attr(data-label);
+    @apply pointer-events-none absolute left-[calc(100%+8px)] top-1/2 z-50 -translate-y-1/2
+           whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium text-ink
+           opacity-0 shadow-md transition-opacity duration-100;
+    background: var(--material-popover);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+  }
+  body[data-rail="closed"] .rail-item[data-label]:hover::after { @apply opacity-100; }
+
+  .rail-toggle {
+    @apply flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2
+           text-[12px] text-muted transition-colors duration-75;
+  }
+  .rail-toggle:hover { @apply bg-sand-300/45 text-ink; }
+  .rail-toggle .icon { @apply size-[14px] transition-transform duration-200; }
+  body[data-rail="open"] .rail-toggle .icon { @apply rotate-180; }
+  body[data-rail="closed"] .rail-toggle { @apply justify-center px-0; }
+
+  /* --- Main column ------------------------------------------------------ */
+
+  .shell-main { @apply flex min-w-0 flex-col overflow-hidden; }
+  .shell-scroll { @apply flex-1 overflow-y-auto overscroll-contain bg-canvas; }
+  .shell-page { @apply mx-auto w-full max-w-[1100px] px-6 pb-16 pt-5; }
+  .shell-page-wide { @apply mx-auto w-full max-w-none px-5 pb-16 pt-4; }
+  .shell-page-flush { @apply mx-auto w-full max-w-none p-0; }
+
+  /* --- Tab strip: Finder tabs ------------------------------------------- */
+
+  .topstrip {
+    @apply sticky top-0 z-30 flex shrink-0 items-stretch gap-0 px-0;
+    height: var(--tabbar-h);
+    background: var(--material-bar);
+    -webkit-backdrop-filter: saturate(180%) blur(30px);
+    backdrop-filter: saturate(180%) blur(30px);
+    box-shadow: inset 0 -0.5px 0 var(--color-hairline);
+  }
+
+  .wtab-strip { @apply flex min-w-0 flex-1 items-stretch; }
+  .wtabs { @apply flex min-w-0 shrink items-stretch overflow-x-auto; }
+  .wtabs[data-overflow="both"]  { mask-image: linear-gradient(90deg, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%); }
+  .wtabs[data-overflow="start"] { mask-image: linear-gradient(90deg, transparent 0, #000 20px); }
+  .wtabs[data-overflow="end"]   { mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent 100%); }
+
+  /* Finder tabs are flush cells divided by hairlines, not floating pills. */
+  .wtab {
+    @apply relative flex min-w-0 max-w-[220px] shrink-0 cursor-pointer items-center gap-1.5
+           px-3 text-[12px] font-normal text-muted transition-colors duration-75 select-none;
+    box-shadow: inset -0.5px 0 0 var(--color-hairline);
+  }
+  .wtab:hover { @apply bg-sand-300/30 text-ink; }
+  .wtab.is-active { @apply bg-surface font-medium text-ink; }
+  .wtab.is-dragging { @apply opacity-40; }
+  .wtab.is-drop-before { box-shadow: inset 2px 0 0 0 var(--color-brand-600); }
+  .wtab.is-drop-after  { box-shadow: inset -2px 0 0 0 var(--color-brand-600); }
+
+  .wtab-icon { @apply size-[13px] shrink-0 text-sand-500 transition-colors; }
+  .wtab.is-active .wtab-icon { @apply text-brand-600; }
+  .wtab-link { @apply min-w-0 flex-1 truncate text-inherit no-underline; }
+  .wtab-link:hover { @apply text-inherit no-underline; }
+
+  .wtab-close {
+    @apply grid size-[17px] shrink-0 cursor-pointer place-items-center rounded
+           text-sand-500 opacity-0 transition-opacity duration-75;
+  }
+  .wtab-close .icon, .wtab-close-icon { @apply size-[9px]; }
+  .wtab-close:hover { @apply bg-sand-300/80 text-ink; }
+  .wtab:hover .wtab-close, .wtab.is-active .wtab-close { @apply opacity-100; }
+  @media (hover: none) { .wtab-close { @apply opacity-100; } }
+
+  .wtab-add {
+    @apply grid w-8 shrink-0 cursor-pointer place-items-center text-sand-500
+           transition-colors duration-75;
+    box-shadow: inset -0.5px 0 0 var(--color-hairline);
+  }
+  .wtab-add:hover { @apply bg-sand-300/30 text-ink; }
+  .wtab-add .icon { @apply size-3; }
+
+  /* --- Unified toolbar -------------------------------------------------- */
+
+  .toolbar {
+    @apply sticky z-20 flex shrink-0 items-center gap-2 px-4;
+    top: var(--tabbar-h);
+    height: var(--toolbar-h);
+    background: var(--material-bar);
+    -webkit-backdrop-filter: saturate(180%) blur(30px);
+    backdrop-filter: saturate(180%) blur(30px);
+  }
+  /* The separator only appears once content slides under the toolbar. */
+  .toolbar.is-scrolled { box-shadow: inset 0 -0.5px 0 var(--color-hairline); }
+
+  .toolbar-title {
+    @apply min-w-0 truncate text-[15px] font-semibold tracking-[-0.012em] text-ink;
+  }
+  /* The title block keeps its width; buttons give way first. */
+  .toolbar > .min-w-0 { @apply flex-1; }
+  .toolbar-actions { @apply shrink; }
+  .toolbar-actions .btn { @apply min-w-0; }
+  .toolbar-actions .btn span { @apply truncate; }
+  .toolbar-sub { @apply truncate text-[11px] text-muted; }
+  .toolbar-spacer { @apply ml-auto; }
+  .toolbar-actions { @apply flex shrink-0 items-center gap-1.5; }
+
+  .strip-actions { @apply flex shrink-0 items-center gap-1 pr-2; }
+
+  /* --- Search field ----------------------------------------------------- */
+
+  .omnibox {
+    @apply flex h-[26px] w-[200px] cursor-pointer items-center gap-1.5 rounded-md
+           border border-hairline bg-surface/70 px-2 text-[12px] text-sand-500
+           transition-colors duration-100 xl:w-[240px];
+  }
+  .omnibox:hover { @apply border-sand-400 bg-surface; }
+  .omnibox .icon { @apply size-[13px] shrink-0; }
+  .omnibox-label { @apply flex-1 truncate text-left; }
+
+  .strip-btn {
+    @apply grid size-7 shrink-0 cursor-pointer place-items-center rounded-md
+           text-muted transition-colors duration-75;
+  }
+  .strip-btn:hover { @apply bg-sand-300/50 text-ink; }
+  .strip-btn .icon { @apply size-[15px]; }
+
+  /* --- Account popover -------------------------------------------------- */
+
+  .account { @apply relative shrink-0; }
+  .account-btn {
+    @apply flex h-7 cursor-pointer items-center gap-1 rounded-md px-1
+           transition-colors duration-75;
+  }
+  .account-btn:hover { @apply bg-sand-300/50; }
+  .account-btn .icon { @apply size-3 text-sand-500; }
+
+  .menu {
+    @apply absolute right-0 top-[calc(100%+6px)] z-50 w-60 rounded-xl border
+           border-hairline p-1 shadow-pop;
+    background: var(--material-popover);
+    -webkit-backdrop-filter: saturate(180%) blur(30px);
+    backdrop-filter: saturate(180%) blur(30px);
+    animation: pop-in 0.12s var(--ease-out-soft);
+  }
+  .menu[hidden] { display: none; }
+  .menu-head { @apply flex flex-col gap-0.5 px-2.5 py-2; }
+  .menu-head-name { @apply truncate text-[13px] font-semibold text-ink; }
+  .menu-head-meta { @apply truncate text-[11px] text-muted; }
+  .menu-rule { @apply my-1 h-px bg-hairline; }
+  .menu-item {
+    @apply flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2.5
+           text-[13px] text-ink no-underline transition-colors duration-75;
+  }
+  .menu-item:hover { @apply bg-brand-600 text-white no-underline; }
+  .menu-item .icon { @apply size-[14px] shrink-0 text-muted; }
+  .menu-item:hover .icon { @apply text-white; }
+  .menu-item-danger:hover { @apply bg-danger-600 text-white; }
+
+  /* --- Mobile: the sidebar becomes a sheet ------------------------------ */
+
+  .rail-scrim {
+    @apply fixed inset-0 z-40 bg-black/25 opacity-0 transition-opacity duration-200;
+  }
+
+  @media (max-width: 767px) {
+    .shell, body[data-rail="open"] .shell { grid-template-columns: minmax(0, 1fr); }
+    .rail {
+      @apply fixed inset-y-0 left-0 w-[260px] -translate-x-full shadow-lg transition-transform;
+      transition-duration: 0.28s;
+      transition-timing-function: var(--ease-out-soft);
+    }
+    body[data-drawer="open"] .rail { @apply translate-x-0; }
+    .rail-item { @apply h-9 justify-start px-2.5 text-[15px]; }
+    .rail-label, .rail-brand-word { @apply block; }
+    .rail-group-label { @apply h-auto p-0 px-2.5 pb-1 pt-4 text-muted; }
+    .rail-brand { @apply justify-start px-2.5; }
+    .rail-item[data-label]::after { content: none; }
+    .rail-toggle { @apply hidden; }
+    body:not([data-drawer="open"]) .rail-scrim { @apply pointer-events-none; }
+    body[data-drawer="open"] .rail-scrim { @apply opacity-100; }
+    .shell-page, .shell-page-wide { @apply px-4 pt-3; }
+    .omnibox { @apply w-7 justify-center px-0; }
+    .omnibox-label, .omnibox .kbd { @apply hidden; }
+    .toolbar { @apply px-3; }
+  }
+
+  @media (min-width: 768px) {
+    .rail-scrim, .drawer-trigger { @apply hidden; }
+  }
+
+  /* --- Owner avatar ----------------------------------------------------- */
+
+  .owner-badge {
+    @apply relative inline-flex h-[18px] min-w-[18px] cursor-default select-none
+           items-center justify-center rounded-full px-1 align-middle text-[9.5px]
+           font-semibold leading-none;
+  }
+  .owner-badge[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    @apply pointer-events-none absolute left-1/2 top-[calc(100%+5px)] z-50 -translate-x-1/2
+           whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium tracking-normal
+           text-ink shadow-md;
+    background: var(--material-popover);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+  }
+  .owner-badge-lg { @apply size-7 min-w-7 text-[11px]; }
+  .owner-cell { @apply inline-flex min-w-0 items-center gap-1.5; }
+  .owner-cell-name { @apply truncate text-[12px] text-ink-soft; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ===========================================================================
+   DATA TABLE — the shared spreadsheet surface behind Mice / Plasmids /
+   Orders / Samples / Fish. These class names are the contract data-table.js
+   reads (sort, search, hide-columns, pagination, column resize), so they are
+   unchanged; only the styling moved to Tailwind.
+
+   Structure:
+     <section class="data-table-card" data-table-id="orders">
+       <div class="dt-toolbar">…</div>
+       <div class="dt-scroll"><table class="dt" data-resizable="1">…</table></div>
+       <div class="dt-bottom-bar">…</div>
+     </section>
+   =========================================================================== */
+
+@layer components {
+
+  .data-table-card {
+    @apply flex min-w-0 flex-col overflow-hidden rounded-2xl border border-hairline
+           bg-surface shadow-xs;
+  }
+
+  /* --- Toolbar ---------------------------------------------------------- */
+
+  .dt-toolbar {
+    @apply flex flex-wrap items-center gap-1.5 border-b border-sand-100 px-2.5 py-2;
+  }
+  .dt-toolbar-spacer { @apply ml-auto; }
+
+  .dt-toolbar-search { @apply relative min-w-[180px] flex-1 sm:max-w-[280px]; }
+  .dt-toolbar-search input { @apply field h-8 pl-8 text-[12.5px]; }
+  .dt-toolbar-search .search-icon,
+  .dt-toolbar-search > svg {
+    @apply pointer-events-none absolute left-2.5 top-1/2 size-[14px] -translate-y-1/2
+           text-sand-400;
+  }
+
+  .dt-toolbar-btn { @apply btn btn-ghost h-8 gap-1.5 px-2 text-[12px]; }
+  .dt-toolbar-btn svg { @apply size-[14px] text-sand-500; }
+  .dt-toolbar-btn:hover svg { @apply text-ink-soft; }
+
+  .dt-view-pill {
+    @apply inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12px]
+           font-medium text-muted;
+  }
+  .dt-view-pill svg { @apply size-[14px] text-sand-400; }
+
+  /* --- Scroller + table ------------------------------------------------- */
+
+  .dt-scroll { @apply min-w-0 overflow-x-auto; }
+
+  .dt { @apply w-full border-collapse text-[12.5px]; }
+  .dt th { @apply relative; }
+
+  .dt thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-hairline bg-sand-50/95
+           px-2.5 py-2 text-left align-middle text-[11px] font-semibold uppercase
+           tracking-[0.055em] text-muted backdrop-blur;
+  }
+
+  .dt tbody tr { @apply transition-colors duration-100; }
+  .dt tbody td { @apply border-b border-sand-100 px-2.5 py-1.5 align-middle text-ink-soft; }
+  .dt tbody tr:last-child td { @apply border-b-0; }
+  .dt tbody tr:hover { @apply bg-sand-50/80; }
+  .dt tbody tr.is-selected { @apply bg-brand-50/60; }
+
+  /* Column header internals: label + type glyph + sort caret. The glyph is
+     either an inline SVG injected by data-table.js (date/status/check/list)
+     or a typographic marker for the plain types. */
+  .dt-col-head { @apply flex items-center gap-1.5; }
+  .dt-col-type {
+    @apply inline-flex size-[14px] shrink-0 items-center justify-center text-sand-400;
+  }
+  .dt-col-type svg {
+    @apply size-[12px];
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+  }
+  .dt-col-type.is-text {
+    @apply font-serif text-[10px] font-semibold tracking-[-0.02em] text-sand-500;
+  }
+  .dt-col-type.is-text::before { content: "Aa"; }
+  .dt-col-type.is-number { @apply text-[11px] font-semibold text-sand-500; }
+  .dt-col-type.is-number::before { content: "#"; }
+  .dt-col-type.is-id { @apply text-[9px] font-bold text-sand-500; }
+  .dt-col-type.is-id::before { content: "ID"; }
+
+  /* Row glyph in the primary-name column (also an injected inline SVG). */
+  .dt-row-icon svg {
+    @apply size-[13px];
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+  }
+
+  .dt-sortable { @apply cursor-pointer select-none; }
+  .dt-sortable:hover { @apply text-ink-soft; }
+  .dt-sort-indicator { @apply ml-0.5 text-sand-300 transition-colors; }
+  .dt-sort-asc .dt-sort-indicator,
+  .dt-sort-desc .dt-sort-indicator { @apply text-brand-600; }
+
+  /* Resize handle injected by data-table.js. */
+  .dt-col-resize {
+    @apply absolute right-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent
+           transition-colors;
+  }
+  .dt-col-resize:hover, .dt-col-resize.is-resizing { @apply bg-brand-400/50; }
+  .dt.is-resizing { @apply cursor-col-resize select-none; }
+
+  /* Primary-name cell: the clickable identifier in the first column. */
+  .dt-row-name { @apply inline-flex min-w-0 items-center gap-1.5 font-medium text-ink; }
+  .dt-row-name:hover { @apply text-brand-700; }
+  .dt-row-icon { @apply size-[14px] shrink-0 text-sand-400; }
+
+  /* --- Status pill ------------------------------------------------------ */
+
+  .dt-status {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-sand-100 px-2 py-px
+           text-[11px] font-medium leading-5 text-ink-soft;
+  }
+  .dt-status::before { content: ""; @apply size-[5px] shrink-0 rounded-full bg-sand-400; }
+
+  .dt-status[data-status="alive"], .dt-status[data-status="active"],
+  .dt-status[data-status="received"], .dt-status[data-status="done"] {
+    @apply bg-ok-50 text-ok-700;
+  }
+  .dt-status[data-status="alive"]::before, .dt-status[data-status="active"]::before,
+  .dt-status[data-status="received"]::before, .dt-status[data-status="done"]::before {
+    @apply bg-ok-600;
+  }
+  .dt-status[data-status="ordered"], .dt-status[data-status="in_progress"],
+  .dt-status[data-status="requested"] { @apply bg-info-50 text-info-600; }
+  .dt-status[data-status="ordered"]::before, .dt-status[data-status="in_progress"]::before,
+  .dt-status[data-status="requested"]::before { @apply bg-info-600; }
+
+  .dt-status[data-status="cancelled"], .dt-status[data-status="euthanized"],
+  .dt-status[data-status="euthanized moribund"],
+  .dt-status[data-status="euthanized per protocol"] { @apply bg-danger-50 text-danger-700; }
+  .dt-status[data-status="cancelled"]::before, .dt-status[data-status="euthanized"]::before,
+  .dt-status[data-status="euthanized moribund"]::before,
+  .dt-status[data-status="euthanized per protocol"]::before { @apply bg-danger-600; }
+
+  /* --- Inline editing --------------------------------------------------- */
+
+  /* Editable cells stay borderless until hovered or focused, so a dense
+     table does not read as a wall of input boxes. */
+  .dt-edit input, .dt-edit select, .dt-edit textarea {
+    @apply w-full rounded-md border border-transparent bg-transparent px-1.5 py-0.5
+           text-[12.5px] text-ink-soft transition-all duration-100;
+  }
+  .dt-edit input:hover, .dt-edit select:hover, .dt-edit textarea:hover {
+    @apply border-hairline bg-surface;
+  }
+  .dt-edit input:focus, .dt-edit select:focus, .dt-edit textarea:focus {
+    @apply border-sand-500 bg-surface text-ink;
+  }
+
+  .dt-row-check, .dt-select-all { @apply size-3.5 shrink-0 cursor-pointer accent-brand-600; }
+
+  /* --- Inline "new record" form ----------------------------------------- */
+  /* Collapsed until the "Add entry" button in the bottom bar adds
+     .is-open (see the onclick handlers in the table templates). */
+
+  .dt-inline-form { @apply hidden border-b border-sand-100 bg-sand-50/70 px-3.5 py-3.5; }
+  .dt-inline-form.is-open { @apply block; }
+  .dt-inline-form form {
+    @apply grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] items-end gap-2.5;
+  }
+  .dt-inline-form label { @apply field-label; }
+  .dt-inline-form label > input:not([type="checkbox"]),
+  .dt-inline-form label > select,
+  .dt-inline-form label > textarea { @apply field mt-0.5 normal-case tracking-normal; }
+  .dt-inline-form textarea { @apply min-h-16; }
+  .dt-inline-form-actions { @apply flex items-center gap-2; }
+  .dt-inline-form-full { @apply col-span-full; }
+
+  /* --- Empty + bottom bar ----------------------------------------------- */
+
+  /* Lives on a <td colspan>, so it must stay a table cell — a flex empty
+     state here would collapse the text into one column's width. */
+  .dt-empty { @apply px-4 py-12 text-center text-[12.5px] text-muted; }
+  .dt-empty strong { @apply font-semibold text-ink-soft; }
+
+  .dt-bottom-bar {
+    @apply flex flex-wrap items-center gap-2 border-t border-sand-100 bg-sand-50/60
+           px-2.5 py-2 text-[12px] text-muted;
+  }
+  .dt-bottom-spacer { @apply ml-auto; }
+  .dt-bottom-count { @apply text-[12px] text-muted; }
+  .dt-bottom-action { @apply btn btn-ghost h-7 gap-1.5 px-2 text-[12px]; }
+  .dt-bottom-action svg { @apply size-[14px]; }
+  .dt-bottom-action.is-primary { @apply btn-primary; }
+  .dt-bottom-action.is-primary svg { @apply text-white; }
+
+  .dt-pagination { @apply flex items-center gap-1; }
+  .dt-pagination button { @apply btn btn-ghost btn-icon size-7; }
+  .dt-pagination button svg { @apply size-[14px]; }
+  .dt-page-label { @apply px-1 text-[12px] text-muted; }
+  .dt-page-size { @apply field h-7 w-auto py-0 pl-2 pr-6 text-[12px]; }
+}
+
+/* ===========================================================================
+   COMMAND PALETTE (⌘K) — markup is generated by global-search.js.
+   =========================================================================== */
+
+@layer components {
+
+  .cmdk-overlay { @apply fixed inset-0 z-100 flex items-start justify-center p-4 pt-[12vh]; }
+  .cmdk-overlay[hidden] { display: none; }
+  .cmdk-backdrop { @apply absolute inset-0 bg-sand-950/25 backdrop-blur-[2px]; }
+
+  .cmdk-card {
+    @apply relative flex max-h-[62vh] w-full max-w-[560px] flex-col overflow-hidden
+           rounded-2xl border border-hairline bg-surface shadow-pop;
+    animation: pop-in 0.16s var(--ease-out-soft);
+  }
+
+  .cmdk-input-row {
+    @apply flex shrink-0 items-center gap-2.5 border-b border-sand-100 px-3.5 py-3;
+  }
+  .cmdk-icon { @apply size-[17px] shrink-0 text-sand-400; }
+  .cmdk-input-row input {
+    @apply min-w-0 flex-1 border-0 bg-transparent text-[14.5px] text-ink outline-none;
+  }
+  .cmdk-input-row input::placeholder { @apply text-sand-400; }
+  .cmdk-kbd { @apply kbd-chip shrink-0; }
+
+  .cmdk-results { @apply min-h-0 flex-1 overflow-y-auto p-1.5; }
+  .cmdk-hint, .cmdk-empty { @apply px-2.5 py-8 text-center text-[12.5px] text-muted; }
+
+  .cmdk-group-label {
+    @apply px-2.5 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.09em]
+           text-sand-400;
+  }
+
+  .cmdk-row {
+    @apply flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-ink no-underline
+           transition-colors duration-100;
+  }
+  .cmdk-row.is-active { @apply bg-brand-50 text-ink; }
+  .cmdk-row-type {
+    @apply w-[62px] shrink-0 rounded-md bg-sand-100 px-1.5 py-0.5 text-center
+           text-[10px] font-semibold uppercase tracking-[0.05em] text-muted;
+  }
+  .cmdk-row-type-mouse   { @apply bg-info-50 text-info-600; }
+  .cmdk-row-type-plasmid { @apply bg-brand-50 text-brand-700; }
+  .cmdk-row-type-order   { @apply bg-warn-50 text-warn-700; }
+  .cmdk-row-type-sample  { @apply bg-ok-50 text-ok-700; }
+  .cmdk-row-type-page    { @apply bg-sand-100 text-sand-600; }
+
+  .cmdk-row-text { @apply flex min-w-0 flex-col; }
+  .cmdk-row-label { @apply truncate text-[13px] font-medium text-ink; }
+  .cmdk-row-sublabel { @apply truncate text-[11.5px] text-muted; }
+
+  .cmdk-foot {
+    @apply flex shrink-0 items-center gap-4 border-t border-sand-100 bg-sand-50/70
+           px-3.5 py-2 text-[11px] text-muted;
+  }
+  .cmdk-foot span { @apply inline-flex items-center gap-1; }
+}
+
+/* ===========================================================================
+   DIALOGS — native <dialog> elements used across the app.
+   =========================================================================== */
+
+@layer components {
+
+  dialog {
+    @apply max-h-[86vh] w-[min(560px,calc(100vw-2rem))] rounded-2xl border
+           border-hairline bg-surface p-0 text-ink shadow-pop;
+  }
+  dialog::backdrop { @apply bg-sand-950/25; }
+  dialog[open] { animation: pop-in 0.16s var(--ease-out-soft); }
+
+  .modal-topbar {
+    @apply flex items-center justify-between gap-3 border-b border-sand-100 px-4 py-3;
+  }
+  .modal-topbar h3 { @apply text-[14.5px]; }
+  .modal-body { @apply max-h-[62vh] overflow-y-auto p-4; }
+  .modal-foot {
+    @apply flex items-center justify-end gap-2 border-t border-sand-100 bg-sand-50/60
+           px-4 py-3;
+  }
+  .modal-close { @apply btn btn-ghost btn-icon size-7; }
+  .modal-close svg { @apply size-4; }
+}
+
+/* ===========================================================================
+   TOASTS — transient confirmations, raised by BiomanagerShell.toast().
+   =========================================================================== */
+
+@layer components {
+
+  .toast-host {
+    @apply pointer-events-none fixed bottom-5 left-1/2 z-100 flex -translate-x-1/2
+           flex-col items-center gap-2;
+  }
+
+  .toast {
+    @apply pointer-events-auto max-w-[min(420px,calc(100vw-2rem))] translate-y-2 rounded-xl
+           border border-sand-800 bg-sand-900 px-3.5 py-2.5 text-[12.5px] font-medium
+           text-white opacity-0 shadow-lg transition-all duration-200;
+    transition-timing-function: var(--ease-out-soft);
+  }
+  .toast.is-in { @apply translate-y-0 opacity-100; }
+  .toast-ok     { @apply border-ok-700 bg-ok-700; }
+  .toast-danger { @apply border-danger-700 bg-danger-700; }
+}
+
+/* ===========================================================================
+   WORKBENCH — the dense, spreadsheet-style module pages (mouse colony,
+   zebrafish, experiments). These views are hundreds of editable cells, so
+   the styling lives here as component classes rather than as utilities
+   repeated on every <td><input>.
+
+   `.workbench` on the page wrapper also gives bare <button> and <input>
+   elements their default look, so the module templates stay readable and do
+   not need a class on every control.
+   =========================================================================== */
+
+@layer components {
+
+  /* --- Bare controls inside a workbench page ---------------------------- */
+  /* These are defaults, not overrides: everything sits inside :where() so it
+     carries no specificity of its own. Without that, a class-less
+     <input> in a dense table would win against the .dense-table rules
+     further down and every cell would render as a full-size field. */
+
+  .workbench :where(button:not([class]), button[type="submit"]:not([class])),
+  .legacy-page :where(button:not([class]), button[type="submit"]:not([class])) { @apply btn; }
+
+  .workbench :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([class]),
+    select:not([class]),
+    textarea:not([class])
+  ) { @apply field; }
+
+  .workbench :where(input[type="checkbox"], input[type="radio"]) {
+    @apply size-3.5 shrink-0 cursor-pointer accent-brand-600;
+  }
+
+  /* --- Panels ----------------------------------------------------------- */
+
+  .panel { @apply card p-4 sm:p-5; }
+  .panel + .panel { @apply mt-4; }
+
+  .section-head { @apply mb-3.5 flex items-start justify-between gap-4; }
+  .section-head h2 { @apply mb-0.5; }
+  .section-head p { @apply m-0 text-[12.5px] leading-snug text-muted; }
+  .compact-head { @apply mb-2; }
+
+  .grid { @apply grid gap-4; }
+  .two-col { @apply grid-cols-[repeat(auto-fit,minmax(300px,1fr))]; }
+  .cards { @apply grid-cols-[repeat(auto-fit,minmax(150px,1fr))]; }
+  .top-gap { @apply mt-4; }
+  .muted-inline { @apply text-[11.5px] text-muted; }
+  .meta-sep { @apply text-sand-400; }
+
+  /* --- Dense table ------------------------------------------------------ */
+
+  .table-wrap {
+    @apply max-w-full overflow-x-auto overflow-y-visible rounded-xl border
+           border-hairline bg-surface;
+  }
+
+  .dense-table { @apply w-full min-w-0 table-fixed text-[11.5px]; }
+
+  .dense-table th {
+    @apply relative border-b border-hairline bg-sand-50 px-1.5 py-1.5 text-left
+           align-bottom text-[10.5px] font-semibold leading-tight text-muted;
+  }
+  .dense-table td { @apply border-b border-sand-100 px-1 py-px align-middle; }
+  .dense-table tbody tr:last-child td { @apply border-b-0; }
+  .dense-table tbody tr { @apply transition-colors duration-100; }
+  .dense-table tbody tr:hover { @apply bg-sand-50/70; }
+  .fit-table th, .fit-table td { @apply px-1.5 py-1; }
+  .dense-table.mouse-table { @apply min-w-[1180px]; }
+  .dense-table.zfish-table { @apply min-w-[1040px]; }
+
+  /* Scrollbars are hidden app-wide, but a wide table needs the affordance —
+     so these two scrollers get a slim, styled one back. */
+  .table-wrap, .dt-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-sand-300) transparent;
+  }
+  .table-wrap::-webkit-scrollbar, .dt-scroll::-webkit-scrollbar { @apply h-2 w-2; }
+  .table-wrap::-webkit-scrollbar-track, .dt-scroll::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .table-wrap::-webkit-scrollbar-thumb, .dt-scroll::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-sand-300;
+  }
+  .table-wrap::-webkit-scrollbar-thumb:hover, .dt-scroll::-webkit-scrollbar-thumb:hover {
+    @apply bg-sand-400;
+  }
+  .nested-table, .colony-subtable { @apply min-w-0 text-[11px]; }
+
+  /* Editable cells: borderless until touched, so a wide table reads as a
+     grid of values rather than a wall of input boxes. */
+  .dense-table input:not([type="checkbox"]):not([type="radio"]),
+  .dense-table select,
+  .dense-table textarea {
+    @apply h-auto min-w-0 w-full rounded-md border border-transparent bg-transparent
+           px-1 py-1 text-[11.5px] leading-tight text-ink-soft shadow-none
+           transition-all duration-100;
+  }
+  .dense-table input:hover:not([readonly]):not([type="checkbox"]),
+  .dense-table select:hover, .dense-table textarea:hover {
+    @apply border-hairline bg-surface;
+  }
+  .dense-table input:focus:not([readonly]),
+  .dense-table select:focus, .dense-table textarea:focus {
+    @apply border-sand-500 bg-surface text-ink;
+  }
+  .dense-table input[readonly] {
+    @apply cursor-default border-transparent bg-transparent text-muted shadow-none ring-0;
+  }
+  .dense-table input[disabled] { @apply cursor-not-allowed bg-sand-50 text-sand-400; }
+
+  .note-cell { @apply truncate; }
+
+  /* Sex chips (toggled by the colony page's inline script). Muted on
+     purpose — the old saturated fills fought everything around them. */
+  .mouse-table input[name="gender"].sex-f,
+  .mouse-table input[name="gender"].sex-m {
+    @apply text-center font-semibold;
+  }
+  .mouse-table input[name="gender"].sex-f { @apply border-pink-200 bg-pink-50 text-pink-700; }
+  .mouse-table input[name="gender"].sex-m { @apply border-sky-200 bg-sky-50 text-sky-700; }
+  .genotype-full { @apply whitespace-normal break-words text-[11.5px] leading-snug text-ink-soft; }
+
+  /* Small circular row action (duplicate / delete). */
+  .row-icon-btn {
+    @apply grid size-6 shrink-0 cursor-pointer place-items-center rounded-full border
+           border-transparent bg-transparent p-0 text-sand-400 transition-colors;
+  }
+  .row-icon-btn svg { @apply size-[13px]; }
+  .row-icon-btn:hover { @apply bg-sand-200 text-ink; }
+  .dense-table .row-icon-btn.danger-button:hover { @apply bg-danger-50 text-danger-600; }
+
+  /* The "add a record" row pinned to the top of the mice table. */
+  .create-row { @apply bg-brand-50/60; }
+  .create-row input:not([readonly]) { @apply border-brand-200/70 bg-surface; }
+  .create-row input[readonly] { @apply text-sand-400; }
+
+  /* Per-column filter row, revealed by the Find button. */
+  .filter-row input { @apply border-warn-200 bg-warn-50 text-warn-700; }
+  .filter-row input:focus { @apply border-warn-600/50; }
+  .hidden-row { @apply hidden; }
+
+  /* Owner cell: the initials badge sits under a transparent input, so the
+     cell reads as a badge but is still editable on click. */
+  .owner-cell-wrap { @apply flex items-center gap-1; }
+  .owner-cell-wrap > input { @apply min-w-0 flex-1; }
+  .owner-cell-wrap .owner-badge { @apply shrink-0; }
+  .owner-cell-wrap.has-badge { @apply relative min-w-0; }
+  .dense-table .owner-cell-wrap.has-badge > input,
+  .owner-cell-wrap.has-badge > input {
+    @apply absolute inset-0 z-10 size-full flex-none cursor-pointer border-transparent
+           bg-transparent p-0 text-transparent;
+    caret-color: transparent;
+  }
+  .dense-table .owner-cell-wrap.has-badge > input:focus,
+  .owner-cell-wrap.has-badge > input:focus {
+    @apply z-30 border-sand-500 bg-surface px-1.5 py-1 text-ink;
+    caret-color: currentColor;
+    cursor: text;
+  }
+  .owner-cell-wrap.has-badge:focus-within > .owner-badge { @apply invisible; }
+
+  /* --- Toolbars --------------------------------------------------------- */
+
+  .table-toolbar {
+    @apply mb-3.5 flex flex-wrap items-center gap-2 rounded-xl border border-hairline
+           bg-sand-50 px-2.5 py-2;
+  }
+  .table-toolbar form { @apply m-0; }
+  .cage-toolbar { @apply flex flex-wrap gap-2; }
+  .card-tools { @apply mb-2 flex flex-wrap items-center justify-end gap-2; }
+  .breeding-actions { @apply inline-flex items-center gap-2; }
+  .breeding-actions form { @apply m-0; }
+  .export-options { @apply flex flex-wrap gap-2.5; }
+  .inline-check {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] font-medium text-ink-soft;
+  }
+
+  /* Inline create strip (new cage, new strain, …). */
+  .inline-create-grid {
+    @apply mb-3.5 grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] items-end gap-2
+           rounded-xl border border-dashed border-brand-200 bg-brand-50/40 px-3 py-3;
+  }
+  .inline-create-grid button[type="submit"] { @apply btn btn-primary; }
+
+  /* --- Cage cards ------------------------------------------------------- */
+
+  .cage-stack { @apply grid gap-3; }
+  .cage-card { @apply card p-2.5 transition-shadow duration-150; }
+  .cage-card:hover { @apply shadow-sm; }
+  .cage-form { @apply m-0; }
+
+  .cage-header-grid {
+    @apply mb-2 grid grid-cols-[repeat(auto-fit,minmax(92px,1fr))] items-end gap-x-1.5 gap-y-1
+           rounded-lg border border-hairline bg-sand-50 px-2 py-1.5;
+  }
+  .cage-header-grid label { @apply flex min-w-0 flex-col gap-px; }
+  .cage-header-grid span {
+    @apply truncate text-[9.5px] font-semibold uppercase leading-tight tracking-[0.05em] text-sand-400;
+  }
+  .cage-header-grid input {
+    @apply h-auto w-full min-w-0 rounded-md border border-transparent bg-transparent px-1.5
+           py-0.5 text-[12px] text-ink-soft shadow-none transition-all duration-100;
+  }
+  .cage-header-grid input:hover:not([readonly]) { @apply border-hairline bg-surface; }
+  .cage-header-grid input:focus:not([readonly]) {
+    @apply border-sand-500 bg-surface text-ink;
+  }
+  .cage-header-grid input[readonly] { @apply cursor-default text-muted; }
+
+  /* --- Litters / strains / presets -------------------------------------- */
+
+  .litter-head-grid { @apply mb-3 grid gap-2.5; }
+  .litter-form-grid { @apply grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] items-end gap-2.5; }
+  .litter-form-grid label { @apply flex min-w-0 flex-col gap-px; }
+  .litter-form-grid span {
+    @apply truncate text-[9.5px] font-semibold uppercase tracking-[0.05em] text-sand-400;
+  }
+  .strain-table th:nth-child(5), .strain-table td:nth-child(5) { width: 28%; }
+
+  .option-form { @apply grid gap-3; }
+
+  /* Stacked label/control form used by the module pages. */
+  .form-panel { @apply grid gap-3; }
+  .form-panel > label { @apply field-label; }
+  .form-panel > label > input:not([type="checkbox"]):not([type="radio"]),
+  .form-panel > label > select,
+  .form-panel > label > textarea { @apply field mt-0.5 normal-case tracking-normal; }
+  .form-panel > button[type="submit"] { @apply btn btn-primary justify-self-start; }
+  .preset-block { @apply border-b border-sand-100 py-3; }
+  .preset-block:last-child { @apply border-b-0; }
+  .preset-block strong { @apply text-[13px] font-semibold capitalize text-ink; }
+  .preset-block p { @apply mt-0.5 text-[12px] text-muted; }
+  .preset-options { @apply mt-2 grid gap-1.5; }
+  .preset-row { @apply flex items-center gap-1.5; }
+  .preset-row form { @apply m-0; }
+  .preset-edit-form { @apply flex flex-1 items-center gap-1.5; }
+  .preset-delete { @apply btn btn-sm; }
+
+  /* --- Breeders --------------------------------------------------------- */
+
+  .breeder-search-bar {
+    @apply mb-3.5 flex flex-wrap items-center gap-2 rounded-xl border border-hairline
+           bg-sand-50 px-2.5 py-2;
+  }
+  .breeder-search-bar input[type="text"], .breeder-search-bar input:not([type]) {
+    @apply flex-[1_1_240px];
+  }
+
+  .breeder-card { @apply card p-3; }
+  .breeder-head-grid {
+    @apply mb-2.5 grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2 rounded-lg
+           border border-brand-200/70 bg-brand-50/50 px-2 py-1.5;
+  }
+  .breeder-head-grid > div { @apply flex min-w-0 flex-col gap-px; }
+  .breeder-head-grid span {
+    @apply text-[9.5px] font-semibold uppercase tracking-[0.05em] text-sand-500;
+  }
+  .breeder-head-grid strong { @apply break-words text-[12px] font-semibold text-ink; }
+
+  /* A cage matching the current breeder search. */
+  .breeder-table tbody tr.breeder-match { @apply bg-warn-50; }
+  .breeder-table tbody tr.breeder-match td { @apply font-semibold text-warn-700; }
+  .breeder-card.breeder-card-has-match { @apply border-warn-200 shadow-sm ring-2 ring-warn-600/15; }
+
+  .breeder-summary-table td { font-variant-numeric: tabular-nums; }
+  .breeder-summary-table th { @apply whitespace-nowrap; }
+  .breeder-summary-table tbody tr.breeder-summary-warn { @apply bg-warn-50/60; }
+  .breeder-summary-table tbody tr.breeder-summary-urgent { @apply bg-danger-50/60; }
+  .breeder-summary-table tbody tr.breeder-summary-ok td:first-child { @apply text-ok-700; }
+  .breeder-summary-table tbody tr.breeder-summary-warn td:first-child { @apply text-warn-700; }
+  .breeder-summary-table tbody tr.breeder-summary-urgent td:first-child { @apply text-danger-700; }
+
+  /* --- Notices ---------------------------------------------------------- */
+
+  .notice-panel { @apply card p-4; }
+  .notice-list { @apply grid gap-1.5; }
+  .notice-item { @apply rounded-xl border border-hairline bg-sand-50 px-3 py-2.5 transition-colors; }
+  .notice-item:hover { @apply border-sand-300; }
+  .notice-item strong { @apply text-[13px] font-semibold text-ink; }
+  .notice-item p { @apply my-1 text-[12.5px] leading-snug text-ink-soft; }
+  .notice-item small { @apply text-[11px] text-muted; }
+  .notice-item.unread { @apply border-brand-200 bg-brand-50/60; }
+
+  /* --- Dialog helpers used by the module templates ---------------------- */
+
+  .mouse-modal { @apply w-[min(92vw,760px)] p-5; }
+  .wean-modal { @apply w-[min(94vw,880px)]; }
+  .modal-grid { @apply grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] items-end gap-3; }
+  .modal-grid label { @apply field-label; }
+  .modal-grid button[type="submit"] { @apply btn btn-primary btn-lg col-span-full mt-1; }
+  .wean-actions { @apply mt-3 flex items-center gap-2; }
+  .wean-actions-spacer { @apply flex-1; }
+
+  /* --- Danger affordances ---------------------------------------------- */
+
+  .danger-button {
+    @apply inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-transparent
+           bg-transparent px-2 py-1 text-[12.5px] font-medium text-danger-700 transition-colors;
+  }
+  .danger-button:hover { @apply bg-danger-50 text-danger-700; }
+  .danger-link { @apply text-danger-700; }
+
+  /* --- Buttons that should stay quiet ----------------------------------- */
+
+  .ghost-button { @apply btn; }
+  .button-link { @apply btn btn-primary btn-lg; }
+
+  /* --- Calculator result ------------------------------------------------ */
+
+  .result-box { @apply inset mt-1 flex flex-col gap-0.5 border-brand-200 bg-brand-50/60; }
+  .result-box strong { @apply text-[20px] font-semibold tracking-[-0.02em] text-brand-700; }
+
+  /* --- Legacy list rows ------------------------------------------------- */
+
+  .list-row { @apply flex items-center justify-between gap-4 border-b border-sand-100 py-2.5; }
+  .list-row:last-child { @apply border-b-0; }
+}
+
+/* ===========================================================================
+   EXPERIMENTS — cards on the colony page plus the experiment detail view.
+   =========================================================================== */
+
+@layer components {
+
+  .experiment-create-form { @apply mb-3.5; }
+  .experiment-grid { @apply grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3; }
+
+  .experiment-card {
+    @apply flex flex-col gap-1.5 rounded-2xl border border-hairline bg-surface px-4 py-3.5
+           text-ink no-underline shadow-xs transition-all duration-150;
+    transition-timing-function: var(--ease-out-soft);
+  }
+  .experiment-card:hover { @apply border-brand-300 text-ink shadow-sm; }
+  .experiment-card h3 { @apply m-0 text-[14.5px]; }
+  .experiment-card p { @apply m-0 line-clamp-2 text-[12.5px] leading-snug text-muted; }
+  .experiment-card-head { @apply flex items-center justify-between gap-2; }
+  .experiment-card-owner { @apply shrink-0; }
+  .experiment-card-meta { @apply mt-1 flex flex-wrap gap-3 text-[11.5px] text-muted; }
+  .experiment-card-meta span { @apply inline-flex items-center gap-1; }
+  .experiment-card-meta svg { @apply size-[13px] text-sand-400; }
+
+  .experiment-status-pill {
+    @apply inline-block rounded-md bg-sand-100 px-2 py-0.5 text-[10px] font-bold uppercase
+           tracking-[0.05em] text-muted;
+  }
+  .experiment-status-pill[data-status="active"]    { @apply bg-ok-50 text-ok-700; }
+  .experiment-status-pill[data-status="paused"]    { @apply bg-warn-50 text-warn-700; }
+  .experiment-status-pill[data-status="done"]      { @apply bg-brand-50 text-brand-700; }
+  .experiment-status-pill[data-status="cancelled"] { @apply bg-danger-50 text-danger-700; }
+
+  .experiment-detail-grid {
+    @apply grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(280px,1fr)_minmax(360px,1.6fr)];
+  }
+  .experiment-add-row {
+    @apply mb-3 flex flex-wrap items-center gap-2 border-b border-sand-100 pb-3;
+  }
+  .experiment-add-cage, .experiment-add-mouse { @apply inline-flex flex-wrap items-center gap-1.5; }
+  .experiment-add-row input, .experiment-add-row select { @apply field h-8 w-auto text-[12.5px]; }
+  .experiment-add-row button { @apply btn; }
+
+  .experiment-member-table th, .experiment-member-table td { @apply px-2 py-1.5 text-[12px]; }
+  .member-group-input {
+    @apply w-full rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[12px]
+           transition-colors;
+  }
+  .member-group-input:hover { @apply border-hairline bg-sand-50; }
+  .member-group-input:focus { @apply border-sand-500 bg-surface; }
+
+  /* --- Weights + sparklines -------------------------------------------- */
+
+  .experiment-weight-cell { @apply inline-flex items-center gap-2 whitespace-nowrap; }
+  .weight-sparkline { @apply inline-block align-middle leading-none; }
+  .weight-sparkline-large { @apply inline-block align-middle leading-none; }
+  .weight-latest {
+    @apply min-w-[48px] text-right text-[12px] text-ink-soft;
+    font-variant-numeric: tabular-nums;
+  }
+  .weight-add-btn { @apply btn btn-ghost btn-sm; }
+  .sparkline-empty, .sparkline-single { @apply text-[12px] text-sand-300; }
+  .weight-matrix-table { @apply text-[11.5px]; font-variant-numeric: tabular-nums; }
+  .weight-matrix-table th, .weight-matrix-table td { @apply whitespace-nowrap px-2 py-1 text-right; }
+  .weight-matrix-table th:first-child, .weight-matrix-table td:first-child,
+  .weight-matrix-table th:nth-child(2), .weight-matrix-table td:nth-child(2) { @apply text-left; }
+  .weight-trend-cell { @apply pl-3 text-left; }
+}
+
+/* ===========================================================================
+   SELECTION BAR — batch actions on ticked rows.
+
+   Sticks to the bottom of the viewport so it stays reachable however far
+   down a long table you have scrolled, and only exists while something is
+   selected (selection-bar.js toggles [hidden]).
+   =========================================================================== */
+
+@layer components {
+
+  .selbar {
+    @apply sticky bottom-3 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-2xl border
+           border-sand-300 bg-surface px-3 py-2.5 shadow-pop;
+    animation: selbar-in 0.16s var(--ease-out-soft);
+  }
+  .selbar[hidden] { display: none; }
+
+  .selbar-count {
+    @apply shrink-0 rounded-lg bg-brand-50 px-2.5 py-1 text-[12.5px] font-semibold text-brand-800;
+  }
+
+  .selbar-group {
+    @apply flex shrink-0 items-center gap-1.5 rounded-xl border border-hairline
+           bg-sand-50 px-2 py-1.5;
+  }
+  .selbar-group select,
+  .selbar-group input { @apply field h-7 w-auto min-w-[104px] text-[12px]; }
+  .selbar-group input { @apply min-w-[128px]; }
+
+  .selbar-spacer { @apply ml-auto; }
+
+  /* A ticked row should be obvious at a glance — the bar acts on these. */
+  .dense-table tbody tr.is-selected,
+  .dt tbody tr.is-selected { @apply bg-brand-50/70; }
+  .dense-table tbody tr.is-selected:hover { @apply bg-brand-50; }
+
+  @media (max-width: 640px) {
+    .selbar { @apply flex-col items-stretch; }
+    .selbar-group { @apply flex-wrap; }
+    .selbar-spacer { @apply hidden; }
+  }
+}
+
+@keyframes selbar-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}

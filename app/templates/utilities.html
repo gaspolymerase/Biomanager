@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block page_title %}Utilities{% endblock %}
+{% block page_heading %}Utilities{% endblock %}
+{% block page_subtitle %}Bench calculators and reference data{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+
+  <article class="card self-start">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calculator"></use></svg> Mass from concentration</h2>
+    </header>
+    <form method="post" class="flex flex-col gap-3.5 p-4">
+      <label class="field-label">Molecular weight (g/mol)
+        <input type="number" step="0.0001" name="molecular_weight" required
+               value="{{ request.form.get('molecular_weight', '') }}">
+      </label>
+      <label class="field-label">Target concentration (mM)
+        <input type="number" step="0.0001" name="target_concentration_mm" required
+               value="{{ request.form.get('target_concentration_mm', '') }}">
+      </label>
+      <label class="field-label">Final volume (mL)
+        <input type="number" step="0.0001" name="final_volume_ml" required
+               value="{{ request.form.get('final_volume_ml', '') }}">
+      </label>
+      <button type="submit" class="btn btn-primary">Calculate</button>
+
+      {% if result %}
+        <div class="inset flex flex-col gap-0.5">
+          <span class="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-sand-400">Weigh out</span>
+          <span class="text-[22px] font-semibold leading-tight tracking-[-0.02em] text-brand-700">
+            {{ "%.3f"|format(result.milligrams) }} mg
+          </span>
+          <span class="text-[12px] text-muted">
+            {{ "%.6f"|format(result.grams) }} g for {{ result.volume_ml }} mL
+          </span>
+        </div>
+      {% endif %}
+    </form>
+  </article>
+
+  <article class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#flask"></use></svg> Chemical reference</h2>
+      <span class="badge badge-quiet">{{ chemicals|length }}</span>
+    </header>
+    {% if chemicals %}
+      <div class="dt-scroll">
+        <table class="dt">
+          <thead>
+            <tr>
+              <th style="width: 220px;">Name</th>
+              <th style="width: 130px;">MW (g/mol)</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for chemical in chemicals %}
+              <tr>
+                <td><span class="font-medium text-ink">{{ chemical.name }}</span></td>
+                <td><span class="ident">{{ chemical.molecular_weight }}</span></td>
+                <td class="text-muted">{{ chemical.notes }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#flask"></use></svg>
+        <p>No reference chemicals stored yet.</p>
+      </div>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

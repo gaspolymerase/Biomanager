@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ heading }}{% endblock %}
+{% block page_heading %}{{ heading }}{% endblock %}
+{% block page_subtitle %}{{ cards|length }} card{{ '' if cards|length == 1 else 's' }} · scan the code to open the record{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ back_url }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Back</a>
+  <button type="button" class="btn btn-primary" onclick="window.print()">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> Print
+  </button>
+{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* Cards are sized in millimetres so they come off the printer at the
+     dimensions the cage-card holder expects, regardless of screen zoom. */
+  .card-sheet {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, {{ size[0] }}mm);
+    gap: 4mm;
+  }
+  .label-card {
+    width: {{ size[0] }}mm;
+    height: {{ size[1] }}mm;
+    padding: 3mm 3.5mm;
+    border: 0.3mm solid #999;
+    border-radius: 1.5mm;
+    display: flex;
+    gap: 3mm;
+    background: #fff;
+    color: #15191d;
+    overflow: hidden;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .label-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .label-title {
+    font-size: 3.6mm;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 1mm;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .label-rows { display: grid; grid-template-columns: max-content 1fr; gap: 0.3mm 2mm; }
+  .label-key {
+    font-size: 2.1mm;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b757d;
+    white-space: nowrap;
+  }
+  .label-val {
+    font-size: 2.5mm;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .label-qr { flex: 0 0 auto; display: flex; align-items: flex-start; }
+  .label-qr svg { width: {{ (size[1] * 0.62) | round(1) }}mm; height: auto; display: block; }
+  .label-flag {
+    margin-top: auto;
+    font-size: 2.1mm;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #1c6445;
+  }
+
+  @media print {
+    /* Print only the cards: no rail, no tab strip, no page chrome. */
+    .rail, .topstrip, .page-head, .rail-scrim, .no-print { display: none !important; }
+    .shell { display: block !important; height: auto !important; }
+    .shell-main, .shell-scroll { overflow: visible !important; height: auto !important; }
+    .shell-page, .shell-page-wide { padding: 0 !important; max-width: none !important; }
+    body { background: #fff !important; }
+    .card-sheet { gap: 3mm; }
+    @page { margin: 8mm; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if cards %}
+  <p class="no-print mb-4 text-[12.5px] text-muted">
+    Printed {{ printed_on }}. Each code opens its record on this server — scan it with
+    any phone camera on the same network.
+  </p>
+  <div class="card-sheet">
+    {% for card in cards %}
+      <div class="label-card">
+        <div class="label-body">
+          <div class="label-title">{{ card.title }}</div>
+          <div class="label-rows">
+            {% for key, value in card.rows %}
+              <span class="label-key">{{ key }}</span>
+              <span class="label-val">{{ value }}</span>
+            {% endfor %}
+          </div>
+          {% if card.shared %}<div class="label-flag">Shared breeder</div>{% endif %}
+        </div>
+        {% if card.qr %}
+          <div class="label-qr">{{ card.qr | safe }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card empty-state">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg>
+    <p>Nothing to print here yet.</p>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,66 @@
+"""Desktop entrypoint: serves the Flask app in a background thread and opens
+it inside a native pywebview window.
+
+Run from source:   python desktop.py
+Bundled app:       double-click Biomanager.app (built via Biomanager.spec)
+"""
+from __future__ import annotations
+
+import socket
+import sys
+import threading
+import time
+from urllib.request import urlopen
+
+import webview
+
+from app.app import app
+
+
+def _pick_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _run_flask(port: int) -> None:
+    # threaded=True so concurrent requests (autosave + page navigation) don't
+    # deadlock. use_reloader=False because the reloader spawns a child
+    # process that webview can't follow.
+    app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False, threaded=True)
+
+
+def _wait_until_ready(url: str, timeout_s: float = 8.0) -> None:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            urlopen(url, timeout=0.5).read()
+            return
+        except Exception:
+            time.sleep(0.1)
+
+
+def main() -> int:
+    port = _pick_free_port()
+    server_thread = threading.Thread(target=_run_flask, args=(port,), daemon=True)
+    server_thread.start()
+
+    url = f"http://127.0.0.1:{port}/"
+    _wait_until_ready(url)
+
+    webview.create_window(
+        "BioManager",
+        url,
+        width=1280,
+        height=820,
+        min_size=(960, 600),
+        confirm_close=False,
+    )
+    # gui=None lets pywebview pick the native backend (cocoa on macOS,
+    # edgechromium on Windows, gtk/qt on Linux).
+    webview.start(debug=False)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

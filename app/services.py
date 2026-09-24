@@ -1,0 +1,1278 @@
+from __future__ import annotations
+
+import csv
+import io
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from werkzeug.datastructures import FileStorage
+from werkzeug.utils import secure_filename
+
+from sqlalchemy import func, inspect, select, text
+
+from .db import BASE_DIR, Base, SessionLocal, engine
+from .paths import uploads_dir
+from .models import (
+    AnimalRecord,
+    CageRecord,
+    CalendarEvent,
+    CalendarSubscription,
+    ClutchRecord,
+    Experiment,
+    FishLine,
+    FishRack,
+    FishRecord,
+    GoogleCalendarLink,
+    TankRecord,
+    WaterLog,
+    WaterSystem,
+    ChemicalReference,
+    DropdownOption,
+    LitterRecord,
+    MOUSE_PRESET_FIELDS,
+    MOUSE_STATUS_OPTIONS,
+    MouseRecord,
+    NotificationRecord,
+    NotebookEntry,
+    Order,
+    SampleRecord,
+    StrainRecord,
+    TaskItem,
+    UserAccount,
+)
+
+
+DEFAULT_CHEMICALS = [
+    ("NaCl", 58.44, "Sodium chloride"),
+    ("KCl", 74.55, "Potassium chloride"),
+    ("Tris base", 121.14, "Common buffer component"),
+    ("EDTA", 292.24, "Chelating agent"),
+    ("Glucose", 180.16, "D-glucose"),
+    ("Sucrose", 342.30, "Disaccharide"),
+    ("HEPES", 238.30, "Buffering agent"),
+    ("CaCl2", 110.98, "Calcium chloride"),
+    ("MgCl2", 95.21, "Magnesium chloride"),
+    ("PBS tablet equivalent", 0.0, "Enter a custom MW if needed for tablets or mixes"),
+]
+DEFAULT_MOUSE_OPTIONS = {
+    "gender": ["F", "M", "Unknown"],
+    "purpose": ["Breeder", "Breeding", "Exp"],
+    "status": MOUSE_STATUS_OPTIONS,
+    "owner": ["Lab Member"],
+    "genotype": ["Trp2 iCreER/+", "R26 Ai9/+", "WT"],
+}
+RETIRED_PRESET_FIELDS = ("cage_location",)
+UPLOAD_DIR = uploads_dir()
+
+
+def parse_date(raw_value: str | None) -> date | None:
+    if not raw_value:
+        return None
+    cleaned = raw_value.strip()
+    if not cleaned:
+        return None
+    for fmt in ("%Y-%m-%d", "%y%m%d", "%y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def init_database() -> None:
+    Base.metadata.create_all(bind=engine)
+    ensure_schema_updates()
+    backfill_cage_owners()
+    stamp_alembic_baseline()
+    warn_if_database_is_synced()
+    seed_organism_modules()
+    with SessionLocal() as session:
+        existing_chemical = session.scalar(select(ChemicalReference.id).limit(1))
+        if existing_chemical is None:
+            for name, mw, notes in DEFAULT_CHEMICALS:
+                session.add(ChemicalReference(name=name, molecular_weight=mw, notes=notes))
+
+        existing_options = session.scalar(select(DropdownOption.id).limit(1))
+        if existing_options is None:
+            for field_name, values in DEFAULT_MOUSE_OPTIONS.items():
+                for value in values:
+                    session.add(DropdownOption(field_name=field_name, option_value=value))
+
+        retired_rows = session.scalars(
+            select(DropdownOption).where(DropdownOption.field_name.in_(RETIRED_PRESET_FIELDS))
+        ).all()
+        for row in retired_rows:
+            session.delete(row)
+
+        lowercase_status_rows = session.scalars(
+            select(DropdownOption).where(
+                DropdownOption.field_name == "status",
+                DropdownOption.option_value.in_(MOUSE_STATUS_OPTIONS),
+            )
+        ).all()
+        for row in lowercase_status_rows:
+            session.delete(row)
+        session.commit()
+
+
+def ensure_schema_updates() -> None:
+    inspector = inspect(engine)
+    table_columns = {table: {col["name"] for col in inspector.get_columns(table)} for table in inspector.get_table_names()}
+    alter_statements: list[str] = []
+
+    if "mice" in table_columns:
+        if "transgene_1" not in table_columns["mice"]:
+            alter_statements.extend(
+                [
+                    "ALTER TABLE mice ADD COLUMN transgene_1 VARCHAR(200) DEFAULT ''",
+                    "ALTER TABLE mice ADD COLUMN transgene_2 VARCHAR(200) DEFAULT ''",
+                    "ALTER TABLE mice ADD COLUMN transgene_3 VARCHAR(200) DEFAULT ''",
+                    "ALTER TABLE mice ADD COLUMN transgene_4 VARCHAR(200) DEFAULT ''",
+                ]
+            )
+    if "audit_log" in table_columns and "batch_id_fk" not in table_columns["audit_log"]:
+        alter_statements.extend([
+            "ALTER TABLE audit_log ADD COLUMN batch_id_fk INTEGER",
+            "ALTER TABLE audit_log ADD COLUMN changes_json TEXT DEFAULT ''",
+        ])
+    if "mouse_cages" in table_columns and "owner" not in table_columns["mouse_cages"]:
+        alter_statements.extend([
+            "ALTER TABLE mouse_cages ADD COLUMN owner VARCHAR(120) DEFAULT ''",
+            "ALTER TABLE mouse_cages ADD COLUMN is_shared BOOLEAN DEFAULT 0",
+        ])
+    if "strains" in table_columns and "strain_number" not in table_columns["strains"]:
+        alter_statements.append("ALTER TABLE strains ADD COLUMN strain_number VARCHAR(80) DEFAULT ''")
+    if "litters" in table_columns:
+        if "father_info" not in table_columns["litters"]:
+            alter_statements.extend(
+                [
+                    "ALTER TABLE litters ADD COLUMN father_info VARCHAR(120) DEFAULT ''",
+                    "ALTER TABLE litters ADD COLUMN mother_info VARCHAR(120) DEFAULT ''",
+                    "ALTER TABLE litters ADD COLUMN total_pups INTEGER DEFAULT 0",
+                ]
+            )
+    if "users" in table_columns:
+        existing = table_columns["users"]
+        if "short_name" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN short_name VARCHAR(20) DEFAULT ''")
+        if "email" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN email VARCHAR(200) DEFAULT ''")
+        if "role_title" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN role_title VARCHAR(80) DEFAULT ''")
+        if "default_landing" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN default_landing VARCHAR(40) DEFAULT ''")
+        if "disabled" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT 0")
+        if "notify_transfer" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN notify_transfer BOOLEAN DEFAULT 1")
+        if "notify_picked" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN notify_picked BOOLEAN DEFAULT 1")
+        if "notify_breeder_aging" not in existing:
+            alter_statements.append("ALTER TABLE users ADD COLUMN notify_breeder_aging BOOLEAN DEFAULT 1")
+
+    if "notebook_pages" in table_columns and "entry_date" not in table_columns["notebook_pages"]:
+        alter_statements.append("ALTER TABLE notebook_pages ADD COLUMN entry_date DATE")
+    if "notebook_pages" in table_columns and "properties" not in table_columns["notebook_pages"]:
+        alter_statements.append("ALTER TABLE notebook_pages ADD COLUMN properties TEXT DEFAULT ''")
+
+    for tbl in ("mice", "plasmids", "orders"):
+        if tbl in table_columns:
+            if "updated_at" not in table_columns[tbl]:
+                alter_statements.append(f"ALTER TABLE {tbl} ADD COLUMN updated_at DATETIME")
+            if "updated_by" not in table_columns[tbl]:
+                alter_statements.append(f"ALTER TABLE {tbl} ADD COLUMN updated_by VARCHAR(80) DEFAULT ''")
+
+    if "plasmids" in table_columns:
+        if "full_sequence" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN full_sequence TEXT DEFAULT ''")
+        if "is_circular" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN is_circular BOOLEAN DEFAULT 1")
+        if "features_json" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN features_json TEXT DEFAULT ''")
+        if "sequence_format" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN sequence_format VARCHAR(20) DEFAULT ''")
+        if "sequence_uploaded_at" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN sequence_uploaded_at DATETIME")
+        if "storage_box" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN storage_box VARCHAR(80) DEFAULT ''")
+        if "box_row" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN box_row INTEGER")
+        if "box_col" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN box_col INTEGER")
+
+    if "calendar_events" in table_columns:
+        cols = table_columns["calendar_events"]
+        if "start_at" not in cols:
+            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN start_at DATETIME")
+        if "end_at" not in cols:
+            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN end_at DATETIME")
+        if "is_all_day" not in cols:
+            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN is_all_day BOOLEAN DEFAULT 1")
+        if "color" not in cols:
+            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN color VARCHAR(20) DEFAULT ''")
+        if "owner" not in cols:
+            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN owner VARCHAR(80) DEFAULT ''")
+
+    if "tasks" in table_columns:
+        cols = table_columns["tasks"]
+        if "start_at" not in cols:
+            alter_statements.append("ALTER TABLE tasks ADD COLUMN start_at DATETIME")
+        if "end_at" not in cols:
+            alter_statements.append("ALTER TABLE tasks ADD COLUMN end_at DATETIME")
+        if "done_at" not in cols:
+            alter_statements.append("ALTER TABLE tasks ADD COLUMN done_at DATETIME")
+        if "color" not in cols:
+            alter_statements.append("ALTER TABLE tasks ADD COLUMN color VARCHAR(20) DEFAULT ''")
+        if "owner" not in cols:
+            alter_statements.append("ALTER TABLE tasks ADD COLUMN owner VARCHAR(80) DEFAULT ''")
+
+    if alter_statements:
+        with engine.begin() as connection:
+            for statement in alter_statements:
+                connection.execute(text(statement))
+
+    # Calendar integration tables — created by Base.metadata.create_all in
+    # init_db, but we also assert here so older deployments pick them up.
+    if "calendar_subscriptions" not in table_columns:
+        Base.metadata.tables["calendar_subscriptions"].create(bind=engine, checkfirst=True)
+    if "google_calendar_links" not in table_columns:
+        Base.metadata.tables["google_calendar_links"].create(bind=engine, checkfirst=True)
+
+    # Zebrafish module tables — same approach.
+    for fish_table in ("water_systems", "fish_racks", "fish_lines", "tanks",
+                       "fish", "clutches", "water_logs", "fish_sac_log"):
+        if fish_table not in table_columns:
+            Base.metadata.tables[fish_table].create(bind=engine, checkfirst=True)
+
+
+# ---------------------------------------------------------------------------
+# Calendar subscriptions (ICS) — fetch a remote .ics URL, parse it with the
+# `icalendar` library, cache the parsed events for ~10 min, and surface them
+# in TOAST UI Calendar's schedule shape.
+# ---------------------------------------------------------------------------
+
+ICS_CACHE_TTL = timedelta(minutes=10)
+
+
+def fetch_ics_subscription(sub: "CalendarSubscription", session, force: bool = False) -> list[dict]:
+    """Fetch + parse `sub.url`. Returns a list of TOAST UI schedule dicts.
+    Honors a 10-minute cache so repeated /calendar/events.json hits don't
+    hammer the source. Errors are stored on `sub.last_error` (non-fatal —
+    we just return whatever the previous cache had)."""
+    import json as _json
+    now = datetime.utcnow()
+
+    if (
+        not force
+        and sub.cached_payload
+        and sub.last_fetched_at
+        and now - sub.last_fetched_at < ICS_CACHE_TTL
+    ):
+        try:
+            return _json.loads(sub.cached_payload)
+        except _json.JSONDecodeError:
+            pass  # fall through to refetch
+
+    try:
+        events = _do_fetch_ics(sub.url, sub.color or "#10b981", sub.id)
+        sub.cached_payload = _json.dumps(events)
+        sub.last_fetched_at = now
+        sub.last_error = ""
+        session.add(sub)
+        session.commit()
+        return events
+    except Exception as exc:
+        sub.last_error = f"{type(exc).__name__}: {exc}"[:500]
+        session.add(sub)
+        session.commit()
+        # Return whatever's cached if available — better than nothing.
+        if sub.cached_payload:
+            try:
+                return _json.loads(sub.cached_payload)
+            except _json.JSONDecodeError:
+                return []
+        return []
+
+
+def _do_fetch_ics(url: str, color: str, sub_id: int) -> list[dict]:
+    """Fetch one ICS URL and translate VEVENTs into TOAST UI schedule shape."""
+    import urllib.request
+    from icalendar import Calendar as _Calendar  # local import to keep cold-start fast
+
+    req = urllib.request.Request(url, headers={"User-Agent": "BioManager-Calendar/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        raw = resp.read()
+
+    cal = _Calendar.from_ical(raw)
+    out: list[dict] = []
+    for component in cal.walk("VEVENT"):
+        try:
+            uid = str(component.get("UID") or f"sub-{sub_id}-{len(out)}")
+            summary = str(component.get("SUMMARY") or "(no title)")
+            description = str(component.get("DESCRIPTION") or "")
+            dtstart = component.get("DTSTART")
+            dtend = component.get("DTEND") or dtstart
+            if dtstart is None:
+                continue
+            start_val = dtstart.dt
+            end_val = dtend.dt if dtend is not None else start_val
+            is_all_day = isinstance(start_val, date) and not isinstance(start_val, datetime)
+            if is_all_day:
+                start_iso = datetime.combine(start_val, datetime.min.time()).isoformat()
+                # ICS DTEND for all-day is exclusive; subtract a day for display.
+                effective_end = end_val - timedelta(days=1) if isinstance(end_val, date) and end_val > start_val else start_val
+                end_iso = datetime.combine(effective_end, datetime.max.time()).isoformat()
+            else:
+                start_iso = (start_val if isinstance(start_val, datetime) else datetime.combine(start_val, datetime.min.time())).isoformat()
+                end_iso = (end_val if isinstance(end_val, datetime) else datetime.combine(end_val, datetime.max.time())).isoformat()
+            out.append({
+                "id": f"sub-{sub_id}-{uid}",
+                "kind": "subscription",
+                "calendarId": f"sub-{sub_id}",
+                "title": summary,
+                "category": "allday" if is_all_day else "time",
+                "isAllday": is_all_day,
+                "start": start_iso,
+                "end": end_iso,
+                "backgroundColor": color,
+                "borderColor": color,
+                "body": description,
+                "isReadOnly": True,
+                "raw": {"subId": sub_id, "uid": uid},
+            })
+        except Exception:
+            # Skip individual broken VEVENTs but keep the rest.
+            continue
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Google Calendar OAuth (Pass 3)
+# ---------------------------------------------------------------------------
+
+GOOGLE_OAUTH_SCOPES = [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "openid",
+]
+
+
+def google_oauth_configured() -> bool:
+    import os
+    return bool(os.environ.get("GOOGLE_OAUTH_CLIENT_ID") and os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET"))
+
+
+def google_client_config(redirect_uri: str) -> dict:
+    """The dict that google_auth_oauthlib expects when no client_secrets.json
+    file is present — we just synthesize it from env vars."""
+    import os
+    return {
+        "web": {
+            "client_id": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
+            "client_secret": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [redirect_uri],
+        }
+    }
+
+
+def fetch_google_calendar_items(link: "GoogleCalendarLink", session, start_dt=None, end_dt=None) -> list[dict]:
+    """Read events from one connected Google Calendar. Returns TOAST UI
+    schedule shape. Refresh-token-based — we never need an interactive login
+    after the initial OAuth."""
+    import os
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    creds = Credentials(
+        token=link.access_token or None,
+        refresh_token=link.refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.environ.get("GOOGLE_OAUTH_CLIENT_ID"),
+        client_secret=os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET"),
+        scopes=GOOGLE_OAUTH_SCOPES,
+    )
+    service = build("calendar", "v3", credentials=creds, cache_discovery=False)
+
+    # Default to ±60 days if no window given.
+    if start_dt is None:
+        start_dt = datetime.utcnow() - timedelta(days=60)
+    if end_dt is None:
+        end_dt = datetime.utcnow() + timedelta(days=60)
+    time_min = start_dt.isoformat() + "Z" if start_dt.tzinfo is None else start_dt.isoformat()
+    time_max = end_dt.isoformat() + "Z" if end_dt.tzinfo is None else end_dt.isoformat()
+
+    resp = service.events().list(
+        calendarId=link.calendar_id or "primary",
+        timeMin=time_min,
+        timeMax=time_max,
+        singleEvents=True,
+        orderBy="startTime",
+        maxResults=500,
+    ).execute()
+
+    # Persist any refreshed access token so we don't refresh on every call.
+    if creds.token and creds.token != link.access_token:
+        link.access_token = creds.token
+        link.token_expiry = creds.expiry
+    link.last_synced_at = datetime.utcnow()
+    session.add(link)
+    session.commit()
+
+    out: list[dict] = []
+    for ev in resp.get("items", []):
+        try:
+            start = ev["start"]
+            end = ev.get("end", start)
+            is_all_day = "date" in start
+            if is_all_day:
+                start_iso = datetime.fromisoformat(start["date"]).isoformat()
+                # Google's all-day end is exclusive — subtract a day for display.
+                end_date = datetime.fromisoformat(end["date"]) - timedelta(days=1)
+                end_iso = datetime.combine(end_date.date(), datetime.max.time()).isoformat()
+            else:
+                start_iso = start["dateTime"]
+                end_iso = end.get("dateTime", start["dateTime"])
+            out.append({
+                "id": f"google-{link.id}-{ev['id']}",
+                "kind": "google",
+                "calendarId": "google",
+                "title": ev.get("summary") or "(no title)",
+                "category": "allday" if is_all_day else "time",
+                "isAllday": is_all_day,
+                "start": start_iso,
+                "end": end_iso,
+                "backgroundColor": link.color or "#ef4444",
+                "borderColor": link.color or "#ef4444",
+                "body": ev.get("description") or "",
+                "isReadOnly": True,
+                "raw": {"linkId": link.id, "googleEventId": ev["id"], "htmlLink": ev.get("htmlLink", "")},
+            })
+        except Exception:
+            continue
+    return out
+
+
+def dashboard_counts() -> dict[str, int]:
+    with SessionLocal() as session:
+        return {
+            "orders": len(session.scalars(select(Order)).all()),
+            "animals": len(session.scalars(select(AnimalRecord)).all()),
+            "samples": len(session.scalars(select(SampleRecord)).all()),
+            "events": len(session.scalars(select(CalendarEvent)).all()),
+            "tasks": len(session.scalars(select(TaskItem)).all()),
+            "notebook_entries": len(session.scalars(select(NotebookEntry)).all()),
+            "mice": len(session.scalars(select(MouseRecord)).all()),
+            "cages": len(session.scalars(select(CageRecord)).all()),
+            "strains": len(session.scalars(select(StrainRecord)).all()),
+        }
+
+
+def calculate_reagent_requirements(
+    molecular_weight: float,
+    target_concentration_mm: float,
+    final_volume_ml: float,
+) -> dict[str, float]:
+    molar_concentration = target_concentration_mm / 1000.0
+    volume_l = final_volume_ml / 1000.0
+    grams_needed = molecular_weight * molar_concentration * volume_l
+    return {
+        "grams": grams_needed,
+        "milligrams": grams_needed * 1000.0,
+        "volume_ml": final_volume_ml,
+    }
+
+
+def save_uploaded_image(upload: FileStorage | None) -> str:
+    if upload is None or not upload.filename:
+        return ""
+
+    filename = secure_filename(upload.filename)
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    output_name = f"{timestamp}_{filename}"
+    destination = Path(UPLOAD_DIR / output_name)
+    upload.save(destination)
+    return f"uploads/{output_name}"
+
+
+def save_uploaded_file(upload: FileStorage | None) -> dict | None:
+    """Save an arbitrary uploaded file (PDF, .docx, .xlsx, etc.) to the
+    uploads dir. Returns {path, original_name, size_bytes} or None on failure."""
+    if upload is None or not upload.filename:
+        return None
+
+    filename = secure_filename(upload.filename) or "file"
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    output_name = f"{timestamp}_{filename}"
+    destination = Path(UPLOAD_DIR / output_name)
+    upload.save(destination)
+    try:
+        size_bytes = destination.stat().st_size
+    except OSError:
+        size_bytes = 0
+    return {
+        "path": f"uploads/{output_name}",
+        "original_name": upload.filename,
+        "size_bytes": size_bytes,
+    }
+
+
+def latest_mouse_record(session) -> MouseRecord | None:
+    return session.scalar(select(MouseRecord).order_by(MouseRecord.created_at.desc(), MouseRecord.mouse_id.desc()).limit(1))
+
+
+def next_mouse_id(session) -> int:
+    """The next free mouse ID.
+
+    Flushes first because the session is created with autoflush=False: a
+    caller in a loop (CSV import, batch create) has rows pending that the
+    max() below would otherwise not see, and every row would be handed the
+    same ID. Use reserve_mouse_ids() when creating several at once — this
+    is correct in a loop but costs a round trip per call.
+    """
+    session.flush()
+    latest = latest_mouse_record(session)
+    if latest is not None and latest.mouse_id is not None:
+        return latest.mouse_id + 1
+    current_max = session.scalar(select(func.max(MouseRecord.mouse_id)))
+    return (current_max or 0) + 1
+
+
+def reserve_mouse_ids(session, count: int) -> list[int]:
+    """Allocate `count` consecutive mouse IDs in one go.
+
+    Batch creation must not call next_mouse_id() per row: that is a query
+    each time, and without a flush between rows every row collides on the
+    unique index. One high-water read, one contiguous block.
+    """
+    if count <= 0:
+        return []
+    session.flush()
+    highest = session.scalar(select(func.max(MouseRecord.mouse_id))) or 0
+    latest = latest_mouse_record(session)
+    if latest is not None and latest.mouse_id is not None:
+        highest = max(highest, latest.mouse_id)
+    return [highest + offset for offset in range(1, count + 1)]
+
+
+def reserve_cage_ids(session, count: int) -> list[str]:
+    """The cage-ID equivalent of reserve_mouse_ids()."""
+    if count <= 0:
+        return []
+    session.flush()
+    highest = 0
+    for cage in session.scalars(select(CageRecord)).all():
+        digits = "".join(c for c in (cage.cage_id or "") if c.isdigit())
+        if digits:
+            highest = max(highest, int(digits))
+    return [str(highest + offset) for offset in range(1, count + 1)]
+
+
+def next_cage_id(session) -> str:
+    # See next_mouse_id: pending rows are invisible without a flush.
+    session.flush()
+    cages = session.scalars(select(CageRecord).order_by(CageRecord.created_at.desc(), CageRecord.id.desc())).all()
+    best_value = 0
+    for cage in cages:
+        digits = "".join(character for character in cage.cage_id if character.isdigit())
+        if digits:
+            best_value = max(best_value, int(digits))
+            break
+    if best_value == 0:
+        for cage in cages:
+            digits = "".join(character for character in cage.cage_id if character.isdigit())
+            if digits:
+                best_value = max(best_value, int(digits))
+    return str(best_value + 1 if best_value else 1)
+
+
+def get_or_create_litter(session, litter_code: str, dob: date | None = None) -> LitterRecord:
+    litter = session.scalar(select(LitterRecord).where(LitterRecord.litter_id == litter_code))
+    if litter is None:
+        litter = LitterRecord(litter_id=litter_code, date_of_birth=dob)
+        session.add(litter)
+        session.flush()
+    elif dob:
+        litter.date_of_birth = dob
+    return litter
+
+
+def get_or_create_cage(session, cage_code: str) -> CageRecord:
+    resolved_code = cage_code.strip()
+    if resolved_code.lower() == "new" or resolved_code == "":
+        resolved_code = next_cage_id(session)
+    cage = session.scalar(select(CageRecord).where(CageRecord.cage_id == resolved_code))
+    if cage is None:
+        cage = CageRecord(cage_id=resolved_code)
+        session.add(cage)
+        session.flush()
+    return cage
+
+
+def calculate_age_fields(dob: date | None) -> dict[str, int | None]:
+    if dob is None:
+        return {"age_days": None, "age_weeks": None}
+    delta = (date.today() - dob).days
+    return {"age_days": max(delta, 0), "age_weeks": max(delta, 0) // 7}
+
+
+def normalize_status(raw_status: str) -> str:
+    return raw_status.strip().lower()
+
+
+def transgene_values_from_form(form) -> list[str]:
+    return [form.get(f"transgene_{index}", "").strip() for index in range(1, 5)]
+
+
+def genotype_string_from_transgenes(transgenes: list[str]) -> str:
+    return "; ".join([value for value in transgenes if value])
+
+
+def split_genotype(raw_value: str) -> list[str]:
+    if not raw_value:
+        return []
+    normalized = raw_value.replace(",", ";")
+    return [part.strip() for part in normalized.split(";") if part.strip()]
+
+
+def sync_mouse_transgenes(mouse: MouseRecord, transgenes: list[str]) -> None:
+    padded = transgenes + [""] * (4 - len(transgenes))
+    mouse.transgene_1 = padded[0]
+    mouse.transgene_2 = padded[1]
+    mouse.transgene_3 = padded[2]
+    mouse.transgene_4 = padded[3]
+    mouse.genotype = genotype_string_from_transgenes(padded)
+
+
+def mouse_is_active(mouse: MouseRecord) -> bool:
+    inactive_statuses = {"sac", "transfer"}
+    return mouse.date_of_death is None and normalize_status(mouse.status) not in inactive_statuses
+
+
+def mouse_display_row(mouse: MouseRecord, current_username: str | None = None, current_role: str | None = None) -> dict[str, object]:
+    dob = mouse.litter.date_of_birth if mouse.litter else None
+    ages = calculate_age_fields(dob)
+    transgenes = [mouse.transgene_1, mouse.transgene_2, mouse.transgene_3, mouse.transgene_4]
+    genotype_parts = [value for value in transgenes if value] or split_genotype(mouse.genotype)
+    can_edit_breeder = current_role == "admin" or mouse.owner == current_username
+    cage_is_breeder = mouse.cage is not None and normalize_status(mouse.cage.purpose) == "breeder"
+    return {
+        "id": mouse.id,
+        "mouse_id": mouse.mouse_id,
+        "active": mouse_is_active(mouse),
+        "active_label": "Y" if mouse_is_active(mouse) else "N",
+        "age_weeks": ages["age_weeks"],
+        "age_days": ages["age_days"],
+        "gender": mouse.gender,
+        "genotype": mouse.genotype,
+        "genotype_full": mouse.genotype or "",
+        "genotype_parts": genotype_parts,
+        "transgene_1": genotype_parts[0] if len(genotype_parts) > 0 else "",
+        "transgene_2": genotype_parts[1] if len(genotype_parts) > 1 else "",
+        "transgene_3": genotype_parts[2] if len(genotype_parts) > 2 else "",
+        "transgene_4": genotype_parts[3] if len(genotype_parts) > 3 else "",
+        "cage_id": mouse.cage.cage_id if mouse.cage else "",
+        "cage_location": mouse.cage.cage_location if mouse.cage else "",
+        "owner": mouse.owner,
+        "litter_id": mouse.litter.litter_id if mouse.litter else "",
+        "date_of_birth": dob.isoformat() if dob else "",
+        "status": mouse.status,
+        "note": mouse.note,
+        "date_of_death": mouse.date_of_death.isoformat() if mouse.date_of_death else "",
+        "can_edit": not cage_is_breeder or can_edit_breeder,
+    }
+
+
+def cage_is_active(cage: CageRecord) -> bool:
+    return cage.active_override or any(mouse_is_active(mouse) for mouse in cage.mice)
+
+
+def cage_derived_dates(cage: CageRecord) -> dict[str, str]:
+    if cage.date_give_birth is None:
+        return {"genotyping_date": "", "weaning_date": ""}
+    return {
+        "genotyping_date": (cage.date_give_birth + timedelta(days=7)).isoformat(),
+        "weaning_date": (cage.date_give_birth + timedelta(weeks=4)).isoformat(),
+    }
+
+
+def dropdown_options_map(session) -> dict[str, list[str]]:
+    options = defaultdict(list)
+    rows = session.scalars(select(DropdownOption).order_by(DropdownOption.field_name, DropdownOption.option_value)).all()
+    for row in rows:
+        options[row.field_name].append(row.option_value)
+    for field in MOUSE_PRESET_FIELDS:
+        options.setdefault(field, [])
+    return dict(options)
+
+
+def dropdown_records_map(session) -> dict[str, list[DropdownOption]]:
+    grouped: dict[str, list[DropdownOption]] = {field: [] for field in MOUSE_PRESET_FIELDS}
+    rows = session.scalars(select(DropdownOption).order_by(DropdownOption.field_name, DropdownOption.option_value)).all()
+    for row in rows:
+        grouped.setdefault(row.field_name, []).append(row)
+    return grouped
+
+
+def current_lab_usernames(session) -> list[str]:
+    return [user.username for user in session.scalars(select(UserAccount).order_by(UserAccount.username)).all()]
+
+
+def add_notification(session, recipient_username: str, title: str, message: str, category: str = "general") -> None:
+    """Insert a notification, respecting the recipient's per-category preferences.
+
+    `category` maps to a `notify_<category>` boolean column on UserAccount
+    (transfer / picked / breeder_aging). Unknown categories always notify.
+    Disabled accounts never receive notifications.
+    """
+    user = session.scalar(select(UserAccount).where(UserAccount.username == recipient_username))
+    if user is None:
+        return
+    if user.disabled:
+        return
+    pref_attr = f"notify_{category}"
+    if hasattr(user, pref_attr) and getattr(user, pref_attr) is False:
+        return
+    session.add(NotificationRecord(recipient_username=recipient_username, title=title, message=message))
+
+
+def recent_notifications(session, recipient_username: str, limit: int = 8) -> list[NotificationRecord]:
+    return session.scalars(
+        select(NotificationRecord)
+        .where(NotificationRecord.recipient_username == recipient_username)
+        .order_by(NotificationRecord.created_at.desc())
+        .limit(limit)
+    ).all()
+
+
+def breeder_summary(session) -> list[dict[str, object]]:
+    today = date.today()
+    breeder_buckets: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"f_young": 0, "f_old": 0, "m_young": 0, "m_old": 0, "oldest": 0, "total": 0}
+    )
+
+    for mouse in session.scalars(select(MouseRecord)).all():
+        if not mouse_is_active(mouse):
+            continue
+        if mouse.cage is None or (mouse.cage.purpose or "").strip().lower() != "breeder":
+            continue
+        dob = mouse.litter.date_of_birth if mouse.litter else None
+        if dob is None:
+            continue
+        age_weeks = max((today - dob).days, 0) // 7
+        genotype = (mouse.genotype or "").strip() or "(no genotype)"
+        gender = (mouse.gender or "").strip().upper()
+
+        bucket = breeder_buckets[genotype]
+        bucket["total"] += 1
+        if age_weeks > bucket["oldest"]:
+            bucket["oldest"] = age_weeks
+        if 8 <= age_weeks <= 20 and gender == "F":
+            bucket["f_young"] += 1
+        elif 20 < age_weeks <= 30 and gender == "F":
+            bucket["f_old"] += 1
+        elif 8 <= age_weeks <= 20 and gender == "M":
+            bucket["m_young"] += 1
+        elif 20 < age_weeks <= 30 and gender == "M":
+            bucket["m_old"] += 1
+
+    rows: list[dict[str, object]] = []
+    for genotype in sorted(breeder_buckets.keys()):
+        bucket = breeder_buckets[genotype]
+        oldest = bucket["oldest"]
+        if oldest <= 20:
+            urgency = "ok"
+        elif oldest <= 30:
+            urgency = "warn"
+        else:
+            urgency = "urgent"
+        rows.append(
+            {
+                "genotype": genotype,
+                "f_young": bucket["f_young"],
+                "f_old": bucket["f_old"],
+                "m_young": bucket["m_young"],
+                "m_old": bucket["m_old"],
+                "total": bucket["total"],
+                "oldest_age_weeks": oldest,
+                "urgency": urgency,
+            }
+        )
+    return rows
+
+
+def breeder_mice(session, current_username: str | None, current_role: str | None) -> list[dict[str, object]]:
+    cages = session.scalars(
+        select(CageRecord).where(func.lower(func.trim(CageRecord.purpose)) == "breeder").order_by(CageRecord.cage_id)
+    ).all()
+    grouped: list[dict[str, object]] = []
+    for cage in cages:
+        owner_name = ""
+        for mouse in cage.mice:
+            if mouse.owner:
+                owner_name = mouse.owner
+                break
+        sorted_mice = sorted(cage.mice, key=lambda item: item.mouse_id)
+        mouse_rows = [mouse_display_row(mouse, current_username, current_role) for mouse in sorted_mice]
+        search_parts: list[str] = [
+            cage.cage_id or "",
+            cage.cage_location or "",
+            cage.room or "",
+            cage.location_detail or "",
+            cage.card_id or "",
+            cage.genotype_summary or "",
+            owner_name,
+        ]
+        for mouse in sorted_mice:
+            search_parts.extend(
+                [
+                    str(mouse.mouse_id),
+                    mouse.gender or "",
+                    mouse.genotype or "",
+                    mouse.note or "",
+                    mouse.owner or "",
+                    mouse.status or "",
+                ]
+            )
+            if mouse.litter and mouse.litter.litter_id:
+                search_parts.append(mouse.litter.litter_id)
+        search_blob = " ".join(part for part in search_parts if part).lower()
+        active_count = sum(1 for mouse in sorted_mice if mouse_is_active(mouse))
+        grouped.append(
+            {
+                "cage_id": cage.cage_id,
+                "cage_location": cage.cage_location,
+                "room": cage.room,
+                "location_detail": cage.location_detail,
+                "card_id": cage.card_id,
+                "genotype_summary": cage.genotype_summary,
+                "owner": owner_name or "Unassigned",
+                "search_blob": search_blob,
+                "mice": mouse_rows,
+                "active_count": active_count,
+                "total_count": len(sorted_mice),
+                "editable": current_role == "admin" or owner_name == current_username,
+            }
+        )
+    return grouped
+
+
+def next_litter_id(session) -> str:
+    session.flush()
+    rows = session.scalars(select(LitterRecord)).all()
+    best = 0
+    for litter in rows:
+        if litter.litter_id and litter.litter_id.isdigit():
+            value = int(litter.litter_id)
+            if value > best:
+                best = value
+    return str(best + 1)
+
+
+def generate_litter_id(session, cage: CageRecord | None) -> str:
+    return next_litter_id(session)
+
+
+def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -> tuple[str, str, str]:
+    output = io.StringIO()
+    delimiter = "," if export_format == "csv" else "\t"
+    writer = csv.writer(output, delimiter=delimiter)
+    writer.writerow(
+        [
+            "Mouse_ID",
+            "Active",
+            "Age_weeks",
+            "Age_days",
+            "Gender",
+            "Transgene_1",
+            "Transgene_2",
+            "Transgene_3",
+            "Transgene_4",
+            "Cage_ID",
+            "Cage_Location",
+            "Owner",
+            "Litter_ID",
+            "DOB",
+            "Status",
+            "Date_of_Death",
+            "Note",
+        ]
+    )
+    for row in mouse_rows:
+        writer.writerow(
+            [
+                row["mouse_id"],
+                "Yes" if row["active"] else "No",
+                row["age_weeks"] or "",
+                row["age_days"] or "",
+                row["gender"],
+                row["transgene_1"],
+                row["transgene_2"],
+                row["transgene_3"],
+                row["transgene_4"],
+                row["cage_id"],
+                row["cage_location"],
+                row["owner"],
+                row["litter_id"],
+                row["date_of_birth"],
+                row["status"],
+                row["date_of_death"],
+                row["note"],
+            ]
+        )
+    filename = "mice_export.csv" if export_format == "csv" else "mice_export.xls"
+    mimetype = "text/csv" if export_format == "csv" else "application/vnd.ms-excel"
+    return output.getvalue(), filename, mimetype
+
+
+# ---------------------------------------------------------------------------
+# Auto-derived calendar items
+# ---------------------------------------------------------------------------
+# These come from EXISTING domain rows (litters, mice, experiments) rather
+# than from CalendarEvent / TaskItem. They're read-only on the calendar —
+# the source of truth is the originating record, so editing happens there.
+# The output shape matches what TOAST UI Calendar expects, with `isReadOnly`
+# set so drag-to-reschedule is blocked.
+
+# Defaults reflect typical mouse colony practice:
+# - weaning at P21 (3 weeks)
+# - genotyping ~a week after weaning (P28)
+# - "old mouse" sac-threshold reminder at 30 weeks
+WEAN_OFFSET_DAYS = 21
+GENO_OFFSET_DAYS = 28
+SAC_THRESHOLD_WEEKS = 30
+
+
+def _parent_label(session, info: str) -> str:
+    """Translate a litter's father_info / mother_info field into a label
+    that includes the parent mouse's genotype. The field often holds just a
+    mouse_id (e.g. "3") or text containing one (e.g. "M3 ♂"); we extract
+    the first integer, look up the mouse, and append its genotype/
+    transgenes. Falls back to the raw value when nothing matches."""
+    import re as _re
+
+    info = (info or "").strip()
+    if not info:
+        return ""
+    match = _re.search(r"\d+", info)
+    if not match:
+        return info
+    mouse_id_int = int(match.group(0))
+    mouse = session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == mouse_id_int))
+    if mouse is None:
+        return info
+    # Prefer the rolled-up `genotype` field if set; otherwise stitch the
+    # individual transgene slots so we always have something useful.
+    geno = (mouse.genotype or "").strip()
+    if not geno:
+        parts = [p.strip() for p in (mouse.transgene_1, mouse.transgene_2, mouse.transgene_3, mouse.transgene_4) if p and p.strip()]
+        geno = "; ".join(parts)
+    return f"M{mouse_id_int} ({geno})" if geno else f"M{mouse_id_int}"
+
+
+def _auto_item(*, kind_tag: str, anchor_id: int, title: str, color: str, day: date,
+               body: str = "", source: str = "", href: str = "") -> dict:
+    """Helper to build one auto-derived TOAST UI schedule dict."""
+    start_iso = datetime.combine(day, datetime.min.time()).isoformat()
+    end_iso = datetime.combine(day, datetime.max.time()).isoformat()
+    return {
+        "id": f"auto-{source}-{anchor_id}-{kind_tag}",
+        "kind": "auto",
+        "calendarId": "auto",
+        "title": title,
+        "category": "allday",
+        "isAllday": True,
+        "start": start_iso,
+        "end": end_iso,
+        "backgroundColor": color,
+        "borderColor": color,
+        "body": body,
+        "isReadOnly": True,
+        "raw": {"source": source, "anchor_id": anchor_id, "href": href},
+    }
+
+
+def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict]:
+    """Walk the litters / mice / experiments tables and emit a list of
+    auto-derived calendar items in the requested window. Each row keeps a
+    link back to its source via raw.href so clicking the item can navigate
+    to the originating record."""
+    items: list[dict] = []
+
+    def _in_window(d: date) -> bool:
+        if start_dt and d < (start_dt.date() if hasattr(start_dt, "date") else start_dt):
+            return False
+        if end_dt and d > (end_dt.date() if hasattr(end_dt, "date") else end_dt):
+            return False
+        return True
+
+    # ----- Cage wean + genotype ----------------------------------------
+    # Driven by CageRecord.date_give_birth (the cage's most recent litter
+    # date). For each one we derive a wean event at +21d and a genotype
+    # event at +28d. Title uses the cage's location, and the body includes
+    # the father + mother genotypes pulled from the linked litter when
+    # available.
+    cages = session.scalars(select(CageRecord).where(CageRecord.date_give_birth.is_not(None))).all()
+    for cage in cages:
+        dob = cage.date_give_birth
+        if dob is None:
+            continue
+
+        location_label = (cage.cage_location or cage.cage_id or f"Cage {cage.id}").strip() or f"Cage {cage.id}"
+
+        # Try to find the litter belonging to this cage: same DOB AND at
+        # least one mouse in this cage. Fall back gracefully if missing.
+        litter = session.scalar(
+            select(LitterRecord)
+            .where(LitterRecord.date_of_birth == dob)
+            .where(LitterRecord.mice.any(MouseRecord.cage_id_fk == cage.id))
+            .limit(1)
+        )
+
+        # Resolve father_info / mother_info → "M<id> (genotype)" by looking
+        # up the parent mouse. This is what the user actually wants to see
+        # on the wean / geno reminder, not just the raw ID.
+        father = _parent_label(session, litter.father_info) if litter else ""
+        mother = _parent_label(session, litter.mother_info) if litter else ""
+        cage_geno = (cage.genotype_summary or "").strip()
+        # Compose the notes line. Always include DOB; include parent geno
+        # info when present, otherwise fall back to the cage's own summary.
+        body_parts = [f"DOB {dob.isoformat()}"]
+        if father:
+            body_parts.append(f"Father: {father}")
+        if mother:
+            body_parts.append(f"Mother: {mother}")
+        if cage_geno and not (father or mother):
+            body_parts.append(f"Genotype: {cage_geno}")
+        body = " · ".join(body_parts)
+
+        wean = dob + timedelta(days=WEAN_OFFSET_DAYS)
+        geno = dob + timedelta(days=GENO_OFFSET_DAYS)
+        if _in_window(wean):
+            items.append(_auto_item(
+                kind_tag="wean", anchor_id=cage.id,
+                title=f"Wean - {location_label}",
+                color="#b6e2a1",  # pistachio
+                day=wean, body=body, source="cage",
+                href=f"/colony?cage_id={cage.id}",
+            ))
+        if _in_window(geno):
+            items.append(_auto_item(
+                kind_tag="geno", anchor_id=cage.id,
+                title=f"Genotype - {location_label}",
+                color="#fcb77e",  # apricot
+                day=geno, body=body, source="cage",
+                href=f"/colony?cage_id={cage.id}",
+            ))
+
+    # ----- Old-mouse sac threshold (>= 30 weeks via litter DOB) ----------
+    # Mice link to litters; we walk mice whose litter has a DOB. We skip
+    # any mouse that's already dead.
+    threshold_days = SAC_THRESHOLD_WEEKS * 7
+    mice = session.scalars(
+        select(MouseRecord)
+        .join(LitterRecord, MouseRecord.litter_id_fk == LitterRecord.id)
+        .where(LitterRecord.date_of_birth.is_not(None))
+        .where(MouseRecord.date_of_death.is_(None))
+    ).all()
+    for m in mice:
+        dob = m.litter.date_of_birth if m.litter else None
+        if dob is None:
+            continue
+        threshold_day = dob + timedelta(days=threshold_days)
+        if not _in_window(threshold_day):
+            continue
+        items.append(_auto_item(
+            kind_tag="sac", anchor_id=m.id,
+            title=f"Sac reminder · M{m.mouse_id}",
+            color="#f9a8a8",  # rose — gentle warning
+            day=threshold_day,
+            body=f"{SAC_THRESHOLD_WEEKS} weeks since litter DOB ({dob.isoformat()})",
+            source="mouse",
+            href=f"/mice/{m.id}",
+        ))
+
+    # ----- Experiment start + end --------------------------------------
+    experiments = session.scalars(
+        select(Experiment).where(
+            (Experiment.start_date.is_not(None)) | (Experiment.end_date.is_not(None))
+        )
+    ).all()
+    for ex in experiments:
+        if ex.start_date and _in_window(ex.start_date):
+            items.append(_auto_item(
+                kind_tag="start", anchor_id=ex.id,
+                title=f"Exp start · {ex.name}",
+                color="#c4b5fd",  # lavender
+                day=ex.start_date,
+                body=(ex.description or "")[:200],
+                source="experiment",
+                href=f"/experiments/{ex.id}",
+            ))
+        if ex.end_date and _in_window(ex.end_date):
+            items.append(_auto_item(
+                kind_tag="end", anchor_id=ex.id,
+                title=f"Exp end · {ex.name}",
+                color="#a4c8f0",  # sky
+                day=ex.end_date,
+                body=(ex.description or "")[:200],
+                source="experiment",
+                href=f"/experiments/{ex.id}",
+            ))
+
+    # ----- Zebrafish: clutches → tank-up / fin-clip / adult -------------
+    clutches = session.scalars(
+        select(ClutchRecord).where(ClutchRecord.date_of_fertilization.is_not(None))
+    ).all()
+    for c in clutches:
+        dof = c.date_of_fertilization
+        if dof is None:
+            continue
+        label = c.clutch_id or f"C{c.id}"
+        line_name = c.line.name if c.line else ""
+        body_parts = [f"DOF {dof.isoformat()}"]
+        if line_name:
+            body_parts.append(f"Line: {line_name}")
+        if c.embryo_count:
+            body_parts.append(f"Embryos: {c.embryo_count}")
+        body = " · ".join(body_parts)
+
+        milestones = [
+            ("tank-up", 5,  "#a3e0d8", "Tank up"),
+            ("fin-clip", 30, "#fcb77e", "Fin clip"),
+            ("adult", 90, "#c4b5fd", "Adult"),
+        ]
+        for tag, offset, color, label_word in milestones:
+            day = dof + timedelta(days=offset)
+            if _in_window(day):
+                items.append(_auto_item(
+                    kind_tag=tag, anchor_id=c.id,
+                    title=f"{label_word} · {label}",
+                    color=color, day=day, body=body,
+                    source="clutch",
+                    href=f"/zebrafish?view=clutches#clutch-{c.id}",
+                ))
+
+    # ----- Zebrafish: mating return reminders ---------------------------
+    mating_tanks = session.scalars(
+        select(TankRecord)
+        .where(TankRecord.purpose == "mating")
+        .where(TankRecord.mating_return_at.is_not(None))
+    ).all()
+    for t in mating_tanks:
+        d = t.mating_return_at
+        if d is None or not _in_window(d):
+            continue
+        items.append(_auto_item(
+            kind_tag="mating-return", anchor_id=t.id,
+            title=f"Return mating · {t.tank_id}",
+            color="#f4b8d8",  # pink
+            day=d,
+            body=(t.notes or "")[:200],
+            source="mating",
+            href=f"/zebrafish?view=tanks#tank-{t.id}",
+        ))
+
+    return items
+
+
+def seed_organism_modules() -> None:
+    """Create the configurable organism modules that ship with the app.
+
+    Only organisms without a hand-written module are seeded (flies, worms) —
+    see organisms.AUTO_SEED_PRESETS. Safe to run on every boot; it is a
+    no-op once the modules exist.
+    """
+    from . import organism_service as organisms
+
+    with SessionLocal() as session:
+        created = organisms.seed_builtin_modules(session)
+        if created:
+            session.commit()
+
+
+def backfill_cage_owners() -> None:
+    """Give every unowned cage the owner of the mice it holds.
+
+    Runs once, after the owner column is added. A cage whose mice disagree
+    about ownership is left unowned — that is genuinely shared, and guessing
+    would hand it to whoever happens to have the most animals in it.
+    """
+    from collections import Counter
+
+    with SessionLocal() as session:
+        cages = session.scalars(
+            select(CageRecord).where(
+                (CageRecord.owner.is_(None)) | (CageRecord.owner == "")
+            )
+        ).all()
+        if not cages:
+            return
+        changed = 0
+        for cage in cages:
+            owners = Counter(
+                (mouse.owner or "").strip()
+                for mouse in cage.mice
+                if (mouse.owner or "").strip()
+            )
+            if len(owners) == 1:
+                cage.owner = next(iter(owners))
+                changed += 1
+        if changed:
+            session.commit()
+
+
+def warn_if_database_is_synced() -> None:
+    """Shout if the SQLite file is sitting in a cloud-synced folder.
+
+    Cloud clients do not honour SQLite's locking: a sync mid-write, or two
+    machines with the folder open, corrupts the file. This is the single
+    most likely way a lab loses its colony records, and it fails silently
+    until the day it does not.
+    """
+    import logging
+    from .db import DATABASE_URL
+    from .paths import sync_risk
+
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    db_file = DATABASE_URL.split("///", 1)[-1]
+    provider = sync_risk(Path(db_file))
+    if not provider:
+        return
+    logging.getLogger("biomanager").warning(
+        "\n" + "!" * 72
+        + f"\n  The database is inside a {provider} folder:\n    {db_file}\n"
+        "  Cloud sync can corrupt a SQLite file. Move it somewhere local:\n"
+        "    python scripts/dbtool.py relocate ~/BioManagerData\n"
+        + "!" * 72
+    )
+
+
+def stamp_alembic_baseline() -> None:
+    """Mark a database as sitting at the Alembic baseline.
+
+    Existing databases were built by create_all() plus the hand-written
+    ALTERs above, so there is nothing to replay — they just need a version
+    to upgrade *from*. No-op once alembic_version exists.
+    """
+    from sqlalchemy import text
+
+    try:
+        with engine.begin() as conn:
+            if engine.dialect.name == "sqlite":
+                probe = "select 1 from sqlite_master where type='table' and name='alembic_version'"
+            else:
+                probe = ("select 1 from information_schema.tables"
+                         " where table_name='alembic_version'")
+            if conn.execute(text(probe)).first():
+                return
+            conn.execute(text(
+                "create table alembic_version (version_num varchar(32) not null)"))
+            conn.execute(text(
+                "insert into alembic_version (version_num) values ('0001_baseline')"))
+    except Exception:
+        # Migration bookkeeping must never stop the app from starting.
+        pass

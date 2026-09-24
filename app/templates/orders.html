@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block page_title %}Orders{% endblock %}
+{% block page_heading %}Orders{% endblock %}
+{% block page_subtitle %}Internal order tracking · {{ orders|length }} entr{{ 'y' if orders|length == 1 else 'ies' }}{% endblock %}
+
+{% block content %}
+<section class="data-table-card" data-table-id="orders">
+  <div class="dt-toolbar">
+    <button type="button" class="dt-view-pill" disabled>
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#grid"></use></svg> Master view
+    </button>
+    <div class="dt-toolbar-search">
+      <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+      <input type="text" class="dt-search" placeholder="Search orders…" autocomplete="off">
+    </div>
+    <div class="dt-toolbar-spacer"></div>
+    <button type="button" class="dt-toolbar-btn" disabled title="Group by (coming soon)">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#layers"></use></svg> Group by
+    </button>
+    <button type="button" class="dt-toolbar-btn dt-btn-sort">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort
+    </button>
+    <button type="button" class="dt-toolbar-btn" disabled title="Filters (coming soon)">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sliders"></use></svg> Filters
+    </button>
+    <button type="button" class="dt-toolbar-btn dt-btn-hide">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye-off"></use></svg> Hide
+    </button>
+    <button type="button" class="dt-toolbar-btn" disabled title="Export (coming soon)">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg> Export
+    </button>
+    <button type="button" class="dt-toolbar-btn" onclick="openCsvImport('order')" title="Bulk-load orders from a CSV file">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg> Import
+    </button>
+  </div>
+
+  <div class="dt-inline-form" id="orders-new-form">
+    <form method="post">
+      <label>Requester <input name="requester_name" required></label>
+      <label>Vendor <input name="vendor_name" required></label>
+      <label>Item <input name="item_name" required></label>
+      <label>Catalog # <input name="catalog_number" required></label>
+      <label>Quantity <input name="quantity" value="1"></label>
+      <label>Status
+        <select name="status">
+          {% for status in statuses %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
+        </select>
+      </label>
+      <label style="grid-column: 1 / -1;">Notes <textarea name="notes" rows="2"></textarea></label>
+      <div class="dt-inline-form-actions">
+        <button type="button" class="dt-bottom-action" onclick="document.getElementById('orders-new-form').classList.remove('is-open')">Cancel</button>
+        <button type="submit" class="dt-bottom-action is-primary">Save order</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="dt-scroll">
+    <table class="dt" data-resizable="1">
+      <thead>
+        <tr>
+          <th style="width: 36px; min-width: 36px;"><input type="checkbox" class="dt-select-all" aria-label="Select all"></th>
+          <th class="dt-sortable" data-sort-key="item" style="width: 280px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Item<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="vendor" style="width: 180px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Vendor<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="catalog" style="width: 160px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Catalog #<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="quantity" style="width: 90px;">
+            <span class="dt-col-head"><span class="dt-col-type is-number"></span>Qty<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="status" style="width: 150px;">
+            <span class="dt-col-head"><span class="dt-col-type" data-icon="status"></span>Status<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="requester" style="width: 160px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Requester<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="date" style="width: 140px;">
+            <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Created<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="id" style="width: 90px;">
+            <span class="dt-col-head"><span class="dt-col-type is-id"></span>ID<span class="dt-sort-indicator"></span></span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+          <tr data-id="{{ order.id }}"
+              data-vendor="{{ order.vendor_name|lower }}"
+              data-item="{{ order.item_name|lower }}"
+              data-catalog="{{ order.catalog_number|lower }}"
+              data-quantity="{{ order.quantity }}"
+              data-status="{{ order.status|lower }}"
+              data-requester="{{ order.requester_name|lower }}"
+              data-date="{{ order.created_at }}">
+            <td><input type="checkbox" class="dt-row-check" aria-label="Select row"></td>
+            <td>
+              <span class="dt-row-icon"></span>
+              <span class="dt-row-name">{{ order.item_name or 'Untitled' }}</span>
+            </td>
+            <td>{{ order.vendor_name }}</td>
+            <td>{{ order.catalog_number }}</td>
+            <td>{{ order.quantity }}</td>
+            <td><span class="dt-status" data-status="{{ order.status }}">{{ order.status }}</span></td>
+            <td>{{ order.requester_name }}</td>
+            <td>{{ order.created_at.strftime('%b %d, %Y') if order.created_at else '' }}</td>
+            <td>#{{ order.id }}</td>
+          </tr>
+        {% else %}
+          <tr><td class="dt-empty" colspan="9">No orders yet. Click <strong>+ Add entry</strong> below to create your first one.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="dt-bottom-bar">
+    <span class="dt-bottom-count dt-count">{{ orders|length }} entr{{ 'y' if orders|length == 1 else 'ies' }}</span>
+    <button type="button" class="dt-bottom-action is-primary" onclick="document.getElementById('orders-new-form').classList.add('is-open')">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add entry
+    </button>
+    <button type="button" class="dt-bottom-action" disabled title="Coming soon">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#duplicate"></use></svg> Add multiple entries
+    </button>
+    <div class="dt-bottom-spacer"></div>
+    <div class="dt-pagination">
+      <span class="dt-page-label">Page 1</span>
+      <button type="button" class="dt-prev" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-left"></use></svg></button>
+      <button type="button" class="dt-next" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg></button>
+      <select class="dt-page-size">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="1000">1000</option>
+      </select>
+      <span>per page</span>
+    </div>
+  </div>
+</section>
+{% endblock %}

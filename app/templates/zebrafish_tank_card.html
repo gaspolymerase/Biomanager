@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tank card · {{ tank.tank_id }}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; margin: 0; padding: 24px; color: #111; }
+    .card { width: 480px; border: 2px solid #111; border-radius: 6px; padding: 18px 22px; }
+    .card h1 { margin: 0 0 4px; font-size: 28px; }
+    .card .sub { color: #555; font-size: 13px; margin-bottom: 14px; }
+    .field { display: flex; padding: 6px 0; border-bottom: 1px dashed #ddd; font-size: 14px; }
+    .field:last-of-type { border-bottom: 0; }
+    .field b { width: 110px; color: #555; font-weight: 600; }
+    .alert { background: #fef2f2; color: #b91c1c; padding: 6px 10px; border-radius: 4px; font-weight: 600; display: inline-block; margin-top: 8px; }
+    .actions { margin-top: 18px; text-align: right; }
+    .actions button { font-size: 12px; padding: 4px 10px; }
+    @media print { .actions { display: none; } body { padding: 0; } .card { border-width: 1.5px; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>{{ tank.tank_id }}</h1>
+    <div class="sub">{{ tank.purpose|upper }}{% if tank.rack %} · {{ tank.rack.name }}{% endif %}{% if tank.row is not none and tank.col is not none %} · R{{ tank.row }} C{{ tank.col }}{% endif %}</div>
+
+    <div class="field"><b>Line</b><span>{{ tank.line.name if tank.line else '—' }}</span></div>
+    {% if tank.line %}<div class="field"><b>ZFIN</b><span>{{ tank.line.zfin_name or '—' }}</span></div>{% endif %}
+    {% if tank.line %}<div class="field"><b>Transgenes</b><span>{{ tank.line.transgene_summary or '—' }}</span></div>{% endif %}
+    {% if tank.line %}<div class="field"><b>IACUC #</b><span>{{ tank.line.iacuc_protocol or '—' }}</span></div>{% endif %}
+    <div class="field"><b>Owner</b><span>{{ tank.owner or '—' }}</span></div>
+    <div class="field"><b>Card ID</b><span>{{ tank.card_id or '—' }}</span></div>
+    {% if tank.mating_return_at %}
+      <div class="field"><b>Return by</b><span>{{ tank.mating_return_at.isoformat() }}</span></div>
+    {% endif %}
+    {% if tank.notes %}<div class="field"><b>Notes</b><span>{{ tank.notes }}</span></div>{% endif %}
+    {% if tank.needs_genotyping %}<div class="alert">⚑ Needs genotyping</div>{% endif %}
+
+    <div class="actions">
+      <button onclick="window.print()">Print</button>
+    </div>
+  </div>
+</body>
+</html>

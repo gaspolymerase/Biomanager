@@ -1,0 +1,1411 @@
+{% extends "base.html" %}
+{% import "organisms/_fields.html" as F %}
+
+{% set view_label = (views | selectattr('key', 'equalto', active_view) | map(attribute='label') | first) or 'Configure' %}
+
+{% block page_title %}{{ module.label }} · {{ view_label }}{% endblock %}
+{% block page_heading %}{{ module.label }}{% endblock %}
+{% block page_subtitle %}{{ module.blurb or (module.organism_noun_plural ~ ' in ' ~ module.housing_noun_plural) }}{% endblock %}
+{% block page_shell_class %}shell-page-wide workbench{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('organisms.index') }}">
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#database"></use></svg> All databases
+  </a>
+{% endblock %}
+
+{% block page_nav %}
+  <div class="mb-4 flex flex-wrap items-center gap-3">
+    <nav class="seg max-w-full overflow-x-auto" role="tablist" aria-label="{{ module.label }} views">
+      {% for v in views %}
+        <a class="seg-item {% if active_view == v.key %}is-active{% endif %}"
+           href="{{ url_for('organisms.module', key=module.key, view=v.key) }}" role="tab"
+           aria-selected="{{ 'true' if active_view == v.key else 'false' }}">
+          {{ icon(v.icon) }}{{ v.label }}
+        </a>
+      {% endfor %}
+    </nav>
+
+    <div class="flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+      <span class="badge">{{ census.animals }} {{ module.organism_noun_plural }}</span>
+      {% if module.has('housing') %}<span class="badge">{{ census.housing }} {{ module.housing_noun_plural }}</span>{% endif %}
+      {% if module.has('lines') %}<span class="badge">{{ census.lines }} {{ module.line_noun_plural }}</span>{% endif %}
+      {% if census.overdue %}<span class="badge badge-warn">{{ census.overdue }} overdue</span>{% endif %}
+      {% if module.has('preservation') and census.frozen_vials %}
+        <span class="badge">{{ census.frozen_vials }} vials frozen</span>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block content %}
+
+{# =====================================================================
+   ANIMALS
+   ===================================================================== #}
+{% if active_view == 'animals' %}
+  {% set own_fields = fields.get('organism', []) %}
+  <section class="data-table-card" data-table-id="org-{{ module.key }}-animals">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+        <input type="text" class="dt-search" placeholder="Search {{ module.organism_noun_plural }}…" autocomplete="off">
+      </div>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
+      <button type="button" class="dt-toolbar-btn dt-btn-hide"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye-off"></use></svg> Hide</button>
+      <button type="button" class="dt-toolbar-btn is-primary"
+              onclick="orgEdit('animal-dialog', {{ {'count': 1, 'code': next_code} | tojson }})">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add
+      </button>
+    </div>
+
+    <div class="dt-scroll">
+      <table class="dt" data-resizable="1">
+        <thead>
+          <tr>
+            {% if module.tracks_individuals %}
+              <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>ID</span></th>
+            {% endif %}
+            {% if module.tracks_groups %}
+              <th style="width: 70px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Count</span></th>
+            {% endif %}
+            {% if module.has('housing') %}
+              <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.housing_noun|title }}</span></th>
+            {% endif %}
+            {% if module.has('lines') %}
+              <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
+            {% endif %}
+            <th style="width: 100px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Sex</span></th>
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="status"></span>Status</span></th>
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Born</span></th>
+            <th style="width: 70px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Age</span></th>
+            {% if module.has('genotyping') %}
+              <th style="width: 160px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Genotype</span></th>
+            {% endif %}
+            {{ F.table_headers(own_fields) }}
+            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 78px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in organisms %}
+            {% set attrs = row.attrs_dict %}
+            <tr data-id="{{ row.id }}" class="{% if row.death_on %}opacity-55{% endif %}">
+              {% if module.tracks_individuals %}
+                <td><span class="dt-row-name">{{ row.code or '—' }}</span></td>
+              {% endif %}
+              {% if module.tracks_groups %}<td class="font-medium">{{ row.count }}</td>{% endif %}
+              {% if module.has('housing') %}
+                <td>{% if row.housing %}<span class="ident">{{ row.housing.code }}</span>{% else %}<span class="text-sand-300">—</span>{% endif %}</td>
+              {% endif %}
+              {% if module.has('lines') %}
+                <td>{% if row.line %}{{ row.line.code }}{% else %}<span class="text-sand-300">—</span>{% endif %}</td>
+              {% endif %}
+              <td>{{ row.sex }}</td>
+              <td>{% if row.status %}<span class="dt-status" data-status="{{ row.status }}">{{ row.status }}</span>{% endif %}</td>
+              <td>{{ row.birth_on or '' }}</td>
+              <td>{{ age_label(module_row, row.birth_on, row.death_on) }}</td>
+              {% if module.has('genotyping') %}
+                <td><span class="ident">{{ row.genotype }}</span></td>
+              {% endif %}
+              {{ F.table_cells(own_fields, attrs) }}
+              <td>{% if row.owner %}{{ row.owner | owner_badge }}{% endif %}</td>
+              <td>
+                <div class="flex items-center gap-1">
+                  <button type="button" class="row-icon-btn" title="Edit"
+                          onclick='orgEdit("animal-dialog", {{ {
+                            "id": row.id, "code": row.code, "count": row.count,
+                            "housing_id_fk": row.housing_id_fk, "line_id_fk": row.line_id_fk,
+                            "cohort_id_fk": row.cohort_id_fk, "sex": row.sex, "status": row.status,
+                            "birth_on": row.birth_on.isoformat() if row.birth_on else "",
+                            "death_on": row.death_on.isoformat() if row.death_on else "",
+                            "genotype": row.genotype, "owner": row.owner, "protocol": row.protocol,
+                            "notes": row.notes, "attrs": attrs } | tojson }})'>
+                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
+                  </button>
+                  <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='animal', row_id=row.id) }}"
+                        onsubmit="return confirm('Delete this record?')">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="14">
+              No {{ module.organism_noun_plural }} yet. Use <strong>Add</strong> to create the first record.
+            </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="dt-bottom-bar">
+      <span class="dt-bottom-count dt-count">{{ census.records }} record{{ '' if census.records == 1 else 's' }} · {{ census.animals }} {{ module.organism_noun_plural }}</span>
+    </div>
+  </section>
+
+  <dialog id="animal-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>{{ module.organism_noun|title }} record</h3>
+      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+    </form>
+    <form method="post" action="{{ url_for('organisms.save_animal', key=module.key) }}"
+          class="modal-body modal-grid" data-entity-form>
+      <input type="hidden" name="id">
+      {% if module.tracks_individuals %}
+        <label class="field-label">ID<input name="code" placeholder="auto"></label>
+      {% endif %}
+      {% if module.tracks_groups %}
+        <label class="field-label">Count<input type="number" name="count" min="1" value="1"></label>
+      {% endif %}
+      {% if module.has('housing') %}
+        <label class="field-label">{{ module.housing_noun|title }}
+          <select name="housing_id_fk">
+            <option value="">—</option>
+            {% for unit in housing_units %}<option value="{{ unit.id }}">{{ unit.code }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      {% if module.has('lines') %}
+        <label class="field-label">{{ module.line_noun|title }}
+          <select name="line_id_fk">
+            <option value="">—</option>
+            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      {% if module.has('cohorts') %}
+        <label class="field-label">{{ module.cohort_noun|title }}
+          <select name="cohort_id_fk">
+            <option value="">—</option>
+            {% for cohort in cohorts %}<option value="{{ cohort.id }}">{{ cohort.code }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-label">Sex
+        <select name="sex">
+          <option value="">—</option>
+          {% for value in module.sexes %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-label">Status
+        <select name="status">
+          <option value="">—</option>
+          {% for value in module.statuses %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-label">Born<input type="date" name="birth_on"></label>
+      <label class="field-label">Died / removed<input type="date" name="death_on"></label>
+      {% if module.has('genotyping') %}
+        <label class="field-label">Genotype<input name="genotype" class="font-mono text-[12px]"></label>
+      {% endif %}
+      <label class="field-label">Owner
+        <select name="owner">
+          <option value="">—</option>
+          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if module.has('protocol') %}
+        <label class="field-label">Protocol<input name="protocol"></label>
+      {% endif %}
+      {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
+      <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
+      <button type="submit">Save</button>
+    </form>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   HOUSING
+   ===================================================================== #}
+{% if active_view == 'housing' %}
+  {% set own_fields = fields.get('housing', []) %}
+  <section class="data-table-card" data-table-id="org-{{ module.key }}-housing">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+        <input type="text" class="dt-search" placeholder="Search {{ module.housing_noun_plural }}…" autocomplete="off">
+      </div>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
+      <button type="button" class="dt-toolbar-btn"
+              onclick="document.getElementById('location-dialog').showModal()">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#grid"></use></svg> {{ module.container_noun|title }}s
+      </button>
+      <a class="dt-toolbar-btn" href="{{ url_for('labels.module_cards', module_key=module.key) }}">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> Labels
+      </a>
+      <button type="button" class="dt-toolbar-btn is-primary"
+              onclick="orgEdit('housing-dialog', {{ {'code': next_code, 'established_on': today} | tojson }})">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add {{ module.housing_noun }}
+      </button>
+    </div>
+
+    <div class="dt-scroll">
+      <table class="dt" data-resizable="1">
+        <thead>
+          <tr>
+            <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>{{ module.housing_noun|title }}</span></th>
+            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.container_noun|title }}</span></th>
+            {% if module.has('housing_grid') %}
+              <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Position</span></th>
+            {% endif %}
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Purpose</span></th>
+            {% if module.has('lines') %}
+              <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
+            {% endif %}
+            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Held</span></th>
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Last serviced</span></th>
+            {{ F.table_headers(own_fields) }}
+            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 78px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for unit in housing_units %}
+            {% set attrs = unit.attrs_dict %}
+            <tr data-id="{{ unit.id }}" class="{% if not unit.active %}opacity-55{% endif %}">
+              <td><span class="dt-row-name">{{ unit.code }}</span>
+                {% if unit.needs_attention %}<svg class="icon ml-1 size-3 text-warn-600" aria-hidden="true"><use href="/static/icons.svg#warning"></use></svg>{% endif %}
+              </td>
+              <td>{{ unit.location.name if unit.location else '' }}</td>
+              {% if module.has('housing_grid') %}
+                <td><span class="ident">{% if unit.row %}R{{ unit.row }}·C{{ unit.col }}{% endif %}</span></td>
+              {% endif %}
+              <td>{% if unit.purpose %}<span class="badge badge-quiet">{{ unit.purpose }}</span>{% endif %}</td>
+              {% if module.has('lines') %}
+                <td>{{ unit.line.code if unit.line else '' }}</td>
+              {% endif %}
+              <td class="font-medium">{{ occupancy.get(unit.id, 0) }}</td>
+              <td>{{ unit.last_serviced_on or '' }}</td>
+              {{ F.table_cells(own_fields, attrs) }}
+              <td>{% if unit.owner %}{{ unit.owner | owner_badge }}{% endif %}</td>
+              <td>
+                <div class="flex items-center gap-1">
+                  <button type="button" class="row-icon-btn" title="Edit"
+                          onclick='orgEdit("housing-dialog", {{ {
+                            "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
+                            "row": unit.row, "col": unit.col, "purpose": unit.purpose,
+                            "line_id_fk": unit.line_id_fk, "owner": unit.owner,
+                            "protocol": unit.protocol, "card_id": unit.card_id,
+                            "established_on": unit.established_on.isoformat() if unit.established_on else "",
+                            "last_serviced_on": unit.last_serviced_on.isoformat() if unit.last_serviced_on else "",
+                            "retired": not unit.active, "needs_attention": unit.needs_attention,
+                            "notes": unit.notes, "attrs": attrs } | tojson }})'>
+                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
+                  </button>
+                  <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='housing', row_id=unit.id) }}"
+                        onsubmit="return confirm('Delete {{ unit.code }}? Records inside it go too.')">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="12">
+              No {{ module.housing_noun_plural }} yet. Add a {{ module.container_noun }} first if you want positions.
+            </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <dialog id="housing-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>{{ module.housing_noun|title }}</h3>
+      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+    </form>
+    <form method="post" action="{{ url_for('organisms.save_housing', key=module.key) }}"
+          class="modal-body modal-grid" data-entity-form>
+      <input type="hidden" name="id">
+      <label class="field-label">{{ module.housing_noun|title }} ID<input name="code" placeholder="auto"></label>
+      <label class="field-label">{{ module.container_noun|title }}
+        <select name="location_id_fk">
+          <option value="">—</option>
+          {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }} ({{ loc.kind }})</option>{% endfor %}
+        </select>
+      </label>
+      {% if module.has('housing_grid') %}
+        <label class="field-label">Row<input type="number" name="row" min="1"></label>
+        <label class="field-label">Column<input type="number" name="col" min="1"></label>
+      {% endif %}
+      <label class="field-label">Purpose
+        <select name="purpose">
+          <option value="">—</option>
+          {% for value in module.housing_purposes %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if module.has('lines') %}
+        <label class="field-label">{{ module.line_noun|title }}
+          <select name="line_id_fk">
+            <option value="">—</option>
+            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-label">Owner
+        <select name="owner">
+          <option value="">—</option>
+          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if module.has('protocol') %}<label class="field-label">Protocol<input name="protocol"></label>{% endif %}
+      <label class="field-label">Card ID<input name="card_id"></label>
+      <label class="field-label">Set up on<input type="date" name="established_on"></label>
+      <label class="field-label">Last serviced<input type="date" name="last_serviced_on">
+        <span class="field-hint normal-case tracking-normal">Anchors recurring maintenance.</span>
+      </label>
+      {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
+      <label class="inline-check col-span-full"><input type="checkbox" name="needs_attention" value="1"> Needs attention</label>
+      <label class="inline-check col-span-full"><input type="checkbox" name="retired" value="1"> Retired / inactive</label>
+      <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
+      <button type="submit">Save</button>
+    </form>
+  </dialog>
+
+  <dialog id="location-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>{{ module.container_noun|title }}s &amp; locations</h3>
+      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+    </form>
+    <div class="modal-body flex flex-col gap-3">
+      {% if locations %}
+        <div class="table-wrap">
+          <table class="dense-table fit-table">
+            <thead><tr><th>Name</th><th>Kind</th><th>Grid</th><th></th></tr></thead>
+            <tbody>
+              {% for loc in locations %}
+                <tr>
+                  <td>{{ loc.name }}</td>
+                  <td>{{ loc.kind }}</td>
+                  <td>{% if loc.rows %}{{ loc.rows }} × {{ loc.cols }}{% endif %}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='location', row_id=loc.id) }}"
+                          onsubmit="return confirm('Delete {{ loc.name }}?')">
+                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('organisms.save_location', key=module.key) }}" class="modal-grid">
+        <input type="hidden" name="return_view" value="housing">
+        <label class="field-label">Name<input name="name" required placeholder="e.g. Incubator 25 °C"></label>
+        <label class="field-label">Kind
+          <select name="kind">
+            {% for kind in ['facility', 'room', 'system', 'rack', 'incubator', 'shelf', 'tray'] %}
+              <option value="{{ kind }}" {% if kind == module.container_noun %}selected{% endif %}>{{ kind }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field-label">Parent
+          <select name="parent_id_fk">
+            <option value="">—</option>
+            {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }}</option>{% endfor %}
+          </select>
+        </label>
+        {% if module.has('housing_grid') %}
+          <label class="field-label">Rows<input type="number" name="rows" min="1" placeholder="8"></label>
+          <label class="field-label">Columns<input type="number" name="cols" min="1" placeholder="10"></label>
+        {% endif %}
+        <button type="submit">Add location</button>
+      </form>
+    </div>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   LINES
+   ===================================================================== #}
+{% if active_view == 'lines' %}
+  {% set own_fields = fields.get('line', []) %}
+  <section class="data-table-card" data-table-id="org-{{ module.key }}-lines">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+        <input type="text" class="dt-search" placeholder="Search {{ module.line_noun_plural }}…" autocomplete="off">
+      </div>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
+      <button type="button" class="dt-toolbar-btn is-primary"
+              onclick="orgEdit('line-dialog', {{ {'code': next_code} | tojson }})">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add {{ module.line_noun }}
+      </button>
+    </div>
+
+    <div class="dt-scroll">
+      <table class="dt" data-resizable="1">
+        <thead>
+          <tr>
+            <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
+            <th style="width: 190px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Name</span></th>
+            <th style="width: 220px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Genotype</span></th>
+            {{ F.table_headers(own_fields) }}
+            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Alive</span></th>
+            {% if module.has('preservation') %}
+              <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Last frozen</span></th>
+            {% endif %}
+            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 78px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+            {% set attrs = line.attrs_dict %}
+            <tr data-id="{{ line.id }}" class="{% if line.retired %}opacity-55{% endif %}">
+              <td><span class="dt-row-name">{{ line.code }}</span></td>
+              <td>{{ line.name }}</td>
+              <td><span class="ident">{{ line.genotype }}</span></td>
+              {{ F.table_cells(own_fields, attrs) }}
+              <td class="font-medium">{{ line_counts.get(line.id, 0) }}</td>
+              {% if module.has('preservation') %}
+                <td>{{ line.last_frozen_on or '' }}</td>
+              {% endif %}
+              <td>{% if line.owner %}{{ line.owner | owner_badge }}{% endif %}</td>
+              <td>
+                <div class="flex items-center gap-1">
+                  <button type="button" class="row-icon-btn" title="Edit"
+                          onclick='orgEdit("line-dialog", {{ {
+                            "id": line.id, "code": line.code, "name": line.name,
+                            "genotype": line.genotype, "owner": line.owner,
+                            "protocol": line.protocol, "source": line.source,
+                            "external_ref": line.external_ref,
+                            "parent_line_id_fk": line.parent_line_id_fk,
+                            "last_refreshed_on": line.last_refreshed_on.isoformat() if line.last_refreshed_on else "",
+                            "last_frozen_on": line.last_frozen_on.isoformat() if line.last_frozen_on else "",
+                            "retired": line.retired, "notes": line.notes, "attrs": attrs } | tojson }})'>
+                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
+                  </button>
+                  <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='line', row_id=line.id) }}"
+                        onsubmit="return confirm('Delete {{ line.code }}?')">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="10">No {{ module.line_noun_plural }} yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <dialog id="line-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>{{ module.line_noun|title }}</h3>
+      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+    </form>
+    <form method="post" action="{{ url_for('organisms.save_line', key=module.key) }}"
+          class="modal-body modal-grid" data-entity-form>
+      <input type="hidden" name="id">
+      <label class="field-label">Code<input name="code" placeholder="auto"></label>
+      <label class="field-label">Name<input name="name"></label>
+      <label class="field-label col-span-full">Genotype
+        <input name="genotype" class="font-mono text-[12px]">
+      </label>
+      <label class="field-label">Source<input name="source" placeholder="stock centre, gift, own"></label>
+      <label class="field-label">External reference<input name="external_ref" placeholder="stock no. / database ID"></label>
+      {% if module.has('pedigree') %}
+        <label class="field-label">Derived from
+          <select name="parent_line_id_fk">
+            <option value="">—</option>
+            {% for other in lines %}<option value="{{ other.id }}">{{ other.code }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-label">Owner
+        <select name="owner">
+          <option value="">—</option>
+          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
+        </select>
+      </label>
+      {% if module.has('protocol') %}<label class="field-label">Protocol<input name="protocol"></label>{% endif %}
+      <label class="field-label">Last refreshed<input type="date" name="last_refreshed_on"></label>
+      {% if module.has('preservation') %}
+        <label class="field-label">Last frozen<input type="date" name="last_frozen_on"></label>
+      {% endif %}
+      {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
+      <label class="inline-check col-span-full"><input type="checkbox" name="retired" value="1"> Retired</label>
+      <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
+      <button type="submit">Save</button>
+    </form>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   CROSSES
+   ===================================================================== #}
+{% if active_view == 'crosses' %}
+  {% set own_fields = fields.get('cross', []) %}
+  <section class="data-table-card" data-table-id="org-{{ module.key }}-crosses">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+        <input type="text" class="dt-search" placeholder="Search {{ module.cross_noun }}es…" autocomplete="off">
+      </div>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="dt-toolbar-btn is-primary"
+              onclick="orgEdit('cross-dialog', {{ {'code': next_code, 'set_up_on': today, 'cross_type': 'pair'} | tojson }})">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.cross_noun }}
+      </button>
+    </div>
+    <div class="dt-scroll">
+      <table class="dt" data-resizable="1">
+        <thead>
+          <tr>
+            <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
+            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Type</span></th>
+            <th style="width: 170px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Male / sire</span></th>
+            <th style="width: 170px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Female / dam</span></th>
+            {% if module.has('housing') %}
+              <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.housing_noun|title }}</span></th>
+            {% endif %}
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Set up</span></th>
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Collected</span></th>
+            {{ F.table_headers(own_fields) }}
+            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 78px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cross in crosses %}
+            {% set attrs = cross.attrs_dict %}
+            <tr data-id="{{ cross.id }}" class="{% if cross.collected_on %}opacity-60{% endif %}">
+              <td><span class="dt-row-name">{{ cross.code }}</span></td>
+              <td><span class="badge badge-quiet">{{ cross.cross_type }}</span></td>
+              <td>{{ cross.sire_label or (cross.sire_line.code if cross.sire_line else '') }}</td>
+              <td>{{ cross.dam_label or (cross.dam_line.code if cross.dam_line else '') }}</td>
+              {% if module.has('housing') %}
+                <td>{% if cross.housing %}<span class="ident">{{ cross.housing.code }}</span>{% endif %}</td>
+              {% endif %}
+              <td>{{ cross.set_up_on or '' }}</td>
+              <td>{% if cross.collected_on %}{{ cross.collected_on }}{% else %}
+                <span class="dt-status" data-status="active">open</span>{% endif %}</td>
+              {{ F.table_cells(own_fields, attrs) }}
+              <td>{% if cross.owner %}{{ cross.owner | owner_badge }}{% endif %}</td>
+              <td>
+                <div class="flex items-center gap-1">
+                  <button type="button" class="row-icon-btn" title="Edit"
+                          onclick='orgEdit("cross-dialog", {{ {
+                            "id": cross.id, "code": cross.code, "cross_type": cross.cross_type,
+                            "housing_id_fk": cross.housing_id_fk,
+                            "sire_line_id_fk": cross.sire_line_id_fk, "dam_line_id_fk": cross.dam_line_id_fk,
+                            "sire_label": cross.sire_label, "dam_label": cross.dam_label,
+                            "set_up_on": cross.set_up_on.isoformat() if cross.set_up_on else "",
+                            "expected_on": cross.expected_on.isoformat() if cross.expected_on else "",
+                            "collected_on": cross.collected_on.isoformat() if cross.collected_on else "",
+                            "owner": cross.owner, "notes": cross.notes, "attrs": attrs } | tojson }})'>
+                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
+                  </button>
+                  <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='cross', row_id=cross.id) }}"
+                        onsubmit="return confirm('Delete {{ cross.code }}?')">
+                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="11">No {{ module.cross_noun }}es recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <dialog id="cross-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>{{ module.cross_noun|title }}</h3>
+      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+    </form>
+    <form method="post" action="{{ url_for('organisms.save_cross', key=module.key) }}"
+          class="modal-body modal-grid" data-entity-form>
+      <input type="hidden" name="id">
+      <label class="field-label">Code<input name="code" placeholder="auto"></label>
+      <label class="field-label">Type
+        <select name="cross_type">
+          {% for value in ['pair', 'trio', 'bulk', 'group', 'self'] %}
+            <option value="{{ value }}">{{ value }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-hint normal-case tracking-normal">
+          Use <em>self</em> for self-fertilising strains — the female side may stay empty.
+        </span>
+      </label>
+      {% if module.has('lines') %}
+        <label class="field-label">Male {{ module.line_noun }}
+          <select name="sire_line_id_fk">
+            <option value="">—</option>
+            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field-label">Female {{ module.line_noun }}
+          <select name="dam_line_id_fk">
+            <option value="">—</option>
+            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-label">Male label<input name="sire_label" placeholder="animal or {{ module.housing_noun }} ID"></label>
+      <label class="field-label">Female label<input name="dam_label" placeholder="animal or {{ module.housing_noun }} ID"></label>
+      {% if module.has('housing') %}
+        <label class="field-label">{{ module.housing_noun|title }}
+          <select name="housing_id_fk">
+            <option value="">—</option>
+            {% for unit in housing_units %}<option value="{{ unit.id }}">{{ unit.code }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-label">Set up on<input type="date" name="set_up_on"></label>
+      <label class="field-label">Expected<input type="date" name="expected_on"></label>
+      <label class="field-label">Collected<input type="date" name="collected_on"></label>
+      <label class="field-label">Owner
+        <select name="owner">
+          <option value="">—</option>
+          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
+        </select>
+      </label>
+      {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
+      <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
+      <button type="submit">Save</button>
+    </form>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   COHORTS
+   ===================================================================== #}
+{% if active_view == 'cohorts' %}
+  {% set own_fields = fields.get('cohort', []) %}
+  <section class="data-table-card" data-table-id="org-{{ module.key }}-cohorts">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+        <input type="text" class="dt-search" placeholder="Search {{ module.cohort_noun_plural }}…" autocomplete="off">
+      </div>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="dt-toolbar-btn is-primary"
+              onclick="orgEdit('cohort-dialog', {{ {'code': next_code, 'birth_on': today} | tojson }})">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.cohort_noun }}
+      </button>
+    </div>
+    <div class="dt-scroll">
+      <table class="dt" data-resizable="1">
+        <thead>
+          <tr>
+            <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
+            {% if module.has('lines') %}
+              <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
+            {% endif %}
+            <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Born</span></th>
+            <th style="width: 70px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Age</span></th>
+            {% if module.has('nursery') %}
+              <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Stage</span></th>
+            {% endif %}
+            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Initial</span></th>
+            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Now</span></th>
+            {{ F.table_headers(own_fields) }}
+            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 78px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cohort in cohorts %}
+            {% set attrs = cohort.attrs_dict %}
+            <tr data-id="{{ cohort.id }}">
+              <td><span class="dt-row-name">{{ cohort.code }}</span></td>
+              {% if module.has('lines') %}<td>{{ cohort.line.code if cohort.line else '' }}</td>{% endif %}
+              <td>{{ cohort.birth_on or '' }}</td>
+              <td>{{ age_label(module_row, cohort.birth_on) }}</td>
+              {% if module.has('nursery') %}
+                <td>{% if cohort.stage %}<span class="badge badge-quiet">{{ cohort.stage }}</span>{% endif %}</td>
+              {% endif %}
+              <td>{{ cohort.count_initial }}</td>
+              <td class="font-medium">{{ cohort.count_current }}</td>
+              {{ F.table_cells(own_fields, attrs) }}
+              <td>{% if cohort.owner %}{{ cohort.owner | owner_badge }}{% endif %}</td>
+              <td>
+                <div class="flex items-center gap-1">
+                  <button type="button" class="row-icon-btn" title="Edit"
+                          onclick='orgEdit("cohort-dialog", {{ {
+                            "id": cohort.id, "code": cohort.code, "line_id_fk": cohort.line_id_fk,
+                            "cross_id_fk": cohort.cross_id_fk,
+                            "birth_on": cohort.birth_on.isoformat() if cohort.birth_on else "",
+                            "stage": cohort.stage, "location_id_fk": cohort.location_id_fk,
+                            "count_initial": cohort.count_initial, "count_current": cohort.count_current,
+                            "owner": cohort.owner, "notes": cohort.notes, "attrs": attrs } | tojson }})'>
+                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
+                  </button>
+                  <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='cohort', row_id=cohort.id) }}"
+                        onsubmit="return confirm('Delete {{ cohort.code }}?')">
+                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="11">
+              No {{ module.cohort_noun_plural }} yet. Birth date drives every derived date, so record it here.
+            </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <dialog id="cohort-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>{{ module.cohort_noun|title }}</h3>
+      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+    </form>
+    <form method="post" action="{{ url_for('organisms.save_cohort', key=module.key) }}"
+          class="modal-body modal-grid" data-entity-form>
+      <input type="hidden" name="id">
+      <label class="field-label">Code<input name="code" placeholder="auto"></label>
+      {% if module.has('lines') %}
+        <label class="field-label">{{ module.line_noun|title }}
+          <select name="line_id_fk">
+            <option value="">—</option>
+            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      {% if module.has('crosses') %}
+        <label class="field-label">From {{ module.cross_noun }}
+          <select name="cross_id_fk">
+            <option value="">—</option>
+            {% for cross in crosses %}<option value="{{ cross.id }}">{{ cross.code }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-label">Born / fertilised<input type="date" name="birth_on"></label>
+      {% if module.has('nursery') %}
+        <label class="field-label">Stage
+          <select name="stage">
+            <option value="">—</option>
+            {% for stage in ['embryo', 'larva', 'nursery', 'juvenile', 'graduated', 'adult'] %}
+              <option value="{{ stage }}">{{ stage }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      {% endif %}
+      <label class="field-label">Initial count<input type="number" name="count_initial" min="0"></label>
+      <label class="field-label">Current count<input type="number" name="count_current" min="0"></label>
+      <label class="field-label">Owner
+        <select name="owner">
+          <option value="">—</option>
+          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
+        </select>
+      </label>
+      {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
+      <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
+      <button type="submit">Save</button>
+    </form>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   SCHEDULE
+   ===================================================================== #}
+{% if active_view == 'schedule' %}
+  <section class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar-clock"></use></svg> What's due</h2>
+      <div class="flex items-center gap-1.5">
+        {% for days in [7, 21, 60] %}
+          <a class="btn btn-sm {% if horizon == days %}btn-primary{% endif %}"
+             href="{{ url_for('organisms.module', key=module.key, view='schedule', horizon=days) }}">{{ days }}d</a>
+        {% endfor %}
+      </div>
+    </header>
+
+    {% if due %}
+      <div class="flex flex-col">
+        {% for item in due %}
+          <div class="row-line">
+            {{ icon(item.icon, "shrink-0 " + ("text-danger-600" if item.overdue else "text-sand-400")) }}
+            <span class="w-[150px] shrink-0 font-medium text-ink">{{ item.label }}</span>
+            <span class="ident w-[140px] shrink-0">{{ item.subject_label }}</span>
+            <span class="hidden w-[90px] shrink-0 text-[11.5px] text-muted sm:block">{{ item.subject_kind }}</span>
+            <span class="min-w-0 flex-1 text-[12px] text-muted">{{ item.due_on }}</span>
+            {% if item.overdue %}
+              <span class="badge badge-danger shrink-0">{{ -item.days }}d overdue</span>
+            {% elif item.days == 0 %}
+              <span class="badge badge-brand shrink-0">today</span>
+            {% else %}
+              <span class="badge shrink-0">in {{ item.days }}d</span>
+            {% endif %}
+            {% if item.assigned_to %}{{ item.assigned_to | owner_badge }}{% endif %}
+            <form method="post" action="{{ url_for('organisms.complete_due', key=module.key, due_id=item.id) }}" class="shrink-0">
+              <button type="submit" class="btn btn-sm"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg> Done</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>
+        <p>Nothing due in the next {{ horizon }} days.</p>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card mt-3">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#repeat"></use></svg> Rules generating this list</h2>
+      <a class="card-head-link" href="{{ url_for('organisms.module', key=module.key, view='settings') }}">Edit rules</a>
+    </header>
+    {% if module.schedule_rules %}
+      <div class="table-wrap m-4">
+        <table class="dense-table fit-table">
+          <thead><tr><th>Rule</th><th>Applies to</th><th>Anchor</th><th>Offset</th><th>Recurring</th><th>By temperature</th></tr></thead>
+          <tbody>
+            {% for rule in module.schedule_rules %}
+              <tr>
+                <td class="font-medium">{{ rule.label }}</td>
+                <td>{{ rule.applies_to }}</td>
+                <td><span class="ident">{{ rule.anchor }}</span></td>
+                <td>+{{ rule.offset_days }}d</td>
+                <td>{% if rule.recurring %}<svg class="icon size-3.5 text-ok-600" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% endif %}</td>
+                <td>
+                  {% if rule.temp_offsets %}
+                    {% for temp, days in rule.temp_offsets.items() %}
+                      <span class="badge badge-quiet">{{ temp }}°C → {{ days }}d</span>
+                    {% endfor %}
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#repeat"></use></svg><p>No schedule rules defined.</p></div>
+    {% endif %}
+  </section>
+{% endif %}
+
+{# =====================================================================
+   ENVIRONMENT
+   ===================================================================== #}
+{% if active_view == 'environment' %}
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
+    <section class="card self-start">
+      <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Log a reading</h2></header>
+      <form method="post" action="{{ url_for('organisms.save_reading', key=module.key) }}"
+            class="flex flex-col gap-3 p-4">
+        <label class="field-label">{{ module.container_noun|title }}
+          <select name="location_id_fk" required>
+            <option value="">—</option>
+            {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }}</option>{% endfor %}
+          </select>
+        </label>
+        {% for metric in metrics %}
+          <label class="field-label">{{ metric.label }}{% if metric.unit %} ({{ metric.unit }}){% endif %}
+            <input type="number" step="any" name="metric_{{ metric.key }}">
+          </label>
+        {% endfor %}
+        <label class="field-label">Notes<textarea name="notes" rows="2"></textarea></label>
+        <button type="submit" class="btn btn-primary">Save reading</button>
+      </form>
+    </section>
+
+    <section class="data-table-card">
+      <header class="card-head">
+        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#droplet"></use></svg> Recent readings</h2>
+        <span class="badge badge-quiet">{{ readings|length }}</span>
+      </header>
+      {% if readings %}
+        <div class="dt-scroll">
+          <table class="dt">
+            <thead>
+              <tr>
+                <th style="width: 160px;">When</th>
+                <th style="width: 150px;">{{ module.container_noun|title }}</th>
+                <th style="width: 140px;">Metric</th>
+                <th style="width: 110px;">Value</th>
+                <th style="width: 90px;">By</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for reading in readings %}
+                <tr>
+                  <td>{{ reading.recorded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                  <td>
+                    {% for loc in locations if loc.id == reading.subject_id %}{{ loc.name }}{% endfor %}
+                  </td>
+                  <td>{{ reading.metric }}</td>
+                  <td class="font-medium {% if reading.alarm %}text-danger-600{% endif %}">
+                    {{ reading.value_num }}{% if reading.unit %} {{ reading.unit }}{% endif %}
+                  </td>
+                  <td>{% if reading.recorded_by %}{{ reading.recorded_by | owner_badge }}{% endif %}</td>
+                  <td class="text-muted">{{ reading.notes }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#droplet"></use></svg><p>No readings logged yet.</p></div>
+      {% endif %}
+    </section>
+  </div>
+{% endif %}
+
+{# =====================================================================
+   PRESERVATION
+   ===================================================================== #}
+{% if active_view == 'preservation' %}
+  <section class="data-table-card" data-table-id="org-{{ module.key }}-lots">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+        <input type="text" class="dt-search" placeholder="Search frozen lots…" autocomplete="off">
+      </div>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="dt-toolbar-btn is-primary"
+              onclick="orgEdit('lot-dialog', {{ {'frozen_on': today} | tojson }})">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Freeze a lot
+      </button>
+    </div>
+    <div class="dt-scroll">
+      <table class="dt" data-resizable="1">
+        <thead>
+          <tr>
+            <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Lot</span></th>
+            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
+            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Method</span></th>
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Frozen</span></th>
+            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Vials left</span></th>
+            <th style="width: 170px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Storage</span></th>
+            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="check"></span>Recovery</span></th>
+            <th style="width: 78px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lot in lots %}
+            <tr data-id="{{ lot.id }}">
+              <td><span class="dt-row-name">{{ lot.code or ('#' ~ lot.id) }}</span></td>
+              <td>{{ lot.line.code if lot.line else '' }}</td>
+              <td>{{ lot.method }}</td>
+              <td>{{ lot.frozen_on or '' }}</td>
+              <td class="font-medium">{{ lot.vials_remaining }} / {{ lot.vial_count }}</td>
+              <td>{{ lot.storage_text }}{% if lot.position %} · <span class="ident">{{ lot.position }}</span>{% endif %}</td>
+              <td>
+                {% if lot.recovery_ok is none %}
+                  <span class="badge badge-warn">untested</span>
+                {% elif lot.recovery_ok %}
+                  <span class="badge badge-ok">recovered {{ lot.recovery_tested_on or '' }}</span>
+                {% else %}
+                  <span class="badge badge-danger">failed</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="flex items-center gap-1">
+                  <button type="button" class="row-icon-btn" title="Edit"
+                          onclick='orgEdit("lot-dialog", {{ {
+                            "id": lot.id, "line_id_fk": lot.line_id_fk, "code": lot.code,
+                            "method": lot.method,
+                            "frozen_on": lot.frozen_on.isoformat() if lot.frozen_on else "",
+                            "vial_count": lot.vial_count, "vials_remaining": lot.vials_remaining,
+                            "storage_text": lot.storage_text, "position": lot.position,
+                            "recovery_tested_on": lot.recovery_tested_on.isoformat() if lot.recovery_tested_on else "",
+                            "recovery_ok": ("" if lot.recovery_ok is none else ("yes" if lot.recovery_ok else "no")),
+                            "notes": lot.notes } | tojson }})'>
+                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
+                  </button>
+                  <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='lot', row_id=lot.id) }}"
+                        onsubmit="return confirm('Delete this lot?')">
+                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="8">
+              Nothing frozen yet. A lot records how many vials went in, where they are, and
+              whether a test thaw actually came back.
+            </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <dialog id="lot-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>Frozen lot</h3>
+      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+    </form>
+    <form method="post" action="{{ url_for('organisms.save_lot', key=module.key) }}"
+          class="modal-body modal-grid" data-entity-form>
+      <input type="hidden" name="id">
+      <label class="field-label">{{ module.line_noun|title }}
+        <select name="line_id_fk" required>
+          <option value="">—</option>
+          {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-label">Lot code<input name="code" placeholder="optional"></label>
+      <label class="field-label">Method
+        <select name="method">
+          {% for method in methods %}<option value="{{ method }}">{{ method }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field-label">Frozen on<input type="date" name="frozen_on"></label>
+      <label class="field-label">Vials frozen<input type="number" name="vial_count" min="0"></label>
+      <label class="field-label">Vials remaining<input type="number" name="vials_remaining" min="0"></label>
+      <label class="field-label">Storage<input name="storage_text" placeholder="e.g. Freezer B, LN2 tank 2"></label>
+      <label class="field-label">Position<input name="position" placeholder="rack / box / slot"></label>
+      <label class="field-label">Recovery tested<input type="date" name="recovery_tested_on"></label>
+      <label class="field-label">Recovery result
+        <select name="recovery_ok">
+          <option value="">untested</option>
+          <option value="yes">recovered</option>
+          <option value="no">failed</option>
+        </select>
+      </label>
+      <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
+      <button type="submit">Save</button>
+    </form>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   CONFIGURE
+   ===================================================================== #}
+{% if active_view == 'settings' %}
+  <div class="grid max-w-[1000px] grid-cols-1 gap-3">
+
+    {# ---- Identity & vocabulary ---- #}
+    <form method="post" action="{{ url_for('organisms.configure', key=module.key) }}" class="card">
+      <header class="card-head">
+        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#type"></use></svg> Vocabulary &amp; behaviour</h2>
+        <span class="badge badge-quiet">{{ module.key }}</span>
+      </header>
+      <div class="p-4">
+        <div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          <label class="field-label">Name<input name="label" value="{{ module.label }}" required></label>
+          <label class="field-label">Plural<input name="label_plural" value="{{ module.label_plural }}"></label>
+          <label class="field-label">Icon<input name="icon" value="{{ module.icon }}"></label>
+          <label class="field-label sm:col-span-2 lg:col-span-3">Description
+            <input name="blurb" value="{{ module.blurb }}">
+          </label>
+
+          <label class="field-label">One animal is a…<input name="organism_noun" value="{{ module.organism_noun }}"></label>
+          <label class="field-label">Many are…<input name="organism_noun_plural" value="{{ module.organism_noun_plural }}"></label>
+          <label class="field-label">Housing unit<input name="housing_noun" value="{{ module.housing_noun }}"></label>
+          <label class="field-label">Housing units<input name="housing_noun_plural" value="{{ module.housing_noun_plural }}"></label>
+          <label class="field-label">Container<input name="container_noun" value="{{ module.container_noun }}"></label>
+          <label class="field-label">Genetic entity<input name="line_noun" value="{{ module.line_noun }}"></label>
+          <label class="field-label">Genetic entities<input name="line_noun_plural" value="{{ module.line_noun_plural }}"></label>
+          <label class="field-label">Birth cohort<input name="cohort_noun" value="{{ module.cohort_noun }}"></label>
+          <label class="field-label">Birth cohorts<input name="cohort_noun_plural" value="{{ module.cohort_noun_plural }}"></label>
+          <label class="field-label">Breeding event<input name="cross_noun" value="{{ module.cross_noun }}"></label>
+
+          <label class="field-label">Counted as
+            <select name="identity_mode">
+              {% for value, label, _blurb in identity_modes %}
+                <option value="{{ value }}" {% if module.identity_mode == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-label">Age unit
+            <select name="age_unit">
+              {% for value, label in age_units %}
+                <option value="{{ value }}" {% if module.age_unit == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field-label sm:col-span-2 lg:col-span-3">{{ module.housing_noun|title }} purposes
+            <input name="housing_purposes" value="{{ module.housing_purposes | join(', ') }}">
+            <span class="field-hint normal-case tracking-normal">Comma-separated.</span>
+          </label>
+          <label class="field-label sm:col-span-2">Statuses
+            <input name="statuses" value="{{ module.statuses | join(', ') }}">
+          </label>
+          <label class="field-label">Sexes
+            <input name="sexes" value="{{ module.sexes | join(', ') }}">
+          </label>
+        </div>
+
+        <h4>Capabilities</h4>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {% for group, capabilities in capability_groups %}
+            {% for cap in capabilities %}
+              <label class="flex cursor-pointer gap-2.5 rounded-xl border border-hairline bg-sand-50 px-3 py-2.5
+                            transition-colors hover:border-sand-300 has-checked:border-brand-300 has-checked:bg-brand-50/50">
+                <input type="checkbox" name="capabilities" value="{{ cap.key }}" class="mt-0.5"
+                       {% if cap.key in module.capabilities %}checked{% endif %}
+                       {% if cap.core %}onclick="event.preventDefault()"{% endif %}>
+                <span class="min-w-0">
+                  <span class="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
+                    {{ icon(cap.icon, "text-sand-500") }}{{ cap.label }}
+                  </span>
+                  <span class="block text-[11.5px] leading-snug text-muted">{{ cap.blurb }}</span>
+                </span>
+              </label>
+            {% endfor %}
+          {% endfor %}
+        </div>
+
+        {% if module.has('environment') %}
+          <h4>Environment metrics</h4>
+          <label class="field-label">
+            One per line, as <span class="ident">key:label:unit</span>
+            <textarea name="environment_metrics" rows="6" class="font-mono text-[12px]">{{ metrics_text }}</textarea>
+            <span class="field-hint normal-case tracking-normal">
+              These become the inputs on the Environment tab, e.g.
+              <span class="ident">conductivity:Conductivity:µS</span>.
+            </span>
+          </label>
+        {% endif %}
+
+        <label class="inline-check mt-3.5">
+          <input type="checkbox" name="disabled" value="1" {% if not module_row.enabled %}checked{% endif %}>
+          Hide this database from the sidebar
+        </label>
+      </div>
+      <footer class="flex justify-end border-t border-sand-100 bg-sand-50/60 px-4 py-3">
+        <button type="submit" class="btn btn-primary">Save configuration</button>
+      </footer>
+    </form>
+
+    {# ---- Custom fields ---- #}
+    <section class="card">
+      <header class="card-head">
+        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#columns"></use></svg> Fields</h2>
+        <span class="badge badge-quiet">
+          {{ (fields.get('organism', []) + fields.get('housing', []) + fields.get('line', [])
+              + fields.get('cohort', []) + fields.get('cross', []))|length }} defined
+        </span>
+      </header>
+
+      {% set all_fields = [] %}
+      {% for entity, entity_label in field_entities %}
+        {% for field in fields.get(entity, []) %}
+          {% set _ = all_fields.append((entity_label, field)) %}
+        {% endfor %}
+      {% endfor %}
+
+      {% if all_fields %}
+        <div class="table-wrap m-4">
+          <table class="dense-table fit-table">
+            <thead>
+              <tr><th style="width:130px;">On</th><th>Label</th><th style="width:110px;">Key</th>
+                  <th style="width:110px;">Type</th><th style="width:150px;">Choices</th>
+                  <th style="width:80px;">In table</th><th style="width:50px;"></th></tr>
+            </thead>
+            <tbody>
+              {% for entity_label, field in all_fields %}
+                <tr>
+                  <td><span class="badge badge-quiet">{{ entity_label }}</span></td>
+                  <td class="font-medium">{{ field.label }}
+                    {% if field.help_text %}<span class="block text-[11px] text-muted">{{ field.help_text }}</span>{% endif %}
+                  </td>
+                  <td><span class="ident">{{ field.key }}</span></td>
+                  <td>{{ field.field_type }}</td>
+                  <td class="text-muted">{{ field.options_list | join(', ') }}</td>
+                  <td>{% if field.show_in_table %}<svg class="icon size-3.5 text-ok-600" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% endif %}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('organisms.delete_field', key=module.key, field_id=field.id) }}"
+                          onsubmit="return confirm('Remove {{ field.label }}? Stored values stay in the database.')">
+                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#columns"></use></svg><p>No extra fields yet.</p></div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('organisms.add_field', key=module.key) }}"
+            class="modal-grid border-t border-sand-100 bg-sand-50/60 p-4">
+        <label class="field-label">Attach to
+          <select name="entity">
+            {% for value, label in field_entities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field-label">Label<input name="label" required placeholder="e.g. Balancers"></label>
+        <label class="field-label">Type
+          <select name="field_type">
+            {% for ft in field_types %}<option value="{{ ft.key }}">{{ ft.label }} — {{ ft.blurb }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field-label">Choices
+          <input name="options" placeholder="one, two, three">
+          <span class="field-hint normal-case tracking-normal">Only for “Choice”.</span>
+        </label>
+        <label class="field-label">Default<input name="default_value"></label>
+        <label class="field-label">Hint<input name="help_text"></label>
+        <label class="inline-check"><input type="checkbox" name="show_in_table" value="1"> Show as a table column</label>
+        <label class="inline-check"><input type="checkbox" name="required" value="1"> Required</label>
+        <button type="submit">Add field</button>
+      </form>
+    </section>
+
+    {# ---- Schedule rules ---- #}
+    {% if module.has('schedule') %}
+      <section class="card">
+        <header class="card-head">
+          <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar-clock"></use></svg> Schedule rules</h2>
+          <span class="badge badge-quiet">{{ module.schedule_rules|length }}</span>
+        </header>
+
+        {% if module.schedule_rules %}
+          <div class="table-wrap m-4">
+            <table class="dense-table fit-table">
+              <thead>
+                <tr><th>Rule</th><th style="width:100px;">Subject</th><th style="width:150px;">Anchor</th>
+                    <th style="width:80px;">Offset</th><th style="width:80px;">Repeats</th>
+                    <th style="width:180px;">By temperature</th><th style="width:50px;"></th></tr>
+              </thead>
+              <tbody>
+                {% for rule in module.schedule_rules %}
+                  <tr>
+                    <td class="font-medium">{{ rule.label }} <span class="ident">{{ rule.key }}</span></td>
+                    <td>{{ rule.applies_to }}</td>
+                    <td><span class="ident">{{ rule.anchor }}</span></td>
+                    <td>+{{ rule.offset_days }}d</td>
+                    <td>{% if rule.recurring %}<svg class="icon size-3.5 text-ok-600" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% endif %}</td>
+                    <td>
+                      {% for temp, days in (rule.temp_offsets or {}).items() %}
+                        <span class="badge badge-quiet">{{ temp }}→{{ days }}d</span>
+                      {% endfor %}
+                    </td>
+                    <td>
+                      <form method="post" action="{{ url_for('organisms.delete_rule', key=module.key, rule_key=rule.key) }}"
+                            onsubmit="return confirm('Remove this rule?')">
+                        <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar-clock"></use></svg><p>No rules yet.</p></div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('organisms.save_rule', key=module.key) }}"
+              class="modal-grid border-t border-sand-100 bg-sand-50/60 p-4">
+          <label class="field-label">Label<input name="label" required placeholder="e.g. Flip to fresh food"></label>
+          <label class="field-label">Applies to
+            <select name="applies_to" id="rule-subject">
+              {% for subject in ['housing', 'cohort', 'line', 'organism'] %}
+                <option value="{{ subject }}">{{ subject }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-label">Counting from
+            <select name="anchor" id="rule-anchor">
+              {% for subject, anchors in schedule_anchors.items() %}
+                {% for value, label in anchors %}
+                  <option value="{{ value }}" data-subject="{{ subject }}">{{ label }}</option>
+                {% endfor %}
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-label">Days after<input type="number" name="offset_days" value="14" min="0" required></label>
+          <label class="field-label">Icon<input name="icon" value="calendar-clock"></label>
+          <label class="field-label">By temperature
+            <input name="temp_offsets" placeholder="18:28, 25:14">
+            <span class="field-hint normal-case tracking-normal">
+              Overrides the interval per °C — how one flip rule covers both incubators.
+            </span>
+          </label>
+          <label class="inline-check"><input type="checkbox" name="recurring" value="1"> Falls due again after completion</label>
+          <button type="submit">Add rule</button>
+        </form>
+      </section>
+    {% endif %}
+
+    {# ---- Danger zone ---- #}
+    {% if current_user.role == 'admin' %}
+      <section class="card border-danger-200">
+        <header class="card-head">
+          <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#warning"></use></svg> Delete this database</h2>
+        </header>
+        <form method="post" action="{{ url_for('organisms.delete_module', key=module.key) }}"
+              class="flex flex-wrap items-end gap-3 p-4">
+          <p class="w-full text-[12.5px] leading-snug text-muted">
+            Removes the module and every record in it — {{ census.records }} {{ module.organism_noun_plural }},
+            {{ census.housing }} {{ module.housing_noun_plural }}, {{ census.lines }} {{ module.line_noun_plural }}.
+            This cannot be undone.
+          </p>
+          <label class="field-label">Type <strong class="font-semibold text-ink">{{ module.label }}</strong> to confirm
+            <input name="confirm" placeholder="{{ module.label }}" autocomplete="off">
+          </label>
+          <button type="submit" class="btn btn-danger">Delete database</button>
+        </form>
+      </section>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block body_end %}
+<script>
+  /* Fill a dialog's form from a row payload and open it.
+   *
+   * Inputs are matched by name, so the same helper drives every entity;
+   * `attrs` is the module's custom fields, which are named attr_<key>. */
+  function orgEdit(dialogId, payload) {
+    const dialog = document.getElementById(dialogId);
+    if (!dialog) return;
+    const form = dialog.querySelector('form[data-entity-form]');
+    if (!form) return;
+
+    form.reset();
+    const set = (name, value) => {
+      const element = form.elements[name];
+      if (!element) return;
+      if (element.type === 'checkbox') element.checked = Boolean(value);
+      else element.value = (value === null || value === undefined) ? '' : value;
+    };
+
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (key === 'attrs') return;
+      set(key, value);
+    });
+    Object.entries((payload && payload.attrs) || {}).forEach(([key, value]) => {
+      set('attr_' + key, value);
+    });
+
+    dialog.showModal();
+  }
+
+  /* In the rule builder, only show anchors that belong to the chosen
+     subject — a cohort has no "last flip" date. */
+  (function () {
+    const subject = document.getElementById('rule-subject');
+    const anchor = document.getElementById('rule-anchor');
+    if (!subject || !anchor) return;
+    const options = Array.from(anchor.options);
+    function sync() {
+      let firstVisible = null;
+      options.forEach((option) => {
+        const match = option.dataset.subject === subject.value;
+        option.hidden = !match;
+        option.disabled = !match;
+        if (match && !firstVisible) firstVisible = option;
+      });
+      if (firstVisible && anchor.selectedOptions[0] && anchor.selectedOptions[0].hidden) {
+        firstVisible.selected = true;
+      }
+    }
+    subject.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+{% endblock %}

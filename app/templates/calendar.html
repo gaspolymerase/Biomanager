@@ -1,0 +1,963 @@
+{% extends "base.html" %}
+
+{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
+{% block legacy %}1{% endblock %}
+
+{% block page_title %}Calendar{% endblock %}
+
+{% block content %}
+{# TOAST UI Calendar stylesheet — copied into static by `npm run build:calendar`.
+   ?v=<mtime> busts the browser cache whenever the asset changes. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/calendar-app.css') }}?v={{ asset_version('notebook-build/calendar-app.css') }}">
+
+<div class="page-table-header">
+  <div>
+    <h1>Calendar &amp; tasks</h1>
+    <p class="page-subtitle">Events and to-do items, on one timeline.</p>
+  </div>
+</div>
+
+<section class="biocal-shell">
+  {# ====== Top toolbar: view switcher + prev/next + today + new item ====== #}
+  <header class="biocal-toolbar">
+    <div class="biocal-nav">
+      <button type="button" class="biocal-btn" id="biocal-prev" title="Previous"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-left"></use></svg></button>
+      <button type="button" class="biocal-btn" id="biocal-today">Today</button>
+      <button type="button" class="biocal-btn" id="biocal-next" title="Next"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg></button>
+      <span class="biocal-title" id="biocal-title">—</span>
+    </div>
+
+    <div class="biocal-views" role="tablist" aria-label="View">
+      <button type="button" class="biocal-view-btn is-active" data-view="month">Month</button>
+      <button type="button" class="biocal-view-btn" data-view="week">Week</button>
+      <button type="button" class="biocal-view-btn" data-view="day">Day</button>
+      <button type="button" class="biocal-view-btn" data-view="list">List</button>
+    </div>
+
+    <div class="biocal-filters">
+      <label class="biocal-toggle" data-tone="events">
+        <input type="checkbox" id="biocal-show-events" checked>
+        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
+        <span class="biocal-toggle-label">Events</span>
+      </label>
+      <label class="biocal-toggle" data-tone="tasks">
+        <input type="checkbox" id="biocal-show-tasks" checked>
+        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
+        <span class="biocal-toggle-label">Tasks</span>
+      </label>
+      <label class="biocal-toggle" data-tone="auto">
+        <input type="checkbox" id="biocal-show-auto" checked>
+        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
+        <span class="biocal-toggle-label">Colony</span>
+      </label>
+      <label class="biocal-toggle" data-tone="subs">
+        <input type="checkbox" id="biocal-show-subs" checked>
+        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
+        <span class="biocal-toggle-label">Subscriptions</span>
+      </label>
+      <label class="biocal-toggle" data-tone="done">
+        <input type="checkbox" id="biocal-show-done">
+        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
+        <span class="biocal-toggle-label">Completed</span>
+      </label>
+      <button type="button" class="biocal-btn" id="biocal-subs-btn" title="Manage subscriptions">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#rss"></use></svg> Calendars
+      </button>
+      <button type="button" class="biocal-btn is-primary" id="biocal-new" title="New item">
+        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New
+      </button>
+    </div>
+  </header>
+
+  {# ====== Calendar mount (TOAST UI) + custom List view (our own) ====== #}
+  <div class="biocal-body">
+    <div id="biocal-tui" class="biocal-tui"></div>
+    <div id="biocal-list" class="biocal-list" hidden></div>
+  </div>
+</section>
+
+{# ====== Subscriptions / connected calendars dialog ====== #}
+<dialog id="biocal-subs-modal" class="mouse-modal biocal-subs-modal">
+  <form method="dialog" class="modal-topbar">
+    <h3>Connected calendars</h3>
+    <button type="submit" class="ghost-button">Close</button>
+  </form>
+
+  <section class="biocal-subs-section">
+    <header class="biocal-subs-section-head">
+      <strong>Google Calendar</strong>
+      <span class="muted-inline">OAuth sign-in</span>
+    </header>
+    <div id="biocal-google-status" class="biocal-google-status">
+      <span class="muted-inline">Loading…</span>
+    </div>
+  </section>
+
+  <section class="biocal-subs-section">
+    <header class="biocal-subs-section-head">
+      <strong>ICS subscriptions</strong>
+      <span class="muted-inline">Paste an iCal feed URL (any calendar that publishes one — Apple, Outlook, university, even Google's "secret iCal address").</span>
+    </header>
+
+    <form id="biocal-subs-add" class="biocal-subs-add">
+      <input type="text" name="name" placeholder="Label (e.g. Lab meetings)" required>
+      <input type="url" name="url" placeholder="https://… .ics or webcal://…" required>
+      <input type="color" name="color" value="#10b981">
+      <button type="submit" class="dt-bottom-action is-primary">Add</button>
+    </form>
+
+    <ul id="biocal-subs-list" class="biocal-subs-list">
+      <li class="muted-inline" style="padding:10px;">Loading…</li>
+    </ul>
+  </section>
+</dialog>
+
+{# ====== Create / edit dialog ====== #}
+<dialog id="biocal-modal" class="mouse-modal biocal-modal">
+  <form method="dialog" class="modal-topbar">
+    <h3 id="biocal-modal-title">New item</h3>
+    <button type="submit" class="ghost-button">Close</button>
+  </form>
+  <form id="biocal-form" class="biocal-form">
+    <input type="hidden" name="id" id="biocal-id">
+
+    <div class="biocal-form-row">
+      <label class="biocal-radio">
+        <input type="radio" name="kind" value="event" checked> Event
+      </label>
+      <label class="biocal-radio">
+        <input type="radio" name="kind" value="task"> Todo
+      </label>
+    </div>
+
+    <label class="biocal-form-row is-wide">
+      Title <input name="title" required autofocus>
+    </label>
+
+    {# Event mode: full datetime range + all-day toggle. #}
+    <div class="biocal-when biocal-when-event">
+      <div class="biocal-form-row">
+        <label>Start <input type="datetime-local" name="start"></label>
+        <label>End <input type="datetime-local" name="end"></label>
+      </div>
+      <div class="biocal-form-row">
+        <label class="biocal-checkbox">
+          <input type="checkbox" name="isAllday" checked> All-day
+        </label>
+      </div>
+    </div>
+
+    {# Todo mode: three quick presets + an optional custom date. No time-of-day. #}
+    <div class="biocal-when biocal-when-task" hidden>
+      <div class="biocal-form-row is-wide">
+        <span class="biocal-color-label">Due</span>
+        <div class="biocal-due-presets" id="biocal-due-presets">
+          <button type="button" class="biocal-due-btn is-active" data-due="today">Today</button>
+          <button type="button" class="biocal-due-btn" data-due="tomorrow">Tomorrow</button>
+          <button type="button" class="biocal-due-btn" data-due="next-week">Next week</button>
+          <button type="button" class="biocal-due-btn" data-due="custom">Custom…</button>
+        </div>
+        <input type="date" name="due_custom" id="biocal-due-custom" hidden>
+      </div>
+    </div>
+
+    {# Macaron palette — eight curated pastel tones that all sit well on a
+       light calendar background. The hidden `color` input is what the form
+       submits; the swatch row only toggles the selected state visually. #}
+    <div class="biocal-form-row is-wide">
+      <span class="biocal-color-label">Color</span>
+      <input type="hidden" name="color" id="biocal-color-val" value="#c4b5fd">
+      <div class="biocal-color-swatches" id="biocal-color-swatches">
+        <button type="button" class="biocal-color-swatch" data-color="#f9a8a8" style="background:#f9a8a8" aria-label="Rose"></button>
+        <button type="button" class="biocal-color-swatch" data-color="#fcb77e" style="background:#fcb77e" aria-label="Apricot"></button>
+        <button type="button" class="biocal-color-swatch" data-color="#fbe89e" style="background:#fbe89e" aria-label="Lemon"></button>
+        <button type="button" class="biocal-color-swatch" data-color="#b6e2a1" style="background:#b6e2a1" aria-label="Pistachio"></button>
+        <button type="button" class="biocal-color-swatch" data-color="#a3e0d8" style="background:#a3e0d8" aria-label="Mint"></button>
+        <button type="button" class="biocal-color-swatch" data-color="#a4c8f0" style="background:#a4c8f0" aria-label="Sky"></button>
+        <button type="button" class="biocal-color-swatch" data-color="#c4b5fd" style="background:#c4b5fd" aria-label="Lavender"></button>
+        <button type="button" class="biocal-color-swatch" data-color="#f4b8d8" style="background:#f4b8d8" aria-label="Pink"></button>
+      </div>
+    </div>
+
+    <label class="biocal-form-row is-wide">
+      Notes <textarea name="body" rows="3"></textarea>
+    </label>
+
+    <div class="biocal-form-actions">
+      <button type="button" class="dt-bottom-action" id="biocal-delete" hidden>Delete</button>
+      <span style="flex:1"></span>
+      <button type="button" class="dt-bottom-action" onclick="document.getElementById('biocal-modal').close()">Cancel</button>
+      <button type="submit" class="dt-bottom-action is-primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+{# TOAST UI Calendar UMD bundle — exposes window.tui.Calendar. #}
+<script src="{{ url_for('static', filename='notebook-build/calendar-app.js') }}?v={{ asset_version('notebook-build/calendar-app.js') }}" defer
+        onload="window.__tuiLoaded = true"
+        onerror="window.__tuiMissing = true"></script>
+
+<script>
+(function () {
+  const tuiHost = document.getElementById('biocal-tui');
+  const listHost = document.getElementById('biocal-list');
+  const titleEl = document.getElementById('biocal-title');
+  const viewBtns = document.querySelectorAll('.biocal-view-btn');
+  const fEvents = document.getElementById('biocal-show-events');
+  const fTasks = document.getElementById('biocal-show-tasks');
+  const fAuto = document.getElementById('biocal-show-auto');
+  const fSubs = document.getElementById('biocal-show-subs');
+  const fDone = document.getElementById('biocal-show-done');
+  const modal = document.getElementById('biocal-modal');
+  const subsModal = document.getElementById('biocal-subs-modal');
+  const subsBtn = document.getElementById('biocal-subs-btn');
+  const subsListEl = document.getElementById('biocal-subs-list');
+  const subsAddForm = document.getElementById('biocal-subs-add');
+  const googleStatusEl = document.getElementById('biocal-google-status');
+  const form = document.getElementById('biocal-form');
+  const delBtn = document.getElementById('biocal-delete');
+  const modalTitle = document.getElementById('biocal-modal-title');
+
+  let calendar = null;          // TOAST UI Calendar instance
+  let allItems = [];            // raw items from the feed (filters applied for rendering)
+  let currentView = 'month';
+
+  // ---- Bundle gate ------------------------------------------------------
+  function waitForTui() {
+    return new Promise((resolve) => {
+      const tick = () => {
+        if (window.tui && window.tui.Calendar) return resolve('ready');
+        if (window.__tuiMissing) return resolve('missing');
+        if (window.__tuiLoaded && !(window.tui && window.tui.Calendar)) {
+          return setTimeout(() => resolve(window.tui && window.tui.Calendar ? 'ready' : 'broken'), 200);
+        }
+        setTimeout(tick, 80);
+      };
+      tick();
+    });
+  }
+
+  // ---- Init -------------------------------------------------------------
+  waitForTui().then((status) => {
+    if (status !== 'ready') {
+      tuiHost.innerHTML = `<div class="biocal-empty">Calendar bundle didn't load (${status}). Run <code>npm run build:calendar</code> and hard-refresh.</div>`;
+      return;
+    }
+    const Calendar = window.tui.Calendar;
+    calendar = new Calendar('#biocal-tui', {
+      defaultView: 'month',
+      useFormPopup: false,    // we use our own dialog
+      useDetailPopup: false,  // we use our own hover card (see below)
+      isReadOnly: false,
+      // Don't hide events behind "+N more" — show every event in the cell.
+      // Without this, dragging into a busy day appears to "cover" existing
+      // items because they spill past the default 6-event limit.
+      month: { visibleEventCount: 99 },
+      calendars: [
+        { id: 'events', name: 'Events', backgroundColor: '#7c3aed', borderColor: '#7c3aed' },
+        { id: 'tasks', name: 'Tasks', backgroundColor: '#0ea5e9', borderColor: '#0ea5e9' },
+        { id: 'auto', name: 'Colony', backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
+      ],
+      template: {
+        // All event templates embed the schedule id on a wrapping span so
+        // our hover-card listener can find the right item from the DOM.
+        allday: function (schedule) {
+          return `<span class="biocal-chip" data-item-id="${schedule.id}">${escapeHtml(schedule.title || '')}</span>`;
+        },
+        time: function (schedule) {
+          return `<span class="biocal-chip" data-item-id="${schedule.id}">${escapeHtml(schedule.title || '')}</span>`;
+        },
+        // Tasks render with an inline checkbox so the user can flip
+        // done/undone right from the calendar.
+        task: function (schedule) {
+          const done = schedule.raw && schedule.raw.done;
+          const t = escapeHtml(schedule.title || '');
+          return `
+            <span class="biocal-task ${done ? 'is-done' : ''}" data-item-id="${schedule.id}">
+              <input type="checkbox" class="biocal-task-cb" ${done ? 'checked' : ''} data-item-id="${schedule.id}">
+              <span class="biocal-task-title">${t}</span>
+            </span>`;
+        },
+      },
+    });
+
+    // Keep our title bar in sync with TOAST UI's current range.
+    function refreshTitle() {
+      const d = calendar.getDate();
+      const dt = d.toDate ? d.toDate() : new Date(d);
+      const fmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long' });
+      titleEl.textContent = fmt.format(dt);
+    }
+    refreshTitle();
+
+    // ---- Events ---------------------------------------------------------
+    // Clicking (or selecting a range on) a date cell opens the new-event dialog.
+    // TOAST UI fires `selectDateTime` for both single clicks and drag-selects;
+    // `beforeCreateEvent` is the post-popup hook, which we don't use because
+    // we have our own dialog (useFormPopup: false). Listening to both means
+    // we still respond to programmatic creates too.
+    function openCreateFromSelection(sel) {
+      openModal({
+        kind: 'event',
+        title: '',
+        start: toLocalInput(tuiToDate(sel.start)),
+        end: toLocalInput(tuiToDate(sel.end || sel.start)),
+        isAllday: !!sel.isAllday,
+        color: '#7c3aed',
+        body: '',
+      });
+      try { calendar.clearGridSelections(); } catch (_) {}
+    }
+    calendar.on('selectDateTime', openCreateFromSelection);
+    calendar.on('beforeCreateEvent', openCreateFromSelection);
+    calendar.on('beforeUpdateEvent', ({ event, changes }) => {
+      // External + auto-derived calendars are read-only — ignore drag updates.
+      if (event.calendarId && (event.calendarId.startsWith('sub-') || event.calendarId === 'google' || event.calendarId === 'auto')) return;
+      // Apply the move locally FIRST so the calendar shows the new position
+      // immediately. Otherwise the drag "snaps back" until the server round-
+      // trip + fetchAndRender completes — which can look like the dragged
+      // event covered an existing one in the cell.
+      try { calendar.updateEvent(event.id, event.calendarId, changes); } catch (_) {}
+      const next = Object.assign({}, event, changes);
+      saveItem({
+        id: event.id,
+        kind: event.calendarId === 'tasks' ? 'task' : 'event',
+        title: next.title,
+        start: tuiToIso(next.start),
+        end: tuiToIso(next.end),
+        isAllday: !!next.isAllday,
+        backgroundColor: next.backgroundColor,
+        body: next.body,
+      }).then(() => fetchAndRender());
+    });
+    calendar.on('clickEvent', ({ event, nativeEvent }) => {
+      // If the user clicked the checkbox we render in template.task, toggle done.
+      const tgt = nativeEvent && nativeEvent.target;
+      if (tgt && tgt.classList && tgt.classList.contains('biocal-task-cb')) {
+        nativeEvent.stopPropagation();
+        nativeEvent.preventDefault();
+        toggleDone(event.id).then(() => fetchAndRender());
+        return;
+      }
+      // External (subscription / google) events are read-only — no edit dialog.
+      if (event.calendarId && (event.calendarId.startsWith('sub-') || event.calendarId === 'google')) {
+        return;
+      }
+      // Auto-derived items (litters, mice, experiments) → navigate to the
+      // source record rather than opening the edit dialog.
+      if (event.calendarId === 'auto' && event.raw && event.raw.href) {
+        window.location.href = event.raw.href;
+        return;
+      }
+      // Otherwise open the edit dialog.
+      openModal({
+        id: event.id,
+        kind: event.calendarId === 'tasks' ? 'task' : 'event',
+        title: event.title,
+        start: toLocalInput(tuiToDate(event.start)),
+        end: toLocalInput(tuiToDate(event.end)),
+        isAllday: !!event.isAllday,
+        color: event.backgroundColor || '#7c3aed',
+        body: event.body || '',
+      });
+    });
+
+    // ---- Toolbar wiring -------------------------------------------------
+    document.getElementById('biocal-prev').addEventListener('click', () => { calendar.prev(); refreshTitle(); fetchAndRender(); });
+    document.getElementById('biocal-next').addEventListener('click', () => { calendar.next(); refreshTitle(); fetchAndRender(); });
+    document.getElementById('biocal-today').addEventListener('click', () => { calendar.today(); refreshTitle(); fetchAndRender(); });
+
+    viewBtns.forEach((btn) => btn.addEventListener('click', () => {
+      const v = btn.dataset.view;
+      viewBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
+      currentView = v;
+      if (v === 'list') {
+        tuiHost.hidden = true;
+        listHost.hidden = false;
+      } else {
+        tuiHost.hidden = false;
+        listHost.hidden = true;
+        calendar.changeView(v); // 'month' | 'week' | 'day'
+      }
+      renderAll();
+    }));
+
+    [fEvents, fTasks, fAuto, fSubs, fDone].forEach((cb) => cb.addEventListener('change', renderAll));
+
+    subsBtn.addEventListener('click', () => {
+      loadSubscriptions();
+      loadGoogleStatus();
+      subsModal.showModal();
+    });
+
+    subsAddForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(subsAddForm);
+      const payload = { name: fd.get('name'), url: fd.get('url'), color: fd.get('color') };
+      fetch('/calendar/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then((r) => r.json()).then((j) => {
+        if (j && j.ok) {
+          subsAddForm.reset();
+          loadSubscriptions();
+          fetchAndRender();
+        } else {
+          alert('Add failed: ' + (j && j.error || 'unknown'));
+        }
+      });
+    });
+
+    document.getElementById('biocal-new').addEventListener('click', () => {
+      openModal({
+        kind: 'event',
+        title: '',
+        start: toLocalInput(new Date()),
+        end: toLocalInput(new Date()),
+        isAllday: true,
+        color: '#7c3aed',
+        body: '',
+      });
+    });
+
+    fetchAndRender();
+  });
+
+  // ---- Fetch + render ---------------------------------------------------
+  function fetchAndRender() {
+    fetch('/calendar/events.json').then((r) => r.ok ? r.json() : null).then((j) => {
+      if (!j || !j.ok) return;
+      allItems = j.items || [];
+      renderAll();
+    });
+  }
+
+  function renderAll() {
+    const wantEvents = fEvents.checked;
+    const wantTasks = fTasks.checked;
+    const wantDone = fDone.checked;
+    const wantAuto = fAuto.checked;
+    const wantSubs = fSubs.checked;
+    const filtered = allItems.filter((it) => {
+      if (it.kind === 'event' && !wantEvents) return false;
+      if (it.kind === 'task' && !wantTasks) return false;
+      if (it.kind === 'task' && it.raw && it.raw.done && !wantDone) return false;
+      if (it.kind === 'auto' && !wantAuto) return false;
+      if ((it.kind === 'subscription' || it.kind === 'google') && !wantSubs) return false;
+      return true;
+    });
+
+    if (calendar && currentView !== 'list') {
+      calendar.clear();
+      calendar.createEvents(filtered);
+    }
+    if (currentView === 'list') {
+      renderList(filtered);
+    }
+  }
+
+  // ---- Custom list view -------------------------------------------------
+  function renderList(items) {
+    if (!items.length) {
+      listHost.innerHTML = '<div class="biocal-empty">Nothing scheduled.</div>';
+      return;
+    }
+    // Group by date (yyyy-mm-dd).
+    const groups = new Map();
+    items.forEach((it) => {
+      const key = (it.start || '').slice(0, 10);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(it);
+    });
+    const sorted = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    const html = sorted.map(([day, rows]) => {
+      const niceDay = new Date(day + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+      const rowsHtml = rows.map((it) => {
+        const isTask = it.kind === 'task';
+        const done = isTask && it.raw && it.raw.done;
+        const time = it.isAllday ? 'All day' : `${fmtTime(it.start)}–${fmtTime(it.end)}`;
+        const cb = isTask
+          ? `<input type="checkbox" class="biocal-list-cb" data-item-id="${it.id}" ${done ? 'checked' : ''}>`
+          : `<span class="biocal-list-dot" style="background:${it.backgroundColor}"></span>`;
+        return `
+          <li class="biocal-list-row ${done ? 'is-done' : ''}" data-item-id="${it.id}" data-kind="${it.kind}">
+            ${cb}
+            <span class="biocal-list-time">${time}</span>
+            <span class="biocal-list-title">${escapeHtml(it.title)}</span>
+            <span class="biocal-list-meta">${escapeHtml((it.body || '').slice(0, 80))}</span>
+          </li>`;
+      }).join('');
+      return `<section class="biocal-list-group">
+                <header class="biocal-list-day">${niceDay}</header>
+                <ul class="biocal-list-rows">${rowsHtml}</ul>
+              </section>`;
+    }).join('');
+    listHost.innerHTML = html;
+
+    // Wire checkbox + row click in list view.
+    listHost.querySelectorAll('.biocal-list-cb').forEach((cb) => {
+      cb.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDone(cb.dataset.itemId).then(() => fetchAndRender());
+      });
+    });
+    listHost.querySelectorAll('.biocal-list-row').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.classList.contains('biocal-list-cb')) return;
+        const it = allItems.find((x) => x.id === row.dataset.itemId);
+        if (!it) return;
+        // Auto-derived items: jump to source record. External feeds: do nothing.
+        if (it.kind === 'auto' && it.raw && it.raw.href) {
+          window.location.href = it.raw.href;
+          return;
+        }
+        if (it.kind === 'subscription' || it.kind === 'google') return;
+        openModal({
+          id: it.id,
+          kind: it.kind,
+          title: it.title,
+          start: toLocalInput(new Date(it.start)),
+          end: toLocalInput(new Date(it.end)),
+          isAllday: it.isAllday,
+          color: it.backgroundColor,
+          body: it.body,
+        });
+      });
+    });
+  }
+
+  // ---- Modal create/edit ------------------------------------------------
+  // Macaron palette — must match the swatch buttons in the template.
+  const MACARON = ['#f9a8a8', '#fcb77e', '#fbe89e', '#b6e2a1', '#a3e0d8', '#a4c8f0', '#c4b5fd', '#f4b8d8'];
+
+  function setSelectedSwatch(color) {
+    const target = (color || '').toLowerCase();
+    const swatches = form.querySelectorAll('.biocal-color-swatch');
+    let matched = false;
+    swatches.forEach((s) => {
+      const on = s.dataset.color.toLowerCase() === target;
+      s.classList.toggle('is-selected', on);
+      if (on) matched = true;
+    });
+    // If the saved color isn't in the palette (e.g. legacy events), default to
+    // the lavender swatch but keep the original color stored in the hidden
+    // input so save doesn't accidentally recolor.
+    if (!matched && swatches.length) {
+      const fallback = form.querySelector('.biocal-color-swatch[data-color="#c4b5fd"]') || swatches[0];
+      fallback.classList.add('is-selected');
+    }
+    form.querySelector('#biocal-color-val').value = color || '#c4b5fd';
+  }
+
+  // Wire one-time: clicking a swatch updates the hidden value + selection.
+  form.querySelectorAll('.biocal-color-swatch').forEach((s) => {
+    s.addEventListener('click', () => setSelectedSwatch(s.dataset.color));
+  });
+
+  // ---- Due-date presets (todos only) ------------------------------------
+  // Three quick options + Custom. Each writes a YYYY-MM-DD into a hidden
+  // "due_custom" input and is used at submit-time to derive start/end.
+  const whenEvent = form.querySelector('.biocal-when-event');
+  const whenTask = form.querySelector('.biocal-when-task');
+  const duePresets = form.querySelectorAll('.biocal-due-btn');
+  const dueCustom = form.querySelector('#biocal-due-custom');
+
+  function fmtDate(d) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  function dueFromPreset(name) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    if (name === 'tomorrow') d.setDate(d.getDate() + 1);
+    else if (name === 'next-week') d.setDate(d.getDate() + 7);
+    return d;
+  }
+
+  function selectDuePreset(name) {
+    duePresets.forEach((b) => b.classList.toggle('is-active', b.dataset.due === name));
+    if (name === 'custom') {
+      dueCustom.hidden = false;
+      if (!dueCustom.value) dueCustom.value = fmtDate(new Date());
+      dueCustom.focus();
+    } else {
+      dueCustom.hidden = true;
+      dueCustom.value = fmtDate(dueFromPreset(name));
+    }
+  }
+  duePresets.forEach((b) => b.addEventListener('click', () => selectDuePreset(b.dataset.due)));
+  // If the user types a custom date directly, mark Custom as active.
+  dueCustom.addEventListener('change', () => {
+    duePresets.forEach((b) => b.classList.toggle('is-active', b.dataset.due === 'custom'));
+  });
+
+  // Match a saved YYYY-MM-DD against today/tomorrow/next-week.
+  function presetForDate(yyyymmdd) {
+    if (!yyyymmdd) return 'today';
+    const today = fmtDate(dueFromPreset('today'));
+    const tomorrow = fmtDate(dueFromPreset('tomorrow'));
+    const nextWeek = fmtDate(dueFromPreset('next-week'));
+    if (yyyymmdd === today) return 'today';
+    if (yyyymmdd === tomorrow) return 'tomorrow';
+    if (yyyymmdd === nextWeek) return 'next-week';
+    return 'custom';
+  }
+
+  // Show the right "when" panel for the active kind, and mirror the date
+  // across so the user's selection survives Event ↔ Todo toggles.
+  function applyKindMode(kind) {
+    const isTask = kind === 'task';
+    if (isTask) {
+      // Coming from event mode → seed the due date from the start input.
+      const startVal = form.querySelector('input[name="start"]').value;
+      if (startVal) {
+        const day = startVal.slice(0, 10);
+        dueCustom.value = day;
+        selectDuePreset(presetForDate(day));
+      } else if (!dueCustom.value) {
+        // Brand-new task with nothing seeded → default to today.
+        const today = fmtDate(new Date());
+        dueCustom.value = today;
+        selectDuePreset('today');
+      } else {
+        // Already-set due date: just re-highlight the matching preset.
+        selectDuePreset(presetForDate(dueCustom.value));
+      }
+    } else {
+      // Coming from task mode → keep the same day but give it a default time
+      // window in the event datetime inputs (only if event inputs are empty).
+      const startInput = form.querySelector('input[name="start"]');
+      const endInput = form.querySelector('input[name="end"]');
+      if (dueCustom.value && !startInput.value) {
+        startInput.value = `${dueCustom.value}T09:00`;
+        endInput.value = `${dueCustom.value}T10:00`;
+      }
+    }
+    whenEvent.hidden = isTask;
+    whenTask.hidden = !isTask;
+  }
+  form.querySelectorAll('input[name="kind"]').forEach((r) => {
+    r.addEventListener('change', () => applyKindMode(r.value));
+  });
+
+  function openModal(item) {
+    modalTitle.textContent = item.id ? 'Edit item' : 'New item';
+    form.querySelector('#biocal-id').value = item.id || '';
+    const kind = item.kind || 'event';
+    form.querySelector(`input[name="kind"][value="${kind}"]`).checked = true;
+
+    form.querySelector('input[name="title"]').value = item.title || '';
+
+    // Seed BOTH the event datetime fields AND the todo due date from the
+    // same starting datetime. This way the clicked date stays put when the
+    // user flips between Event and Todo radio.
+    const startStr = item.start || '';
+    form.querySelector('input[name="start"]').value = kind === 'event' ? startStr : '';
+    form.querySelector('input[name="end"]').value = kind === 'event' ? (item.end || '') : '';
+    form.querySelector('input[name="isAllday"]').checked = !!item.isAllday;
+
+    const day = startStr.slice(0, 10) || fmtDate(new Date());
+    dueCustom.value = day;
+    selectDuePreset(presetForDate(day));
+
+    // Show the right panel after seeding (don't trigger applyKindMode's
+    // mirror logic — we've already set both halves explicitly).
+    whenEvent.hidden = kind === 'task';
+    whenTask.hidden = kind !== 'task';
+
+    setSelectedSwatch(item.color || '#c4b5fd');
+    form.querySelector('textarea[name="body"]').value = item.body || '';
+    delBtn.hidden = !item.id;
+    modal.showModal();
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const kind = fd.get('kind');
+
+    // For todos we derive start/end from the preset/custom date — always
+    // all-day. For events we use the explicit datetime-local inputs.
+    let start, end, isAllday;
+    if (kind === 'task') {
+      const day = dueCustom.value || fmtDate(new Date());
+      start = `${day}T00:00:00`;
+      end = `${day}T23:59:59`;
+      isAllday = true;
+    } else {
+      // Local wall-clock — see comment elsewhere about avoiding toISOString().
+      start = fd.get('start') ? (fd.get('start') + ':00') : null;
+      end = fd.get('end') ? (fd.get('end') + ':00') : null;
+      isAllday = fd.get('isAllday') === 'on';
+    }
+
+    const payload = {
+      kind,
+      title: fd.get('title'),
+      start, end, isAllday,
+      backgroundColor: fd.get('color'),
+      body: fd.get('body'),
+    };
+    const id = fd.get('id');
+    // The update endpoint dispatches by the URL prefix (task-N → tasks,
+    // event-N → calendar_events) and ignores the body's `kind` field. So
+    // if the user flipped the radio on edit, we have to delete the old row
+    // and create a new one of the target kind to actually convert.
+    const savedKind = id ? String(id).split('-')[0] : null;
+    if (id && savedKind && savedKind !== kind) {
+      fetch(`/calendar/items/${id}/delete`, { method: 'POST' })
+        .then(() => fetch('/calendar/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }))
+        .then((r) => r.json()).then(() => { modal.close(); fetchAndRender(); });
+      return;
+    }
+    const url = id ? `/calendar/items/${id}` : '/calendar/items';
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      .then((r) => r.json()).then(() => { modal.close(); fetchAndRender(); });
+  });
+
+  delBtn.addEventListener('click', () => {
+    const id = form.querySelector('#biocal-id').value;
+    if (!id) return;
+    fetch(`/calendar/items/${id}/delete`, { method: 'POST' })
+      .then(() => { modal.close(); fetchAndRender(); });
+  });
+
+  function toggleDone(id) {
+    return fetch(`/calendar/items/${id}/toggle`, { method: 'POST' }).then((r) => r.json());
+  }
+
+  function saveItem(payload) {
+    return fetch(`/calendar/items/${payload.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // ---- Helpers ----------------------------------------------------------
+  function toLocalInput(d) {
+    if (!d) return '';
+    const dt = d instanceof Date ? d : new Date(d);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  }
+  function tuiToDate(v) {
+    if (!v) return new Date();
+    if (v instanceof Date) return v;
+    if (v.toDate) return v.toDate(); // TOAST UI TZDate
+    return new Date(v);
+  }
+  // Naive-local ISO string ("YYYY-MM-DDTHH:mm:ss") — keeps everything in
+  // user wall-clock time so drag-to-reschedule doesn't drift by TZ offset.
+  function tuiToIso(v) {
+    const dt = tuiToDate(v);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+  }
+  function fmtTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  // ---- Hover card -------------------------------------------------------
+  // TOAST UI has no hover event, so we delegate mouseover on the calendar
+  // container. Each chip's template wraps the title in a span with
+  // data-item-id; we look that up in our allItems array to populate the
+  // card. Show after a short delay; hide on leave with a tiny grace period
+  // so quick mouse jitter doesn't make it flicker.
+  const hoverCard = document.createElement('div');
+  hoverCard.className = 'biocal-hover-card';
+  hoverCard.hidden = true;
+  document.body.appendChild(hoverCard);
+
+  const CAL_TONES = {
+    events: { name: 'Events', color: '#7c3aed' },
+    tasks: { name: 'Tasks', color: '#0ea5e9' },
+    auto: { name: 'Colony', color: '#f59e0b' },
+    google: { name: 'Google', color: '#ef4444' },
+  };
+
+  let hoverShowTimer = null;
+  let hoverHideTimer = null;
+
+  function showHoverCard(item, anchorRect) {
+    clearTimeout(hoverHideTimer);
+    const cal = CAL_TONES[item.calendarId] || (item.calendarId && item.calendarId.startsWith('sub-')
+      ? { name: 'Subscription', color: item.backgroundColor || '#10b981' }
+      : { name: '', color: item.backgroundColor || '#7c3aed' });
+    const dateRange = item.isAllday
+      ? new Date(item.start).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+      : `${new Date(item.start).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} → ${new Date(item.end).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+    hoverCard.innerHTML = `
+      <div class="biocal-hover-strip" style="background:${item.backgroundColor || cal.color}"></div>
+      <div class="biocal-hover-body">
+        <div class="biocal-hover-title">${escapeHtml(item.title || '(untitled)')}</div>
+        <div class="biocal-hover-date">${escapeHtml(dateRange)}</div>
+        <div class="biocal-hover-tag">
+          <span class="biocal-hover-dot" style="background:${cal.color}"></span>
+          ${escapeHtml(cal.name)}
+          ${item.isReadOnly ? '<span class="biocal-hover-readonly">· read-only</span>' : ''}
+        </div>
+        ${item.body ? `<div class="biocal-hover-notes">${escapeHtml(item.body)}</div>` : ''}
+      </div>`;
+
+    // Position: prefer right of the chip; flip left if it would overflow the viewport.
+    hoverCard.hidden = false;
+    const cardWidth = 320;
+    let left = anchorRect.right + 8;
+    let top = anchorRect.top;
+    if (left + cardWidth > window.innerWidth - 12) {
+      left = Math.max(8, anchorRect.left - cardWidth - 8);
+    }
+    if (top + 180 > window.innerHeight - 12) {
+      top = Math.max(8, window.innerHeight - 200);
+    }
+    hoverCard.style.left = `${left}px`;
+    hoverCard.style.top = `${top}px`;
+  }
+
+  function hideHoverCard() {
+    clearTimeout(hoverShowTimer);
+    hoverHideTimer = setTimeout(() => { hoverCard.hidden = true; }, 150);
+  }
+
+  // Delegate mouseover on the calendar container. We catch
+  // mouseenter on a [data-item-id] element by looking at mouseover targets.
+  tuiHost.addEventListener('mouseover', (e) => {
+    const el = e.target.closest('[data-item-id]');
+    if (!el || !tuiHost.contains(el)) return;
+    const id = el.dataset.itemId;
+    const item = allItems.find((it) => it.id === id);
+    if (!item) return;
+    clearTimeout(hoverShowTimer);
+    const rect = el.getBoundingClientRect();
+    hoverShowTimer = setTimeout(() => showHoverCard(item, rect), 120);
+  });
+  tuiHost.addEventListener('mouseout', (e) => {
+    const el = e.target.closest('[data-item-id]');
+    if (!el) return;
+    // If we moved to another item, the next mouseover will reset the timer.
+    hideHoverCard();
+  });
+  // Don't dismiss while the cursor is on the card itself.
+  hoverCard.addEventListener('mouseenter', () => clearTimeout(hoverHideTimer));
+  hoverCard.addEventListener('mouseleave', hideHoverCard);
+
+  // Same hover behavior in the list view.
+  listHost.addEventListener('mouseover', (e) => {
+    const el = e.target.closest('.biocal-list-row');
+    if (!el) return;
+    const item = allItems.find((it) => it.id === el.dataset.itemId);
+    if (!item) return;
+    clearTimeout(hoverShowTimer);
+    const rect = el.getBoundingClientRect();
+    hoverShowTimer = setTimeout(() => showHoverCard(item, rect), 120);
+  });
+  listHost.addEventListener('mouseout', (e) => {
+    if (e.target.closest('.biocal-list-row')) hideHoverCard();
+  });
+
+  // ---- Subscriptions panel ----------------------------------------------
+  function loadSubscriptions() {
+    if (!subsListEl) return;
+    fetch('/calendar/subscriptions').then((r) => r.json()).then((j) => {
+      const subs = (j && j.subscriptions) || [];
+      if (!subs.length) {
+        subsListEl.innerHTML = '<li class="biocal-subs-empty">No subscriptions yet. Paste an iCal URL above to add one.</li>';
+        return;
+      }
+      subsListEl.innerHTML = subs.map((s) => {
+        const fetched = s.last_fetched_at ? new Date(s.last_fetched_at).toLocaleString() : '—';
+        const err = s.last_error ? `<div class="biocal-sub-error">${escapeHtml(s.last_error)}</div>` : '';
+        return `
+          <li class="biocal-sub-row" data-id="${s.id}">
+            <span class="biocal-sub-swatch" style="background:${s.color}"></span>
+            <div class="biocal-sub-main">
+              <div class="biocal-sub-name">${escapeHtml(s.name)}</div>
+              <div class="biocal-sub-url">${escapeHtml(s.url)}</div>
+              <div class="biocal-sub-meta">Last fetched: ${fetched}</div>
+              ${err}
+            </div>
+            <label class="biocal-sub-toggle" title="Enable / disable">
+              <input type="checkbox" data-action="toggle" ${s.enabled ? 'checked' : ''}>
+            </label>
+            <button type="button" class="biocal-btn" data-action="refresh" title="Refresh now"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#refresh"></use></svg></button>
+            <button type="button" class="biocal-btn" data-action="delete" title="Remove"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+          </li>`;
+      }).join('');
+      // Wire action buttons.
+      subsListEl.querySelectorAll('.biocal-sub-row').forEach((row) => {
+        const id = row.dataset.id;
+        row.querySelector('[data-action="toggle"]').addEventListener('change', (e) => {
+          fetch(`/calendar/subscriptions/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: e.target.checked }) })
+            .then(() => fetchAndRender());
+        });
+        row.querySelector('[data-action="refresh"]').addEventListener('click', () => {
+          fetch(`/calendar/subscriptions/${id}/refresh`, { method: 'POST' }).then((r) => r.json()).then(() => {
+            loadSubscriptions();
+            fetchAndRender();
+          });
+        });
+        row.querySelector('[data-action="delete"]').addEventListener('click', () => {
+          if (!confirm('Remove this subscription?')) return;
+          fetch(`/calendar/subscriptions/${id}/delete`, { method: 'POST' }).then(() => {
+            loadSubscriptions();
+            fetchAndRender();
+          });
+        });
+      });
+    });
+  }
+
+  // ---- Google Calendar (Pass 3) status / connect button -----------------
+  function loadGoogleStatus() {
+    if (!googleStatusEl) return;
+    fetch('/calendar/google/status').then((r) => r.ok ? r.json() : null).then((j) => {
+      if (!j) {
+        googleStatusEl.innerHTML = '<span class="muted-inline">Google Calendar integration not configured on this server.</span>';
+        return;
+      }
+      if (j.connected) {
+        const last = j.last_synced_at ? new Date(j.last_synced_at).toLocaleString() : '—';
+        googleStatusEl.innerHTML = `
+          <div class="biocal-google-connected">
+            <div>
+              <strong>Connected as ${escapeHtml(j.email || 'Google account')}</strong>
+              <div class="muted-inline">Last sync: ${last}</div>
+            </div>
+            <button type="button" class="biocal-btn" id="biocal-google-refresh">Refresh</button>
+            <button type="button" class="biocal-btn" id="biocal-google-disconnect">Disconnect</button>
+          </div>`;
+        document.getElementById('biocal-google-refresh').addEventListener('click', () => {
+          fetch('/calendar/google/refresh', { method: 'POST' }).then(() => { loadGoogleStatus(); fetchAndRender(); });
+        });
+        document.getElementById('biocal-google-disconnect').addEventListener('click', () => {
+          if (!confirm('Disconnect Google Calendar?')) return;
+          fetch('/calendar/google/disconnect', { method: 'POST' }).then(() => { loadGoogleStatus(); fetchAndRender(); });
+        });
+      } else if (j.configured) {
+        googleStatusEl.innerHTML = `
+          <a href="/calendar/google/connect" class="biocal-btn is-primary biocal-google-connect">
+            Connect Google Calendar
+          </a>
+          <div class="muted-inline" style="margin-top:6px;">We'll only request read access to your events.</div>`;
+      } else {
+        googleStatusEl.innerHTML = `
+          <div class="biocal-google-unconfigured">
+            Google Calendar integration isn't configured on this server yet. An admin needs to set <code>GOOGLE_OAUTH_CLIENT_ID</code> and <code>GOOGLE_OAUTH_CLIENT_SECRET</code> in <code>.env</code>.
+          </div>`;
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

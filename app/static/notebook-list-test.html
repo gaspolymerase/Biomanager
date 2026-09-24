@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notebook list test</title>
+    <link rel="stylesheet" href="/static/notebook-build/notebook-app.css" />
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; padding: 24px; max-width: 760px; margin: 0 auto; }
+      h2 { margin: 0 0 12px; }
+      .panel { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 16px; background: #fff; }
+      pre { background: #0f172a; color: #f8fafc; padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.45; overflow: auto; max-height: 220px; }
+      button.run { background: #2383e2; color: white; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; margin-right: 8px; }
+    </style>
+  </head>
+  <body>
+    <h2>Notebook list-Enter diagnostic</h2>
+    <p>Click each button below. Each test runs <code>splitListItem</code> to simulate Enter in a list, then dumps the resulting HTML and markdown.</p>
+
+    <div class="panel">
+      <h3>Test 1 — fresh ordered list, type "foo", Enter, "bar"</h3>
+      <button class="run" onclick="testFresh()">Run test 1</button>
+      <div id="t1-host" class="tiptap-editor-host"></div>
+      <pre id="t1-out">(click run)</pre>
+    </div>
+
+    <div class="panel">
+      <h3>Test 2 — load markdown <code>"1. apple\n2. banana\n3. cherry"</code>, focus end of "cherry", press Enter</h3>
+      <button class="run" onclick="testReload()">Run test 2</button>
+      <div id="t2-host" class="tiptap-editor-host"></div>
+      <pre id="t2-out">(click run)</pre>
+    </div>
+
+    <script src="/static/notebook-build/notebook-app.js"></script>
+    <script>
+      function dump(label, mount, editor) {
+        return `${label}
+HTML:
+${mount.innerHTML.slice(0, 1200)}
+---
+Markdown:
+${editor.storage.markdown ? editor.storage.markdown.getMarkdown() : '(no md)'}`;
+      }
+
+      function testFresh() {
+        const mount = document.getElementById('t1-host');
+        mount.innerHTML = '';
+        const inst = window.BiomanagerNotebook.mount({ element: mount, initialMarkdown: '' });
+        const ed = inst.editor;
+        ed.chain().focus().toggleOrderedList().insertContent('foo').run();
+        const before = dump('AFTER toggleOrderedList + "foo":', mount, ed);
+        ed.commands.splitListItem('listItem');
+        ed.commands.insertContent('bar');
+        const after = dump('AFTER splitListItem + "bar":', mount, ed);
+        document.getElementById('t1-out').textContent = before + '\n\n' + after;
+      }
+
+      function testReload() {
+        const mount = document.getElementById('t2-host');
+        mount.innerHTML = '';
+        const inst = window.BiomanagerNotebook.mount({ element: mount, initialMarkdown: '1. apple\n2. banana\n3. cherry' });
+        const ed = inst.editor;
+        const before = dump('AFTER load:', mount, ed);
+        // place cursor at the end and press Enter
+        ed.commands.focus('end');
+        ed.commands.splitListItem('listItem');
+        ed.commands.insertContent('date');
+        const after = dump('AFTER splitListItem + "date":', mount, ed);
+        document.getElementById('t2-out').textContent = before + '\n\n' + after;
+      }
+    </script>
+  </body>
+</html>

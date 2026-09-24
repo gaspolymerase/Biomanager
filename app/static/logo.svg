@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" role="img" aria-label="BioManager">
+  <defs>
+    <linearGradient id="bm-grad-h" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon tile -->
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#bm-grad-h)"/>
+  <g stroke="#ffffff" stroke-linecap="round" fill="none">
+    <path d="M 21 14 C 38 22, 38 28, 21 32 C 38 36, 38 42, 21 50" stroke-width="3"/>
+    <path d="M 43 14 C 26 22, 26 28, 43 32 C 26 36, 26 42, 43 50" stroke-width="3"/>
+    <line x1="23" y1="16" x2="41" y2="16" stroke-width="1.6" opacity="0.55"/>
+    <line x1="27" y1="23" x2="37" y2="23" stroke-width="1.6" opacity="0.55"/>
+    <line x1="22" y1="32" x2="42" y2="32" stroke-width="1.6" opacity="0.55"/>
+    <line x1="27" y1="41" x2="37" y2="41" stroke-width="1.6" opacity="0.55"/>
+    <line x1="23" y1="48" x2="41" y2="48" stroke-width="1.6" opacity="0.55"/>
+  </g>
+  <!-- Wordmark: "Bio" in dark, "Manager" in the brand purple. Uses system
+       fonts so it stays crisp on any platform without webfont loading. -->
+  <text x="80" y="42"
+        font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif"
+        font-size="28" font-weight="700" letter-spacing="-0.5">
+    <tspan fill="#37352f">Bio</tspan><tspan fill="#7c3aed">Manager</tspan>
+  </text>
+</svg>

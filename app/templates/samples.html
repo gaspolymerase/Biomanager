@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block page_title %}Samples{% endblock %}
+{% block page_heading %}Samples{% endblock %}
+{% block page_subtitle %}Harvested samples linked to source animals · {{ samples|length }} entr{{ 'y' if samples|length == 1 else 'ies' }}{% endblock %}
+
+{% block content %}
+<section class="data-table-card" data-table-id="samples">
+  <div class="dt-toolbar">
+    <button type="button" class="dt-view-pill" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#grid"></use></svg> Master view</button>
+    <div class="dt-toolbar-search">
+      <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
+      <input type="text" class="dt-search" placeholder="Search samples…" autocomplete="off">
+    </div>
+    <div class="dt-toolbar-spacer"></div>
+    <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
+    <button type="button" class="dt-toolbar-btn dt-btn-hide"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye-off"></use></svg> Hide</button>
+  </div>
+
+  <div class="dt-inline-form" id="sample-new-form">
+    <form method="post">
+      <label>Sample ID <input name="sample_id" required></label>
+      <label>Source Animal
+        <select name="animal_id_fk" required>
+          {% for animal in animals %}<option value="{{ animal.id }}">{{ animal.animal_id }} ({{ animal.species }})</option>{% endfor %}
+        </select>
+      </label>
+      <label>Sample Type
+        <select name="sample_type">
+          {% for sample_type in sample_types %}<option value="{{ sample_type }}">{{ sample_type }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Collection Date <input type="date" name="collection_date"></label>
+      <label>Storage Location <input name="storage_location"></label>
+      <label>Amount <input name="amount" placeholder="e.g. 250 uL"></label>
+      <label style="grid-column: 1 / -1;">Notes <textarea name="notes" rows="2"></textarea></label>
+      <div class="dt-inline-form-actions">
+        <button type="button" class="dt-bottom-action" onclick="document.getElementById('sample-new-form').classList.remove('is-open')">Cancel</button>
+        <button type="submit" class="dt-bottom-action is-primary">Save sample</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="dt-scroll">
+    <table class="dt" data-resizable="1">
+      <thead>
+        <tr>
+          <th style="width: 36px; min-width: 36px;"><input type="checkbox" class="dt-select-all" aria-label="Select all"></th>
+          <th class="dt-sortable" data-sort-key="sid" style="width: 200px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Sample<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="animal" style="width: 160px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Source animal<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="type" style="width: 140px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Type<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="storage" style="width: 200px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Storage<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="amount" style="width: 110px;">
+            <span class="dt-col-head"><span class="dt-col-type is-text"></span>Amount<span class="dt-sort-indicator"></span></span>
+          </th>
+          <th class="dt-sortable" data-sort-key="date" style="width: 140px;">
+            <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Collected<span class="dt-sort-indicator"></span></span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in samples %}
+          <tr data-id="{{ s.id }}"
+              data-sid="{{ (s.sample_id or '')|lower }}"
+              data-animal="{{ (s.animal.animal_id if s.animal else '')|lower }}"
+              data-type="{{ (s.sample_type or '')|lower }}"
+              data-storage="{{ (s.storage_location or '')|lower }}"
+              data-amount="{{ (s.amount or '')|lower }}"
+              data-date="{{ s.collection_date or '' }}">
+            <td><input type="checkbox" class="dt-row-check" aria-label="Select row"></td>
+            <td><span class="dt-row-icon"></span><span class="dt-row-name">{{ s.sample_id }}</span></td>
+            <td>{{ s.animal.animal_id if s.animal else '' }}</td>
+            <td>{{ s.sample_type }}</td>
+            <td>{{ s.storage_location }}</td>
+            <td>{{ s.amount }}</td>
+            <td>{{ s.collection_date.strftime('%b %d, %Y') if s.collection_date else '' }}</td>
+          </tr>
+        {% else %}
+          <tr><td class="dt-empty" colspan="7">No samples yet. Click <strong>+ Add entry</strong> below to create one.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="dt-bottom-bar">
+    <span class="dt-bottom-count dt-count">{{ samples|length }} entr{{ 'y' if samples|length == 1 else 'ies' }}</span>
+    <button type="button" class="dt-bottom-action is-primary" onclick="document.getElementById('sample-new-form').classList.add('is-open')">
+      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Add entry
+    </button>
+    <div class="dt-bottom-spacer"></div>
+    <div class="dt-pagination">
+      <span class="dt-page-label">Page 1</span>
+      <button type="button" class="dt-prev" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-left"></use></svg></button>
+      <button type="button" class="dt-next" disabled><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg></button>
+      <select class="dt-page-size">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+      </select>
+      <span>per page</span>
+    </div>
+  </div>
+</section>
+{% endblock %}
