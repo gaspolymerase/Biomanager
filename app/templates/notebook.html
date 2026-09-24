@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
-{% block legacy %}1{% endblock %}
-
 {% block page_title %}{% if selected_page %}{{ selected_page.title }}{% else %}Notebook{% endif %}{% endblock %}
+{% block page_heading %}Notebook{% endblock %}
+{% block page_subtitle %}Protocols and lab notes. Type @mouse, @plasmid or @order to link a record.{% endblock %}
+{% block page_shell_class %}shell-page-flush{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/notebook-app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/notebook-app.css') }}?v={{ asset_version('notebook-build/notebook-app.css') }}">
 
 <section class="notebook-shell">
   <aside class="notebook-sidebar">
@@ -79,12 +79,12 @@
                 </form>
               </li>
             {% else %}
-              <li class="notebook-empty muted-inline">No pages yet.</li>
+              <li class="notebook-empty">No pages yet.</li>
             {% endfor %}
           </ul>
         </details>
       {% else %}
-        <p class="muted-inline notebook-empty-topics">No topics yet. Click <strong>+ Topic</strong>.</p>
+        <p class="notebook-empty-topics">No topics yet. Use <strong>New topic</strong> below.</p>
       {% endfor %}
     </div>
 
@@ -101,7 +101,7 @@
     <div class="notebook-modal-card" role="dialog" aria-label="Pick a template">
       <header class="notebook-modal-head">
         <h3>Start from a template</h3>
-        <button type="button" class="notebook-modal-close" onclick="closeTemplatePicker()" aria-label="Close">×</button>
+        <button type="button" class="modal-close" onclick="closeTemplatePicker()" aria-label="Close">{{ icon('close') }}</button>
       </header>
       <div class="notebook-modal-body">
         <div id="notebook-template-list" class="notebook-template-list">
@@ -111,12 +111,12 @@
           <summary><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Create a new template</summary>
           <form id="notebook-template-form" onsubmit="event.preventDefault(); submitNewTemplate();">
             <label>Title <input name="title" required placeholder="e.g. PCR protocol"></label>
-            <label>Icon <input name="icon" maxlength="4" placeholder="🧪 (optional)"></label>
+            <label>Icon <input name="icon" maxlength="4" placeholder="Optional, one character"></label>
             <label>Body (Markdown)
               <textarea name="body" rows="6" placeholder="# Goal&#10;&#10;## Materials&#10;&#10;## Steps&#10;1. ..."></textarea>
             </label>
             <div class="notebook-template-form-actions">
-              <button type="submit" class="dt-bottom-action is-primary">Save template</button>
+              <button type="submit" class="btn btn-primary">Save template</button>
             </div>
           </form>
         </details>
@@ -166,7 +166,7 @@
         <h2>No page selected</h2>
         <p>Pick a page on the left, or create a topic and add a page to start writing.</p>
         {% if not tabs %}
-          <button type="button" onclick="createTab()">+ Create your first topic</button>
+          <button type="button" class="btn btn-primary" onclick="createTab()">{{ icon('folder-plus') }} Create your first topic</button>
         {% endif %}
       </div>
     {% endif %}
@@ -307,13 +307,13 @@ async function openTemplatePicker() {
       list.innerHTML = data.templates.map((t) => `
         <div class="notebook-template-row" data-id="${t.id}">
           <button type="button" class="notebook-template-pick" onclick="useTemplate(${t.id})">
-            <span class="notebook-template-icon">${t.icon || '📄'}</span>
+            <span class="notebook-template-icon">${t.icon ? escapeHtml(t.icon) : '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#file"></use></svg>'}</span>
             <span class="notebook-template-meta">
               <span class="notebook-template-title">${escapeHtml(t.title)}</span>
               <span class="notebook-template-preview">${escapeHtml(t.body_preview || '')}</span>
             </span>
           </button>
-          <button type="button" class="notebook-template-del" title="Delete template" onclick="deleteTemplate(${t.id})">×</button>
+          <button type="button" class="notebook-template-del" title="Delete template" aria-label="Delete template" onclick="deleteTemplate(${t.id})"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
         </div>
       `).join('');
     }
@@ -405,18 +405,18 @@ window.addEventListener('DOMContentLoaded', () => {
     // Bundle missing — show a banner and a textarea fallback.
     const wrapper = mount.parentElement;
     const banner = document.createElement('div');
+    banner.className = 'notebook-banner';
     banner.innerHTML = `
-      <strong>Editor bundle not built.</strong>
-      Run the following in your terminal once, then refresh this page:
-      <pre style="margin:0.5rem 0 0;font-size:0.85rem;background:#fff;padding:0.55rem 0.75rem;border-radius:8px;border:1px solid rgba(245,158,11,0.3);">cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>
+      <strong>The editor isn’t built yet.</strong>
+      Run this once in a terminal, then refresh. Until then you can write in plain Markdown below.
+      <pre>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>
     `;
-    banner.style.cssText = 'padding:0.85rem 1rem;margin-bottom:0.85rem;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;color:#92400e;font-size:0.88rem;line-height:1.5;';
     wrapper.insertBefore(banner, mount);
 
     const ta = document.createElement('textarea');
     ta.value = initialBody.value;
     ta.spellcheck = false;
-    ta.style.cssText = 'width:100%;min-height:60vh;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.92rem;line-height:1.6;padding:1rem 1.2rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff;outline:none;resize:vertical;';
+    ta.className = 'notebook-fallback';
     mount.replaceWith(ta);
     ta.addEventListener('input', () => {
       if (window.notebookSaveBody) window.notebookSaveBody(ta.value);
