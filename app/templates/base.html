@@ -11,15 +11,6 @@
     <link rel="stylesheet"
           href="{{ url_for('static', filename='tailwind.css') }}?v={{ asset_version('tailwind.css') }}">
 
-    {# Templates still awaiting migration set `{% block legacy %}1{% endblock %}`.
-       legacy.css is generated from the old styles.css with every rule scoped
-       under .legacy-page. See scripts/scope-legacy-css.py. #}
-    <!-- legacy:{% block legacy %}{% endblock %} -->
-    {% set uses_legacy = self.legacy()|trim %}
-    {% if uses_legacy %}
-      <link rel="stylesheet"
-            href="{{ url_for('static', filename='legacy.css') }}?v={{ asset_version('legacy.css') }}">
-    {% endif %}
     {% block head_extra %}{% endblock %}
 
     <script>
@@ -160,7 +151,7 @@
 
           {# ---- Content ---- #}
           <div class="shell-scroll" id="app-scroll">
-            <div class="{% block page_shell_class %}shell-page{% endblock %}{% if uses_legacy %} legacy-page{% endif %}">
+            <div class="{% block page_shell_class %}shell-page{% endblock %}">
               {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                   <section class="flash-stack">

@@ -1377,6 +1377,373 @@
 }
 
 /* ===========================================================================
+   PLASMID DETAIL — Open Vector Editor host. OVE brings its own layout and
+   styles (notebook-build/plasmid-app.css); the host only gives it a height
+   and a loading / error state.
+   =========================================================================== */
+
+@layer components {
+  .plasmid-tab-panel { @apply hidden; }
+  .plasmid-tab-panel.is-active { @apply block; }
+  /* Segmented items are usually links; these are buttons. */
+  button.seg-item { @apply cursor-pointer border-0 bg-transparent; }
+  button.seg-item.is-active { @apply bg-surface; }
+
+  .ove-root {
+    @apply relative overflow-hidden rounded-2xl border border-hairline bg-white shadow-xs;
+    height: max(560px, calc(100dvh - 230px));
+  }
+  .ove-loading, .ove-error {
+    @apply absolute inset-0 flex items-center justify-center px-6 text-center text-[13px] text-muted;
+  }
+  .ove-error { @apply bg-danger-50 text-danger-700; }
+  .ove-error code { @apply rounded bg-surface px-1.5 py-0.5 font-mono text-[12px] text-ink; }
+}
+
+/* ===========================================================================
+   CALENDAR — toolbar, filter chips, TOAST UI host, list view, hover card
+   and dialogs. TOAST UI's own grid colours come from biocalTheme() in the
+   template, which reads these same tokens.
+   =========================================================================== */
+
+@layer components {
+
+  .biocal-shell { @apply flex flex-col gap-3; }
+
+  .biocal-toolbar {
+    @apply flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-2xl border border-hairline
+           bg-surface px-3 py-2.5 shadow-xs;
+  }
+  .biocal-nav { @apply inline-flex items-center gap-1.5; }
+  .biocal-title { @apply ml-1.5 min-w-[9ch] text-[15px] font-semibold tracking-[-0.01em] text-ink; }
+  .biocal-actions { @apply ml-auto inline-flex items-center gap-1.5; }
+  .biocal-filters { @apply inline-flex flex-wrap items-center gap-1.5; }
+
+  /* Filter chip: a coloured dot for the lane it controls. */
+  .biocal-toggle {
+    --biocal-tone: var(--color-brand-600);
+    @apply relative inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border
+           border-hairline bg-surface px-2.5 text-[12px] font-medium text-muted transition-colors
+           select-none;
+  }
+  .biocal-toggle input { @apply absolute inset-0 m-0 cursor-pointer opacity-0; }
+  .biocal-toggle-dot {
+    @apply size-2 rounded-full border-[1.5px] transition-colors;
+    border-color: var(--biocal-tone);
+  }
+  .biocal-toggle:hover { @apply border-sand-300 text-ink-soft; }
+  .biocal-toggle:has(input:checked) {
+    @apply text-ink;
+    border-color: color-mix(in srgb, var(--biocal-tone) 40%, transparent);
+    background: color-mix(in srgb, var(--biocal-tone) 10%, var(--color-surface));
+  }
+  .biocal-toggle:has(input:checked) .biocal-toggle-dot { background: var(--biocal-tone); }
+  .biocal-toggle:has(input:focus-visible) { @apply ring-[3px] ring-brand-500/35; }
+  .biocal-toggle[data-tone="events"] { --biocal-tone: #17a38f; }
+  .biocal-toggle[data-tone="tasks"]  { --biocal-tone: #007aff; }
+  .biocal-toggle[data-tone="auto"]   { --biocal-tone: #ff9500; }
+  .biocal-toggle[data-tone="subs"]   { --biocal-tone: #34c759; }
+  .biocal-toggle[data-tone="done"]   { --biocal-tone: #8e8e93; }
+
+  /* TOAST UI's month grid is absolutely positioned inside: it needs a real
+     height or every week row collapses to zero. */
+  .biocal-body { @apply overflow-hidden rounded-2xl border border-hairline bg-surface shadow-xs; }
+  .biocal-tui { height: clamp(620px, calc(100dvh - 250px), 1100px); }
+
+
+  /* Event and to-do chips inside the grid. */
+  .biocal-chip { @apply inline cursor-pointer; }
+  .biocal-task { @apply inline-flex cursor-pointer items-center gap-1.5; }
+  .biocal-task-cb { @apply m-0 size-3 cursor-pointer accent-brand-600; }
+  .biocal-task.is-done .biocal-task-title { @apply text-muted line-through; }
+
+  /* Hover card */
+  .biocal-hover-card {
+    @apply pointer-events-auto fixed z-100 w-80 max-w-[90vw] overflow-hidden rounded-xl border
+           border-hairline bg-surface text-[12.5px] text-ink shadow-pop;
+  }
+  .biocal-hover-card[hidden] { display: none; }
+  .biocal-hover-strip { @apply h-[3px]; }
+  .biocal-hover-body { @apply flex flex-col gap-1.5 px-3.5 py-3; }
+  .biocal-hover-title { @apply text-[14px] font-semibold leading-snug text-ink; }
+  .biocal-hover-date { @apply text-[12px] text-muted tabular-nums; }
+  .biocal-hover-tag { @apply inline-flex items-center gap-1.5 text-[11.5px] text-muted; }
+  .biocal-hover-dot { @apply inline-block size-2 rounded-full; }
+  .biocal-hover-readonly { @apply text-sand-400; }
+  .biocal-hover-notes {
+    @apply mt-1 whitespace-pre-wrap border-t border-sand-100 pt-2 text-[12px] leading-relaxed text-ink-soft;
+  }
+
+  /* List view */
+  .biocal-list { @apply p-3; }
+  .biocal-list-group + .biocal-list-group { @apply mt-3; }
+  .biocal-list-day {
+    @apply rounded-t-xl border border-b-0 border-hairline bg-sand-50 px-3 py-1.5 text-[11px]
+           font-semibold uppercase tracking-[0.06em] text-muted;
+  }
+  .biocal-list-rows { @apply m-0 list-none overflow-hidden rounded-b-xl border border-hairline p-0; }
+  .biocal-list-row {
+    @apply grid cursor-pointer grid-cols-[20px_110px_minmax(0,1fr)_minmax(0,2fr)] items-center gap-3
+           border-b border-sand-100 px-3 py-2 text-[12.5px] transition-colors;
+  }
+  .biocal-list-row:last-child { @apply border-b-0; }
+  .biocal-list-row:hover { @apply bg-sand-50; }
+  .biocal-list-row.is-done .biocal-list-title { @apply text-muted line-through; }
+  .biocal-list-cb { @apply m-0 size-3.5 cursor-pointer accent-brand-600; }
+  .biocal-list-dot { @apply inline-block size-2 rounded-full; }
+  .biocal-list-time { @apply text-[12px] text-muted tabular-nums; }
+  .biocal-list-title { @apply truncate font-medium text-ink; }
+  .biocal-list-meta { @apply truncate text-[12px] text-sand-400; }
+
+  .biocal-empty { @apply m-4 empty-state; }
+  .biocal-empty code { @apply rounded bg-surface px-1.5 py-0.5 font-mono text-[12px] text-ink; }
+
+  /* New / edit dialog */
+  .biocal-modal > form { @apply flex max-h-[86vh] flex-col; }
+  .biocal-kind { @apply cursor-pointer; }
+  .biocal-kind input { @apply sr-only; }
+  .biocal-kind:has(input:checked) { @apply bg-surface text-brand-700 shadow-xs ring-1 ring-sand-200/80; }
+  .biocal-kind:has(input:focus-visible) { @apply ring-[3px] ring-brand-500/35; }
+
+  .biocal-due-presets { @apply mt-1.5 flex flex-wrap gap-1.5; }
+  .biocal-due-btn {
+    @apply h-7 cursor-pointer rounded-full border border-hairline bg-surface px-3 text-[12px]
+           font-medium text-muted transition-colors;
+  }
+  .biocal-due-btn:hover { @apply border-sand-300 text-ink-soft; }
+  .biocal-due-btn.is-active { @apply border-brand-600 bg-brand-600 text-white; }
+
+  .biocal-color-swatches { @apply mt-1.5 flex flex-wrap gap-2; }
+  .biocal-color-swatch {
+    @apply size-7 cursor-pointer rounded-full border-2 border-transparent p-0 transition-transform;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
+  }
+  .biocal-color-swatch:hover { @apply scale-110; }
+  .biocal-color-swatch.is-selected {
+    @apply border-ink;
+    box-shadow: inset 0 0 0 2px var(--color-surface);
+  }
+
+  /* Connected calendars dialog */
+  .biocal-subs-section { @apply flex flex-col gap-2; }
+  .biocal-subs-section h4 { @apply text-[13px] font-semibold text-ink; }
+  .biocal-subs-add {
+    @apply grid grid-cols-1 items-center gap-2 rounded-xl bg-sand-50 p-2.5
+           sm:grid-cols-[1fr_2fr_auto_auto];
+  }
+  .biocal-subs-add :is(input[type="text"], input[type="url"]) { @apply field; }
+  .biocal-subs-add input[type="color"],
+  .biocal-sub-toggle input[type="color"] {
+    @apply h-8 w-10 cursor-pointer rounded-md border border-hairline bg-surface p-0.5;
+  }
+  .biocal-subs-list { @apply m-0 flex list-none flex-col gap-1.5 p-0; }
+  .biocal-sub-row {
+    @apply grid grid-cols-[12px_minmax(0,1fr)_auto_auto_auto] items-center gap-2.5 rounded-xl border
+           border-hairline bg-surface px-3 py-2.5;
+  }
+  .biocal-sub-swatch { @apply inline-block size-2.5 rounded-full; }
+  .biocal-sub-name { @apply text-[12.5px] font-medium text-ink; }
+  .biocal-sub-url, .biocal-sub-meta { @apply truncate text-[11.5px] text-muted; }
+  .biocal-sub-error { @apply mt-0.5 text-[11.5px] text-danger-700; }
+  .biocal-sub-toggle { @apply cursor-pointer; }
+  .biocal-sub-toggle input[type="checkbox"] { @apply size-3.5 accent-brand-600; }
+  .biocal-subs-empty { @apply empty-state py-4; }
+  .biocal-sub-row .biocal-btn, .biocal-google-status .biocal-btn { @apply btn btn-sm; }
+  .biocal-sub-row .biocal-btn { @apply btn-icon size-7; }
+  .biocal-google-status .biocal-btn.is-primary { @apply btn-primary; }
+
+  .biocal-google-status { @apply rounded-xl bg-sand-50 p-3 text-[12.5px]; }
+  .biocal-google-connected { @apply flex flex-wrap items-center justify-between gap-2.5; }
+  .biocal-google-connect { @apply no-underline; }
+  .biocal-google-unconfigured { @apply text-[12.5px] text-muted; }
+  .biocal-google-unconfigured code { @apply rounded bg-surface px-1 py-0.5 font-mono text-[11.5px]; }
+}
+
+/* ===========================================================================
+   NOTEBOOK — two panes like Notes: topics and pages on the left, the page
+   on the right. The editor itself (TipTap, toolbars, mention popovers) is
+   styled by frontend/src/styles.css, which reads the same tokens.
+   =========================================================================== */
+
+@layer components {
+
+  .notebook-shell {
+    @apply grid grid-cols-1 md:grid-cols-[264px_minmax(0,1fr)];
+    min-height: calc(100dvh - var(--tabbar-h) - var(--toolbar-h));
+  }
+
+  /* --- Sidebar --------------------------------------------------------- */
+
+  .notebook-sidebar {
+    @apply flex flex-col gap-1 overflow-y-auto border-b border-hairline bg-sand-50 px-2.5 py-3
+           md:sticky md:top-0 md:border-b-0 md:border-r;
+  }
+  @media (min-width: 768px) {
+    .notebook-sidebar { height: calc(100dvh - var(--tabbar-h) - var(--toolbar-h)); }
+  }
+
+  .notebook-sidebar-head { @apply mb-2 flex flex-col gap-2 px-0.5; }
+  .notebook-search-row { @apply relative; }
+  .notebook-search-row input { @apply field h-8 pl-8 text-[12.5px]; }
+  .notebook-search-icon {
+    @apply pointer-events-none absolute left-2.5 top-1/2 size-[14px] -translate-y-1/2 text-sand-400;
+  }
+  .sidebar-head-actions { @apply flex gap-1.5; }
+  .notebook-new-btn { @apply btn btn-primary h-8 flex-1 justify-center gap-1.5 text-[12.5px]; }
+  .notebook-new-btn-secondary { @apply btn h-8 w-8 flex-none justify-center px-0; }
+  .notebook-new-btn-secondary svg { @apply text-muted; }
+
+  .notebook-section-label {
+    @apply px-2 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-sand-400;
+  }
+
+  .notebook-page-list { @apply m-0 flex list-none flex-col gap-px p-0; }
+  .notebook-tab-pages { @apply ml-3 border-l border-hairline pl-1.5; }
+  .notebook-page-item { @apply relative flex items-center rounded-md; }
+  .notebook-page-item a {
+    @apply flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] text-ink-soft
+           no-underline transition-colors;
+  }
+  .notebook-page-item a:hover { @apply bg-sand-200/60 text-ink; }
+  .notebook-page-icon { @apply size-[13px] shrink-0 text-sand-400; }
+  .page-title-label { @apply truncate; }
+  .notebook-page-item.active a { @apply bg-surface font-medium text-ink shadow-xs; }
+  .notebook-page-item.active .notebook-page-icon { @apply text-brand-600; }
+  .notebook-page-item form { @apply absolute right-1 m-0 opacity-0 transition-opacity; }
+  .notebook-page-item:hover form, .notebook-page-item:focus-within form { @apply opacity-100; }
+  .notebook-page-item form button,
+  .tab-actions button {
+    @apply grid size-6 cursor-pointer place-items-center rounded-md border-0 bg-transparent p-0
+           text-sand-400 transition-colors;
+  }
+  .notebook-page-item form button:hover,
+  .tab-actions button:hover { @apply bg-sand-200 text-ink; }
+  .notebook-page-item form button svg,
+  .tab-actions button svg { @apply size-3; }
+  .danger-link:hover { @apply bg-danger-50 text-danger-600; }
+
+  .notebook-tabs { @apply flex flex-col gap-px; }
+  .notebook-tab > summary {
+    @apply flex cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 py-1.5 text-[12.5px]
+           font-semibold text-ink select-none;
+  }
+  .notebook-tab > summary::-webkit-details-marker { display: none; }
+  .notebook-tab > summary:hover { @apply bg-sand-200/60; }
+  .notebook-tab-caret { @apply size-3 shrink-0 text-sand-400 transition-transform duration-150; }
+  .notebook-tab[open] > summary .notebook-tab-caret { @apply rotate-90; }
+  .tab-title { @apply min-w-0 flex-1 truncate; }
+  .tab-actions { @apply flex items-center gap-px opacity-0 transition-opacity; }
+  .tab-actions form { @apply m-0 inline; }
+  .notebook-tab > summary:hover .tab-actions,
+  .notebook-tab > summary:focus-within .tab-actions { @apply opacity-100; }
+
+  .notebook-empty, .notebook-empty-topics { @apply px-2 py-1.5 text-[12px] text-muted; }
+
+  .notebook-sidebar-footer { @apply mt-auto border-t border-hairline pt-2; }
+  .notebook-sidebar-foot-btn { @apply btn btn-ghost h-8 w-full justify-start gap-2 text-[12.5px] text-muted; }
+
+  /* --- Page -------------------------------------------------------------- */
+
+  .notebook-main { @apply min-w-0 bg-surface; }
+  .notebook-editor { @apply mx-auto w-full max-w-[860px] px-6 pb-40 pt-8 sm:px-10; }
+
+  .page-title {
+    @apply w-full border-0 bg-transparent p-0 text-[28px] font-bold leading-tight tracking-[-0.02em]
+           text-ink shadow-none outline-none placeholder:text-sand-300;
+  }
+  .page-meta {
+    @apply mb-5 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-sand-100 pb-3
+           text-[12px] text-muted;
+  }
+  .page-meta .meta-sep { @apply text-sand-300; }
+  .page-date-input {
+    @apply cursor-pointer rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[12px]
+           text-ink-soft transition-colors tabular-nums;
+  }
+  .page-date-input:hover { @apply bg-sand-100; }
+  .page-date-input:focus { @apply border-brand-400 bg-surface outline-none; }
+  .topic-mover { @apply inline-flex items-center gap-1.5 font-medium text-ink-soft; }
+  .topic-mover select {
+    @apply h-6 w-auto cursor-pointer rounded-md border border-hairline bg-surface py-0 pl-2 pr-6
+           text-[12px] text-ink-soft;
+  }
+  .page-meta-action { @apply btn btn-ghost btn-sm gap-1.5 text-muted; }
+  .page-saved-state { @apply text-[11.5px] text-sand-400; }
+
+  .notebook-empty-state {
+    @apply mx-auto grid min-h-[60vh] max-w-sm place-content-center justify-items-center gap-3 px-6
+           text-center;
+  }
+  .notebook-empty-state h2 { @apply text-[17px] font-semibold text-ink; }
+  .notebook-empty-state p { @apply text-[13px] leading-relaxed text-muted; }
+
+
+  .notebook-banner {
+    @apply mb-4 rounded-xl border border-warn-200 bg-warn-50 px-4 py-3 text-[12.5px] leading-relaxed
+           text-warn-700;
+  }
+  .notebook-banner pre {
+    @apply mt-2 rounded-lg border border-hairline bg-surface px-3 py-2 font-mono text-[12px] text-ink;
+  }
+  .notebook-fallback {
+    @apply field min-h-[60vh] resize-y p-4 font-mono text-[13px] leading-relaxed;
+  }
+
+  /* --- Template picker --------------------------------------------------- */
+
+  .notebook-modal { @apply fixed inset-0 z-100 grid place-items-center p-4; }
+  .notebook-modal[hidden] { display: none; }
+  .notebook-modal-backdrop { @apply absolute inset-0 bg-sand-950/25; }
+  .notebook-modal-card {
+    @apply relative flex max-h-[84vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border
+           border-hairline bg-surface shadow-pop;
+    animation: pop-in 0.16s var(--ease-out-soft);
+  }
+  .notebook-modal-head {
+    @apply flex items-center justify-between border-b border-sand-100 px-5 pb-3 pt-4;
+  }
+  .notebook-modal-head h3 { @apply text-[15px] font-semibold text-ink; }
+  .notebook-modal-body { @apply flex flex-col gap-3 overflow-y-auto px-5 py-4; }
+
+  .notebook-template-list { @apply flex flex-col gap-1.5; }
+  .notebook-template-loading, .notebook-template-empty { @apply empty-state py-6; }
+  .notebook-template-row { @apply flex items-stretch gap-1; }
+  .notebook-template-pick {
+    @apply flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl border border-hairline
+           bg-surface px-3 py-2.5 text-left transition-colors;
+  }
+  .notebook-template-pick:hover { @apply border-brand-300 bg-brand-50/50; }
+  .notebook-template-icon {
+    @apply grid size-8 shrink-0 place-items-center rounded-lg bg-sand-100 text-[16px] text-muted;
+  }
+  .notebook-template-icon svg { @apply size-4; }
+  .notebook-template-meta { @apply flex min-w-0 flex-col; }
+  .notebook-template-title { @apply truncate text-[13px] font-medium text-ink; }
+  .notebook-template-preview { @apply truncate text-[11.5px] text-muted; }
+  .notebook-template-del {
+    @apply grid w-8 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-sand-400
+           opacity-0 transition;
+  }
+  .notebook-template-row:hover .notebook-template-del,
+  .notebook-template-del:focus-visible { @apply opacity-100; }
+  .notebook-template-del:hover { @apply bg-danger-50 text-danger-600; }
+  .notebook-template-del svg { @apply size-3.5; }
+
+  .notebook-template-new { @apply rounded-xl border border-dashed border-sand-300; }
+  .notebook-template-new > summary {
+    @apply flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-[12.5px] font-medium
+           text-brand-700;
+  }
+  .notebook-template-new > summary::-webkit-details-marker { display: none; }
+  .notebook-template-new > summary svg { @apply size-3.5; }
+  .notebook-template-new form { @apply flex flex-col gap-2.5 border-t border-sand-100 px-3 py-3; }
+  .notebook-template-new label { @apply field-label; }
+  .notebook-template-new label > :is(input, textarea) { @apply field mt-1 normal-case tracking-normal; }
+  .notebook-template-new textarea { @apply min-h-28 font-mono text-[12px]; }
+  .notebook-template-form-actions { @apply flex justify-end; }
+}
+
+/* ===========================================================================
    COMMAND PALETTE (⌘K) — markup is generated by global-search.js.
    =========================================================================== */
 
@@ -1505,8 +1872,7 @@
      <input> in a dense table would win against the .dense-table rules
      further down and every cell would render as a full-size field. */
 
-  .workbench :where(button:not([class]), button[type="submit"]:not([class])),
-  .legacy-page :where(button:not([class]), button[type="submit"]:not([class])) { @apply btn; }
+  .workbench :where(button:not([class]), button[type="submit"]:not([class])) { @apply btn; }
 
   .workbench :where(
     input:not([type="checkbox"]):not([type="radio"]):not([class]),
@@ -1936,4 +2302,38 @@
 @keyframes selbar-in {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
+}
+
+/* ===========================================================================
+   OVERRIDES OF THIRD-PARTY STYLESHEETS
+   These must stay outside @layer: TOAST UI's and the notebook editor's CSS
+   are unlayered, and an unlayered rule beats any layered one whatever its
+   specificity.
+   =========================================================================== */
+
+/* TOAST UI hard-codes its blue for today's date circle and a few accents
+   that the calendar's theme option does not reach. */
+.biocal-tui .toastui-calendar-grid-cell-date .toastui-calendar-weekday-grid-date.toastui-calendar-weekday-grid-date-decorator {
+  background-color: var(--color-brand-600);
+  color: #fff;
+  font-weight: 600;
+}
+.biocal-tui .toastui-calendar-see-more { color: var(--color-brand-700); }
+/* Column rules and the "+N" overflow chip are literal greys in TOAST UI's
+   CSS; route them through the tokens so they follow dark mode. */
+.biocal-tui .toastui-calendar-daygrid-cell + .toastui-calendar-daygrid-cell {
+  border-left-color: var(--color-hairline);
+}
+.biocal-tui .toastui-calendar-weekday-exceed-in-week {
+  background-color: var(--color-surface);
+  border-color: var(--color-hairline);
+  color: var(--color-ink-soft);
+}
+.biocal-tui .toastui-calendar-grid-cell-more-events { color: var(--color-muted); }
+
+/* The notebook editor sits flush in the page: no box around the writing. */
+.notebook-main .tiptap-editor-host {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }

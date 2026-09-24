@@ -103,12 +103,12 @@ npm run watch:css  # rebuild while editing templates
 Rebuild after editing templates — Tailwind only emits the classes it finds in
 `app/templates/**/*.html` and `app/static/*.js`.
 
-A few pages (plasmids, zebrafish, calendar, notebook) have not been converted
-yet. They set `{% block legacy %}1{% endblock %}`, which loads
-`app/static/legacy.css` — the old stylesheet with every rule scoped under
-`.legacy-page` so it styles the page body without reaching the new shell.
-Regenerate it with `python scripts/scope-legacy-css.py` if `styles.css`
-changes; delete both once the last template is migrated.
+Every page is on Tailwind; the old `styles.css` / `legacy.css` bridge has
+been removed. Three pages embed third-party widgets that bring their own
+stylesheet (Open Vector Editor on plasmid detail, TOAST UI on the calendar)
+and the notebook editor's own CSS lives in `frontend/src/styles.css`, built
+with `npm run build:notebook`. All three read the theme's colour tokens, so
+they follow the app's palette and dark mode.
 
 ## Organism modules (configurable species databases)
 

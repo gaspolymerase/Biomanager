@@ -1,194 +1,143 @@
 {% extends "base.html" %}
 
-{# Not yet migrated to Tailwind — keeps the scoped legacy stylesheet. #}
-{% block legacy %}1{% endblock %}
-
 {% block page_title %}Calendar{% endblock %}
+{% block page_heading %}Calendar{% endblock %}
+{% block page_subtitle %}Events, to-dos and colony dates on one timeline{% endblock %}
+{% block page_shell_class %}shell-page-wide{% endblock %}
 
 {% block content %}
-{# TOAST UI Calendar stylesheet — copied into static by `npm run build:calendar`.
-   ?v=<mtime> busts the browser cache whenever the asset changes. #}
+{# TOAST UI Calendar's own stylesheet, copied into static by
+   `npm run build:calendar`. ?v=<mtime> busts the cache after a rebuild. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/calendar-app.css') }}?v={{ asset_version('notebook-build/calendar-app.css') }}">
 
-<div class="page-table-header">
-  <div>
-    <h1>Calendar &amp; tasks</h1>
-    <p class="page-subtitle">Events and to-do items, on one timeline.</p>
-  </div>
-</div>
-
 <section class="biocal-shell">
-  {# ====== Top toolbar: view switcher + prev/next + today + new item ====== #}
+  {# ====== Toolbar: range navigation, view switcher, filters, new ====== #}
   <header class="biocal-toolbar">
     <div class="biocal-nav">
-      <button type="button" class="biocal-btn" id="biocal-prev" title="Previous"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-left"></use></svg></button>
-      <button type="button" class="biocal-btn" id="biocal-today">Today</button>
-      <button type="button" class="biocal-btn" id="biocal-next" title="Next"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg></button>
+      <button type="button" class="btn btn-icon" id="biocal-prev" title="Previous" aria-label="Previous">{{ icon('chevron-left') }}</button>
+      <button type="button" class="btn" id="biocal-today">Today</button>
+      <button type="button" class="btn btn-icon" id="biocal-next" title="Next" aria-label="Next">{{ icon('chevron-right') }}</button>
       <span class="biocal-title" id="biocal-title">—</span>
     </div>
 
-    <div class="biocal-views" role="tablist" aria-label="View">
-      <button type="button" class="biocal-view-btn is-active" data-view="month">Month</button>
-      <button type="button" class="biocal-view-btn" data-view="week">Week</button>
-      <button type="button" class="biocal-view-btn" data-view="day">Day</button>
-      <button type="button" class="biocal-view-btn" data-view="list">List</button>
+    <div class="seg" role="tablist" aria-label="View">
+      <button type="button" class="seg-item biocal-view-btn is-active" data-view="month">Month</button>
+      <button type="button" class="seg-item biocal-view-btn" data-view="week">Week</button>
+      <button type="button" class="seg-item biocal-view-btn" data-view="day">Day</button>
+      <button type="button" class="seg-item biocal-view-btn" data-view="list">List</button>
     </div>
 
-    <div class="biocal-filters">
-      <label class="biocal-toggle" data-tone="events">
-        <input type="checkbox" id="biocal-show-events" checked>
-        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
-        <span class="biocal-toggle-label">Events</span>
-      </label>
-      <label class="biocal-toggle" data-tone="tasks">
-        <input type="checkbox" id="biocal-show-tasks" checked>
-        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
-        <span class="biocal-toggle-label">Tasks</span>
-      </label>
-      <label class="biocal-toggle" data-tone="auto">
-        <input type="checkbox" id="biocal-show-auto" checked>
-        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
-        <span class="biocal-toggle-label">Colony</span>
-      </label>
-      <label class="biocal-toggle" data-tone="subs">
-        <input type="checkbox" id="biocal-show-subs" checked>
-        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
-        <span class="biocal-toggle-label">Subscriptions</span>
-      </label>
-      <label class="biocal-toggle" data-tone="done">
-        <input type="checkbox" id="biocal-show-done">
-        <span class="biocal-toggle-pill"><span class="biocal-toggle-dot"></span></span>
-        <span class="biocal-toggle-label">Completed</span>
-      </label>
-      <button type="button" class="biocal-btn" id="biocal-subs-btn" title="Manage subscriptions">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#rss"></use></svg> Calendars
-      </button>
-      <button type="button" class="biocal-btn is-primary" id="biocal-new" title="New item">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New
-      </button>
+    <div class="biocal-filters" role="group" aria-label="Show">
+      {% for tone, label, checked in [("events", "Events", true), ("tasks", "To-dos", true), ("auto", "Colony", true), ("subs", "Subscriptions", true), ("done", "Completed", false)] %}
+        <label class="biocal-toggle" data-tone="{{ tone }}">
+          <input type="checkbox" id="biocal-show-{{ tone }}" {% if checked %}checked{% endif %}>
+          <span class="biocal-toggle-dot"></span>
+          <span class="biocal-toggle-label">{{ label }}</span>
+        </label>
+      {% endfor %}
+    </div>
+
+    <div class="biocal-actions">
+      <button type="button" class="btn" id="biocal-subs-btn" title="Connected calendars">{{ icon('rss') }} Calendars</button>
+      <button type="button" class="btn btn-primary" id="biocal-new">{{ icon('plus') }} New</button>
     </div>
   </header>
 
-  {# ====== Calendar mount (TOAST UI) + custom List view (our own) ====== #}
+  {# ====== TOAST UI mount + our own list view ====== #}
   <div class="biocal-body">
     <div id="biocal-tui" class="biocal-tui"></div>
     <div id="biocal-list" class="biocal-list" hidden></div>
   </div>
 </section>
 
-{# ====== Subscriptions / connected calendars dialog ====== #}
-<dialog id="biocal-subs-modal" class="mouse-modal biocal-subs-modal">
-  <form method="dialog" class="modal-topbar">
-    <h3>Connected calendars</h3>
-    <button type="submit" class="ghost-button">Close</button>
-  </form>
-
-  <section class="biocal-subs-section">
-    <header class="biocal-subs-section-head">
-      <strong>Google Calendar</strong>
-      <span class="muted-inline">OAuth sign-in</span>
-    </header>
-    <div id="biocal-google-status" class="biocal-google-status">
-      <span class="muted-inline">Loading…</span>
+{# ====== Connected calendars ====== #}
+<dialog id="biocal-subs-modal" class="record-dialog biocal-subs-modal" aria-labelledby="biocal-subs-title">
+  <header class="record-dialog-head">
+    <div>
+      <h3 id="biocal-subs-title">Connected calendars</h3>
+      <p class="record-dialog-sub">Show events from Google Calendar or any iCal feed alongside your own. They are read-only here.</p>
     </div>
-  </section>
+    <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+  </header>
+  <div class="record-dialog-body">
+    <section class="biocal-subs-section">
+      <h4>Google Calendar</h4>
+      <div id="biocal-google-status" class="biocal-google-status">
+        <span class="muted-inline">Loading…</span>
+      </div>
+    </section>
 
-  <section class="biocal-subs-section">
-    <header class="biocal-subs-section-head">
-      <strong>ICS subscriptions</strong>
-      <span class="muted-inline">Paste an iCal feed URL (any calendar that publishes one — Apple, Outlook, university, even Google's "secret iCal address").</span>
-    </header>
-
-    <form id="biocal-subs-add" class="biocal-subs-add">
-      <input type="text" name="name" placeholder="Label (e.g. Lab meetings)" required>
-      <input type="url" name="url" placeholder="https://… .ics or webcal://…" required>
-      <input type="color" name="color" value="#10b981">
-      <button type="submit" class="dt-bottom-action is-primary">Add</button>
-    </form>
-
-    <ul id="biocal-subs-list" class="biocal-subs-list">
-      <li class="muted-inline" style="padding:10px;">Loading…</li>
-    </ul>
-  </section>
+    <section class="biocal-subs-section">
+      <h4>iCal subscriptions</h4>
+      <p class="muted-inline">Paste a feed URL: Apple, Outlook, a university calendar, or Google's secret iCal address.</p>
+      <form id="biocal-subs-add" class="biocal-subs-add">
+        <input type="text" name="name" placeholder="Label, e.g. Lab meetings" required aria-label="Label">
+        <input type="url" name="url" placeholder="https://… .ics or webcal://…" required aria-label="Feed URL">
+        <input type="color" name="color" value="#34c759" aria-label="Colour">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </form>
+      <ul id="biocal-subs-list" class="biocal-subs-list">
+        <li class="biocal-subs-empty">Loading…</li>
+      </ul>
+    </section>
+  </div>
 </dialog>
 
-{# ====== Create / edit dialog ====== #}
-<dialog id="biocal-modal" class="mouse-modal biocal-modal">
-  <form method="dialog" class="modal-topbar">
-    <h3 id="biocal-modal-title">New item</h3>
-    <button type="submit" class="ghost-button">Close</button>
-  </form>
+{# ====== New / edit item ====== #}
+<dialog id="biocal-modal" class="record-dialog biocal-modal" aria-labelledby="biocal-modal-title">
   <form id="biocal-form" class="biocal-form">
-    <input type="hidden" name="id" id="biocal-id">
+    <header class="record-dialog-head">
+      <div><h3 id="biocal-modal-title">New item</h3></div>
+      <button type="button" class="modal-close" onclick="document.getElementById('biocal-modal').close()" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <input type="hidden" name="id" id="biocal-id">
 
-    <div class="biocal-form-row">
-      <label class="biocal-radio">
-        <input type="radio" name="kind" value="event" checked> Event
-      </label>
-      <label class="biocal-radio">
-        <input type="radio" name="kind" value="task"> Todo
-      </label>
-    </div>
-
-    <label class="biocal-form-row is-wide">
-      Title <input name="title" required autofocus>
-    </label>
-
-    {# Event mode: full datetime range + all-day toggle. #}
-    <div class="biocal-when biocal-when-event">
-      <div class="biocal-form-row">
-        <label>Start <input type="datetime-local" name="start"></label>
-        <label>End <input type="datetime-local" name="end"></label>
+      <div class="seg self-start" role="radiogroup" aria-label="Kind">
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="event" checked> Event</label>
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="task"> To-do</label>
       </div>
-      <div class="biocal-form-row">
-        <label class="biocal-checkbox">
-          <input type="checkbox" name="isAllday" checked> All-day
-        </label>
-      </div>
-    </div>
 
-    {# Todo mode: three quick presets + an optional custom date. No time-of-day. #}
-    <div class="biocal-when biocal-when-task" hidden>
-      <div class="biocal-form-row is-wide">
-        <span class="biocal-color-label">Due</span>
+      <label>Title <input name="title" required></label>
+
+      {# Event: a date-time range, or all day. #}
+      <div class="biocal-when biocal-when-event record-group">
+        <label>Starts <input type="datetime-local" name="start"></label>
+        <label>Ends <input type="datetime-local" name="end"></label>
+        <label class="col-span-full"><input type="checkbox" name="isAllday" checked> All day</label>
+      </div>
+
+      {# To-do: a due day from three presets or a custom date. #}
+      <div class="biocal-when biocal-when-task" hidden>
+        <span class="field-label">Due</span>
         <div class="biocal-due-presets" id="biocal-due-presets">
           <button type="button" class="biocal-due-btn is-active" data-due="today">Today</button>
           <button type="button" class="biocal-due-btn" data-due="tomorrow">Tomorrow</button>
           <button type="button" class="biocal-due-btn" data-due="next-week">Next week</button>
-          <button type="button" class="biocal-due-btn" data-due="custom">Custom…</button>
+          <button type="button" class="biocal-due-btn" data-due="custom">Pick a date</button>
         </div>
-        <input type="date" name="due_custom" id="biocal-due-custom" hidden>
+        <input type="date" name="due_custom" id="biocal-due-custom" class="field mt-2 w-auto" hidden aria-label="Due date">
       </div>
-    </div>
 
-    {# Macaron palette — eight curated pastel tones that all sit well on a
-       light calendar background. The hidden `color` input is what the form
-       submits; the swatch row only toggles the selected state visually. #}
-    <div class="biocal-form-row is-wide">
-      <span class="biocal-color-label">Color</span>
-      <input type="hidden" name="color" id="biocal-color-val" value="#c4b5fd">
-      <div class="biocal-color-swatches" id="biocal-color-swatches">
-        <button type="button" class="biocal-color-swatch" data-color="#f9a8a8" style="background:#f9a8a8" aria-label="Rose"></button>
-        <button type="button" class="biocal-color-swatch" data-color="#fcb77e" style="background:#fcb77e" aria-label="Apricot"></button>
-        <button type="button" class="biocal-color-swatch" data-color="#fbe89e" style="background:#fbe89e" aria-label="Lemon"></button>
-        <button type="button" class="biocal-color-swatch" data-color="#b6e2a1" style="background:#b6e2a1" aria-label="Pistachio"></button>
-        <button type="button" class="biocal-color-swatch" data-color="#a3e0d8" style="background:#a3e0d8" aria-label="Mint"></button>
-        <button type="button" class="biocal-color-swatch" data-color="#a4c8f0" style="background:#a4c8f0" aria-label="Sky"></button>
-        <button type="button" class="biocal-color-swatch" data-color="#c4b5fd" style="background:#c4b5fd" aria-label="Lavender"></button>
-        <button type="button" class="biocal-color-swatch" data-color="#f4b8d8" style="background:#f4b8d8" aria-label="Pink"></button>
+      {# Eight pastel tones that sit well on the calendar grid. The hidden
+         input is what the form submits; the swatches only show the choice. #}
+      <div>
+        <span class="field-label">Colour</span>
+        <input type="hidden" name="color" id="biocal-color-val" value="#c4b5fd">
+        <div class="biocal-color-swatches" id="biocal-color-swatches">
+          {% for hex, name in [("#f9a8a8", "Rose"), ("#fcb77e", "Apricot"), ("#fbe89e", "Lemon"), ("#b6e2a1", "Pistachio"), ("#a3e0d8", "Mint"), ("#a4c8f0", "Sky"), ("#c4b5fd", "Lavender"), ("#f4b8d8", "Pink")] %}
+            <button type="button" class="biocal-color-swatch" data-color="{{ hex }}" style="background:{{ hex }}" aria-label="{{ name }}" title="{{ name }}"></button>
+          {% endfor %}
+        </div>
       </div>
-    </div>
 
-    <label class="biocal-form-row is-wide">
-      Notes <textarea name="body" rows="3"></textarea>
-    </label>
-
-    <div class="biocal-form-actions">
-      <button type="button" class="dt-bottom-action" id="biocal-delete" hidden>Delete</button>
-      <span style="flex:1"></span>
-      <button type="button" class="dt-bottom-action" onclick="document.getElementById('biocal-modal').close()">Cancel</button>
-      <button type="submit" class="dt-bottom-action is-primary">Save</button>
+      <label>Notes <textarea name="body" rows="3"></textarea></label>
     </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn btn-danger mr-auto" id="biocal-delete" hidden>{{ icon('trash') }} Delete</button>
+      <button type="button" class="btn" onclick="document.getElementById('biocal-modal').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </footer>
   </form>
 </dialog>
 
@@ -237,6 +186,59 @@
     });
   }
 
+  /* TOAST UI's grid colours, taken from the app's tokens at runtime so the
+     calendar follows the theme (including dark mode) instead of TOAST UI's
+     own defaults. */
+  function biocalTheme() {
+    const css = getComputedStyle(document.documentElement);
+    const v = (name, fallback) => (css.getPropertyValue(name) || '').trim() || fallback;
+    const line = `1px solid ${v('--color-hairline', '#e5e5ea')}`;
+    const surface = v('--color-surface', '#ffffff');
+    const recess = v('--color-sand-50', '#f5f5f7');
+    const ink = v('--color-ink', '#1d1d1f');
+    const muted = v('--color-muted', '#86868b');
+    const brand = v('--color-brand-600', '#17a38f');
+    const brandTint = v('--color-brand-50', '#e9f8f5');
+    return {
+      common: {
+        backgroundColor: surface,
+        border: line,
+        gridSelection: { backgroundColor: brandTint, border: `1px solid ${brand}` },
+        dayName: { color: muted },
+        holiday: { color: v('--color-danger-600', '#ff3b30') },
+        saturday: { color: muted },
+        today: { color: brand },
+      },
+      month: {
+        dayName: { borderLeft: 'none', backgroundColor: recess },
+        dayExceptThisMonth: { color: v('--color-sand-300', '#c7c7cc') },
+        holidayExceptThisMonth: { color: v('--color-sand-300', '#c7c7cc') },
+        weekend: { backgroundColor: surface },
+        moreView: { backgroundColor: surface, border: line, boxShadow: v('--shadow-md', 'none') },
+        moreViewTitle: { backgroundColor: recess },
+      },
+      week: {
+        dayName: { borderLeft: 'none', borderTop: line, borderBottom: line, backgroundColor: recess },
+        dayGrid: { borderRight: line, backgroundColor: surface },
+        dayGridLeft: { borderRight: line, backgroundColor: recess },
+        timeGrid: { borderRight: line },
+        timeGridLeft: { borderRight: line, backgroundColor: recess },
+        timeGridHourLine: { borderBottom: line },
+        timeGridHalfHourLine: { borderBottom: `1px dotted ${v('--color-hairline', '#e5e5ea')}` },
+        today: { color: brand, backgroundColor: 'transparent' },
+        pastDay: { color: muted },
+        pastTime: { color: muted },
+        weekend: { backgroundColor: surface },
+        nowIndicatorLabel: { color: brand },
+        nowIndicatorPast: { border: `1px dashed ${brand}` },
+        nowIndicatorBullet: { backgroundColor: brand },
+        nowIndicatorToday: { border: `1px solid ${brand}` },
+        panelResizer: { border: line },
+        gridSelection: { color: ink },
+      },
+    };
+  }
+
   // ---- Init -------------------------------------------------------------
   waitForTui().then((status) => {
     if (status !== 'ready') {
@@ -246,6 +248,7 @@
     const Calendar = window.tui.Calendar;
     calendar = new Calendar('#biocal-tui', {
       defaultView: 'month',
+      theme: biocalTheme(),
       useFormPopup: false,    // we use our own dialog
       useDetailPopup: false,  // we use our own hover card (see below)
       isReadOnly: false,
@@ -254,9 +257,9 @@
       // items because they spill past the default 6-event limit.
       month: { visibleEventCount: 99 },
       calendars: [
-        { id: 'events', name: 'Events', backgroundColor: '#7c3aed', borderColor: '#7c3aed' },
-        { id: 'tasks', name: 'Tasks', backgroundColor: '#0ea5e9', borderColor: '#0ea5e9' },
-        { id: 'auto', name: 'Colony', backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
+        { id: 'events', name: 'Events', backgroundColor: '#17a38f', borderColor: '#17a38f' },
+        { id: 'tasks', name: 'Tasks', backgroundColor: '#007aff', borderColor: '#007aff' },
+        { id: 'auto', name: 'Colony', backgroundColor: '#ff9500', borderColor: '#ff9500' },
       ],
       template: {
         // All event templates embed the schedule id on a wrapping span so
@@ -303,7 +306,7 @@
         start: toLocalInput(tuiToDate(sel.start)),
         end: toLocalInput(tuiToDate(sel.end || sel.start)),
         isAllday: !!sel.isAllday,
-        color: '#7c3aed',
+        color: '#17a38f',
         body: '',
       });
       try { calendar.clearGridSelections(); } catch (_) {}
@@ -357,7 +360,7 @@
         start: toLocalInput(tuiToDate(event.start)),
         end: toLocalInput(tuiToDate(event.end)),
         isAllday: !!event.isAllday,
-        color: event.backgroundColor || '#7c3aed',
+        color: event.backgroundColor || '#17a38f',
         body: event.body || '',
       });
     });
@@ -416,7 +419,7 @@
         start: toLocalInput(new Date()),
         end: toLocalInput(new Date()),
         isAllday: true,
-        color: '#7c3aed',
+        color: '#17a38f',
         body: '',
       });
     });
@@ -780,10 +783,10 @@
   document.body.appendChild(hoverCard);
 
   const CAL_TONES = {
-    events: { name: 'Events', color: '#7c3aed' },
-    tasks: { name: 'Tasks', color: '#0ea5e9' },
-    auto: { name: 'Colony', color: '#f59e0b' },
-    google: { name: 'Google', color: '#ef4444' },
+    events: { name: 'Events', color: '#17a38f' },
+    tasks: { name: 'Tasks', color: '#007aff' },
+    auto: { name: 'Colony', color: '#ff9500' },
+    google: { name: 'Google', color: '#ff3b30' },
   };
 
   let hoverShowTimer = null;
@@ -792,8 +795,8 @@
   function showHoverCard(item, anchorRect) {
     clearTimeout(hoverHideTimer);
     const cal = CAL_TONES[item.calendarId] || (item.calendarId && item.calendarId.startsWith('sub-')
-      ? { name: 'Subscription', color: item.backgroundColor || '#10b981' }
-      : { name: '', color: item.backgroundColor || '#7c3aed' });
+      ? { name: 'Subscription', color: item.backgroundColor || '#34c759' }
+      : { name: '', color: item.backgroundColor || '#17a38f' });
     const dateRange = item.isAllday
       ? new Date(item.start).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
       : `${new Date(item.start).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} → ${new Date(item.end).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
