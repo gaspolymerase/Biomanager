@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_rack_grid.html" import rack_grid, rack_dialog, view_switch with context %}
 
 {% set view_meta = colony_view_meta.get(active_view, {}) %}
 
@@ -414,6 +415,22 @@
         </form>
       </dialog>
     {% elif active_view == "cages" %}
+      <div data-layout-scope>
+        <div class="mb-3 flex flex-wrap items-center gap-2.5">
+          {{ view_switch('mouse-cages', 'Cage cards', 'Rack grid') }}
+          <span class="text-[12px] text-muted">A cage’s location, written as <span class="ident">rack-position</span> (e.g. <span class="ident">B-D7</span>), places it on the rack grid.</span>
+        </div>
+
+        <div data-layout-panel="grid" hidden>
+          <section class="data-table-card">
+            {{ rack_grid('mouse-cages', cage_racks,
+                         url_for('place_cage', cage_row_id=0)|replace('/0/', '/{id}/'),
+                         rack_noun='rack', rack_dialog_id='mouse-rack-dialog',
+                         empty_text='No racks yet. Use New rack to add one; cages whose location names it will appear.') }}
+          </section>
+        </div>
+
+        <div data-layout-panel="table">
       <section class="panel">
         <div class="section-head">
           <div>
@@ -528,6 +545,49 @@
           {% endfor %}
         </div>
       </section>
+        </div>
+      </div>
+
+      {% call rack_dialog('mouse-rack-dialog', url_for('save_mouse_rack'), url_for('save_mouse_rack'),
+                          url_for('delete_mouse_rack', rack_id=0)) %}
+        <label class="col-span-full">Room <input name="room" placeholder="Optional"></label>
+      {% endcall %}
+
+      <dialog id="cage-dialog" class="record-dialog" aria-labelledby="cage-dialog-title">
+        <form method="post" data-record-form
+              data-create-action="{{ url_for('create_cage') }}"
+              data-update-action="{{ url_for('update_cage', cage_row_id=0) }}"
+              data-new-title="New cage" data-edit-title="Cage {label}"
+              data-new-submit="Create cage" data-edit-submit="Save">
+          <header class="record-dialog-head">
+            <div>
+              <h3 id="cage-dialog-title" data-record-title>New cage</h3>
+              <p class="record-dialog-sub">A new cage gets the next free ID ({{ next_cage_id_value }}).</p>
+            </div>
+            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+          </header>
+          <div class="record-dialog-body">
+            <fieldset class="record-group">
+              <legend>Where</legend>
+              <label>Location <input name="cage_location" class="font-mono" placeholder="e.g. B-D7" list="options-cage_location"></label>
+              <label>Room <input name="room"></label>
+              <label class="col-span-full">Location detail <input name="location_detail"></label>
+            </fieldset>
+            <fieldset class="record-group">
+              <legend>Cage</legend>
+              <label>Purpose <input name="purpose" list="options-purpose"></label>
+              <label>Card ID <input name="card_id"></label>
+              <label>Genotype summary <input name="genotype_summary"></label>
+              <label>Litter born <input type="date" name="date_give_birth"></label>
+            </fieldset>
+            <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+          </div>
+          <footer class="record-dialog-foot">
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-record-submit>Create cage</button>
+          </footer>
+        </form>
+      </dialog>
     {% elif active_view == "litters" %}
       <section class="panel">
         <div class="section-head">

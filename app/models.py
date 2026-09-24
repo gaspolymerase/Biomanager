@@ -214,6 +214,24 @@ class LitterRecord(Base):
     mice: Mapped[list["MouseRecord"]] = relationship(back_populates="litter")
 
 
+class MouseRack(Base):
+    """A cage rack. Cages are placed by their location text, written as
+    `<rack>-<row letter><column>` (e.g. "B-D7"), so a location typed into
+    the mouse sheet and a cage dragged on the rack grid are the same thing,
+    and a location that names no rack simply shows as unplaced."""
+
+    __tablename__ = "mouse_racks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    rows: Mapped[int] = mapped_column(Integer, default=8)
+    cols: Mapped[int] = mapped_column(Integer, default=10)
+    room: Mapped[str] = mapped_column(String(120), default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class CageRecord(Base):
     __tablename__ = "mouse_cages"
 
