@@ -187,11 +187,22 @@
       {% if zebrafish_due.mating or zebrafish_due.geno %}
         <div class="flex flex-col">
           {% for t in zebrafish_due.mating %}
-            <a class="row-line" href="{{ url_for('zebrafish', view='tanks') }}#tank-{{ t.id }}">
-              <span class="w-20 shrink-0 text-[12px] font-semibold {% if t.overdue %}text-danger-700{% else %}text-warn-700{% endif %}">{{ t.due | relative_day }}</span>
-              <span class="min-w-0 flex-1 truncate text-ink-soft">Return mating tank <span class="ident">{{ t.tank_id }}</span></span>
+            <div class="row-line">
+              <a class="flex min-w-0 flex-1 items-center gap-3 no-underline" href="{{ url_for('zebrafish', view='tanks') }}#tank-{{ t.id }}">
+                <span class="w-20 shrink-0 text-[12px] font-semibold {% if t.overdue %}text-danger-700{% else %}text-warn-700{% endif %}">{{ t.due | relative_day }}</span>
+                <span class="min-w-0 flex-1 truncate text-ink-soft">Return mating tank <span class="ident">{{ t.tank_id }}</span></span>
+              </a>
               {% if t.owner %}{{ t.owner | owner_badge }}{% endif %}
-            </a>
+              {# Returned: straight from here when every group has a home
+                 tank, otherwise on the tanks page, which asks. #}
+              {% if t.editable and t.ready %}
+                <form method="post" action="{{ url_for('zebrafish_return_mating', tank_row_id=t.id) }}" data-confirm="{{ t.confirm }}">
+                  <button type="submit" class="btn btn-sm" title="The fish go back to their tanks">{{ icon('back') }} Returned</button>
+                </form>
+              {% elif t.editable %}
+                <a class="btn btn-sm" href="{{ url_for('zebrafish', view='tanks') }}#return-{{ t.id }}" title="Choose where the fish go back">{{ icon('back') }} Returned…</a>
+              {% endif %}
+            </div>
           {% endfor %}
           {% for t in zebrafish_due.geno %}
             <a class="row-line" href="{{ url_for('zebrafish', view='tanks', mode='geno') }}">
