@@ -30,6 +30,34 @@
 </section>
 
 <div class="mb-2 flex items-center justify-between gap-2">
+  <h2 class="flex items-center gap-2">{{ icon('fly') }} Fly &amp; worm stocks</h2>
+  <div class="flex gap-1.5">
+    <a class="btn btn-sm" href="{{ url_for('stocks.new_module', kind='fly') }}">{{ icon('plus') }} Drosophila</a>
+    <a class="btn btn-sm" href="{{ url_for('stocks.new_module', kind='worm') }}">{{ icon('plus') }} C. elegans</a>
+  </div>
+</div>
+<section class="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+  {% for c in stock_cards %}
+    {% set m = c.module %}
+    <article class="card flex flex-col">
+      <header class="card-head">
+        <h2>{{ icon(m.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ url_for('stocks.module', key=m.key) }}">{{ m.label }}</a></h2>
+        {% if not m.enabled %}<span class="badge badge-quiet">hidden</span>{% else %}<span class="badge badge-quiet">{{ c.count }} {{ m.unit if c.count == 1 else m.units }}</span>{% endif %}
+      </header>
+      <div class="flex flex-col gap-3 p-4">
+        {% if m.blurb %}<p class="text-[12.5px] leading-snug text-muted">{{ m.blurb }}</p>{% endif %}
+      </div>
+      <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
+        <a class="btn btn-sm" href="{{ url_for('stocks.module', key=m.key) }}">Open</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('stocks.module', key=m.key, view='settings') }}">{{ icon('settings') }} Rename / configure</a>
+      </footer>
+    </article>
+  {% else %}
+    <div class="card empty-state"><p>No fly or worm databases.</p></div>
+  {% endfor %}
+</section>
+
+<div class="mb-2 flex items-center justify-between gap-2">
   <h2 class="flex items-center gap-2">{{ icon('flask') }} Lab inventories</h2>
   <a class="btn btn-sm" href="{{ url_for('inventory.new_module') }}">{{ icon('plus') }} New inventory</a>
 </div>

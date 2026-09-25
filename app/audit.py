@@ -35,6 +35,8 @@ TRACKED_TABLES = {
     "organism_crosses", "organism_modules", "organism_module_fields",
     "organism_preservation", "users",
     "inventory_modules", "inventory_items", "inventory_racks", "mouse_racks",
+    "stock_modules", "stock_incubators", "stock_racks", "stock_genotypes", "stock_units",
+    "stock_frozen",
 }
 
 # High-churn or derived rows: logging them would bury the signal.

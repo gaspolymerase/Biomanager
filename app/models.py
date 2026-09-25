@@ -1204,3 +1204,141 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(120), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+# ---------------------------------------------------------------------------
+# Fly and worm stocks.
+#
+# Flies and worms are kept in vials and plates, and the vial or plate is
+# the record: its genotype, what it is for (stock, cross, experiment…),
+# and where it sits (incubator → rack → position). Genotypes are a plain
+# list that grows as people type new ones; there are no line codes.
+# Settings (nouns, purposes, temperatures and intervals) live on the
+# module; presets are in app/stocks.py.
+# ---------------------------------------------------------------------------
+
+
+class StockModule(Base):
+    __tablename__ = "stock_modules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(20), default="fly")  # fly | worm
+    icon: Mapped[str] = mapped_column(String(60), default="fly")
+    blurb: Mapped[str] = mapped_column(Text, default="")
+    settings: Mapped[str] = mapped_column(Text, default="{}")
+    position: Mapped[int] = mapped_column(Integer, default=200)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class StockIncubator(Base):
+    """An incubator (or room): what the racks sit in, and whose temperature
+    sets how fast everything inside develops."""
+    __tablename__ = "stock_incubators"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module_id_fk: Mapped[int] = mapped_column(ForeignKey("stock_modules.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    temperature: Mapped[str] = mapped_column(String(10), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class StockRack(Base):
+    """A rack of vials or a box of plates. Flipping is done a rack at a
+    time, so the flip date lives here."""
+    __tablename__ = "stock_racks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module_id_fk: Mapped[int] = mapped_column(ForeignKey("stock_modules.id"), index=True)
+    incubator_id_fk: Mapped[int | None] = mapped_column(ForeignKey("stock_incubators.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(120))
+    rows: Mapped[int] = mapped_column(Integer, default=10)
+    cols: Mapped[int] = mapped_column(Integer, default=10)
+    naming: Mapped[str] = mapped_column(Text, default="{}")
+    last_flipped_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Days between flips; empty = from the incubator's temperature.
+    flip_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    incubator: Mapped[StockIncubator | None] = relationship()
+
+
+class StockGenotype(Base):
+    """A genotype the lab has written down. Grows by itself as vials are
+    labelled; kept for suggestions, stock-centre numbers and notes."""
+    __tablename__ = "stock_genotypes"
+    __table_args__ = (UniqueConstraint("module_id_fk", "genotype", name="uq_stock_genotype"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module_id_fk: Mapped[int] = mapped_column(ForeignKey("stock_modules.id"), index=True)
+    genotype: Mapped[str] = mapped_column(String(400))
+    alias: Mapped[str] = mapped_column(String(200), default="")
+    source: Mapped[str] = mapped_column(String(120), default="")
+    stock_number: Mapped[str] = mapped_column(String(120), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class StockUnit(Base, _JsonAttrs):
+    """One vial or plate."""
+    __tablename__ = "stock_units"
+    __table_args__ = (UniqueConstraint("module_id_fk", "number", name="uq_stock_unit_number"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module_id_fk: Mapped[int] = mapped_column(ForeignKey("stock_modules.id"), index=True)
+    number: Mapped[int] = mapped_column(Integer, index=True)
+    genotype: Mapped[str] = mapped_column(String(400), default="", index=True)
+    purpose: Mapped[str] = mapped_column(String(40), default="stock", index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # Crosses: the two parents (♀ virgins × ♂; hermaphrodites × males).
+    female_genotype: Mapped[str] = mapped_column(String(400), default="")
+    male_genotype: Mapped[str] = mapped_column(String(400), default="")
+    rack_id_fk: Mapped[int | None] = mapped_column(ForeignKey("stock_racks.id"), nullable=True, index=True)
+    rack_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rack_col: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    set_up_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    owner: Mapped[str] = mapped_column(String(80), default="", index=True)
+    # Egg collection: the cross a progeny vial came from, when the cross
+    # was last collected, and when the progeny are due to emerge.
+    parent_id_fk: Mapped[int | None] = mapped_column(ForeignKey("stock_units.id"), nullable=True)
+    last_collected_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ready_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Temperature-shift experiments.
+    shift_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    shift_to: Mapped[str] = mapped_column(String(10), default="")
+    shifted_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    score_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    discarded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    attrs: Mapped[str] = mapped_column(Text, default="{}")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_by: Mapped[str] = mapped_column(String(80), default="")
+
+    rack: Mapped[StockRack | None] = relationship()
+    parent: Mapped["StockUnit | None"] = relationship(remote_side="StockUnit.id")
+
+
+class StockFrozen(Base):
+    """A frozen lot (worms: -80 °C or liquid nitrogen), with a thaw check,
+    because a strain you cannot recover is a strain you do not have."""
+    __tablename__ = "stock_frozen"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module_id_fk: Mapped[int] = mapped_column(ForeignKey("stock_modules.id"), index=True)
+    genotype: Mapped[str] = mapped_column(String(400), default="")
+    frozen_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vials: Mapped[int] = mapped_column(Integer, default=0)
+    vials_left: Mapped[int] = mapped_column(Integer, default=0)
+    location: Mapped[str] = mapped_column(String(200), default="")
+    thaw_tested_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    thaw_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    owner: Mapped[str] = mapped_column(String(80), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

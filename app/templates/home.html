@@ -132,6 +132,27 @@
     {% endif %}
   </article>
 
+  {# Fly / worm work due #}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon('fly') }} Flies &amp; worms: due</h2>
+      {% if stock_due_total > stock_due|length %}<span class="badge badge-quiet">{{ stock_due_total }}</span>{% endif %}
+    </header>
+    {% if stock_due %}
+      <div class="flex flex-col">
+        {% for d in stock_due %}
+          <a class="row-line" href="{{ url_for('stocks.module', key=d.key, view='schedule') }}">
+            <span class="w-20 shrink-0 text-[12px] font-semibold {% if d.overdue %}text-danger-700{% elif d.is_today %}text-warn-700{% else %}text-muted{% endif %}">{{ d.due | relative_day }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">{{ d.title }}</span>
+            <span class="shrink-0 text-[11.5px] text-sand-400">{{ d.module }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">{{ icon('fly') }}<p>No flips, collections or shifts due in the next two days.</p></div>
+    {% endif %}
+  </article>
+
   {# Upcoming events #}
   <article class="card flex flex-col">
     <header class="card-head">

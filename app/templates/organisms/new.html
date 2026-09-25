@@ -13,6 +13,27 @@
 
 {% block content %}
 
+{# ---- Fly and worm stocks ------------------------------------------------ #}
+<section class="mb-6">
+  <h2 class="mb-1 flex items-center gap-2">{{ icon('fly', 'size-[17px] text-brand-600') }} Fly or worm stocks</h2>
+  <p class="mb-3 text-[12.5px] text-muted">
+    Vials or plates in racks inside incubators: genotype, purpose, crosses, egg collection,
+    flip schedule and temperature shifts.
+  </p>
+  <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+    {% for key, p in stock_presets.items() %}
+      <a class="card flex flex-col gap-2 p-4 no-underline transition-all hover:border-brand-300 hover:shadow-sm"
+         href="{{ url_for('stocks.new_module', kind=key) }}">
+        <span class="flex items-center gap-2">
+          {{ icon(p.icon, "size-[17px] text-brand-600") }}
+          <span class="text-[14px] font-semibold text-ink">{{ p.label }}</span>
+        </span>
+        <span class="text-[12px] leading-snug text-muted">{{ p.blurb }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+
 {# ---- Lab inventories ---------------------------------------------------- #}
 <section class="mb-6">
   <h2 class="mb-1 flex items-center gap-2">{{ icon('flask', 'size-[17px] text-brand-600') }} Lab inventory</h2>

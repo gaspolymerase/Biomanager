@@ -34,6 +34,7 @@ from .models import (
 from . import access
 from . import organism_service as svc
 from . import inventory as inventory_presets
+from . import stocks as stock_presets
 from . import positions
 from .icons import housing_icon
 from .organisms import (
@@ -159,8 +160,19 @@ def index():
     from . import inventory_service as inventories
     from .models import InventoryItem, MouseRecord, PlasmidRecord, TankRecord
 
+    from . import stock_service as stocks
+    from .models import StockUnit
+
     with SessionLocal() as session:
-        modules = svc.list_modules(session, include_disabled=True)
+        stock_modules = stocks.list_modules(session, include_disabled=True)
+        moved = {m.key for m in stock_modules}
+        # Old fly/worm modules that moved to the stock pages are not listed.
+        modules = [m for m in svc.list_modules(session, include_disabled=True)
+                   if m.enabled or m.key not in moved]
+        unit_counts = dict(session.execute(select(StockUnit.module_id_fk, func.count())
+                                           .where(StockUnit.active.is_(True))
+                                           .group_by(StockUnit.module_id_fk)).all())
+        stock_cards = [{"module": stocks.view(m), "count": unit_counts.get(m.id, 0)} for m in stock_modules]
         cards = []
         for module in modules:
             cards.append({
@@ -183,7 +195,7 @@ def index():
         inventory_cards = [{"module": inventories.view(m), "count": item_counts.get(m.id, 0)}
                            for m in inventories.list_modules(session, include_disabled=True)]
         return render_template("organisms/index.html", cards=cards, builtins=builtins,
-                               inventory_cards=inventory_cards)
+                               inventory_cards=inventory_cards, stock_cards=stock_cards)
 
 
 @bp.route("/builtin/<key>/rename", methods=["POST"])
@@ -228,6 +240,7 @@ def new_module():
             identity_modes=IDENTITY_MODES,
             age_units=AGE_UNITS,
             inventory_presets=inventory_presets.PRESETS,
+            stock_presets=stock_presets.PRESETS,
         )
 
 
@@ -273,8 +286,12 @@ def _spec_from_form(form) -> dict:
 
 @bp.route("/<key>")
 def module(key: str):
+    from . import stock_service
     with SessionLocal() as session:
         row = _module_or_404(session, key)
+        # Flies and worms moved to their own vial/plate pages.
+        if not row.enabled and stock_service.get_module(session, key) is not None:
+            return redirect(url_for("stocks.module", key=key))
         mv = svc.view(row)
         views = _views_for(mv)
         active = request.args.get("view") or (views[0]["key"] if views else "settings")

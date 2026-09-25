@@ -1902,6 +1902,7 @@
   .cmdk-row-type-reagent { @apply bg-ok-50 text-ok-700; }
   .cmdk-row-type-antibody { @apply bg-violet-50 text-violet-700; }
   .cmdk-row-type-item    { @apply bg-sand-100 text-sand-600; }
+  .cmdk-row-type-vial    { @apply bg-brand-50 text-brand-700; }
 
   .cmdk-row-text { @apply flex min-w-0 flex-col; }
   .cmdk-row-label { @apply truncate text-[13px] font-medium text-ink; }
@@ -2488,6 +2489,61 @@
   .field-editor td { @apply px-1.5 py-1 align-middle; }
   .field-editor tr.is-removed td { @apply opacity-40; }
   .field-editor tr.is-removed input[type="text"] { @apply line-through; }
+}
+
+/* ===========================================================================
+   FLY AND WORM STOCKS
+   =========================================================================== */
+@layer components {
+  /* Purposes share the status pill palette. */
+  :is(.status-pill, .status-pill-static):is([data-status="maintenance"]) { @apply bg-ok-50 text-ok-700; }
+  :is(.status-pill, .status-pill-static):is([data-status="cross"], [data-status="rnai"]) { @apply bg-violet-50 text-violet-700; }
+  :is(.status-pill, .status-pill-static):is([data-status="virgins"]) { @apply bg-pink-50 text-pink-700; }
+  :is(.status-pill, .status-pill-static):is([data-status="progeny"], [data-status="synchronized"]) { @apply bg-warn-50 text-warn-700; }
+  :is(.status-pill, .status-pill-static):is([data-status="expansion"]) { @apply bg-brand-50 text-brand-700; }
+  :is(.status-pill, .status-pill-static):is([data-status="males"]) { @apply bg-sky-50 text-sky-700; }
+  :is(.status-pill, .status-pill-static):is([data-status="backup"], [data-status="starved"]) { @apply bg-sand-100 text-muted; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) :is(.status-pill, .status-pill-static):is([data-status="cross"], [data-status="rnai"]) { @apply bg-violet-500/15 text-violet-300; }
+    :root:not([data-theme="light"]) :is(.status-pill, .status-pill-static)[data-status="virgins"] { @apply bg-pink-500/15 text-pink-300; }
+    :root:not([data-theme="light"]) :is(.status-pill, .status-pill-static)[data-status="males"] { @apply bg-sky-500/15 text-sky-300; }
+  }
+  :root[data-theme="dark"] :is(.status-pill, .status-pill-static):is([data-status="cross"], [data-status="rnai"]) { @apply bg-violet-500/15 text-violet-300; }
+  :root[data-theme="dark"] :is(.status-pill, .status-pill-static)[data-status="virgins"] { @apply bg-pink-500/15 text-pink-300; }
+  :root[data-theme="dark"] :is(.status-pill, .status-pill-static)[data-status="males"] { @apply bg-sky-500/15 text-sky-300; }
+
+  /* Parents only mean something on crosses and their progeny; the egg
+     button only on crosses. */
+  .sheet-table tr:not([data-purpose="cross"]):not([data-purpose="progeny"]) td.parent-cell > * { visibility: hidden; }
+  .sheet-table tr:not([data-purpose="cross"]) .collect-action,
+  .sheet-table tr[data-active="false"] .collect-action { display: none; }
+
+  .rack-tile[data-tone="progeny"] { @apply border-warn-200 bg-warn-50; }
+  .rack-tile[data-tone="virgins"] { @apply border-pink-200 bg-pink-50; }
+
+  /* "Flip · in 3 d": amber today, red when late. */
+  .next-due { @apply inline-flex max-w-full items-center truncate text-[12px] text-ink-soft; }
+  .next-due.is-today { @apply font-semibold text-warn-700; }
+  .next-due.is-overdue { @apply font-semibold text-danger-700; }
+  .seg-count.is-alert { @apply rounded-full bg-danger-600 px-1.5 text-white; }
+  .seg-item.is-active .seg-count.is-alert { @apply text-white; }
+
+  /* Schedule. */
+  .schedule-list { @apply m-0 list-none divide-y divide-sand-100 p-0; }
+  .schedule-item { @apply flex flex-wrap items-center gap-3 px-4 py-2.5; }
+  .schedule-icon { @apply grid size-8 shrink-0 place-items-center rounded-lg bg-sand-100 text-ink-soft; }
+  .schedule-icon[data-kind="flip"] { @apply bg-ok-50 text-ok-700; }
+  .schedule-icon[data-kind="collect"] { @apply bg-violet-50 text-violet-700; }
+  .schedule-icon[data-kind="ready"] { @apply bg-warn-50 text-warn-700; }
+  .schedule-icon[data-kind="shift"] { @apply bg-danger-50 text-danger-700; }
+  .schedule-icon[data-kind="score"] { @apply bg-info-50 text-info-600; }
+  .schedule-when { @apply w-20 shrink-0 text-[12px] font-semibold text-ink-soft tabular-nums; }
+  .schedule-item.is-overdue .schedule-when { @apply text-danger-700; }
+  .schedule-item.is-today .schedule-when { @apply text-warn-700; }
+  .schedule-text { @apply flex min-w-0 flex-1 flex-col; }
+  .schedule-title { @apply truncate text-[13px] font-semibold text-ink; }
+  .schedule-detail { @apply truncate text-[12px] text-muted; }
+  .schedule-actions { @apply ml-auto flex items-center gap-1.5; }
 }
 
 /* ===========================================================================
