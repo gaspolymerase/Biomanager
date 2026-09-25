@@ -114,6 +114,8 @@
           <button type="button" class="dt-toolbar-btn" data-csv-module="{{ key }}"
                   onclick="window.csvImportModule = this.dataset.csvModule; openCsvImport('order')">{{ icon('import') }} Import</button>
         {% endif %}
+        <button type="button" class="dt-toolbar-btn" data-record-edit="item-dialog" data-record-payload='{{ dict(new_payload, count=10) | tojson }}'
+                title="Several {{ m.item_noun_plural }} at once: identical copies, or one per pasted name">{{ icon('plus') }} Add many</button>
         <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                 data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
           {{ icon('plus') }} New {{ m.item_noun }}
@@ -416,13 +418,22 @@
     <header class="record-dialog-head">
       <div>
         <h3 id="item-dialog-title" data-record-title>New {{ m.item_noun }}</h3>
-        <p class="record-dialog-sub">{{ m.label }} · a new {{ m.item_noun }} gets #{{ next_number }}.</p>
+        <p class="record-dialog-sub" data-new-only data-next-number="{{ next_number }}">{{ m.label }} · a new {{ m.item_noun }} gets <span data-number-span>#{{ next_number }}</span>.</p>
       </div>
       <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
-      <label class="record-wide">{{ m.name_label }} <input name="name" {% if m.kind == 'orders' %}required{% endif %} autocomplete="off"></label>
+      <label class="record-wide" data-name-label>{{ m.name_label }} <input name="name" {% if m.kind == 'orders' %}required{% endif %} autocomplete="off"></label>
+      <fieldset class="record-group" data-new-only>
+        <legend>How many</legend>
+        <label>How many <input type="number" name="count" min="1" max="50" value="1" data-add-count></label>
+        <label class="col-span-full">Or paste {{ m.name_label|lower }}s, one per line
+          <textarea name="names" rows="2" placeholder="S-201&#10;S-202" data-add-names></textarea>
+          <span class="add-many-hint">One {{ m.item_noun }} per line, named after it; everything else below is the same for all.
+            {% if m.has('storage') %}In a box they go side by side from the position, into the next free cells.{% endif %}</span>
+        </label>
+      </fieldset>
       <fieldset class="record-group">
         <legend>{{ m.item_noun|capitalize }}</legend>
         <label>{{ m.category_label }}
@@ -669,6 +680,42 @@
         if (fixed) owner.disabled = true;
       }
       if (shared && fixed) shared.disabled = true;
+    });
+  })();
+
+  /* Item dialog, new only: How many / pasted names. Pasted names set the
+     count and stand in for the name field. */
+  (function () {
+    const dialog = document.getElementById('item-dialog');
+    const form = dialog.querySelector('form');
+    const count = form.querySelector('[data-add-count]');
+    const names = form.querySelector('[data-add-names]');
+    const name = form.elements.name;
+    const nameLabel = form.querySelector('[data-name-label]');
+    const sub = dialog.querySelector('[data-next-number]');
+    const span = dialog.querySelector('[data-number-span]');
+    const submit = dialog.querySelector('[data-record-submit]');
+    const noun = {{ m.item_noun | tojson }}, plural = {{ m.item_noun_plural | tojson }};
+    const nameRequired = name.required;
+    let isNew = true;
+    const sync = () => {
+      const pasted = names.value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).length;
+      if (pasted) count.value = pasted;
+      count.readOnly = pasted > 0;
+      nameLabel.hidden = isNew && pasted > 0;
+      name.required = nameRequired && !(isNew && pasted > 0);
+      const k = Math.max(1, Number(count.value) || 1);
+      const first = Number(sub.dataset.nextNumber);
+      span.textContent = k > 1 ? `#${first}–#${first + k - 1}` : `#${first}`;
+      if (isNew) submit.textContent = k > 1 ? `Create ${k} ${plural}` : `Create ${noun}`;
+    };
+    count.addEventListener('input', sync);
+    names.addEventListener('input', sync);
+    dialog.addEventListener('record-dialog:open', (event) => {
+      isNew = Boolean((event.detail || {}).isNew);
+      form.querySelectorAll('[data-new-only]').forEach((el) => { el.hidden = !isNew; });
+      dialog.querySelectorAll('.record-dialog-head [data-new-only]').forEach((el) => { el.hidden = !isNew; });
+      sync();
     });
   })();
 

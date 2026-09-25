@@ -265,6 +265,100 @@ def free_cell(session, rack: InventoryRack, taken: set | None = None) -> tuple[i
     return None
 
 
+def free_cells(session, rack: InventoryRack, count: int, start: tuple[int, int] | None = None) -> list[tuple[int, int]]:
+    """Up to `count` empty cells of a box, reading along rows from `start`
+    (the first cell when None): side by side, skipping taken ones."""
+    taken = {(r, c) for r, c in session.execute(select(InventoryItem.rack_row, InventoryItem.rack_col).where(
+        InventoryItem.rack_id_fk == rack.id, InventoryItem.rack_row.is_not(None)))}
+    begin = ((start[0] - 1) * rack.cols + start[1] - 1) if start else 0
+    out = []
+    for index in range(begin, rack.rows * rack.cols):
+        cell = (index // rack.cols + 1, index % rack.cols + 1)
+        if cell not in taken:
+            out.append(cell)
+            if len(out) == count:
+                break
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Configure: renaming or removing a status or category relabels the items
+# ---------------------------------------------------------------------------
+
+# The item column each choice list labels, and how long a value may be.
+CHOICE_COLUMNS = {"statuses": ("status", 40), "categories": ("category", 80)}
+
+
+@dataclass
+class ChoicePlan:
+    values: list[str]                       # the new list, in order
+    relabel: dict[str, tuple[str, str]]     # {old: (new, "rename" | "replace")}
+    problems: list[str]                     # removed values still in use, with no replacement
+
+
+def choice_counts(session, module_id: int, column: str) -> dict[str, int]:
+    """{value: how many items of this inventory hold it}."""
+    col = getattr(InventoryItem, column)
+    return {v or "": n for v, n in session.execute(
+        select(col, func.count(InventoryItem.id)).where(InventoryItem.module_id_fk == module_id).group_by(col))}
+
+
+def plan_choices(rows: list[dict], counts: dict[str, int]) -> ChoicePlan:
+    """Read the Configure rows ({value, was, remove, replace}; `was` is the
+    value the row was showing, blank for a new row) into the new list and
+    what happens to the items on each old value.
+
+    A row whose text changed is a rename: its items follow it. A removed
+    (or emptied) row whose value items still hold needs a replacement from
+    the values that remain, unless no values remain at all (the column
+    becomes free text / no status, and items keep what they have)."""
+    values, canonical = [], {}
+    for r in rows:
+        v = r["value"]
+        if r["remove"] or not v or v.lower() in canonical:
+            continue
+        canonical[v.lower()] = v
+        values.append(v)
+    relabel: dict[str, tuple[str, str]] = {}
+    problems: list[str] = []
+    for r in rows:
+        old = r["was"]
+        if not old or old in relabel:
+            continue
+        if not r["remove"] and r["value"]:
+            new = canonical[r["value"].lower()]
+            if new != old:
+                relabel[old] = (new, "rename")
+            continue
+        if old.lower() in canonical:          # still listed (another row has it)
+            if canonical[old.lower()] != old:
+                relabel[old] = (canonical[old.lower()], "rename")
+            continue
+        if not counts.get(old) or not values:
+            continue
+        target = canonical.get((r.get("replace") or "").strip().lower())
+        if target is None:
+            problems.append(old)
+        else:
+            relabel[old] = (target, "replace")
+    return ChoicePlan(values, relabel, problems)
+
+
+def relabel_items(session, module_id: int, column: str, relabel: dict[str, tuple[str, str]]) -> int:
+    """Move every item of the inventory from an old value to its new one.
+    Not a status change: no received or used-up date is stamped (see
+    apply_status); only the label changes. Returns how many moved."""
+    if not relabel:
+        return 0
+    col = getattr(InventoryItem, column)
+    moved = 0
+    for item in session.scalars(select(InventoryItem).where(
+            InventoryItem.module_id_fk == module_id, col.in_(list(relabel)))):
+        setattr(item, column, relabel[getattr(item, column)][0])
+        moved += 1
+    return moved
+
+
 def attention_items(session, days: int = 30, limit: int = 12) -> list[dict]:
     """Reagents and antibodies to restock: expiring within `days` (or
     already expired) or marked low, and not already used up."""

@@ -2510,6 +2510,13 @@
   .field-editor td { @apply px-1.5 py-1 align-middle; }
   .field-editor tr.is-removed td { @apply opacity-40; }
   .field-editor tr.is-removed input[type="text"] { @apply line-through; }
+  /* Statuses / categories: one row per value, with how many items hold it
+     and, once removed, what they become (not dimmed: it needs an answer). */
+  .choice-editor td.choice-usage { @apply whitespace-nowrap text-[11.5px] tabular-nums text-muted; }
+  .choice-editor tr.is-removed td.choice-replace { @apply opacity-100; }
+  .choice-editor .choice-replace label { @apply flex items-center gap-1.5 whitespace-nowrap text-[11.5px] text-muted normal-case tracking-normal; }
+  .choice-editor .choice-replace select { @apply h-7 min-w-[120px] text-[12px]; }
+  .add-many-hint { @apply text-[11.5px] leading-snug text-muted normal-case tracking-normal; }
 }
 
 /* ===========================================================================
