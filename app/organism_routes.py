@@ -76,6 +76,7 @@ MODULE_VIEWS = [
     ("lines", "sitemap", "lines"),
     ("crosses", "heart", "crosses"),
     ("cohorts", "baby", "cohorts"),
+    ("genotyping", "microscope", "genotyping"),
     ("schedule", "calendar-clock", "schedule"),
     ("environment", "droplet", "environment"),
     ("preservation", "snowflake", "preservation"),
@@ -153,7 +154,7 @@ def _views_for(mv: svc.ModuleView) -> list[dict]:
     labels = {
         "animals": mv.organism_noun_plural, "housing": mv.housing_noun_plural,
         "lines": mv.line_noun_plural, "crosses": mv.cross_noun_plural,
-        "cohorts": mv.cohort_noun_plural, "schedule": "Schedule",
+        "cohorts": mv.cohort_noun_plural, "genotyping": "Genotyping", "schedule": "Schedule",
         "environment": "Environment", "preservation": "Cryo", "settings": "Configure",
     }
     out = []
@@ -479,6 +480,10 @@ def module(key: str):
                 .order_by(OrgCohort.code)
             ).all()
             ctx["next_code"] = svc.next_code(session, row, "organism")
+            if mv.has("genotyping"):
+                ctx["latest_calls"] = svc.latest_calls(session, row.id)
+                ctx["assays"] = svc.genotype_assays(session, row.id)
+                ctx["zygosities"] = svc.ZYGOSITIES
 
         elif active == "housing":
             ctx["locations"] = svc.location_tree(session, row.id)
@@ -519,6 +524,9 @@ def module(key: str):
             ctx["locations"] = svc.location_tree(session, row.id)
             ctx["next_code"] = svc.next_code(session, row, "cohort")
 
+        elif active == "genotyping":
+            ctx.update(_genotyping_context(session, row, mv, me))
+
         elif active == "schedule":
             svc.recompute_due(session, row)
             session.commit()
@@ -550,6 +558,75 @@ def module(key: str):
             ]
 
         return render_template("organisms/module.html", **ctx)
+
+
+def _genotyping_context(session, module: OrganismModule, mv, me: str) -> dict:
+    """Rows for the Genotyping sheet: every call, newest first, then one row
+    per living record that has never been called (the Pending chip)."""
+    organisms = session.scalars(
+        select(Organism).where(Organism.module_id_fk == module.id)
+        .order_by(Organism.death_on.is_(None).desc(), Organism.code, Organism.id)).all()
+    by_id = {o.id: o for o in organisms}
+    units = {u.id: u for u in session.scalars(
+        select(OrgHousing).where(OrgHousing.module_id_fk == module.id))}
+    calls = session.scalars(
+        select(OrgGenotype).where(OrgGenotype.module_id_fk == module.id)
+        .order_by(OrgGenotype.called_on.desc(), OrgGenotype.id.desc())).all()
+
+    others: dict[tuple[str, int], object] = {}
+    for kind in ("line", "cohort"):
+        ids = {c.subject_id for c in calls if c.subject_kind == kind}
+        if ids:
+            model = GENOTYPE_SUBJECTS[kind]
+            for subject in session.scalars(select(model).where(model.id.in_(ids))):
+                others[(kind, subject.id)] = subject
+
+    rows = []
+    called = set()
+    for call in calls:
+        if call.subject_kind == "organism":
+            subject = by_id.get(call.subject_id)
+            called.add(call.subject_id)
+            label = svc.organism_label(subject) if subject else f"#{call.subject_id}"
+            unit = units.get(subject.housing_id_fk) if subject and subject.housing_id_fk else None
+        elif call.subject_kind == "housing":
+            subject = units.get(call.subject_id)
+            label = subject.code if subject else f"#{call.subject_id}"
+            unit = subject
+        else:
+            subject = others.get((call.subject_kind, call.subject_id))
+            label = getattr(subject, "code", None) or f"#{call.subject_id}"
+            unit = None
+        rows.append({
+            "call": call, "subject": subject, "kind": call.subject_kind, "label": label,
+            "housing": unit.code if unit else "",
+            "editable": subject is not None and access.can_edit(subject),
+            "mine": bool(me) and call.called_by == me,
+        })
+    pending = [{
+        "subject": o, "label": svc.organism_label(o),
+        "housing": units[o.housing_id_fk].code if o.housing_id_fk in units else "",
+        "editable": access.can_edit(o),
+    } for o in organisms if o.id not in called and mv.is_alive(o)]
+
+    return {
+        "genotype_rows": rows,
+        "pending_rows": pending,
+        "chip_counts": {
+            "calls": len(rows), "pending": len(pending),
+            "mine": sum(1 for r in rows if r["mine"]),
+        },
+        "assays": svc.genotype_assays(session, module.id),
+        "zygosities": svc.ZYGOSITIES,
+        # What the subject box offers: living records first.
+        "subject_choices": [{
+            "value": svc.organism_label(o),
+            "hint": " · ".join(filter(None, [
+                units[o.housing_id_fk].code if o.housing_id_fk in units else "",
+                o.line.code if o.line else "", o.genotype,
+                "" if mv.is_alive(o) else "gone"])),
+        } for o in sorted(organisms, key=lambda o: not mv.is_alive(o))],
+    }
 
 
 def _usernames(session) -> list[str]:
@@ -636,6 +713,115 @@ def save_line(key: str):
         return _redirect_back(key, "lines")
 
 
+def _fill_housing(session, module, row, form, row_id: int) -> str | None:
+    """Write the submitted fields (not the code or position) onto a housing
+    unit; an error message when the form cannot be saved."""
+    for name in ("purpose", "owner", "protocol", "card_id", "notes"):
+        _set_text(row, form, name)
+    _set_ref(session, row, form, "line_id_fk", OrgLine, module.id)
+    _set_date(row, form, "established_on")
+    _set_date(row, form, "last_serviced_on")
+    _set_flag(row, form, "retired", attr="active", invert=True)
+    _set_flag(row, form, "needs_attention")
+    attrs, errors = _read_attrs(session, module, "housing", form, row, creating=not row_id)
+    if errors:
+        return " ".join(errors)
+    row.attrs = svc.dump(attrs)
+    return None
+
+
+def _free_cells(session, loc, count: int, start: tuple[int, int] | None = None) -> list[tuple[int, int]]:
+    """Up to `count` empty cells of a rack, reading along its rows from
+    `start` (or the first cell)."""
+    taken = {(r, c) for r, c in session.execute(select(OrgHousing.row, OrgHousing.col).where(
+        OrgHousing.location_id_fk == loc.id, OrgHousing.row.is_not(None),
+        OrgHousing.col.is_not(None))).all()}
+    begin = (start[0] - 1) * loc.cols + start[1] - 1 if start else 0
+    cells = []
+    for index in range(begin, loc.rows * loc.cols):
+        cell = (index // loc.cols + 1, index % loc.cols + 1)
+        if cell not in taken:
+            cells.append(cell)
+            if len(cells) == count:
+                break
+    return cells
+
+
+def _create_housing_units(session, module, mv, form, how_many: int):
+    """"How many" above 1: consecutive codes, the same fields, placed side
+    by side in the chosen rack from the typed position (or its first free
+    cell). Units that do not fit stay in it without a position, and the
+    flash says which. One audit batch."""
+    key = module.key
+    first = (form.get("code") or "").strip() or svc.next_code(session, module, "housing")
+    codes = svc.code_sequence(first, how_many)
+    clash = svc.codes_in_use(session, OrgHousing, module.id, codes)
+    if clash:
+        shown = ", ".join(clash[:5]) + (" …" if len(clash) > 5 else "")
+        return _fail(key, "housing", f"{shown} already {'exists' if len(clash) == 1 else 'exist'} in "
+                                     f"{mv.label}. Start the numbering somewhere free.")
+    location_id = _ref(session, OrgLocation, module.id, form.get("location_id_fk"))
+    loc = session.get(OrgLocation, location_id) if location_id else None
+    typed = (form.get("position") or "").strip() if mv.has("housing_grid") else ""
+    cells: list[tuple[int, int]] = []
+    gridded = loc is not None and mv.has("housing_grid") and bool(loc.rows and loc.cols)
+    if typed and not gridded:
+        return _fail(key, "housing", f"Pick a {mv.container_noun} with rows and columns before giving "
+                                     f"a position (“{typed}”).")
+    if gridded:
+        naming = location_naming(loc)
+        start = None
+        if typed:
+            start = positions.parse(typed, naming, loc.rows, loc.cols)
+            if start is None:
+                return _fail(key, "housing", f"“{typed}” is not a position in {loc.name} "
+                             f"({positions.label(1, 1, naming, loc.cols)}–"
+                             f"{positions.label(loc.rows, loc.cols, naming, loc.cols)}).")
+            holder = session.scalar(select(OrgHousing).where(
+                OrgHousing.location_id_fk == loc.id, OrgHousing.row == start[0], OrgHousing.col == start[1]))
+            if holder is not None:
+                return _fail(key, "housing", f"{loc.name} · {typed} already holds {holder.code}.")
+        cells = _free_cells(session, loc, how_many, start)
+
+    error = None
+    created = []
+    with audit.batch(session, "create", f"New {mv.housing_noun_plural} ×{how_many} ({mv.label})",
+                     "organism_housing"):
+        for index, code in enumerate(codes):
+            row = OrgHousing(module_id_fk=module.id, code=code, location_id_fk=location_id)
+            session.add(row)
+            error = _fill_housing(session, module, row, form, 0)
+            if error:
+                break
+            if index < len(cells):
+                row.row, row.col = cells[index]
+            row.updated_at, row.updated_by = datetime.utcnow(), g.user.username
+            created.append(row)
+        if not error:
+            session.flush()
+            for row in created:
+                svc.log_event(session, module, "housing", row.id, "create", recorded_by=g.user.username,
+                              notes=f"Added as one of {how_many}")
+    if error:
+        session.rollback()
+        return _fail(key, "housing", error)
+    svc.recompute_due(session, module)
+    session.commit()
+
+    where = f" in {loc.name}" if loc else ""
+    if cells:
+        naming = location_naming(loc)
+        where += (f" at {positions.label(*cells[0], naming, loc.cols)}"
+                  + (f"–{positions.label(*cells[-1], naming, loc.cols)}" if len(cells) > 1 else ""))
+    flash(f"Created {how_many} {mv.housing_noun_plural}: {_range_label(codes)}{where}.", "success")
+    if gridded and len(cells) < how_many:
+        left = codes[len(cells):]
+        flash(f"{loc.name} had room for {len(cells)} of {how_many} from {typed or 'its first free cell'}; "
+              f"{_range_label(left)} {'is' if len(left) == 1 else 'are'} in it without a position. "
+              f"Drag them onto the grid to place them.", "error")
+    return _redirect_back(key, "housing")
+
+
 @bp.route("/<key>/housing/save", methods=["POST"])
 def save_housing(key: str):
     with SessionLocal() as session:
@@ -643,6 +829,11 @@ def save_housing(key: str):
         mv = svc.view(module)
         form = request.form
         row_id = _int(form.get("id"), 0)
+        how_many, error = _how_many(form, row_id, MAX_NEW_HOUSING)
+        if error:
+            return _fail(key, "housing", error)
+        if how_many > 1:
+            return _create_housing_units(session, module, mv, form, how_many)
 
         if row_id:
             row, denied = _load_owned(session, OrgHousing, module, row_id, key, "housing")
@@ -654,18 +845,10 @@ def save_housing(key: str):
 
         if "code" in form or not row_id:
             row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "housing")
-        for name in ("purpose", "owner", "protocol", "card_id", "notes"):
-            _set_text(row, form, name)
-        _set_ref(session, row, form, "line_id_fk", OrgLine, module.id)
-        _set_date(row, form, "established_on")
-        _set_date(row, form, "last_serviced_on")
-        _set_flag(row, form, "retired", attr="active", invert=True)
-        _set_flag(row, form, "needs_attention")
-        attrs, errors = _read_attrs(session, module, "housing", form, row, creating=not row_id)
-        if errors:
+        error = _fill_housing(session, module, row, form, row_id)
+        if error:
             session.rollback()
-            return _fail(key, "housing", " ".join(errors))
-        row.attrs = svc.dump(attrs)
+            return _fail(key, "housing", error)
 
         # Where it sits. A move is validated as one change: the position is
         # read against the rack it is moving to, and a unit that cannot be
@@ -843,6 +1026,61 @@ def housing_payload(unit) -> dict:
     }
 
 
+MAX_NEW_ANIMALS = 50
+MAX_NEW_HOUSING = 30
+
+
+def _how_many(form, row_id: int, limit: int) -> tuple[int, str | None]:
+    """The dialog's "How many" (new records only), or an error."""
+    raw = (form.get("how_many") or "").strip()
+    if row_id or not raw:
+        return 1, None
+    n = _int(raw, 0)
+    if not 1 <= n <= limit:
+        return 0, f"How many must be a whole number from 1 to {limit} (got “{raw}”)."
+    return n, None
+
+
+def _range_label(codes: list[str]) -> str:
+    codes = [c for c in codes if c]
+    if not codes:
+        return ""
+    return codes[0] if len(codes) == 1 else f"{codes[0]}–{codes[-1]}"
+
+
+def _fill_animal(session, module, mv, row, form, row_id: int) -> str | None:
+    """Write the submitted fields onto an animal record; an error message
+    when the form cannot be saved. The code is set by the caller."""
+    previous_status, previous_death = row.status, row.death_on
+    if "count" in form:
+        raw = (form.get("count") or "").strip()
+        count = _int(raw, None) if raw else (1 if not row_id else None)
+        if count is None or count < 1:
+            return (f"Count must be a whole number of 1 or more (got “{raw or 'nothing'}”). "
+                    f"To record that a group is gone, set its status or date removed.")
+        row.count = count
+    elif not row_id:
+        row.count = 1
+    for name, model in (("housing_id_fk", OrgHousing), ("line_id_fk", OrgLine),
+                        ("cohort_id_fk", OrgCohort), ("parent_a_id_fk", Organism),
+                        ("parent_b_id_fk", Organism)):
+        _set_ref(session, row, form, name, model, module.id)
+    for name in ("sex", "status", "genotype", "owner", "protocol", "notes"):
+        _set_text(row, form, name)
+    _set_date(row, form, "birth_on")
+    _set_date(row, form, "death_on")
+    _set_date(row, form, "last_procedure_on")
+    attrs, errors = _read_attrs(session, module, "organism", form, row, creating=not row_id)
+    if errors:
+        return " ".join(errors)
+    row.attrs = svc.dump(attrs)
+    death_given = "death_on" in form and row.death_on != previous_death
+    svc.apply_status_rules(mv, row, previous_status, death_given=death_given)
+    row.updated_at = datetime.utcnow()
+    row.updated_by = g.user.username
+    return None
+
+
 @bp.route("/<key>/animal/save", methods=["POST"])
 def save_animal(key: str):
     with SessionLocal() as session:
@@ -850,6 +1088,11 @@ def save_animal(key: str):
         mv = svc.view(module)
         form = request.form
         row_id = _int(form.get("id"), 0)
+        how_many, error = _how_many(form, row_id, MAX_NEW_ANIMALS)
+        if error:
+            return _fail(key, "animals", error)
+        if how_many > 1:
+            return _create_animals(session, module, mv, form, how_many)
 
         if row_id:
             row, denied = _load_owned(session, Organism, module, row_id, key, "animals")
@@ -858,7 +1101,6 @@ def save_animal(key: str):
         else:
             row = Organism(module_id_fk=module.id)
             session.add(row)
-        previous_status, previous_death = row.status, row.death_on
 
         if "code" in form or not row_id:
             code = (form.get("code") or "").strip()
@@ -866,35 +1108,10 @@ def save_animal(key: str):
             if not code and mv.identity_mode == "individual":
                 code = svc.next_code(session, module, "organism")
             row.code = code or None
-        if "count" in form:
-            raw = (form.get("count") or "").strip()
-            count = _int(raw, None) if raw else (1 if not row_id else None)
-            if count is None or count < 1:
-                session.rollback()
-                return _fail(key, "animals",
-                             f"Count must be a whole number of 1 or more (got “{raw or 'nothing'}”). "
-                             f"To record that a group is gone, set its status or date removed.")
-            row.count = count
-        elif not row_id:
-            row.count = 1
-        for name, model in (("housing_id_fk", OrgHousing), ("line_id_fk", OrgLine),
-                            ("cohort_id_fk", OrgCohort), ("parent_a_id_fk", Organism),
-                            ("parent_b_id_fk", Organism)):
-            _set_ref(session, row, form, name, model, module.id)
-        for name in ("sex", "status", "genotype", "owner", "protocol", "notes"):
-            _set_text(row, form, name)
-        _set_date(row, form, "birth_on")
-        _set_date(row, form, "death_on")
-        _set_date(row, form, "last_procedure_on")
-        attrs, errors = _read_attrs(session, module, "organism", form, row, creating=not row_id)
-        if errors:
+        error = _fill_animal(session, module, mv, row, form, row_id)
+        if error:
             session.rollback()
-            return _fail(key, "animals", " ".join(errors))
-        row.attrs = svc.dump(attrs)
-        death_given = "death_on" in form and row.death_on != previous_death
-        svc.apply_status_rules(mv, row, previous_status, death_given=death_given)
-        row.updated_at = datetime.utcnow()
-        row.updated_by = g.user.username
+            return _fail(key, "animals", error)
 
         session.flush()
         svc.log_event(session, module, "organism", row.id,
@@ -908,6 +1125,52 @@ def save_animal(key: str):
                 "death_on": _iso(row.death_on), "birth_on": _iso(row.birth_on)}}})
         flash(f"Saved {row.code or mv.organism_noun}.", "success")
         return _redirect_back(key, "animals")
+
+
+def _create_animals(session, module, mv, form, how_many: int):
+    """"How many" above 1: that many records with the same fields, in the
+    chosen housing. Individually tracked ones get consecutive IDs from the
+    one typed (or the next free one); groups follow a typed code's
+    numbering, or stay anonymous. One audit batch, so Batch history can
+    undo it."""
+    key = module.key
+    first = (form.get("code") or "").strip()
+    if not first and mv.identity_mode == "individual":
+        first = svc.next_code(session, module, "organism")
+    codes = svc.code_sequence(first, how_many)
+    clash = svc.codes_in_use(session, Organism, module.id, codes)
+    if clash:
+        shown = ", ".join(clash[:5]) + (" …" if len(clash) > 5 else "")
+        return _fail(key, "animals", f"{shown} already {'exists' if len(clash) == 1 else 'exist'} in "
+                                     f"{mv.label}. Start the numbering somewhere free.")
+    error = None
+    created = []
+    with audit.batch(session, "create", f"New {mv.organism_noun_plural} ×{how_many} ({mv.label})",
+                     "organisms"):
+        for code in codes:
+            row = Organism(module_id_fk=module.id, code=code or None)
+            session.add(row)
+            error = _fill_animal(session, module, mv, row, form, 0)
+            if error:
+                break
+            created.append(row)
+        if not error:
+            session.flush()
+            for row in created:
+                svc.log_event(session, module, "organism", row.id, "create", count=row.count,
+                              recorded_by=g.user.username, notes=f"Added as one of {how_many}")
+    if error:
+        session.rollback()
+        return _fail(key, "animals", error)
+    svc.recompute_due(session, module)
+    session.commit()
+    where = ""
+    if created[0].housing_id_fk:
+        unit = session.get(OrgHousing, created[0].housing_id_fk)
+        where = f" in {unit.code}" if unit else ""
+    span = _range_label(codes)
+    flash(f"Created {how_many} {mv.organism_noun_plural}{': ' + span if span else ''}{where}.", "success")
+    return _redirect_back(key, "animals")
 
 
 def animal_payload(o, mv) -> dict:
@@ -1176,33 +1439,138 @@ def save_lot(key: str):
 GENOTYPE_SUBJECTS = {"organism": Organism, "housing": OrgHousing, "line": OrgLine, "cohort": OrgCohort}
 
 
+GENOTYPE_VIEWS = ("animals", "genotyping", "housing")
+
+
+def _genotype_back(form) -> str:
+    back = (form.get("return_view") or "animals").strip()
+    return back if back in GENOTYPE_VIEWS else "animals"
+
+
+def _read_call(form) -> tuple[dict, str | None]:
+    """The call's own fields from a form, or an error message."""
+    values = {
+        "assay": (form.get("assay") or "").strip()[:120],
+        "result": (form.get("result") or "").strip()[:200],
+        "zygosity": (form.get("zygosity") or "").strip()[:40],
+        "notes": (form.get("notes") or "").strip(),
+    }
+    if not values["result"] and not values["zygosity"]:
+        return values, "Give the call a result or a zygosity."
+    raw_date = (form.get("called_on") or "").strip()
+    called_on = _parse_date(raw_date)
+    if raw_date and called_on is None:
+        return values, f"“{raw_date}” is not a date."
+    values["called_on"] = called_on or date.today()
+    link = svc.safe_link(form.get("image_path"))
+    if link is None:
+        return values, "The gel image link must start with http:// or https://."
+    values["image_path"] = link
+    return values, None
+
+
 @bp.route("/<key>/genotype/save", methods=["POST"])
 def save_genotype(key: str):
+    """Record one genotype call. The subject arrives either as a kind + id
+    (a Record button on a row) or as what a person typed in the dialog: an
+    animal's code, "#id" for an uncoded group, or a housing unit's code.
+    Either way it must be a record of this module that you may edit."""
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        mv = svc.view(module)
         form = request.form
-        back = request.form.get("return_view") or "animals"
-        kind = (form.get("subject_kind") or "organism").strip()
-        model = GENOTYPE_SUBJECTS.get(kind)
-        subject = session.get(model, _int(form.get("subject_id"), 0)) if model else None
-        if subject is None or subject.module_id_fk != module.id:
-            return _fail(key, back, "That record no longer exists, so no genotype was recorded.", 404)
+        back = _genotype_back(form)
+        typed = (form.get("subject") or "").strip()
+        if (form.get("subject_id") or "").strip():
+            kind = (form.get("subject_kind") or "organism").strip()
+            model = GENOTYPE_SUBJECTS.get(kind)
+            subject = session.get(model, _int(form.get("subject_id"), 0)) if model else None
+            if subject is None or subject.module_id_fk != module.id:
+                return _fail(key, back, "That record no longer exists, so no genotype was recorded.", 404)
+        elif typed:
+            kind, subject = svc.resolve_genotype_subject(session, module, typed)
+            if subject is None:
+                return _fail(key, back, f"No {mv.organism_noun} or {mv.housing_noun} “{typed}” in "
+                                        f"{mv.label}, so no genotype was recorded.", 404)
+        else:
+            return _fail(key, back, f"Pick the {mv.organism_noun} this call is for.")
         if not access.can_edit(subject):
             return _fail(key, back, access.reason_denied(subject), 403)
-        session.add(OrgGenotype(
-            module_id_fk=module.id,
-            subject_kind=kind,
-            subject_id=subject.id,
-            assay=(form.get("assay") or "").strip(),
-            result=(form.get("result") or "").strip(),
-            zygosity=(form.get("zygosity") or "").strip(),
-            called_on=_parse_date(form.get("called_on")) or date.today(),
-            called_by=g.user.username,
-            notes=(form.get("notes") or "").strip(),
-        ))
+        values, error = _read_call(form)
+        if error:
+            return _fail(key, back, error)
+        session.add(OrgGenotype(module_id_fk=module.id, subject_kind=kind, subject_id=subject.id,
+                                called_by=g.user.username, **values))
+        label = getattr(subject, "code", None) or f"#{subject.id}"
+        svc.log_event(session, module, kind, subject.id, "genotype", occurred_on=values["called_on"],
+                      recorded_by=g.user.username,
+                      notes=" ".join(filter(None, [values["assay"], values["result"], values["zygosity"]])))
         session.commit()
-        flash("Recorded genotype.", "success")
+        flash(f"Recorded genotype for {label}.", "success")
         return _redirect_back(key, back)
+
+
+@bp.route("/<key>/animals/genotype", methods=["POST"])
+def genotype_batch(key: str):
+    """One call (assay, result, zygosity) for every ticked record, as one
+    audit batch so it can be undone from Batch history."""
+    with SessionLocal() as session:
+        module = _module_or_404(session, key)
+        mv = svc.view(module)
+        back = _genotype_back(request.form)
+        rows = _selected(session, Organism, module)
+        if not rows:
+            flash(f"No {mv.organism_noun_plural} selected, so nothing was recorded.", "info")
+            return _redirect_back(key, back)
+        values, error = _read_call(request.form)
+        if error:
+            return _fail(key, back, error)
+        editable = [r for r in rows if access.can_edit(r)]
+        skipped = len(rows) - len(editable)
+        n = len(editable)
+        if editable:
+            with audit.batch(session, "create", f"genotype ×{n} {mv.organism_noun_plural} ({mv.label})",
+                             "organism_genotypes"):
+                for row in editable:
+                    session.add(OrgGenotype(module_id_fk=module.id, subject_kind="organism",
+                                            subject_id=row.id, called_by=g.user.username, **values))
+                    svc.log_event(session, module, "organism", row.id, "genotype",
+                                  occurred_on=values["called_on"], recorded_by=g.user.username,
+                                  notes="Batch: " + " ".join(filter(None, [
+                                      values["assay"], values["result"], values["zygosity"]])))
+            session.commit()
+        noun = mv.organism_noun if n == 1 else mv.organism_noun_plural
+        message = f"Recorded a genotype for {n} {noun}."
+        if skipped:
+            message += f" {skipped} belong to someone else and were left alone."
+    flash(message, "success" if editable else "error")
+    return _redirect_back(key, back)
+
+
+@bp.route("/<key>/genotype/<int:call_id>/delete", methods=["POST"])
+def delete_genotype(key: str, call_id: int):
+    """Remove a call made in error: for whoever may edit its subject (or
+    made the call, if the subject is gone)."""
+    with SessionLocal() as session:
+        module = _module_or_404(session, key)
+        call = session.get(OrgGenotype, call_id)
+        if call is None or call.module_id_fk != module.id:
+            abort(404)
+        model = GENOTYPE_SUBJECTS.get(call.subject_kind)
+        subject = session.get(model, call.subject_id) if model else None
+        allowed = (access.can_edit(subject) if subject is not None
+                   else access.is_admin() or call.called_by == access.username())
+        if not allowed:
+            return _fail(key, "genotyping", access.reason_denied(subject) if subject is not None
+                         else "Only an admin or whoever made this call can remove it.", 403)
+        session.delete(call)
+        if subject is not None:
+            svc.log_event(session, module, call.subject_kind, call.subject_id, "genotype-removed",
+                          recorded_by=g.user.username,
+                          notes=" ".join(filter(None, [call.assay, call.result, call.zygosity])))
+        session.commit()
+        flash("Removed the genotype call.", "success")
+        return _redirect_back(key, "genotyping")
 
 
 # ---------------------------------------------------------------------------
@@ -1700,6 +2068,8 @@ def delete_module(key: str):
                     f"DELETE FROM {table} WHERE module_id_fk = :mid"),
                 {"mid": module.id},
             )
+        session.execute(__import__("sqlalchemy").text("DELETE FROM app_settings WHERE key = :k"),
+                        {"k": svc.SCHEDULE_KEY.format(module.id)})
         session.delete(module)
         session.commit()
         flash(f"Deleted the {label} database.", "success")
