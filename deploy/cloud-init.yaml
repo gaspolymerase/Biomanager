@@ -1,0 +1,65 @@
+#cloud-config
+# First-boot set-up for a BioManager server on Ubuntu 24.04 (tested for
+# Oracle Cloud's Ampere A1 shape; any Ubuntu 24.04 cloud VM works).
+#
+# Paste into the "Initialization script" (cloud-init) box when creating the
+# VM. It runs once, at first boot, and prepares the machine only. No secrets
+# go in here: user data can be read back from the instance metadata, so the
+# repository clone, .env and the Tailscale login are done after you SSH in
+# (deploy/README.md, "First start").
+#
+# Progress: sudo tail -f /var/log/cloud-init-output.log
+# Finished when /var/lib/biomanager-ready exists.
+
+timezone: America/New_York
+
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - unattended-upgrades
+
+write_files:
+  # Security updates install themselves every night; when one needs a
+  # reboot, it happens at 04:30, after the 02:30 backup.
+  - path: /etc/apt/apt.conf.d/52biomanager-unattended
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+  # Container logs are capped, so a chatty container can never fill the disk.
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "20m", "max-file": "5" },
+        "live-restore": true
+      }
+
+swap:
+  filename: /swapfile
+  size: 2G
+
+runcmd:
+  # Docker Engine and the compose plugin, from Docker's own apt repository.
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - >-
+    sh -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable"
+    > /etc/apt/sources.list.d/docker.list'
+  # Tailscale, for reaching the server without opening ports to the internet.
+  - >-
+    sh -c 'codename=$(. /etc/os-release && echo $VERSION_CODENAME);
+    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/$codename.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg;
+    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/$codename.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list'
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin tailscale
+  - systemctl enable --now docker tailscaled
+  - usermod -aG docker ubuntu
+  - install -d -o ubuntu -g ubuntu /opt/biomanager
+  - touch /var/lib/biomanager-ready
