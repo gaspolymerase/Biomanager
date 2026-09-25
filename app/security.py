@@ -366,16 +366,40 @@ def password_problem(password: str, username: str = "") -> str | None:
 
 _DUMMY_HASH: list[str] = []
 
+# The stored "hash" of an account that signs in only with Google or
+# Microsoft. No password matches it; an admin reset, or setting one in
+# Settings, gives the account a password as well.
+NO_PASSWORD = "!no-password"
+
+
+def has_password(user) -> bool:
+    return bool(user.password_hash) and not user.password_hash.startswith("!")
+
 
 def check_password(user, password: str) -> bool:
-    """check_password_hash, taking as long for an unknown username as for a
-    wrong password, so the timing does not reveal which accounts exist."""
-    if user is None:
+    """check_password_hash, taking as long for an unknown username, or an
+    account with no password, as for a wrong password, so the timing does
+    not reveal which accounts exist or how they sign in."""
+    if user is None or not has_password(user):
         if not _DUMMY_HASH:
             _DUMMY_HASH.append(generate_password_hash(secrets.token_hex(16)))
         check_password_hash(_DUMMY_HASH[0], password)
         return False
-    return check_password_hash(user.password_hash, password)
+    try:
+        return check_password_hash(user.password_hash, password)
+    except ValueError:  # not a hash werkzeug recognises
+        return False
+
+
+def start_session(user) -> None:
+    """Sign `user` in on this browser: a fresh session, bound to the
+    password it was started under (session_stamp), with a rolling lifetime."""
+    from flask import session
+
+    session.clear()
+    session.permanent = True
+    session["user_id"] = user.id
+    session["auth"] = session_stamp(user)
 
 
 class LoginThrottle:

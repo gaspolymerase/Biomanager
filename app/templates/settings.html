@@ -135,13 +135,19 @@
   {# ---- Password ---- #}
   <article class="card">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg> Change password</h2>
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#key"></use></svg> {{ 'Change password' if user_settings.has_password else 'Set a password' }}</h2>
     </header>
     <form method="post" class="grid grid-cols-1 gap-3.5 p-4 sm:grid-cols-3">
       <input type="hidden" name="action" value="password">
+      {% if user_settings.has_password %}
       <label class="field-label">Current password
         <input type="password" name="current_password" autocomplete="current-password" required>
       </label>
+      {% else %}
+      <p class="text-[12.5px] leading-snug text-muted sm:col-span-3">
+        You sign in with {{ identities|map(attribute='provider')|join(' or ') }}. A password as well means you can still sign in if that account is ever unavailable.
+      </p>
+      {% endif %}
       <label class="field-label">New password
         <input type="password" name="new_password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
         <span class="field-hint normal-case tracking-normal">At least {{ min_password_length }} characters. Changing it signs out your other sessions.</span>
@@ -154,6 +160,39 @@
       </div>
     </form>
   </article>
+
+  {# ---- Google / Microsoft sign-in ---- #}
+  {% if sign_in_providers or identities %}
+  <article class="card">
+    <header class="card-head">
+      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg> Sign-in methods</h2>
+    </header>
+    <div class="flex flex-col gap-3 p-4">
+      <p class="text-[12.5px] leading-snug text-muted">
+        Connect a Google or Microsoft account to sign in with it instead of your password.
+      </p>
+      {% for ident in identities %}
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <span class="font-medium text-ink">{{ ident.provider }}</span>
+            <span class="text-muted">{{ ident.email }}</span>
+            {% if ident.last_used %}<span class="text-[12px] text-muted">· last used {{ ident.last_used }}</span>{% endif %}
+          </div>
+          <form method="post" action="{{ url_for('oidc.disconnect', identity_id=ident.id) }}"
+                data-confirm="Disconnect this {{ ident.provider }} account?">
+            <button type="submit" class="btn btn-sm">Disconnect</button>
+          </form>
+        </div>
+      {% endfor %}
+      {% set connected = identities|map(attribute='provider_key')|list %}
+      <div class="flex items-center gap-1.5">
+        {% for p in sign_in_providers if p.key not in connected %}
+          <a class="btn btn-sm" href="{{ url_for('oidc.start', key=p.key, link=1) }}">Connect {{ p.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </article>
+  {% endif %}
 
   {# ---- Data + admin ---- #}
   <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">

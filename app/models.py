@@ -334,6 +334,25 @@ class UserAccount(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class UserIdentity(Base):
+    """A Google or Microsoft account that signs in as a BioManager user
+    (app/oidc.py). Matched on the provider's issuer and subject, the one
+    identifier that never changes and is never reassigned; never on email,
+    which would let whoever controls an address take over the account."""
+
+    __tablename__ = "user_identities"
+    __table_args__ = (UniqueConstraint("issuer", "subject", name="uq_user_identities_issuer_subject"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id_fk: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(40))
+    issuer: Mapped[str] = mapped_column(String(255))
+    subject: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class StrainRecord(Base):
     __tablename__ = "strains"
 

@@ -66,6 +66,7 @@ from .models import (
     SampleRecord,
     TaskItem,
     UserAccount,
+    UserIdentity,
 )
 from .services import (
     add_notification,
@@ -134,6 +135,11 @@ app.register_blueprint(inventory_bp)
 app.register_blueprint(stocks_bp)
 app.register_blueprint(labels_bp)
 app.register_blueprint(admin_racks_bp)
+
+# Sign in with Google or Microsoft (app/oidc.py); offered only when configured.
+from . import oidc  # noqa: E402
+
+app.register_blueprint(oidc.bp)
 
 with SessionLocal() as _db_session:
     if _db_session.scalar(select(func.count(UserAccount.id))) == 0:
@@ -332,7 +338,8 @@ def inject_icon():
 
 @app.context_processor
 def inject_user():
-    return {"current_user": g.get("user"), "min_password_length": security.MIN_PASSWORD_LENGTH}
+    return {"current_user": g.get("user"), "min_password_length": security.MIN_PASSWORD_LENGTH,
+            "sign_in_providers": oidc.provider_choices()}
 
 
 # ---------------------------------------------------------------------------
@@ -1325,18 +1332,16 @@ def login():
                 flash("This account is disabled. Contact an admin.", "error")
             else:
                 security.login_throttle.succeeded(*keys)
-                session.clear()
-                session.permanent = True
-                session["user_id"] = user.id
-                session["auth"] = security.session_stamp(user)
+                security.start_session(user)
                 flash(f"Welcome, {user.display_name or user.username}.", "success")
-                landing = (user.default_landing or "").strip()
-                if landing in ALLOWED_LANDING_ENDPOINTS:
-                    fallback = url_for(landing)
-                else:
-                    fallback = url_for("colony")
-                return redirect(security.safe_next(request.args.get("next")) or fallback)
+                return redirect(security.safe_next(request.args.get("next")) or landing_url(user))
     return render_template("auth.html", mode="login")
+
+
+def landing_url(user) -> str:
+    """Where someone lands after signing in: their chosen start page."""
+    landing = (user.default_landing or "").strip()
+    return url_for(landing if landing in ALLOWED_LANDING_ENDPOINTS else "colony")
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -1370,7 +1375,9 @@ def settings():
                 current = request.form.get("current_password", "")
                 new_pw = request.form.get("new_password", "")
                 confirm = request.form.get("confirm_password", "")
-                if not check_password_hash(user.password_hash, current):
+                # An account made by signing in with Google or Microsoft has
+                # no password yet; it may set one without a current one.
+                if security.has_password(user) and not security.check_password(user, current):
                     flash("Current password is incorrect.", "error")
                 elif problem := security.password_problem(new_pw, user.username):
                     flash(problem, "error")
@@ -1396,7 +1403,14 @@ def settings():
             "notify_transfer": user.notify_transfer,
             "notify_picked": user.notify_picked,
             "notify_breeder_aging": user.notify_breeder_aging,
+            "has_password": security.has_password(user),
         }
+        linked = db_session.scalars(select(UserIdentity).where(UserIdentity.user_id_fk == user.id)
+                                    .order_by(UserIdentity.created_at)).all()
+        identities = [{"id": i.id, "provider": oidc.LABELS.get(i.provider, i.provider.title()),
+                       "provider_key": i.provider, "email": i.email,
+                       "last_used": i.last_login_at.strftime("%Y-%m-%d") if i.last_login_at else ""}
+                      for i in linked]
     from . import mailer
 
     return render_template(
@@ -1405,6 +1419,7 @@ def settings():
         landing_choices=sorted(ALLOWED_LANDING_ENDPOINTS),
         mail_status=mailer.status_line(),
         mail_configured=mailer.is_configured(),
+        identities=identities,
     )
 
 
