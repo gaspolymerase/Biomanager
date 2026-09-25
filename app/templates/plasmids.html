@@ -145,7 +145,7 @@
                     <button type="submit" class="row-icon-btn" title="Duplicate plasmid #{{ p.plasmid_id }} (sequence included)">{{ icon('copy') }}</button>
                   </form>
                   <form method="post" action="{{ url_for('delete_plasmid', row_id=p.id) }}"
-                        onsubmit="return confirm('Delete plasmid #{{ p.plasmid_id }}? You can undo it from Batch history.')">
+                        data-confirm="Delete plasmid #{{ p.plasmid_id }}? You can undo it from Batch history.">
                     <button type="submit" class="row-icon-btn danger-button" title="Delete plasmid #{{ p.plasmid_id }}"
                             {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>

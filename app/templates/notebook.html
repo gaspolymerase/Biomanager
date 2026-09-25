@@ -74,7 +74,7 @@
                   <svg class="icon notebook-page-icon" aria-hidden="true"><use href="/static/icons.svg#file"></use></svg>
                   <span class="page-title-label">{{ page.title }}</span>
                 </a>
-                <form method="post" action="{{ url_for('notebook_delete_page', page_id=page.id) }}" onsubmit="return confirm('Delete this page?')">
+                <form method="post" action="{{ url_for('notebook_delete_page', page_id=page.id) }}" data-confirm="Delete “{{ page.title or 'Untitled page' }}”?">
                   <button type="submit" title="Delete page" class="danger-link"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
                 </form>
               </li>
