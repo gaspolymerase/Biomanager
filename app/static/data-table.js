@@ -22,7 +22,9 @@
  *
  * Search filters rows by the union of all data-* attributes. Sort uses
  * th.dt-sortable[data-sort-key]. Column widths and hidden columns are
- * persisted to localStorage keyed by data-table-id.
+ * persisted to localStorage keyed by data-table-id. A row may carry a
+ * detail row, <tr data-detail-for="<its data-id>" hidden>, which moves and
+ * pages with it (the page toggles its `hidden`).
  */
 
 (function () {
@@ -568,7 +570,20 @@
         this.count.textContent = `${total} ${noun}${total !== this.rows.length ? ` of ${this.rows.length}` : ''}`;
       }
       this._renderNoMatch(total === 0 && this.rows.length > 0);
-      this.filtered.forEach((tr) => this.tbody.appendChild(tr));
+      // A detail row (<tr data-detail-for="<row's data-id>">, e.g. a cage's
+      // mice) follows its row through sorting and paging, and is shown
+      // only while its row is; its own `hidden` still opens and closes it.
+      const details = new Map();
+      this.tbody.querySelectorAll(':scope > tr[data-detail-for]').forEach((d) => details.set(d.dataset.detailFor, d));
+      this.filtered.forEach((tr) => {
+        this.tbody.appendChild(tr);
+        const detail = details.get(tr.dataset.id);
+        if (detail) this.tbody.appendChild(detail);
+      });
+      details.forEach((detail, id) => {
+        const owner = this.tbody.querySelector(`:scope > tr[data-id="${id}"]`);
+        detail.style.display = owner && owner.style.display !== 'none' ? '' : 'none';
+      });
       const totalPages = Math.max(1, Math.ceil(total / size));
       if (this.pageLabel) this.pageLabel.textContent = `Page ${this.page + 1} of ${totalPages}`;
       if (this.prev) this.prev.disabled = this.page === 0;
