@@ -83,11 +83,12 @@ def can_edit_mouse(mouse, user=None) -> bool:
     return can_edit(mouse, user, shared=is_shared_cage(getattr(mouse, "cage", None)))
 
 
-def reason_denied(record, user=None) -> str:
-    """A message worth showing someone, rather than a bare 403."""
+def reason_denied(record, user=None, noun: str | None = None) -> str:
+    """A message worth showing someone, rather than a bare 403. `noun`
+    names the kind of record ("reagent", "cage"…); "record" otherwise."""
     owner = (getattr(record, "owner", "") or "").strip() or "someone else"
-    return (f"That record belongs to {owner}. Ask them, or an admin, to make "
-            f"the change — or move it to a shared breeder cage.")
+    return (f"That {noun or 'record'} belongs to {owner}. "
+            f"Ask them, or an admin, to make the change.")
 
 
 # ---------------------------------------------------------------------------

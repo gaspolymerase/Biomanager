@@ -243,6 +243,10 @@ def ensure_schema_updates() -> None:
             if column not in table_columns["mouse_cages"]:
                 alter_statements.append(f"ALTER TABLE mouse_cages ADD COLUMN {column} {ddl}")
 
+    # Who made each inventory box, for who may resize or delete it (2026-09-25).
+    if "inventory_racks" in table_columns and "created_by" not in table_columns["inventory_racks"]:
+        alter_statements.append("ALTER TABLE inventory_racks ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
+
     if alter_statements:
         with engine.begin() as connection:
             for statement in alter_statements:

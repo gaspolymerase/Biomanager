@@ -77,7 +77,9 @@
       </div>
       <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
         <a class="btn btn-sm" href="{{ url_for('inventory.module', key=m.key) }}">Open</a>
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('inventory.configure', key=m.key) }}">{{ icon('settings') }} Rename / configure</a>
+        {% if current_user.role == 'admin' or m.created_by == current_user.username %}
+          <a class="btn btn-sm btn-ghost" href="{{ url_for('inventory.configure', key=m.key) }}">{{ icon('settings') }} Rename / configure</a>
+        {% endif %}
       </footer>
     </article>
   {% else %}
