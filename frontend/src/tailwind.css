@@ -2547,6 +2547,33 @@
 }
 
 /* ===========================================================================
+   PRINTING A SHEET (the Print button on any database table)
+   =========================================================================== */
+@media print {
+  body.is-printing-sheet .rail,
+  body.is-printing-sheet .topstrip,
+  body.is-printing-sheet .toolbar-actions,
+  body.is-printing-sheet .dt-toolbar,
+  body.is-printing-sheet .dt-bottom-bar,
+  body.is-printing-sheet .selbar,
+  body.is-printing-sheet [data-view-switch],
+  body.is-printing-sheet .seg,
+  body.is-printing-sheet dialog { display: none !important; }
+  body.is-printing-sheet .data-table-card:not(.is-print-target) { display: none !important; }
+  body.is-printing-sheet .is-print-target { box-shadow: none !important; border: 0 !important; }
+  body.is-printing-sheet .is-print-target .dt-scroll { overflow: visible !important; }
+  body.is-printing-sheet .is-print-target .sheet-pin-end,
+  body.is-printing-sheet .is-print-target th:has(input[type=checkbox]),
+  body.is-printing-sheet .is-print-target td:has(> input[type=checkbox]) { display: none !important; }
+  body.is-printing-sheet .is-print-target :is(input, select, textarea) {
+    border: 0 !important; background: transparent !important; appearance: none !important;
+    box-shadow: none !important; padding: 0 !important; color: #000 !important;
+  }
+  body.is-printing-sheet .is-print-target .sheet-pin { position: static !important; }
+  body.is-printing-sheet .is-print-target table { font-size: 9pt; }
+}
+
+/* ===========================================================================
    OVERRIDES OF THIRD-PARTY STYLESHEETS
    These must stay outside @layer: TOAST UI's and the notebook editor's CSS
    are unlayered, and an unlayered rule beats any layered one whatever its
