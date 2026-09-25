@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import secrets
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -556,13 +557,18 @@ def calculate_reagent_requirements(
     }
 
 
+def upload_name(original: str) -> str:
+    """A stored name nobody can guess and no two uploads share: before this,
+    two files with the same name uploaded in the same second overwrote each
+    other. The original name stays on the end so a download is recognisable."""
+    return f"{datetime.utcnow():%Y%m%d%H%M%S}_{secrets.token_hex(8)}_{secure_filename(original) or 'file'}"
+
+
 def save_uploaded_image(upload: FileStorage | None) -> str:
     if upload is None or not upload.filename:
         return ""
 
-    filename = secure_filename(upload.filename)
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    output_name = f"{timestamp}_{filename}"
+    output_name = upload_name(upload.filename)
     destination = Path(UPLOAD_DIR / output_name)
     upload.save(destination)
     return f"uploads/{output_name}"
@@ -574,9 +580,7 @@ def save_uploaded_file(upload: FileStorage | None) -> dict | None:
     if upload is None or not upload.filename:
         return None
 
-    filename = secure_filename(upload.filename) or "file"
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    output_name = f"{timestamp}_{filename}"
+    output_name = upload_name(upload.filename)
     destination = Path(UPLOAD_DIR / output_name)
     upload.save(destination)
     try:

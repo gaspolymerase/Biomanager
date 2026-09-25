@@ -39,10 +39,12 @@
             <td class="text-muted">{{ u.email }}</td>
             <td class="text-muted">{{ u.role_title }}</td>
             <td>
-              <span class="badge {{ 'badge-brand' if u.role == 'admin' else 'badge-quiet' }}">{{ u.role }}</span>
+              <span class="badge {{ 'badge-brand' if u.role == 'admin' else 'badge-quiet' }}">{{ '—' if u.role == 'pending' else u.role }}</span>
             </td>
             <td>
-              {% if u.disabled %}
+              {% if u.role == 'pending' %}
+                <span class="badge badge-brand">awaiting approval</span>
+              {% elif u.disabled %}
                 <span class="badge badge-danger">disabled</span>
               {% else %}
                 <span class="dt-status" data-status="active">active</span>
@@ -53,13 +55,19 @@
               <form method="post" action="{{ url_for('admin_reset_password', user_id=u.id) }}"
                     class="flex items-center gap-1.5">
                 <input type="password" name="new_password" class="field h-7 text-[12px]"
-                       placeholder="new password (≥6)" minlength="6" required>
+                       placeholder="new password (≥{{ min_password_length }})" minlength="{{ min_password_length }}" required>
                 <button type="submit" class="btn btn-sm">Set</button>
               </form>
             </td>
             <td>
               {% if u.id != current_user.id %}
                 <div class="flex items-center gap-1.5">
+                  {% if u.role == 'pending' %}
+                  <form method="post" action="{{ url_for('admin_toggle_disabled', user_id=u.id) }}"
+                        data-confirm="Let {{ u.username }} sign in as a lab member?">
+                    <button type="submit" class="btn btn-sm btn-primary">Approve</button>
+                  </form>
+                  {% else %}
                   <form method="post" action="{{ url_for('admin_toggle_role', user_id=u.id) }}"
                         data-confirm="Change this user’s role?">
                     <button type="submit" class="btn btn-sm">{{ 'Demote' if u.role == 'admin' else 'Promote' }}</button>
@@ -70,6 +78,7 @@
                       {{ 'Enable' if u.disabled else 'Disable' }}
                     </button>
                   </form>
+                  {% endif %}
                 </div>
               {% else %}
                 <span class="text-[11.5px] text-muted">this is you</span>

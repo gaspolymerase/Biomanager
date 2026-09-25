@@ -27,7 +27,7 @@ except ImportError:
     sys.exit("werkzeug is not installed in this interpreter — run this with "
              "the same Python you start the app with, e.g. .venv/bin/python")
 
-MIN_LENGTH = 6
+MIN_LENGTH = 12  # app/security.py MIN_PASSWORD_LENGTH
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "biomanager.db"
 
 
@@ -90,6 +90,8 @@ def main() -> int:
             updates["role"] = "admin"
         if args.enable:
             updates["disabled"] = 0
+            if role == "pending":  # a sign-up nobody approved yet
+                updates.setdefault("role", "member")
 
         assignments = ", ".join(f"{column} = ?" for column in updates)
         conn.execute(f"update users set {assignments} where id = ?",
