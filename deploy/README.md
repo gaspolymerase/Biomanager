@@ -38,9 +38,20 @@ approval in Settings → Manage users.
 
 | `TLS=` | Use when |
 | --- | --- |
-| `internal` (default) | The server has no public DNS name. Caddy runs its own certificate authority; install its root certificate on the lab's machines once: `docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt > biomanager-root.crt` |
-| `/certs/lab.crt /certs/lab.key` | IT issued a certificate. Put both files in `deploy/certs/`. |
-| `you@example.edu` | The name is in public DNS and port 80 is reachable, so Let's Encrypt can issue one. |
+| `tailscale` | The lab reaches the server over Tailscale (below). A real certificate for its `*.ts.net` name, renewed by Tailscale; nothing to install on lab machines. Also set `COMPOSE_FILE=compose.yaml:compose.tailscale.yaml`, and turn on HTTPS in the Tailscale admin console (DNS → HTTPS Certificates). |
+| `internal` (default) | No public DNS name and no Tailscale. Caddy runs its own certificate authority; install its root certificate on the lab's machines once: `docker compose exec caddy cat /data/caddy/pki/authorities/local/root.crt > biomanager-root.crt` |
+| `files` | IT issued a certificate. Put it in `deploy/certs/server.crt` and `server.key`. |
+| `acme` | The name is in public DNS and port 80 is reachable, so Let's Encrypt can issue one for `ACME_EMAIL`. |
+
+### Reaching it over Tailscale
+
+The server joins your Tailscale network (`sudo tailscale up --hostname=biomanager`),
+and in the admin console you **disable key expiry** for it (otherwise it drops
+off after 180 days) and turn on MagicDNS and HTTPS. Lab members either join
+the tailnet (free for up to 6 users) or get the one machine **shared** with
+their own Tailscale account (Machines → biomanager → Share). The cloud
+firewall then needs no inbound rules at all: not for 80/443, and not for SSH,
+which also goes over Tailscale.
 
 ## Moving an existing lab onto the server
 
