@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_sheet.html" as sheet_ui with context %}
+{% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 
 {% block page_title %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
 {% block page_heading %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
@@ -11,6 +12,7 @@
     <span class="badge">{{ counts.all }} {{ 'plasmid' if counts.all == 1 else 'plasmids' }}</span>
     <span class="badge">{{ counts.sequence }} with a sequence</span>
     <span class="badge">{{ counts.stored }} in a box</span>
+    <span class="badge">{{ boxes|length }} {{ 'box' if boxes|length == 1 else 'boxes' }}</span>
     <span class="ml-1.5">
       {% if current_user.role == 'admin' %}Admin — you can edit anything.
       {% else %}Plasmids owned by other people are read-only.{% endif %}
@@ -18,19 +20,27 @@
   </div>
 {% endblock %}
 
+{# Box choices, grouped by the freezer (or shelf) each box is kept in. #}
+{% macro box_options(selected='', empty='Not in a box') %}
+  <option value="">{{ empty }}</option>
+  {% for location, group in boxes | groupby('location') %}
+    {% if location %}<optgroup label="{{ location }}">{% endif %}
+    {% for b in group %}<option value="{{ b.id }}" {% if selected and b.id == selected %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+    {% if location %}</optgroup>{% endif %}
+  {% endfor %}
+{% endmacro %}
+
 {% block content %}
 {{ sheet_ui.owners_list(usernames) }}
 <datalist id="plasmid-resistance">
   <option value="Amp"></option><option value="Kan"></option><option value="Cam"></option>
   <option value="Spec"></option><option value="Hyg"></option><option value="Puro"></option>
 </datalist>
-<datalist id="plasmid-existing-boxes">
-  {% for b in boxes %}<option value="{{ b }}"></option>{% endfor %}
+<datalist id="plasmid-box-locations">
+  {% for location in boxes | map(attribute='location') | unique %}{% if location %}<option value="{{ location }}"></option>{% endif %}{% endfor %}
 </datalist>
 
-{% set new_payload = {"owner": current_user.username, "plasmid_id": next_plasmid_id} %}
-
-<section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v3" data-noun="plasmid" id="plasmids-section"
+<section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v4" data-noun="plasmid" id="plasmids-section"
          data-autosave-sheet data-export-name="plasmids"
          data-selection-scope data-selection-noun="plasmid" data-selection-noun-plural="plasmids">
   <div class="dt-toolbar">
@@ -52,6 +62,9 @@
     <div class="dt-toolbar-spacer"></div>
     {{ sheet_ui.tools() }}
     <button type="button" class="dt-toolbar-btn" onclick="openCsvImport('plasmid')" title="Load plasmids from a CSV file">{{ icon('import') }} Import</button>
+    <button type="button" class="dt-toolbar-btn" data-record-edit="plasmid-dialog"
+            data-record-payload='{{ dict(new_payload, count=10) | tojson }}'
+            title="Several plasmids at once: the same construct, or a list of names, with consecutive numbers side by side in a box">{{ icon('duplicate') }} Add many</button>
     <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
             data-record-edit="plasmid-dialog" data-record-payload='{{ new_payload | tojson }}'>
       {{ icon('plus') }} New plasmid
@@ -85,13 +98,13 @@
             <th class="dt-sortable" data-sort-key="owner" style="width: 88px;">
               <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="storage_box" style="width: 140px;" title="The freezer box it is kept in">
+            <th class="dt-sortable" data-sort-key="box" style="width: 150px;" title="The freezer box it is kept in. Add or change boxes in the box view.">
               <span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Box<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="position" style="width: 80px;" title="Cell in the box: row letter and column number, e.g. B4">
+            <th class="dt-sortable" data-sort-key="position" style="width: 80px;" title="Cell in the box, named the way the box names them (e.g. D7)">
               <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="location" style="width: 150px;" title="Where the box or tube is: freezer, shelf…">
+            <th class="dt-sortable" data-sort-key="location" style="width: 150px;" title="Where the tube is when it is not in a box: freezer, shelf…">
               <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span>
             </th>
             <th class="dt-sortable" data-sort-key="length" style="width: 116px;" title="Sequence length and topology; edit it on the plasmid's page">
@@ -126,9 +139,13 @@
               <td><input form="{{ f }}" name="insert_seq" value="{{ p.insert_seq }}" title="{{ p.insert_seq }}" data-autosave="1" aria-label="Insert" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1" aria-label="Resistance" {% if locked %}disabled{% endif %}></td>
               <td>{{ sheet_ui.owner_cell(p.owner, f, locked) }}</td>
-              <td><input form="{{ f }}" name="storage_box" value="{{ p.storage_box or '' }}" list="plasmid-existing-boxes" placeholder="–"
-                         data-autosave="1" data-dead-values="" aria-label="Box" {% if locked %}disabled{% endif %}></td>
-              <td><input class="ident" form="{{ f }}" name="position" value="{{ r.position }}" placeholder="–"
+              <td>
+                <select form="{{ f }}" name="box_id" data-autosave="1" data-dead-values="" aria-label="Box" {% if locked %}disabled{% endif %}>
+                  {{ box_options(p.box_id_fk, '–') }}
+                </select>
+              </td>
+              <td><input class="ident" form="{{ f }}" name="position" value="{{ r.position }}"
+                         placeholder="{{ '–' if not r.box else 'no cell' }}"
                          data-autosave="1" data-dead-values="" aria-label="Position in the box" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="location" value="{{ p.location }}" title="{{ p.location }}" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-num">
@@ -140,7 +157,7 @@
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Open plasmid #{{ p.plasmid_id }}" data-record-edit="plasmid-dialog"
-                          data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
+                          data-open-payload data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
                   <form method="post" action="{{ url_for('duplicate_plasmid', row_id=p.id) }}">
                     <button type="submit" class="row-icon-btn" title="Duplicate plasmid #{{ p.plasmid_id }} (sequence included)">{{ icon('copy') }}</button>
                   </form>
@@ -153,7 +170,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="13">No plasmids yet. Use <strong>New plasmid</strong>, or <strong>Import</strong> a CSV.</td></tr>
+            <tr><td class="dt-empty" colspan="13">No plasmids yet. Use <strong>New plasmid</strong>, <strong>Add many</strong>, or <strong>Import</strong> a CSV.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -165,53 +182,22 @@
     {% for r in rows %}
       <form id="plasmid-{{ r.p.id }}" method="post" action="{{ url_for('update_plasmid', row_id=r.p.id) }}"
             data-record-label="plasmid #{{ r.p.plasmid_id }}">
-        <input type="hidden" name="storage_box_was" value="{{ r.p.storage_box or '' }}">
+        <input type="hidden" name="box_id_was" value="{{ r.p.box_id_fk or '' }}">
         <input type="hidden" name="position_was" value="{{ r.position }}">
       </form>
     {% endfor %}
   </div>{# /plasmid-view-table #}
 
-  <div class="plasmid-view plasmid-view-cards" data-view="cards" data-active-box="{{ active_box }}">
-    <div class="plasmid-box-header">
-      <label class="field-label">Box
-        <select id="plasmid-box-select">
-          {% if not boxes %}<option value="">No boxes yet</option>{% endif %}
-          {% for b in boxes %}<option value="{{ b }}" {% if b == active_box %}selected{% endif %}>{{ b }}</option>{% endfor %}
-          <option value="__new__">New box…</option>
-        </select>
-      </label>
-      <label class="field-label">Rows <input id="plasmid-box-rows" type="number" min="1" max="{{ box_max }}" value="9"></label>
-      <label class="field-label">Columns <input id="plasmid-box-cols" type="number" min="1" max="{{ box_max }}" value="9"></label>
-      <span class="plasmid-box-status sheet-save" id="plasmid-box-status" aria-live="polite"></span>
-    </div>
-    <div class="plasmid-box-shell">
-      <div class="plasmid-box-grid" id="plasmid-box-grid" data-active-box="{{ active_box }}" data-box-max="{{ box_max }}"></div>
-      <aside class="plasmid-box-tray" id="plasmid-box-tray">
-        <h4>Unplaced</h4>
-        <p class="text-[12px] text-muted">Drag a plasmid into a cell (onto another to swap them), or back here to take it out of its cell.</p>
-        <div class="plasmid-box-tray-items" id="plasmid-box-tray-items"></div>
-      </aside>
-    </div>
-    <script id="plasmid-box-data" type="application/json">
-      [
-        {% for r in rows %}
-          {% set p = r.p %}
-          {
-            "id": {{ p.id }},
-            "plasmid_id": {{ p.plasmid_id }},
-            "name": {{ (p.name or '')|tojson }},
-            "backbone": {{ (p.backbone or '')|tojson }},
-            "resistance": {{ (p.resistance or '')|tojson }},
-            "owner": {{ (p.owner or '')|tojson }},
-            "editable": {{ 'true' if r.editable else 'false' }},
-            "storage_box": {{ (p.storage_box or '')|tojson }},
-            "box_row": {{ p.box_row if p.box_row is not none else -1 }},
-            "box_col": {{ p.box_col if p.box_col is not none else -1 }},
-            "search": {{ ((p.name or '') + ' ' + (p.backbone or '') + ' ' + (p.resistance or '') + ' ' + (p.owner or ''))|lower|tojson }}
-          }{% if not loop.last %},{% endif %}
-        {% endfor %}
-      ]
-    </script>
+  {# The shared rack grid (static/rack-grid.js): pick the freezer, then the
+     box. Moves post box_id + 0-based box_row / box_col to /plasmids/<id>/move. #}
+  <div class="plasmid-view plasmid-view-cards" data-view="cards">
+    {{ rack_grid('plasmid-boxes', grid, url_for('plasmid_move_in_box', row_id=0)|replace('/0/', '/{id}/'),
+                 rack_noun='box', rack_dialog_id='plasmid-box-dialog',
+                 new_rack_payload={'rows': 9, 'cols': 9},
+                 index_base=0, rack_field='box_id', row_field='box_row', col_field='box_col',
+                 empty_text='No boxes yet. Use New box to add one, with its size and how its positions are named.',
+                 hint='Drag a plasmid onto a cell to place it (onto another to swap them), or here to take it out of its cell. Click a plasmid to open it; click an empty cell to add one there.',
+                 group_label='freezer') }}
   </div>
 
   <div class="plasmid-view plasmid-view-list" data-view="list">
@@ -219,14 +205,14 @@
       <ul class="plasmid-list">
         {% for r in rows %}
           {% set p = r.p %}
-          <li class="plasmid-list-row" data-search="{{ ((p.name or '') + ' ' + (p.backbone or '') + ' ' + (p.resistance or '') + ' ' + (p.owner or ''))|lower }}">
+          <li class="plasmid-list-row" data-search="{{ ((p.name or '') + ' ' + (p.backbone or '') + ' ' + (p.resistance or '') + ' ' + (p.owner or '') + ' ' + r.where)|lower }}">
             <a href="{{ url_for('plasmid_detail', row_id=p.id) }}">
               <span class="plasmid-list-id">#{{ p.plasmid_id }}</span>
               <span class="plasmid-list-name">{{ p.name or 'Unnamed' }}</span>
               <span class="plasmid-list-meta">
                 {% if p.backbone %}<span>{{ p.backbone }}</span>{% endif %}
                 {% if p.resistance %}<span class="badge badge-brand">{{ p.resistance }}</span>{% endif %}
-                {% if r.stored %}<span>{{ p.storage_box }} · {{ r.position }}</span>{% elif p.location %}<span>{{ p.location }}</span>{% endif %}
+                {% if r.where %}<span>{{ r.where }}</span>{% elif p.location %}<span>{{ p.location }}</span>{% endif %}
                 {% if r.length %}<span class="tabular-nums">{{ r.length }} bp</span>{% endif %}
                 {% if p.owner %}{{ p.owner | owner_badge }}{% endif %}
                 {% if not r.editable %}<span class="sheet-lock" title="{{ p.owner }}’s plasmid: read only">{{ icon('lock') }}</span>{% endif %}
@@ -272,9 +258,9 @@
       <button type="submit" class="btn btn-sm">Set resistance</button>
     </form>
     <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form
-          title="Places them in the first free cells; leave the box blank to take them out of their boxes">
+          title="Places them in the box's first free cells; “Out of any box” takes them out">
       <input type="hidden" name="action" value="move">
-      <input name="value" list="plasmid-existing-boxes" placeholder="box" aria-label="Box to move to">
+      <select name="box_id" aria-label="Box to move to">{{ box_options('', 'Out of any box') }}</select>
       <button type="submit" class="btn btn-sm">{{ icon('box') }} Move to box</button>
     </form>
     <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form
@@ -288,8 +274,8 @@
 </section>
 
 {# New and Open share one dialog (static/record-dialog.js). The sequence
-   upload is for new plasmids; an existing one changes its sequence on its
-   own page, where the map shows what you are replacing. #}
+   upload and "How many" are for new plasmids; an existing one changes its
+   sequence on its own page, where the map shows what you are replacing. #}
 <dialog id="plasmid-dialog" class="record-dialog" aria-labelledby="plasmid-dialog-title">
   <form method="post" enctype="multipart/form-data" id="plasmid-dialog-form" data-record-form
         data-create-action="{{ url_for('plasmids') }}"
@@ -299,16 +285,25 @@
     <header class="record-dialog-head">
       <div>
         <h3 id="plasmid-dialog-title" data-record-title>New plasmid</h3>
-        <p class="record-dialog-sub" data-plasmid-sub>It will be plasmid #{{ next_plasmid_id }}, or the next free number if that is taken when you save.</p>
+        <p class="record-dialog-sub" data-plasmid-sub data-next-id="{{ next_plasmid_id }}">It will be plasmid #{{ next_plasmid_id }}, or the next free number if that is taken when you save.</p>
       </div>
       <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
       <input type="hidden" name="plasmid_id" value="{{ next_plasmid_id }}">
-      <input type="hidden" name="storage_box_was">
+      <input type="hidden" name="box_id_was">
       <input type="hidden" name="position_was">
-      <label class="record-wide">Name <input name="name" required placeholder="e.g. pCMV-mCherry-NLS" autocomplete="off"></label>
+      <label class="record-wide" data-plasmid-name>Name <input name="name" required placeholder="e.g. pCMV-mCherry-NLS" autocomplete="off"></label>
+      <fieldset class="record-group" data-new-only>
+        <legend>How many</legend>
+        <label>How many <input type="number" name="count" min="1" max="{{ max_batch }}" value="1" data-plasmid-count></label>
+        <p class="plasmid-many-hint" data-plasmid-many-hint>Each gets its own number, one after another, side by side in the box.</p>
+        <details class="record-wide dropzone-paste" data-plasmid-names-box>
+          <summary>Or paste a list of names, one per line</summary>
+          <textarea name="names" rows="5" placeholder="pAAV-hSyn-GFP&#10;pAAV-hSyn-mCherry&#10;…" data-plasmid-names></textarea>
+        </details>
+      </fieldset>
       <fieldset class="record-group">
         <legend>Construct</legend>
         <label>Backbone <input name="backbone" placeholder="e.g. pcDNA3.1"></label>
@@ -318,9 +313,10 @@
       </fieldset>
       <fieldset class="record-group">
         <legend>Storage</legend>
-        <label>Box <input name="storage_box" list="plasmid-existing-boxes" placeholder="e.g. Plasmid box A"></label>
-        <label>Position <input name="position" class="font-mono" placeholder="e.g. B4" pattern="\s*[A-Ta-t]\s*-?\s*\d{1,2}\s*" title="Row letter and column number, like B4"></label>
-        <label class="record-wide">Location <input name="location" placeholder="e.g. −80 freezer, shelf 2"></label>
+        <label>Box <select name="box_id">{{ box_options() }}</select></label>
+        <label>Position <input name="position" class="font-mono" placeholder="blank = next free" autocomplete="off"
+                               title="Named the way the box names its cells, e.g. D7"></label>
+        <label class="record-wide">Location <input name="location" placeholder="e.g. −80 freezer, shelf 2 (when not in a box)"></label>
       </fieldset>
       <fieldset class="record-group" data-new-only>
         <legend>Sequence (optional)</legend>
@@ -347,51 +343,152 @@
     </footer>
   </form>
 </dialog>
+
+{# Boxes: size, position names and freezer. Resizing, renaming and deleting
+   are for whoever made the box, or an admin (access.can_edit_rack). #}
+{% call rack_dialog('plasmid-box-dialog', url_for('save_plasmid_box'), url_for('save_plasmid_box'),
+                    url_for('delete_plasmid_box', box_id=0), noun='box') %}
+  <label class="col-span-full">Freezer / shelf <input name="location" list="plasmid-box-locations" placeholder="e.g. −80 freezer 2, shelf 3" autocomplete="off"></label>
+  <label class="col-span-full">Notes <input name="notes" placeholder="Optional"></label>
+  <p class="plasmid-box-locked col-span-full" data-box-locked hidden></p>
+{% endcall %}
 {% endblock %}
 
 {% block body_end %}
 <script>
-  /* The record dialog: New shows the sequence upload; Open shows who owns a
-     read-only plasmid, and links to its page. */
+  /* Open a given box (after saving one, the server sends ?box=<id>): the
+     rack grid reads its remembered box when it starts, which is after this. */
+  (function () {
+    const box = new URLSearchParams(window.location.search).get('box');
+    if (!box || !/^\d+$/.test(box)) return;
+    try {
+      localStorage.setItem('rack:plasmid-boxes:active', box);
+      localStorage.setItem('plasmids:view-mode', 'cards');
+    } catch (_) {}
+  })();
+
+  /* The record dialog: New shows the sequence upload and How many; Open
+     shows who owns a read-only plasmid, and links to its page. */
   (function () {
     const dialog = document.getElementById('plasmid-dialog');
     if (!dialog) return;
+    const form = dialog.querySelector('form');
     const sub = dialog.querySelector('[data-plasmid-sub]');
     const hint = dialog.querySelector('[data-plasmid-hint]');
-    const newSub = sub ? sub.textContent : '';
+    const count = form.querySelector('[data-plasmid-count]');
+    const names = form.querySelector('[data-plasmid-names]');
+    const nameInput = form.elements.name;
+    const manyHint = form.querySelector('[data-plasmid-many-hint]');
+    const submit = dialog.querySelector('[data-record-submit]');
+    const nextId = parseInt(sub.dataset.nextId, 10) || 1;
+    let isNew = true;
+
+    const pasted = () => names.value.split('\n').map((s) => s.trim()).filter(Boolean);
+    function syncMany() {
+      if (!isNew) return;
+      const list = pasted();
+      const n = list.length || Math.max(1, Math.min({{ max_batch }}, parseInt(count.value, 10) || 1));
+      count.disabled = list.length > 0;
+      if (list.length) count.value = list.length;
+      nameInput.required = !list.length;
+      nameInput.closest('label').classList.toggle('is-muted', list.length > 0);
+      nameInput.placeholder = list.length ? 'from the list below' : 'e.g. pCMV-mCherry-NLS';
+      sub.textContent = n > 1
+        ? `They will be plasmids #${nextId}–#${nextId + n - 1} (or the next free run of numbers).`
+        : `It will be plasmid #${nextId}, or the next free number if that is taken when you save.`;
+      manyHint.textContent = list.length
+        ? `${list.length} ${list.length === 1 ? 'name' : 'names'}: one plasmid each, with the construct and storage below.`
+        : 'Each gets its own number, one after another, side by side in the box from the position below.';
+      if (submit) submit.textContent = n > 1 ? `Create ${n} plasmids` : 'Create plasmid';
+    }
+    count.addEventListener('input', syncMany);
+    names.addEventListener('input', syncMany);
+
     dialog.addEventListener('record-dialog:open', (event) => {
-      const { data, isNew } = event.detail || {};
+      const { data } = event.detail || {};
+      isNew = event.detail.isNew;
       dialog.querySelectorAll('[data-new-only]').forEach((el) => { el.hidden = !isNew; });
-      if (sub) {
-        sub.innerHTML = '';
-        if (isNew) {
-          sub.textContent = newSub;
-        } else {
-          const link = document.createElement('a');
-          link.href = `/plasmids/${data.id}`;
-          link.textContent = 'Open its page (sequence map)';
-          sub.appendChild(link);
-        }
+      count.disabled = !isNew;
+      names.disabled = !isNew;
+      nameInput.required = true;
+      nameInput.placeholder = 'e.g. pCMV-mCherry-NLS';
+      nameInput.closest('label').classList.remove('is-muted');
+      const namesBox = form.querySelector('[data-plasmid-names-box]');
+      if (namesBox) namesBox.open = false;
+      sub.innerHTML = '';
+      if (isNew) {
+        syncMany();
+      } else {
+        const link = document.createElement('a');
+        link.href = `/plasmids/${data.id}`;
+        link.textContent = 'Open its page (sequence map)';
+        sub.appendChild(link);
       }
       if (hint) hint.textContent = (!isNew && data._locked) ? `${data.owner || 'Someone else'}’s plasmid: read only` : '';
     });
   })();
 
-  /* After an inline save, the row's Open button carries what was saved. */
-  document.addEventListener('sheet:saved', (event) => {
-    const { form, body } = event.detail || {};
-    const values = body && body.row && body.row.values;
-    const tr = form && document.querySelector(`tr[data-id="${form.id.replace('plasmid-', '')}"]`);
-    if (!values || !tr) return;
-    const open = tr.querySelector('[data-record-edit]');
-    if (open) {
-      try {
-        const payload = JSON.parse(open.dataset.recordPayload || '{}');
-        Object.assign(payload, values, { storage_box_was: values.storage_box, position_was: values.position });
-        open.dataset.recordPayload = JSON.stringify(payload);
-      } catch (_) {}
-    }
-  });
+  /* The box dialog: Delete says how many plasmids leave the box, and a box
+     someone else made opens read only. */
+  (function () {
+    const dialog = document.getElementById('plasmid-box-dialog');
+    if (!dialog) return;
+    const del = dialog.querySelector('form[data-rack-delete]');
+    const note = dialog.querySelector('[data-box-locked]');
+    dialog.addEventListener('record-dialog:open', (event) => {
+      const { data, isNew } = event.detail || {};
+      const locked = !isNew && data._locked;
+      if (del) {
+        del.hidden = isNew || locked;
+        const n = data._count || 0;
+        del.setAttribute('data-confirm', n
+          ? `Delete the box “${data.name}”? Its ${n} ${n === 1 ? 'plasmid' : 'plasmids'} will no longer be in a box (nothing else is deleted). You can undo it from Batch history.`
+          : `Delete the empty box “${data.name}”?`);
+      }
+      if (note) {
+        note.hidden = !locked;
+        note.textContent = locked
+          ? `Only ${data._creator ? `${data._creator} (who made it) or an admin` : 'an admin'} can change or delete this box. You can still put plasmids in it.`
+          : '';
+      }
+    });
+  })();
+
+  /* A sheet row's Open button follows what was saved, and what the grid moved. */
+  (function () {
+    const openOf = (id) => document.querySelector(`tr[data-id="${id}"] [data-open-payload]`);
+    document.addEventListener('sheet:saved', (event) => {
+      const { form, body } = event.detail || {};
+      const open = form && body && body.payload && openOf(form.id.replace('plasmid-', ''));
+      if (open) open.dataset.recordPayload = JSON.stringify(body.payload);
+    });
+    // A move on the box grid: the row's box, position, their _was copies,
+    // its dot and its Open payload. The Unplaced tray keeps the box.
+    document.addEventListener('rack-grid:moved', (event) => {
+      const { view, id, rackId, position } = event.detail || {};
+      if (view !== 'plasmid-boxes') return;
+      const form = document.getElementById(`plasmid-${id}`);
+      if (!form) return;
+      const set = (name, v) => {
+        document.querySelectorAll(`[form="plasmid-${id}"][name="${name}"]`).forEach((el) => { el.value = v; });
+        const was = form.querySelector(`[name="${name}_was"]`);
+        if (was) was.value = v;
+      };
+      if (rackId) set('box_id', String(rackId));
+      set('position', position || '');
+      const tr = document.querySelector(`tr[data-id="${id}"]`);
+      if (tr && window.BioSheet) window.BioSheet.refreshDot(tr, Boolean(rackId && position));
+      const open = openOf(id);
+      if (open) {
+        try {
+          const payload = JSON.parse(open.dataset.recordPayload || '{}');
+          if (rackId) Object.assign(payload, { box_id: String(rackId), box_id_was: String(rackId) });
+          Object.assign(payload, { position: position || '', position_was: position || '' });
+          open.dataset.recordPayload = JSON.stringify(payload);
+        } catch (_) { /* leave it */ }
+      }
+    });
+  })();
 
   // View mode switcher (Table / Box / List). Persisted to localStorage.
   (function () {
@@ -414,7 +511,7 @@
     try { saved = localStorage.getItem(VIEW_KEY) || ''; } catch (_) {}
     applyView(['table', 'cards', 'list'].includes(saved) ? saved : 'table');
 
-    // Search also filters the list view.
+    // The toolbar search also filters the list view.
     if (searchInput) {
       searchInput.addEventListener('input', () => {
         const q = searchInput.value.trim().toLowerCase();
@@ -422,255 +519,8 @@
           const match = !q || (el.dataset.search || '').includes(q);
           el.style.display = match ? '' : 'none';
         });
-        // Highlight matching plasmid tubes in the box grid.
-        section.querySelectorAll('.plasmid-tube[data-search]').forEach((el) => {
-          const match = !q || (el.dataset.search || '').includes(q);
-          el.classList.toggle('is-dimmed', !match);
-        });
       });
     }
-  })();
-
-  // ---- Storage box grid view -------------------------------------------
-  (function () {
-    const grid = document.getElementById('plasmid-box-grid');
-    const tray = document.getElementById('plasmid-box-tray-items');
-    const select = document.getElementById('plasmid-box-select');
-    const rowsInput = document.getElementById('plasmid-box-rows');
-    const colsInput = document.getElementById('plasmid-box-cols');
-    const dataNode = document.getElementById('plasmid-box-data');
-    const status = document.getElementById('plasmid-box-status');
-    if (!grid || !tray || !select || !dataNode) return;
-
-    const MAX = parseInt(grid.dataset.boxMax, 10) || 20;
-    const LETTERS = 'ABCDEFGHIJKLMNOPQRST';
-    let plasmids;
-    try { plasmids = JSON.parse(dataNode.textContent); } catch (_) { plasmids = []; }
-    let activeBox = grid.dataset.activeBox || '';
-    const sizeKey = (box) => `plasmids:box-size:${box || ''}`;
-
-    function say(state, text) {
-      if (!status) return;
-      clearTimeout(status._clear);
-      status.dataset.state = state;
-      status.textContent = text;
-      if (state === 'saved') status._clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
-    }
-
-    function loadSize(box) {
-      try {
-        const raw = localStorage.getItem(sizeKey(box));
-        if (raw) {
-          const obj = JSON.parse(raw);
-          if (obj && obj.rows && obj.cols) return { rows: Math.min(MAX, obj.rows), cols: Math.min(MAX, obj.cols) };
-        }
-      } catch (_) {}
-      return { rows: 9, cols: 9 };
-    }
-    function saveSize(box, rows, cols) {
-      try { localStorage.setItem(sizeKey(box), JSON.stringify({ rows, cols })); } catch (_) {}
-    }
-
-    function tubeEl(p) {
-      const el = document.createElement('div');
-      el.className = 'plasmid-tube' + (p.editable ? '' : ' is-locked');
-      el.draggable = !!p.editable;
-      el.dataset.rowId = String(p.id);
-      el.dataset.search = p.search || '';
-      el.title = `#${p.plasmid_id} · ${p.name || 'Unnamed'}\n${p.backbone || ''} ${p.resistance ? ' · ' + p.resistance : ''}\n`
-        + (p.editable ? 'Click to open, drag to move' : `${p.owner || 'Someone else'}’s plasmid: read only`);
-      el.innerHTML = `
-        <a class="plasmid-tube-link" href="/plasmids/${p.id}" draggable="false">
-          <span class="plasmid-tube-id">#${p.plasmid_id}</span>
-          <span class="plasmid-tube-name">${escapeHtml(p.name || '')}</span>
-          ${p.resistance ? `<span class="plasmid-tube-resist">${escapeHtml(p.resistance)}</span>` : ''}
-        </a>
-      `;
-      if (p.editable) {
-        el.addEventListener('dragstart', (event) => {
-          event.dataTransfer.setData('text/plain', String(p.id));
-          event.dataTransfer.effectAllowed = 'move';
-          el.classList.add('is-dragging');
-        });
-        el.addEventListener('dragend', () => { el.classList.remove('is-dragging'); });
-      }
-      return el;
-    }
-
-    function render() {
-      const { rows, cols } = loadSize(activeBox);
-      if (rowsInput) rowsInput.value = rows;
-      if (colsInput) colsInput.value = cols;
-
-      grid.innerHTML = '';
-      grid.style.gridTemplateColumns = `28px repeat(${cols}, 1fr)`;
-      grid.style.gridTemplateRows = `28px repeat(${rows}, 1fr)`;
-
-      // Header labels: top-left empty + column numbers across the top.
-      const blank = document.createElement('div');
-      blank.className = 'plasmid-box-corner';
-      grid.appendChild(blank);
-      for (let c = 0; c < cols; c++) {
-        const h = document.createElement('div');
-        h.className = 'plasmid-box-col-label';
-        h.textContent = c + 1;
-        grid.appendChild(h);
-      }
-      // Row labels + cells.
-      for (let r = 0; r < rows; r++) {
-        const lab = document.createElement('div');
-        lab.className = 'plasmid-box-row-label';
-        lab.textContent = LETTERS[r] || (r + 1);
-        grid.appendChild(lab);
-        for (let c = 0; c < cols; c++) {
-          const cell = document.createElement('div');
-          cell.className = 'plasmid-box-cell';
-          cell.dataset.row = r;
-          cell.dataset.col = c;
-          cell.title = `${LETTERS[r]}${c + 1}`;
-          wireDrop(cell);
-          grid.appendChild(cell);
-        }
-      }
-
-      // Position any plasmids that belong to this box at their cell.
-      tray.innerHTML = '';
-      plasmids.forEach((p) => {
-        const inBox = (p.storage_box || '') === activeBox;
-        const placed = p.box_row >= 0 && p.box_col >= 0 && inBox;
-        const placedInBounds = placed && p.box_row < rows && p.box_col < cols;
-        if (placedInBounds) {
-          const sel = grid.querySelector(`.plasmid-box-cell[data-row="${p.box_row}"][data-col="${p.box_col}"]`);
-          if (sel) sel.appendChild(tubeEl(p));
-        } else if (inBox) {
-          // Belongs to active box but unplaced (or out of bounds) → tray.
-          tray.appendChild(tubeEl(p));
-        } else if (!p.storage_box) {
-          // No box assigned at all → also goes to the tray (so user can
-          // place it into the active box).
-          tray.appendChild(tubeEl(p));
-        }
-      });
-      if (tray.children.length === 0) {
-        tray.innerHTML = '<div class="plasmid-box-tray-empty">All plasmids in this box are placed.</div>';
-      }
-    }
-
-    function wireDrop(cell) {
-      cell.addEventListener('dragover', (event) => {
-        event.preventDefault();
-        cell.classList.add('is-drop-target');
-      });
-      cell.addEventListener('dragleave', () => cell.classList.remove('is-drop-target'));
-      cell.addEventListener('drop', async (event) => {
-        event.preventDefault();
-        cell.classList.remove('is-drop-target');
-        const rowId = event.dataTransfer.getData('text/plain');
-        if (!rowId) return;
-        if (!activeBox) { say('error', 'Pick or create a box first.'); return; }
-        await moveTo(rowId, activeBox, parseInt(cell.dataset.row, 10), parseInt(cell.dataset.col, 10));
-      });
-    }
-
-    // Wired once: the tray element survives every render.
-    tray.addEventListener('dragover', (event) => {
-      event.preventDefault();
-      tray.classList.add('is-drop-target');
-    });
-    tray.addEventListener('dragleave', () => tray.classList.remove('is-drop-target'));
-    tray.addEventListener('drop', async (event) => {
-      event.preventDefault();
-      tray.classList.remove('is-drop-target');
-      const rowId = event.dataTransfer.getData('text/plain');
-      if (!rowId) return;
-      // Move to the active box but unplaced (no row/col).
-      await moveTo(rowId, activeBox, null, null);
-    });
-
-    /* The sheet row of a moved plasmid shows its new box and position, and
-       its _was guards follow, so a later edit on that row does not post the
-       old place back. */
-    function syncRow(m) {
-      const form = document.getElementById(`plasmid-${m.id}`);
-      if (!form) return;
-      const set = (name, v) => {
-        document.querySelectorAll(`[form="plasmid-${m.id}"][name="${name}"]`).forEach((el) => { el.value = v || ''; });
-        const was = form.querySelector(`[name="${name}_was"]`);
-        if (was) was.value = v || '';
-      };
-      set('storage_box', m.storage_box);
-      set('position', m.position);
-      const tr = document.querySelector(`tr[data-id="${m.id}"]`);
-      if (tr && window.BioSheet) window.BioSheet.refreshDot(tr, m.stored);
-    }
-
-    async function moveTo(rowId, box, r, c) {
-      const fd = new FormData();
-      fd.append('storage_box', box || '');
-      if (r !== null && r !== undefined) fd.append('box_row', String(r));
-      if (c !== null && c !== undefined) fd.append('box_col', String(c));
-      say('saving', 'Moving…');
-      let body = {};
-      try {
-        const resp = await fetch(`/plasmids/${rowId}/move`, { method: 'POST', body: fd });
-        body = await resp.json().catch(() => ({}));
-        if (!resp.ok || body.ok === false) throw new Error(body.error || `The server answered ${resp.status}.`);
-      } catch (error) {
-        say('error', `Couldn’t move it: ${error.message}`);
-        return;
-      }
-      // Update local data (the plasmid, and one it swapped with), then re-render.
-      (body.moved || []).forEach((m) => {
-        const p = plasmids.find((x) => String(x.id) === String(m.id));
-        if (p) Object.assign(p, { storage_box: m.storage_box, box_row: m.box_row, box_col: m.box_col });
-        syncRow(m);
-      });
-      say('saved', 'Moved');
-      render();
-    }
-
-    function switchBox(name) {
-      activeBox = name;
-      grid.dataset.activeBox = name;
-      render();
-    }
-
-    select.addEventListener('change', () => {
-      if (select.value === '__new__') {
-        const name = prompt('New box name (e.g. "-80 box A"):');
-        if (!name || !name.trim()) {
-          select.value = activeBox;
-          return;
-        }
-        const trimmed = name.trim();
-        // Add an option to the select so it sticks.
-        if (![...select.options].some((o) => o.value === trimmed)) {
-          const opt = document.createElement('option');
-          opt.value = trimmed;
-          opt.textContent = trimmed;
-          select.insertBefore(opt, select.querySelector('option[value="__new__"]'));
-        }
-        select.value = trimmed;
-        switchBox(trimmed);
-        return;
-      }
-      switchBox(select.value);
-    });
-
-    [rowsInput, colsInput].forEach((inp) => {
-      if (inp) inp.addEventListener('change', () => {
-        const r = Math.max(1, Math.min(MAX, parseInt(rowsInput.value, 10) || 9));
-        const c = Math.max(1, Math.min(MAX, parseInt(colsInput.value, 10) || 9));
-        saveSize(activeBox, r, c);
-        render();
-      });
-    });
-
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-    }
-
-    render();
   })();
 
   // ---- New plasmid dialog: drop-zone wiring ------------------------------
