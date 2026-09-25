@@ -16,6 +16,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import SessionLocal
 from . import access, positions
+from .formutil import form_changed
 # Importing this registers the SQLAlchemy flush listener that writes
 # audit_log rows for every tracked change; nothing here calls into it.
 from . import audit  # noqa: F401
@@ -42,6 +43,8 @@ from .models import (
     Experiment,
     ExperimentMouse,
     LitterRecord,
+    InventoryItem,
+    InventoryModule,
     MouseRack,
     MouseWeight,
     MOUSE_STATUS_OPTIONS,
@@ -112,9 +115,11 @@ init_database()
 # in their own blueprint — none of it is species-specific, so it does not
 # belong in this file. See app/organisms.py for the capability vocabulary.
 from .organism_routes import bp as organism_bp  # noqa: E402
+from .inventory_routes import bp as inventory_bp  # noqa: E402
 from .labels import bp as labels_bp  # noqa: E402
 
 app.register_blueprint(organism_bp)
+app.register_blueprint(inventory_bp)
 app.register_blueprint(labels_bp)
 
 
@@ -301,10 +306,6 @@ NAV_SECTIONS: list[dict] = [
              "endpoint": "zebrafish", "match": ("zebrafish", "zebrafish_line_detail")},
             {"key": "plasmids", "label": "Plasmids", "icon": "plasmid",
              "endpoint": "plasmids", "match": ("plasmids", "plasmid_detail")},
-            {"key": "samples", "label": "Samples", "icon": "vial",
-             "endpoint": "samples"},
-            {"key": "orders", "label": "Orders", "icon": "cart",
-             "endpoint": "orders"},
             {"key": "new-db", "label": "Add database", "icon": "plus",
              "endpoint": "organisms.new_module", "match": ("organisms.new_module",)},
         ],
@@ -384,6 +385,38 @@ def _resolve_nav_item(item: dict, active_endpoint: str) -> dict | None:
     return resolved
 
 
+def builtin_labels() -> dict[str, str]:
+    """Names of the built-in databases (the lab may have renamed them)."""
+    from . import inventory_service as inventories
+    try:
+        with SessionLocal() as db_session:
+            return inventories.builtin_labels(db_session)
+    except Exception:
+        return {key: default for key, (default, _short) in inventories.BUILTIN_DATABASES.items()}
+
+
+def _inventory_module_links() -> list[dict]:
+    """Rail entries for the lab inventories (samples, orders, reagents…)."""
+    from . import inventory_service as inventories
+    from .icons import resolve as resolve_icon
+
+    current_key = request.view_args.get("key") if request.view_args else None
+    on_inventory = (request.endpoint or "").startswith("inventory.")
+    links = []
+    try:
+        with SessionLocal() as db_session:
+            for module in inventories.list_modules(db_session):
+                links.append({
+                    "key": f"inventory:{module.key}", "label": module.label, "short": module.label,
+                    "icon": resolve_icon(module.icon), "soon": None,
+                    "url": url_for("inventory.module", key=module.key),
+                    "active": on_inventory and current_key == module.key,
+                })
+    except Exception:
+        return []
+    return links
+
+
 def _organism_module_links() -> list[dict]:
     """Rail entries for the configurable organism modules.
 
@@ -419,22 +452,26 @@ def _organism_module_links() -> list[dict]:
 def inject_nav():
     if g.get("user") is None:
         return {"nav_sections": [], "nav_footer": [], "tab_icon_rules": [],
-                "colony_view_meta": COLONY_VIEW_META}
+                "colony_view_meta": COLONY_VIEW_META, "db_labels": {}}
 
     active = request.endpoint or ""
+    g.db_labels = builtin_labels()
     sections = []
     tab_icon_rules = list(TAB_ICON_RULES)
     for section in NAV_SECTIONS:
         links = [r for r in (_resolve_nav_item(i, active) for i in section["links"]) if r]
         if section["label"] == "Databases":
             # Configurable modules sit with the built-in ones, above "Add".
-            extras = _organism_module_links()
-            if extras:
-                tail = [l for l in links if l["key"] in ("drosophila", "new-db")]
-                head = [l for l in links if l["key"] not in ("drosophila", "new-db")]
-                links = head + extras + [l for l in tail if l["key"] == "new-db"]
-                # Each species' tabs show its own glyph, not the generic one.
-                tab_icon_rules += [(l["url"], l["icon"]) for l in extras]
+            renamed = g.db_labels
+            for link in links:
+                if link["key"] in renamed and renamed[link["key"]] != link["label"]:
+                    link["label"] = link["short"] = renamed[link["key"]]
+            extras = _organism_module_links() + _inventory_module_links()
+            tail = [l for l in links if l["key"] in ("drosophila", "new-db")]
+            head = [l for l in links if l["key"] not in ("drosophila", "new-db")]
+            links = head + extras + [l for l in tail if l["key"] == "new-db"]
+            # Each database's tabs show its own glyph, not the generic one.
+            tab_icon_rules += [(l["url"], l["icon"]) for l in extras]
 
         if links:
             sections.append({"label": section["label"], "links": links})
@@ -444,6 +481,7 @@ def inject_nav():
         "nav_footer": footer,
         "tab_icon_rules": tab_icon_rules,
         "colony_view_meta": COLONY_VIEW_META,
+        "db_labels": g.db_labels,
     }
 
 
@@ -862,8 +900,12 @@ def home_dashboard():
         my_mice = db_session.scalar(
             select(func.count(MouseRecord.id)).where(MouseRecord.owner == g.user.username)
         ) or 0
+        order_modules = [m.id for m in db_session.scalars(
+            select(InventoryModule).where(InventoryModule.kind == "orders"))]
         pending_orders = db_session.scalar(
-            select(func.count(Order.id)).where(Order.status.in_(["requested", "ordered"]))
+            select(func.count(InventoryItem.id)).where(
+                InventoryItem.module_id_fk.in_(order_modules),
+                InventoryItem.status.in_(["requested", "ordered"]))
         ) or 0
         notebook_pages = db_session.scalar(
             select(func.count(NotebookPage.id))
@@ -946,12 +988,13 @@ def home_dashboard():
 
         # ---- Recent orders ------------------------------------------------
         recent_orders = db_session.scalars(
-            select(Order).order_by(Order.created_at.desc()).limit(6)
+            select(InventoryItem).where(InventoryItem.module_id_fk.in_(order_modules))
+            .order_by(InventoryItem.created_at.desc()).limit(6)
         ).all()
         orders_list = [{
-            "id": o.id,
-            "vendor": o.vendor_name,
-            "item": o.item_name,
+            "id": o.number,
+            "vendor": o.vendor,
+            "item": o.name,
             "status": o.status,
             "qty": o.quantity,
             "created_at": o.created_at.strftime("%b %d, %Y"),
@@ -2244,25 +2287,6 @@ def _mouse_rack_from_form(db_session, rack, form) -> str | None:
     return None
 
 
-def form_changed(form, *names) -> bool:
-    """True when any of `names` was edited in this form.
-
-    Cage fields appear on many rows (every mouse in the cage has a Rack,
-    Position and Location note cell) and on the cage card. Each form also
-    sends `<name>_was`, the value it was showing; a field only counts as
-    edited when it differs. Without this, saving any other cell of a stale
-    row would post the old value and undo a change made in another row, on
-    the grid, or on the card. Forms without `_was` fields (dialogs) always
-    count as edited."""
-    for name in names:
-        if name not in form:
-            continue
-        was = form.get(f"{name}_was")
-        if was is None or form.get(name, "").strip() != was.strip():
-            return True
-    return False
-
-
 def cage_state(cage) -> dict | None:
     """A cage's shared fields, returned after a save so the sheet can update
     every row of that cage at once."""
@@ -2784,186 +2808,32 @@ def delete_option(option_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Orders and samples. Both follow the same shape as the other databases:
-# a sheet, one dialog for new and edit, and delete from the row.
+# Orders and samples now live in the lab inventory engine (inventory_routes).
+# The old addresses keep working and land on the first inventory of that kind.
 # ---------------------------------------------------------------------------
 
 
-def _order_from_form(order: Order, form) -> str | None:
-    """Copy the order form onto `order`; return an error message or None."""
-    item = form.get("item_name", "").strip()
-    if not item:
-        return "An order needs an item name."
-    status = form.get("status", "requested").strip() or "requested"
-    order.item_name = item
-    order.requester_name = form.get("requester_name", "").strip() or (
-        g.user.display_name or g.user.username if g.user else "")
-    order.vendor_name = form.get("vendor_name", "").strip()
-    order.catalog_number = form.get("catalog_number", "").strip()
-    order.quantity = form.get("quantity", "").strip() or "1"
-    order.status = status if status in ORDER_STATUS_OPTIONS else "requested"
-    order.notes = form.get("notes", "").strip()
-    return None
+def _inventory_redirect(kind: str):
+    from . import inventory_service as inventories
+    with SessionLocal() as db_session:
+        module = inventories.first_of_kind(db_session, kind)
+        key = module.key if module else None
+    if key is None:
+        flash(f"There is no {kind} inventory yet. Add one from Add database.", "info")
+        return redirect(url_for("organisms.index"))
+    return redirect(url_for("inventory.module", key=key))
 
 
-@app.route("/orders", methods=["GET", "POST"])
+@app.route("/orders")
 @login_required
 def orders():
-    if request.method == "POST":
-        with SessionLocal() as db_session:
-            order = Order()
-            error = _order_from_form(order, request.form)
-            if error:
-                flash(error, "error")
-            else:
-                db_session.add(order)
-                db_session.commit()
-                flash(f"Added {order.item_name}.", "success")
-        return redirect(url_for("orders"))
-
-    with SessionLocal() as db_session:
-        all_orders = db_session.scalars(select(Order).order_by(Order.created_at.desc())).all()
-    return render_template("orders.html", orders=all_orders, statuses=ORDER_STATUS_OPTIONS)
+    return _inventory_redirect("orders")
 
 
-@app.route("/orders/<int:order_id>/update", methods=["POST"])
-@login_required
-def update_order(order_id: int):
-    with SessionLocal() as db_session:
-        order = db_session.get(Order, order_id)
-        if order is None:
-            flash("That order no longer exists.", "error")
-            return redirect(url_for("orders"))
-        error = _order_from_form(order, request.form)
-        if error:
-            flash(error, "error")
-            return redirect(url_for("orders"))
-        stamp_updated(order)
-        db_session.commit()
-        flash(f"Saved {order.item_name}.", "success")
-    return redirect(url_for("orders"))
-
-
-@app.route("/orders/<int:order_id>/status", methods=["POST"])
-@login_required
-def update_order_status(order_id: int):
-    """Inline status change from the orders sheet; answers JSON."""
-    status = request.form.get("status", "").strip()
-    with SessionLocal() as db_session:
-        order = db_session.get(Order, order_id)
-        if order is None:
-            return jsonify({"ok": False, "error": "That order no longer exists."}), 404
-        if status not in ORDER_STATUS_OPTIONS:
-            return jsonify({"ok": False, "error": f"Unknown status “{status}”."}), 400
-        order.status = status
-        stamp_updated(order)
-        db_session.commit()
-    return jsonify({"ok": True})
-
-
-@app.route("/orders/<int:order_id>/delete", methods=["POST"])
-@login_required
-def delete_order(order_id: int):
-    with SessionLocal() as db_session:
-        order = db_session.get(Order, order_id)
-        if order is not None:
-            label = order.item_name
-            log_delete(db_session, "orders", order.id, label)
-            db_session.delete(order)
-            db_session.commit()
-            flash(f"Deleted {label}.", "success")
-    return redirect(url_for("orders"))
-
-
-def _sample_from_form(db_session, sample: SampleRecord, form) -> str | None:
-    """Copy the sample form onto `sample`; return an error message or None."""
-    sample_id = form.get("sample_id", "").strip()
-    if not sample_id:
-        return "A sample needs an ID."
-    clash = db_session.scalar(select(SampleRecord.id).where(
-        SampleRecord.sample_id == sample_id, SampleRecord.id != (sample.id or 0)))
-    if clash:
-        return f"Sample ID {sample_id} is already used."
-    sample.sample_id = sample_id
-    sample.source_kind = form.get("source_kind", "").strip()
-    sample.source_ref = form.get("source_ref", "").strip()
-    sample.sample_type = form.get("sample_type", "").strip() or "custom"
-    sample.collection_date = parse_date(form.get("collection_date"))
-    sample.storage_location = form.get("storage_location", "").strip()
-    sample.amount = form.get("amount", "").strip()
-    sample.owner = form.get("owner", "").strip()
-    sample.notes = form.get("notes", "").strip()
-    return None
-
-
-@app.route("/samples", methods=["GET", "POST"])
+@app.route("/samples")
 @login_required
 def samples():
-    with SessionLocal() as db_session:
-        if request.method == "POST":
-            sample = SampleRecord()
-            error = _sample_from_form(db_session, sample, request.form)
-            if error:
-                flash(error, "error")
-            else:
-                if not sample.owner and g.user:
-                    sample.owner = g.user.username
-                db_session.add(sample)
-                db_session.commit()
-                flash(f"Added sample {sample.sample_id}.", "success")
-            return redirect(url_for("samples"))
-
-        all_samples = db_session.scalars(select(SampleRecord).order_by(SampleRecord.created_at.desc())).all()
-        sources = sample_sources(db_session)
-        usernames = current_lab_usernames(db_session)
-        rows = [{
-            "record": s,
-            "source_label": sample_source_label(s.source_kind, sources),
-            "editable": access.can_edit(s),
-        } for s in all_samples]
-    return render_template(
-        "samples.html", samples=rows, sources=sources, usernames=usernames,
-        sample_types=SAMPLE_TYPE_OPTIONS,
-    )
-
-
-@app.route("/samples/<int:sample_row_id>/update", methods=["POST"])
-@login_required
-def update_sample(sample_row_id: int):
-    with SessionLocal() as db_session:
-        sample = db_session.get(SampleRecord, sample_row_id)
-        if sample is None:
-            flash("That sample no longer exists.", "error")
-            return redirect(url_for("samples"))
-        if not access.can_edit(sample):
-            flash(access.reason_denied(sample), "error")
-            return redirect(url_for("samples"))
-        error = _sample_from_form(db_session, sample, request.form)
-        if error:
-            flash(error, "error")
-            return redirect(url_for("samples"))
-        stamp_updated(sample)
-        db_session.commit()
-        flash(f"Saved sample {sample.sample_id}.", "success")
-    return redirect(url_for("samples"))
-
-
-@app.route("/samples/<int:sample_row_id>/delete", methods=["POST"])
-@login_required
-def delete_sample(sample_row_id: int):
-    with SessionLocal() as db_session:
-        sample = db_session.get(SampleRecord, sample_row_id)
-        if sample is None:
-            return redirect(url_for("samples"))
-        if not access.can_edit(sample):
-            flash(access.reason_denied(sample), "error")
-            return redirect(url_for("samples"))
-        label = sample.sample_id
-        log_delete(db_session, "samples", sample.id, label)
-        db_session.delete(sample)
-        db_session.commit()
-        flash(f"Deleted sample {label}.", "success")
-    return redirect(url_for("samples"))
+    return _inventory_redirect("samples")
 
 
 @app.route("/calendar", methods=["GET"])
@@ -3743,38 +3613,31 @@ def global_search():
                 "url": url_for("plasmids"),
             })
 
-        order_stmt = select(Order)
+        # Every lab inventory: samples, orders, reagents, antibodies, custom.
+        kind_type = {"orders": "order", "samples": "sample", "reagents": "reagent", "antibodies": "antibody"}
+        modules = {m.id: m for m in db_session.scalars(select(InventoryModule))}
+        item_stmt = select(InventoryItem)
         if is_digit:
-            order_stmt = order_stmt.where(Order.id == int(q))
+            item_stmt = item_stmt.where(InventoryItem.number == int(q))
         else:
-            order_stmt = order_stmt.where(
-                Order.item_name.ilike(like) | Order.vendor_name.ilike(like)
-                | Order.catalog_number.ilike(like) | Order.notes.ilike(like)
+            item_stmt = item_stmt.where(
+                InventoryItem.name.ilike(like) | InventoryItem.category.ilike(like)
+                | InventoryItem.vendor.ilike(like) | InventoryItem.catalog_number.ilike(like)
+                | InventoryItem.lot.ilike(like) | InventoryItem.notes.ilike(like)
+                | InventoryItem.attrs.ilike(like)
             )
-        for o in db_session.scalars(order_stmt.order_by(Order.id.desc()).limit(limit)).all():
+        for item in db_session.scalars(item_stmt.order_by(InventoryItem.id.desc()).limit(limit * 2)).all():
+            module = modules.get(item.module_id_fk)
+            if module is None:
+                continue
             results.append({
-                "type": "order",
-                "id": o.id,
-                "label": f"Order #{o.id} · {o.item_name or '(no item)'}",
-                "sublabel": f"{o.vendor_name or '?'} · {o.status} · {o.requester_name or '—'}",
-                "url": url_for("orders"),
+                "type": kind_type.get(module.kind, "item"),
+                "id": item.number,
+                "label": f"{module.label} #{item.number} · {item.name or '(unnamed)'}",
+                "sublabel": " · ".join(filter(None, [item.category, item.status, item.vendor,
+                                                     "lab common" if item.is_shared else item.owner])),
+                "url": url_for("inventory.module", key=module.key),
             })
-
-        if not is_digit:
-            sample_stmt = select(SampleRecord).where(
-                SampleRecord.sample_id.ilike(like)
-                | SampleRecord.sample_type.ilike(like)
-                | SampleRecord.storage_location.ilike(like)
-                | SampleRecord.notes.ilike(like)
-            ).order_by(SampleRecord.id.desc()).limit(limit)
-            for s in db_session.scalars(sample_stmt).all():
-                results.append({
-                    "type": "sample",
-                    "id": s.id,
-                    "label": f"Sample {s.sample_id}",
-                    "sublabel": f"{s.sample_type or '?'} · {s.storage_location or '—'}",
-                    "url": url_for("samples"),
-                })
 
         # Notebook pages — owner-scoped.
         page_stmt = (
@@ -3891,20 +3754,31 @@ def csv_import(entity: str):
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"row {idx}: {exc}")
         elif entity == "order":
+            # Orders are an inventory now; import into the one the page named.
+            from . import inventory_service as inventories
+            module = (inventories.get_module(db_session, request.args.get("module", ""))
+                      or inventories.first_of_kind(db_session, "orders"))
+            if module is None:
+                return jsonify({"ok": False, "error": "There is no orders inventory to import into."}), 400
+            number = inventories.next_number(db_session, module.id)
             for idx, row in enumerate(rows, start=2):
                 try:
-                    o = Order(
-                        requester_name=(row.get("requester_name") or row.get("requester") or g.user.username).strip(),
-                        vendor_name=(row.get("vendor_name") or row.get("vendor") or "").strip(),
-                        item_name=(row.get("item_name") or row.get("item") or "").strip(),
+                    o = InventoryItem(
+                        module_id_fk=module.id, number=number,
+                        owner=(row.get("requester_name") or row.get("requester") or g.user.username).strip(),
+                        vendor=(row.get("vendor_name") or row.get("vendor") or "").strip(),
+                        name=(row.get("item_name") or row.get("item") or "").strip(),
                         catalog_number=(row.get("catalog_number") or row.get("catalog") or "").strip(),
                         quantity=(row.get("quantity") or "1").strip(),
                         status=(row.get("status") or "requested").strip(),
                         notes=(row.get("notes") or "").strip(),
                     )
+                    if not o.name:
+                        raise ValueError("no item name")
                     if not dry_run:
                         db_session.add(o)
-                    preview.append({"item": o.item_name, "vendor": o.vendor_name})
+                    number += 1
+                    preview.append({"item": o.name, "vendor": o.vendor})
                     created += 1
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"row {idx}: {exc}")
@@ -4263,28 +4137,46 @@ def notebook_lookup_plasmid(plasmid_id: int):
 
 @app.route("/notebook/lookup/order/<int:order_id>")
 @login_required
+def _order_items_query(db_session, query: str, limit: int):
+    """Orders for @order mentions: items of the first orders inventory,
+    where an order's number is what @order <n> refers to."""
+    from . import inventory_service as inventories
+    module = inventories.first_of_kind(db_session, "orders")
+    if module is None:
+        return []
+    stmt = select(InventoryItem).where(InventoryItem.module_id_fk == module.id)
+    if query.isdigit():
+        stmt = stmt.where(InventoryItem.number == int(query))
+    elif query:
+        like = f"%{query}%"
+        stmt = stmt.where(InventoryItem.name.ilike(like) | InventoryItem.vendor.ilike(like)
+                          | InventoryItem.catalog_number.ilike(like))
+    return db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)).all()
+
+
 def notebook_lookup_order(order_id: int):
     with SessionLocal() as db_session:
-        order = db_session.get(Order, order_id)
-        if order is None:
+        found = _order_items_query(db_session, str(order_id), 1)
+        if not found:
             return jsonify({"ok": False}), 404
+        order = found[0]
         label = (
-            f"Order #{order.id} · {order.vendor_name or '(no vendor)'} · "
-            f"{order.item_name or '(no item)'} · cat# {order.catalog_number or '—'} · "
+            f"Order #{order.number} · {order.vendor or '(no vendor)'} · "
+            f"{order.name or '(no item)'} · cat# {order.catalog_number or '—'} · "
             f"qty {order.quantity or '?'} · {order.status or 'requested'} · "
-            f"requested by {order.requester_name or '—'}"
+            f"requested by {order.owner or '—'}"
         )
         return jsonify(
             {
                 "ok": True,
                 "label": label,
-                "order_id": order.id,
-                "vendor_name": order.vendor_name,
-                "item_name": order.item_name,
+                "order_id": order.number,
+                "vendor_name": order.vendor,
+                "item_name": order.name,
                 "catalog_number": order.catalog_number,
                 "quantity": order.quantity,
                 "status": order.status,
-                "requester_name": order.requester_name,
+                "requester_name": order.owner,
             }
         )
 
@@ -4368,20 +4260,9 @@ def notebook_search_entity(entity_type: str):
                 for p in rows
             ]})
         if entity_type == "order":
-            stmt = select(Order)
-            if query.isdigit():
-                stmt = stmt.where(Order.id == int(query))
-            elif query:
-                like = f"%{query}%"
-                stmt = stmt.where(
-                    Order.item_name.ilike(like)
-                    | Order.vendor_name.ilike(like)
-                    | Order.catalog_number.ilike(like)
-                )
-            stmt = stmt.order_by(Order.id.desc()).limit(limit)
-            rows = db_session.scalars(stmt).all()
+            rows = _order_items_query(db_session, query, limit)
             return jsonify({"ok": True, "items": [
-                {"id": o.id, "label": f"#{o.id} · {o.vendor_name or '?'} · {o.item_name or '(no item)'} · {o.status or 'requested'}"}
+                {"id": o.number, "label": f"#{o.number} · {o.vendor or '?'} · {o.name or '(no item)'} · {o.status or 'requested'}"}
                 for o in rows
             ]})
         if entity_type == "all":
@@ -4422,20 +4303,11 @@ def notebook_search_entity(entity_type: str):
                     "label": f"Plasmid #{p.plasmid_id} · {p.name or '(no name)'} · {p.backbone or '?'}",
                 })
 
-            order_stmt = select(Order)
-            if query.isdigit():
-                order_stmt = order_stmt.where(Order.id == int(query))
-            elif query:
-                like = f"%{query}%"
-                order_stmt = order_stmt.where(
-                    Order.item_name.ilike(like) | Order.vendor_name.ilike(like) | Order.catalog_number.ilike(like)
-                )
-            order_stmt = order_stmt.order_by(Order.id.desc()).limit(per_type_limit)
-            for o in db_session.scalars(order_stmt).all():
+            for o in _order_items_query(db_session, query, per_type_limit):
                 items.append({
                     "type": "order",
-                    "id": o.id,
-                    "label": f"Order #{o.id} · {o.vendor_name or '?'} · {o.item_name or '(no item)'}",
+                    "id": o.number,
+                    "label": f"Order #{o.number} · {o.vendor or '?'} · {o.name or '(no item)'}",
                 })
 
             return jsonify({"ok": True, "items": items[:limit]})

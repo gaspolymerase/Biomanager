@@ -17,8 +17,8 @@
 } %}
 {% set tanks_sub = request.args.get('mode', 'table') %}
 
-{% block page_title %}Zebrafish · {{ active_view|title }}{% endblock %}
-{% block page_heading %}Zebrafish{% endblock %}
+{% block page_title %}{{ db_labels.get('zebrafish', 'Zebrafish') }} · {{ active_view|title }}{% endblock %}
+{% block page_heading %}{{ db_labels.get('zebrafish', 'Zebrafish') }}{% endblock %}
 {% block page_subtitle %}{{ zfish_blurbs.get(active_view, '') }}{% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 

@@ -359,6 +359,7 @@
   .field-label > input:not([type="checkbox"]):not([type="radio"]),
   .field-label > select,
   .field-label > textarea { @apply field mt-0.5 normal-case tracking-normal; }
+  .field-label > textarea { @apply h-auto min-h-20 py-2 leading-relaxed; }
 
   /* Search field with a leading icon; wrap in .input-icon. */
   .input-icon { @apply relative; }
@@ -892,6 +893,9 @@
      state here would collapse the text into one column's width. */
   .dt-empty { @apply px-4 py-12 text-center text-[12.5px] text-muted; }
   .dt-empty strong { @apply font-semibold text-ink-soft; }
+  /* In a table wider than its card the message stays in view. */
+  .dt-empty:has(> .dt-empty-msg) { @apply text-left; }
+  .dt-empty-msg { @apply sticky left-4 inline-block; }
 
   .dt-bottom-bar {
     @apply flex flex-wrap items-center gap-2 border-t border-sand-100 bg-sand-50/60
@@ -1895,6 +1899,9 @@
   .cmdk-row-type-order   { @apply bg-warn-50 text-warn-700; }
   .cmdk-row-type-sample  { @apply bg-ok-50 text-ok-700; }
   .cmdk-row-type-page    { @apply bg-sand-100 text-sand-600; }
+  .cmdk-row-type-reagent { @apply bg-ok-50 text-ok-700; }
+  .cmdk-row-type-antibody { @apply bg-violet-50 text-violet-700; }
+  .cmdk-row-type-item    { @apply bg-sand-100 text-sand-600; }
 
   .cmdk-row-text { @apply flex min-w-0 flex-col; }
   .cmdk-row-label { @apply truncate text-[13px] font-medium text-ink; }
@@ -2139,6 +2146,10 @@
            rounded-xl border border-dashed border-brand-200 bg-brand-50/40 px-3 py-3;
   }
   .inline-create-grid button[type="submit"] { @apply btn btn-primary; }
+  /* Positions read as codes (D7). Styled by name, not a class: the bare
+     input rule only boxes inputs without a class, which is how the Add
+     Cage form's Position field lost its box. */
+  :is(.inline-create-grid, .cage-header-grid) input[name="position"] { @apply font-mono; }
 
   /* --- Cage cards ------------------------------------------------------- */
 
@@ -2406,6 +2417,77 @@
 @keyframes selbar-in {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
+}
+
+/* ===========================================================================
+   LAB INVENTORIES (samples, orders, reagents, antibodies, custom lists)
+   =========================================================================== */
+@layer components {
+  /* Stock statuses share the status pill palette. */
+  :is(.status-pill, .status-pill-static):is([data-status="available"], [data-status="in stock"]) { @apply bg-ok-50 text-ok-700; }
+  :is(.status-pill, .status-pill-static)[data-status="in use"] { @apply bg-info-50 text-info-600; }
+  :is(.status-pill, .status-pill-static)[data-status="low"] { @apply bg-warn-50 text-warn-700; }
+  :is(.status-pill, .status-pill-static):is([data-status="empty"], [data-status="used up"]) { @apply bg-danger-50 text-danger-700; }
+  :is(.status-pill, .status-pill-static)[data-status="discarded"] { @apply bg-sand-100 text-sand-500 line-through; }
+  .status-pill-static[data-status="requested"] { @apply bg-warn-50 text-warn-700; }
+  .status-pill-static[data-status="ordered"] { @apply bg-info-50 text-info-600; }
+  .status-pill-static[data-status="received"] { @apply bg-ok-50 text-ok-700; }
+  .status-pill-static[data-status="cancelled"] { @apply bg-sand-100 text-sand-500 line-through; }
+
+  /* Personal vs lab common: the same pill shape, violet for the lab. */
+  .sheet-table select.scope-pill {
+    @apply h-6 w-auto max-w-full cursor-pointer appearance-none rounded-full border-transparent
+           bg-sand-100 px-2.5 text-[11.5px] font-semibold text-muted;
+  }
+  .sheet-table select.scope-pill[data-scope="lab"] { @apply bg-violet-50 text-violet-700; }
+  .sheet-table select.scope-pill:focus { @apply ring-2 ring-brand-400/40; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) :is(.sheet-table select.scope-pill[data-scope="lab"], .cmdk-row-type-antibody) { @apply bg-violet-500/15 text-violet-300; }
+  }
+  :root[data-theme="dark"] :is(.sheet-table select.scope-pill[data-scope="lab"], .cmdk-row-type-antibody) { @apply bg-violet-500/15 text-violet-300; }
+
+  /* Expiry: a red date once past, amber within 30 days. */
+  .sheet-table td.expiry-expired input { @apply font-semibold text-danger-700; }
+  .sheet-table td.expiry-soon input { @apply font-medium text-warn-700; }
+
+  /* Status board. */
+  .board { @apply grid gap-3 overflow-x-auto pb-2; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .board-col {
+    @apply flex min-h-40 flex-col rounded-2xl border border-hairline bg-sand-50/60 p-2
+           transition-colors;
+  }
+  .board-col.is-drop-target { @apply border-brand-300 bg-brand-50/60; }
+  .board-col-head { @apply flex items-center justify-between px-1.5 pb-2 pt-1; }
+  .board-count { @apply text-[11.5px] font-semibold text-muted tabular-nums; }
+  .board-cards { @apply flex flex-1 flex-col gap-1.5; }
+  .board-card {
+    @apply cursor-grab rounded-xl border border-hairline bg-surface px-3 py-2 shadow-xs
+           transition-shadow hover:shadow-sm;
+  }
+  .board-card.is-dragging { @apply cursor-grabbing opacity-50; }
+  .board-card-top { @apply flex items-center justify-between gap-2 text-[11px]; }
+  .board-card-name { @apply mt-0.5 truncate text-[13px] font-semibold text-ink; }
+  .board-card-meta { @apply truncate text-[11.5px] text-muted; }
+
+  /* New inventory: preset cards. */
+  .preset-grid { @apply grid gap-3; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .preset-card {
+    @apply relative flex cursor-pointer flex-col gap-1.5 rounded-2xl border border-hairline bg-surface p-4
+           transition-colors hover:border-sand-300;
+  }
+  .preset-card:has(input:checked) { @apply border-brand-400 ring-2 ring-brand-400/30; }
+  .preset-card input[type="radio"] { @apply sr-only; }
+  .preset-card-icon { @apply grid size-9 place-items-center rounded-xl bg-sand-100 text-ink; }
+  .preset-card-title { @apply text-[14px] font-semibold text-ink; }
+  .preset-card-blurb { @apply text-[12px] leading-snug text-muted; }
+  .preset-card-tags { @apply mt-auto flex flex-wrap gap-1 pt-1; }
+
+  /* Configure: the column editor. */
+  .field-editor { @apply w-full border-collapse text-[12.5px]; }
+  .field-editor th { @apply px-1.5 pb-1.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-sand-400; }
+  .field-editor td { @apply px-1.5 py-1 align-middle; }
+  .field-editor tr.is-removed td { @apply opacity-40; }
+  .field-editor tr.is-removed input[type="text"] { @apply line-through; }
 }
 
 /* ===========================================================================

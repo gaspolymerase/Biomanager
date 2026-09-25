@@ -3,8 +3,8 @@
 
 {% set view_meta = colony_view_meta.get(active_view, {}) %}
 
-{% block page_title %}Colony · {{ view_meta.get('label', active_view|title) }}{% endblock %}
-{% block page_heading %}Mouse colony{% endblock %}
+{% block page_title %}{{ db_labels.get('colony', 'Colony') }} · {{ view_meta.get('label', active_view|title) }}{% endblock %}
+{% block page_heading %}{{ db_labels.get('colony', 'Mouse colony') }}{% endblock %}
 {% block page_subtitle %}{{ view_meta.get('blurb', '') }}{% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
@@ -499,7 +499,7 @@
         <form method="post" action="{{ url_for('create_cage') }}" class="inline-create-grid">
           <input name="cage_id" value="{{ next_cage_id_value }}" placeholder="Cage_ID" readonly required>
           <select name="rack_id" aria-label="Rack"><option value="">Rack</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
-          <input name="position" class="font-mono" placeholder="Position, e.g. D7" aria-label="Position">
+          <input name="position" placeholder="Position, e.g. D7" aria-label="Position">
           <input name="cage_location" list="options-cage_location" placeholder="Location note">
           <input name="purpose" list="options-purpose" placeholder="Purpose">
           <input type="date" name="date_give_birth" placeholder="Date give birth">
@@ -522,7 +522,7 @@
                       <option value="">–</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}"{% if rack.id == cage.rack_id %} selected{% endif %}>{{ rack.name }}</option>{% endfor %}
                     </select>
                   </label>
-                  <label><span>Position</span><input name="position" value="{{ cage.position }}" class="font-mono" placeholder="e.g. D7" data-autosave="1" data-cage-position></label>
+                  <label><span>Position</span><input name="position" value="{{ cage.position }}" placeholder="e.g. D7" data-autosave="1" data-cage-position></label>
                   <input type="hidden" name="rack_id_was" value="{{ cage.rack_id or '' }}">
                   <input type="hidden" name="position_was" value="{{ cage.position }}">
                   <label><span>Location note</span><input name="cage_location" value="{{ cage.cage_location }}" list="options-cage_location" data-autosave="1"></label>

@@ -90,6 +90,7 @@ def init_database() -> None:
     stamp_alembic_baseline()
     warn_if_database_is_synced()
     seed_organism_modules()
+    seed_inventories()
     with SessionLocal() as session:
         existing_chemical = session.scalar(select(ChemicalReference.id).limit(1))
         if existing_chemical is None:
@@ -1310,6 +1311,14 @@ def sample_source_label(kind: str, sources: list[dict]) -> str:
         if source["kind"] == kind:
             return source["label"]
     return kind.split(":", 1)[-1].replace("_", " ").title() if kind else ""
+
+
+def seed_inventories() -> None:
+    """Create the samples, orders, reagents and antibodies inventories once,
+    then move any rows from the old fixed samples/orders tables into them."""
+    from . import inventory_service as inventories
+    inventories.seed_modules()
+    inventories.migrate_legacy()
 
 
 def seed_organism_modules() -> None:

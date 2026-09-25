@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
 {% block page_title %}Databases{% endblock %}
-{% block page_heading %}Organism databases{% endblock %}
-{% block page_subtitle %}Each one is a species module you can reshape — nouns, capabilities, fields and schedule{% endblock %}
+{% block page_heading %}Databases{% endblock %}
+{% block page_subtitle %}Every database in the lab. Rename any of them, and add as many organism databases or inventories as you need.{% endblock %}
 
 {% block page_actions %}
   <a class="btn btn-primary" href="{{ url_for('organisms.new_module') }}">
@@ -11,6 +11,56 @@
 {% endblock %}
 
 {% block content %}
+<h2 class="mb-2 mt-1 flex items-center gap-2">{{ icon('database') }} Built in</h2>
+<section class="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-3">
+  {% for b in builtins %}
+    <article class="card flex flex-col">
+      <header class="card-head">
+        <h2>{{ icon(b.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ b.url }}">{{ b.label }}</a></h2>
+        <span class="badge badge-quiet">{{ b.count }} {{ b.noun }}</span>
+      </header>
+      <form method="post" action="{{ url_for('organisms.rename_builtin', key=b.key) }}" class="flex items-end gap-2 p-4">
+        <label class="field-label grow">Name
+          <input name="label" value="{{ b.label }}" placeholder="{{ b.default }}" aria-label="Name of {{ b.default }}">
+        </label>
+        <button type="submit" class="btn btn-sm">Rename</button>
+      </form>
+    </article>
+  {% endfor %}
+</section>
+
+<div class="mb-2 flex items-center justify-between gap-2">
+  <h2 class="flex items-center gap-2">{{ icon('flask') }} Lab inventories</h2>
+  <a class="btn btn-sm" href="{{ url_for('inventory.new_module') }}">{{ icon('plus') }} New inventory</a>
+</div>
+<section class="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+  {% for c in inventory_cards %}
+    {% set m = c.module %}
+    <article class="card flex flex-col">
+      <header class="card-head">
+        <h2>{{ icon(m.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ url_for('inventory.module', key=m.key) }}">{{ m.label }}</a></h2>
+        {% if not m.enabled %}<span class="badge badge-quiet">hidden</span>{% else %}<span class="badge badge-quiet">{{ c.count }} {{ m.item_noun if c.count == 1 else m.item_noun_plural }}</span>{% endif %}
+      </header>
+      <div class="flex flex-col gap-3 p-4">
+        {% if m.blurb %}<p class="text-[12.5px] leading-snug text-muted">{{ m.blurb }}</p>{% endif %}
+        <div class="flex flex-wrap gap-1">
+          {% for f in m.settings.features %}<span class="badge badge-quiet">{{ {'storage': 'boxes', 'board': 'board', 'sharing': 'mine / lab', 'quantity': 'quantity', 'supplier': 'vendor', 'expiry': 'expiry', 'received': 'received'}[f] }}</span>{% endfor %}
+        </div>
+      </div>
+      <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
+        <a class="btn btn-sm" href="{{ url_for('inventory.module', key=m.key) }}">Open</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('inventory.configure', key=m.key) }}">{{ icon('settings') }} Rename / configure</a>
+      </footer>
+    </article>
+  {% else %}
+    <div class="card empty-state"><p>No inventories yet.</p></div>
+  {% endfor %}
+</section>
+
+<div class="mb-2 flex items-center justify-between gap-2">
+  <h2 class="flex items-center gap-2">{{ icon('paw') }} Organism databases</h2>
+  <a class="btn btn-sm" href="{{ url_for('organisms.new_module') }}">{{ icon('plus') }} New organism database</a>
+</div>
 {% if cards %}
   <section class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
     {% for card in cards %}
@@ -69,7 +119,7 @@
         <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
           <a class="btn btn-sm" href="{{ url_for('organisms.module', key=m.key) }}">Open</a>
           <a class="btn btn-sm btn-ghost" href="{{ url_for('organisms.module', key=m.key, view='settings') }}">
-            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#settings"></use></svg> Configure
+            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#settings"></use></svg> Rename / configure
           </a>
         </footer>
       </article>
@@ -87,9 +137,9 @@
 
 <div class="mt-5 inset max-w-[720px]">
   <p class="text-[12.5px] leading-snug text-muted">
-    The mouse colony and zebrafish modules are separate, hand-written pages with their
-    own tables — they are not listed here. Both are available as starting presets if you
-    would rather run them on this configurable engine.
+    The built-in mouse colony and zebrafish pages are one of each. To run a second colony
+    (another room, a collaborator's line), create an organism database from the Mouse or
+    Zebrafish preset.
   </p>
 </div>
 {% endblock %}

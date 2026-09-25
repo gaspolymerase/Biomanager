@@ -1117,3 +1117,90 @@ class BatchRecord(Base):
     @property
     def is_undone(self) -> bool:
         return self.undone_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Lab inventories: samples, orders, reagents, antibodies and custom lists.
+#
+# Like the organism engine, an inventory is a configuration row, not a new
+# table: a lab can keep several ("Samples — tissue bank", "Samples — blood")
+# and rename any of them. Preset-specific fields live in `attrs`, described
+# by the module's settings (app/inventory.py).
+# ---------------------------------------------------------------------------
+
+
+class InventoryModule(Base):
+    __tablename__ = "inventory_modules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(40), default="custom")   # the preset it came from
+    icon: Mapped[str] = mapped_column(String(40), default="box")
+    blurb: Mapped[str] = mapped_column(Text, default="")
+    item_noun: Mapped[str] = mapped_column(String(60), default="item")
+    item_noun_plural: Mapped[str] = mapped_column(String(60), default="items")
+    settings: Mapped[str] = mapped_column(Text, default="{}")
+    position: Mapped[int] = mapped_column(Integer, default=100)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class InventoryRack(Base):
+    """A freezer box, shelf or drawer: rows × columns, named by its scheme."""
+
+    __tablename__ = "inventory_racks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module_id_fk: Mapped[int] = mapped_column(ForeignKey("inventory_modules.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(40), default="box")
+    rows: Mapped[int] = mapped_column(Integer, default=9)
+    cols: Mapped[int] = mapped_column(Integer, default=9)
+    naming: Mapped[str] = mapped_column(Text, default="{}")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class InventoryItem(Base, _JsonAttrs):
+    """One sample, order line, reagent, antibody… `is_shared` marks lab
+    common stock, editable by everyone; otherwise the owner (or an admin)."""
+
+    __tablename__ = "inventory_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    module_id_fk: Mapped[int] = mapped_column(ForeignKey("inventory_modules.id"), index=True)
+    number: Mapped[int] = mapped_column(Integer, default=0, index=True)   # 1, 2, 3… within its inventory
+    name: Mapped[str] = mapped_column(String(200), default="")
+    category: Mapped[str] = mapped_column(String(80), default="", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="", index=True)
+    owner: Mapped[str] = mapped_column(String(80), default="", index=True)
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    quantity: Mapped[str] = mapped_column(String(60), default="")
+    unit: Mapped[str] = mapped_column(String(30), default="")
+    vendor: Mapped[str] = mapped_column(String(120), default="")
+    catalog_number: Mapped[str] = mapped_column(String(120), default="")
+    lot: Mapped[str] = mapped_column(String(120), default="")
+    rack_id_fk: Mapped[int | None] = mapped_column(ForeignKey("inventory_racks.id"), nullable=True, index=True)
+    rack_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rack_col: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    location_note: Mapped[str] = mapped_column(String(200), default="")
+    received_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    attrs: Mapped[str] = mapped_column(Text, default="{}")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_by: Mapped[str] = mapped_column(String(80), default="")
+
+    rack: Mapped["InventoryRack | None"] = relationship()
+
+
+class AppSetting(Base):
+    """Small lab-wide settings, e.g. the display name of a built-in database."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")

@@ -17,7 +17,7 @@
 
   const TYPE_LABEL = {
     mouse: 'Mouse', plasmid: 'Plasmid', order: 'Order',
-    sample: 'Sample', page: 'Notebook',
+    sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', item: 'Item', page: 'Notebook',
   };
 
   function build() {
@@ -30,7 +30,7 @@
       <div class="cmdk-card" role="dialog" aria-label="Global search">
         <div class="cmdk-input-row">
           <svg class="icon cmdk-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-          <input id="cmdk-input" type="text" placeholder="Search mice, plasmids, orders, samples, notebook…" autocomplete="off">
+          <input id="cmdk-input" type="text" placeholder="Search mice, plasmids, samples, reagents, antibodies, notebook…" autocomplete="off">
           <kbd class="cmdk-kbd">esc</kbd>
         </div>
         <div id="cmdk-results" class="cmdk-results"></div>
@@ -105,7 +105,9 @@
       if (!groups[item.type]) groups[item.type] = [];
       groups[item.type].push({ ...item, _idx: idx });
     });
-    const order = ['mouse', 'plasmid', 'order', 'sample', 'page'];
+    const known = ['mouse', 'plasmid', 'order', 'sample', 'reagent', 'antibody', 'item', 'page'];
+    // Any other type the server sends still shows, after the known ones.
+    const order = known.concat(Object.keys(groups).filter((t) => !known.includes(t)));
     let html = '';
     order.forEach((type) => {
       if (!groups[type]) return;

@@ -1,0 +1,546 @@
+{% extends "base.html" %}
+{% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
+
+{% set m = module %}
+{% set key = m.key %}
+
+{% block page_title %}{{ m.label }}{% endblock %}
+{% block page_heading %}{{ m.label }}{% endblock %}
+{% block page_subtitle %}{{ m.blurb }}{% endblock %}
+{% block page_shell_class %}shell-page-wide workbench{% endblock %}
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('inventory.configure', key=key) }}">{{ icon('sliders') }} Configure</a>
+{% endblock %}
+
+{% macro field_cell(field, value, form_id, locked, src_label='') %}
+  {% set name = 'attr_' ~ field.key %}
+  {% if field.type == 'select' %}
+    <select name="{{ name }}" form="{{ form_id }}" data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
+      <option value="">–</option>
+      {% for o in field.options %}<option value="{{ o }}" {% if o == value %}selected{% endif %}>{{ o }}</option>{% endfor %}
+      {% if value and value not in field.options %}<option value="{{ value }}" selected>{{ value }}</option>{% endif %}
+    </select>
+  {% elif field.type == 'date' %}
+    <input type="date" name="{{ name }}" form="{{ form_id }}" value="{{ value }}" data-empty="{{ '0' if value else '1' }}"
+           data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
+  {% elif field.type == 'source' %}
+    {% set src = value if value is mapping else {} %}
+    <span class="sheet-cell-text">{% if src.kind or src.ref %}<span class="source-chip">{% if src.kind %}<span class="source-chip-kind">{{ src_label or src.kind.split(':')[-1]|replace('_', ' ')|title }}</span>{% endif %}<span class="ident">{{ src.ref or '—' }}</span></span>{% else %}<span class="sheet-empty">–</span>{% endif %}</span>
+  {% elif field.type == 'url' and value %}
+    <a class="sheet-link font-normal" href="{{ value }}" target="_blank" rel="noopener">{{ value|replace('https://', '')|truncate(28) }}</a>
+  {% else %}
+    <input name="{{ name }}" form="{{ form_id }}" value="{{ value }}" {% if field.type == 'number' %}inputmode="decimal"{% endif %}
+           {% if field.type == 'user' %}list="inv-owner-options"{% endif %}
+           data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
+  {% endif %}
+{% endmacro %}
+
+{% block page_nav %}
+  <div class="mb-3 flex flex-wrap items-center gap-2.5">
+    {% if m.has('storage') or m.has('board') %}
+      <div class="dt-chips view-switch" data-view-switch="inv-{{ key }}" role="group" aria-label="Layout">
+        <button type="button" class="dt-chip" data-layout="table">{{ icon('table') }}Table</button>
+        {% if m.has('storage') %}<button type="button" class="dt-chip" data-layout="grid">{{ icon('grid') }}Box grid</button>{% endif %}
+        {% if m.has('board') %}<button type="button" class="dt-chip" data-layout="board">{{ icon('columns') }}Board</button>{% endif %}
+      </div>
+    {% endif %}
+    {% if m.has('storage') %}
+      <div class="rack-chips" role="group" aria-label="Boxes">
+        <span class="rack-chips-label">Boxes</span>
+        {% for rack in racks %}
+          <button type="button" class="btn btn-sm" data-record-edit="inv-rack-dialog"
+                  data-record-payload="{{ grid.racks[loop.index0].edit['data-record-payload'] }}">{{ icon('sliders') }} {{ rack.name }}</button>
+        {% endfor %}
+        <button type="button" class="btn btn-sm" data-record-edit="inv-rack-dialog"
+                data-record-payload='{{ {"rows": 9, "cols": 9, "kind": "box", "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"} | tojson }}'>
+          {{ icon('plus') }} New box
+        </button>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block content %}
+<datalist id="inv-owner-options">{% for u in usernames %}<option value="{{ u }}"></option>{% endfor %}</datalist>
+{% for source in sources %}
+  <datalist id="inv-src-{{ loop.index0 }}">{% for ref in source.refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
+{% endfor %}
+
+{% set new_payload = {"owner": current_user.username, "status": m.statuses[0] if m.statuses else "", "is_shared": "0"} %}
+
+<div data-layout-scope>
+  {# =============================== TABLE =============================== #}
+  <div data-layout-panel="table">
+    <section class="data-table-card sheet" data-table-id="inv-{{ key }}-{{ col_sig }}"
+             data-noun="{{ m.item_noun }}" data-noun-plural="{{ m.item_noun_plural }}">
+      <div class="dt-toolbar">
+        <div class="dt-toolbar-search">
+          {{ icon('search', 'search-icon') }}
+          <input type="text" class="dt-search" placeholder="Search {{ m.item_noun_plural }}…" autocomplete="off" aria-label="Search">
+        </div>
+        <div class="dt-chips" role="group" aria-label="Show">
+          <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">All <span class="dt-chip-count">{{ counts.all }}</span></button>
+          {% if m.has('sharing') %}
+            <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ counts.mine }}</span></button>
+            <button type="button" class="dt-chip" data-dt-filter="shared:true" aria-pressed="false">Lab common <span class="dt-chip-count">{{ counts.lab }}</span></button>
+          {% endif %}
+          {% if m.has('board') %}
+            <button type="button" class="dt-chip" data-dt-filter="open:true" aria-pressed="false">Open <span class="dt-chip-count">{{ counts.open }}</span></button>
+          {% endif %}
+          {% if m.has('expiry') and counts.expired %}
+            <button type="button" class="dt-chip" data-dt-filter="expired:true" aria-pressed="false">Expired <span class="dt-chip-count">{{ counts.expired }}</span></button>
+          {% endif %}
+        </div>
+        <div class="dt-toolbar-spacer"></div>
+        <span class="sheet-save" data-save-status aria-live="polite"></span>
+        <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
+        <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+        {% if m.kind == 'orders' %}
+          <button type="button" class="dt-toolbar-btn" onclick="window.csvImportModule = '{{ key }}'; openCsvImport('order')">{{ icon('import') }} Import</button>
+        {% endif %}
+        <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+                data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
+          {{ icon('plus') }} New {{ m.item_noun }}
+        </button>
+      </div>
+
+      <div class="dt-scroll">
+        <table class="dt sheet-table" data-resizable="1">
+          <thead>
+            <tr>
+              <th class="dt-sortable sheet-pin sheet-pin-start" data-sort-key="number" style="width: 64px; min-width: 64px;">
+                <span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}#<span class="dt-sort-indicator"></span></span>
+              </th>
+              <th class="dt-sortable" data-sort-key="name" style="width: 210px;">
+                <span class="dt-col-head">{{ icon('type', 'dt-col-icon') }}{{ m.name_label }}<span class="dt-sort-indicator"></span></span>
+              </th>
+              <th class="dt-sortable" data-sort-key="category" style="width: 128px;">
+                <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}{{ m.category_label }}<span class="dt-sort-indicator"></span></span>
+              </th>
+              {% if m.statuses %}
+                <th class="dt-sortable" data-sort-key="status" style="width: 128px;">
+                  <span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status<span class="dt-sort-indicator"></span></span>
+                </th>
+              {% endif %}
+              {% for f in m.table_fields %}
+                <th class="dt-sortable" data-sort-key="attr_{{ f.key }}" style="width: {{ f.width }}px;">
+                  <span class="dt-col-head">{{ icon(f.icon or 'type', 'dt-col-icon') }}{{ f.label }}<span class="dt-sort-indicator"></span></span>
+                </th>
+              {% endfor %}
+              {% if m.has('sharing') %}
+                <th class="dt-sortable" data-sort-key="is_shared" style="width: 124px;" title="Your own stock, or the lab's common stock that anyone may use and edit">
+                  <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Belongs to<span class="dt-sort-indicator"></span></span>
+                </th>
+              {% endif %}
+              <th class="dt-sortable" data-sort-key="owner" style="width: 80px;">
+                <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}{{ 'Requested by' if m.kind == 'orders' else 'Owner' }}<span class="dt-sort-indicator"></span></span>
+              </th>
+              {% if m.has('supplier') %}
+                <th class="dt-sortable" data-sort-key="vendor" style="width: 132px;"><span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Vendor<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="catalog_number" style="width: 116px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Catalog #<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="lot" style="width: 96px;" data-default-hidden="1"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Lot<span class="dt-sort-indicator"></span></span></th>
+              {% endif %}
+              {% if m.has('quantity') %}
+                <th class="dt-sortable" data-sort-key="quantity" style="width: 72px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Qty<span class="dt-sort-indicator"></span></span></th>
+                <th style="width: 68px;"><span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}Unit</span></th>
+              {% endif %}
+              {% if m.has('storage') %}
+                <th class="dt-sortable" data-sort-key="rack_id" style="width: 124px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Box<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="position" style="width: 84px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span></th>
+              {% else %}
+                <th class="dt-sortable" data-sort-key="location_note" style="width: 132px;" {% if m.kind == 'orders' %}data-default-hidden="1"{% endif %}><span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span></th>
+              {% endif %}
+              {% if m.has('received') %}
+                <th class="dt-sortable" data-sort-key="received_on" style="width: 136px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Received<span class="dt-sort-indicator"></span></span></th>
+              {% endif %}
+              {% if m.has('expiry') %}
+                <th class="dt-sortable" data-sort-key="expires_on" style="width: 136px;"><span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Expires<span class="dt-sort-indicator"></span></span></th>
+              {% endif %}
+              <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+              <th class="sheet-pin sheet-pin-end" style="width: {{ 120 if m.kind == 'orders' else 96 }}px; min-width: {{ 120 if m.kind == 'orders' else 96 }}px;"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              {% set i = r.item %}
+              {% set f = 'inv-' ~ i.id %}
+              {% set locked = not r.editable %}
+              <tr data-id="{{ i.id }}" data-number="{{ i.number }}"
+                  data-mine="{{ 'true' if r.mine else 'false' }}" data-shared="{{ 'true' if i.is_shared else 'false' }}"
+                  data-open="{{ 'true' if i.status in m.open_statuses else 'false' }}"
+                  data-expired="{{ 'true' if r.expiry == 'expired' else 'false' }}"
+                  class="{% if locked %}is-locked{% endif %}{% if i.status in ['discarded', 'cancelled', 'used up'] %} is-inactive{% endif %}">
+                <td class="sheet-pin sheet-pin-start">
+                  <span class="sheet-id"><span class="ident">{{ i.number }}</span>
+                    {% if locked %}<span class="sheet-lock" title="{{ i.owner }}’s {{ m.item_noun }}: read only">{{ icon('lock') }}</span>{% endif %}
+                  </span>
+                </td>
+                <td><input class="font-medium" name="name" form="{{ f }}" value="{{ i.name }}" title="{{ i.name }}" data-autosave="1" aria-label="{{ m.name_label }}" {% if locked %}disabled{% endif %}></td>
+                <td>
+                  {% if m.categories %}
+                    <select name="category" form="{{ f }}" data-autosave="1" aria-label="{{ m.category_label }}" {% if locked %}disabled{% endif %}>
+                      <option value="">–</option>
+                      {% for c in m.categories %}<option value="{{ c }}" {% if c == i.category %}selected{% endif %}>{{ c }}</option>{% endfor %}
+                      {% if i.category and i.category not in m.categories %}<option value="{{ i.category }}" selected>{{ i.category }}</option>{% endif %}
+                    </select>
+                  {% else %}
+                    <input name="category" form="{{ f }}" value="{{ i.category }}" data-autosave="1" aria-label="{{ m.category_label }}" {% if locked %}disabled{% endif %}>
+                  {% endif %}
+                </td>
+                {% if m.statuses %}
+                  <td>
+                    <select class="status-pill" name="status" form="{{ f }}" data-status="{{ i.status }}" data-autosave="1" aria-label="Status" {% if locked %}disabled{% endif %}>
+                      {% for s in m.statuses %}<option value="{{ s }}" {% if s == i.status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                      {% if i.status and i.status not in m.statuses %}<option value="{{ i.status }}" selected>{{ i.status }}</option>{% endif %}
+                    </select>
+                  </td>
+                {% endif %}
+                {% for fd in m.table_fields %}
+                  <td>{{ field_cell(fd, r.attrs.get(fd.key, ''), f, locked, r.source_labels.get(fd.key, '')) }}</td>
+                {% endfor %}
+                {% if m.has('sharing') %}
+                  <td>
+                    <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ 'lab' if i.is_shared else 'mine' }}" data-autosave="1" aria-label="Belongs to" {% if locked %}disabled{% endif %}>
+                      <option value="0" {% if not i.is_shared %}selected{% endif %}>Personal</option>
+                      <option value="1" {% if i.is_shared %}selected{% endif %}>Lab common</option>
+                    </select>
+                  </td>
+                {% endif %}
+                <td>
+                  <div class="owner-cell-wrap{% if i.owner %} has-badge{% endif %}">
+                    {% if i.owner %}{{ i.owner | owner_badge }}{% endif %}
+                    <input name="owner" form="{{ f }}" value="{{ i.owner }}" list="inv-owner-options" data-autosave="1" aria-label="Owner" {% if locked %}disabled{% endif %}>
+                  </div>
+                </td>
+                {% if m.has('supplier') %}
+                  <td><input name="vendor" form="{{ f }}" value="{{ i.vendor }}" data-autosave="1" aria-label="Vendor" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="ident" name="catalog_number" form="{{ f }}" value="{{ i.catalog_number }}" data-autosave="1" aria-label="Catalog number" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="ident" name="lot" form="{{ f }}" value="{{ i.lot }}" data-autosave="1" aria-label="Lot" {% if locked %}disabled{% endif %}></td>
+                {% endif %}
+                {% if m.has('quantity') %}
+                  <td><input name="quantity" form="{{ f }}" value="{{ i.quantity }}" data-autosave="1" aria-label="Quantity" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="unit" form="{{ f }}" value="{{ i.unit }}" placeholder="–" data-autosave="1" aria-label="Unit" {% if locked %}disabled{% endif %}></td>
+                {% endif %}
+                {% if m.has('storage') %}
+                  <td>
+                    <select name="rack_id" form="{{ f }}" data-autosave="1" aria-label="Box" {% if locked %}disabled{% endif %}>
+                      <option value="">–</option>
+                      {% for rack in racks %}<option value="{{ rack.id }}" {% if rack.id == i.rack_id_fk %}selected{% endif %}>{{ rack.name }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td><input class="ident" name="position" form="{{ f }}" value="{{ r.position }}" placeholder="–" data-autosave="1" aria-label="Position" {% if locked %}disabled{% endif %}></td>
+                {% else %}
+                  <td><input name="location_note" form="{{ f }}" value="{{ i.location_note }}" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
+                {% endif %}
+                {% if m.has('received') %}
+                  <td><input type="date" name="received_on" form="{{ f }}" value="{{ i.received_on or '' }}" data-empty="{{ '0' if i.received_on else '1' }}" data-autosave="1" aria-label="Received" {% if locked %}disabled{% endif %}></td>
+                {% endif %}
+                {% if m.has('expiry') %}
+                  <td class="{% if r.expiry %}expiry-{{ r.expiry }}{% endif %}" {% if r.expiry == 'expired' %}title="Expired"{% elif r.expiry == 'soon' %}title="Expires within 30 days"{% endif %}>
+                    <input type="date" name="expires_on" form="{{ f }}" value="{{ i.expires_on or '' }}" data-empty="{{ '0' if i.expires_on else '1' }}" data-autosave="1" aria-label="Expires" {% if locked %}disabled{% endif %}>
+                  </td>
+                {% endif %}
+                <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ i.notes }}" title="{{ i.notes }}" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
+                <td class="sheet-pin sheet-pin-end">
+                  <div class="sheet-actions">
+                    {% if m.kind == 'orders' and i.status == 'received' and reagents_module and not r.attrs.get('stocked_as') %}
+                      <form method="post" action="{{ url_for('inventory.order_to_reagents', key=key, item_id=i.id) }}">
+                        <input type="hidden" name="target" value="{{ reagents_module.key }}">
+                        <button type="submit" class="row-icon-btn" title="Add to {{ reagents_module.label }}">{{ icon('flask') }}</button>
+                      </form>
+                    {% endif %}
+                    <button type="button" class="row-icon-btn" title="Open" data-record-edit="item-dialog"
+                            data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
+                    <form method="post" action="{{ url_for('inventory.duplicate_item', key=key, item_id=i.id) }}">
+                      <button type="submit" class="row-icon-btn" title="Duplicate">{{ icon('copy') }}</button>
+                    </form>
+                    <form method="post" action="{{ url_for('inventory.delete_item', key=key, item_id=i.id) }}"
+                          onsubmit="return confirm('Delete {{ m.item_noun }} #{{ i.number }}?')">
+                      <button type="submit" class="row-icon-btn danger-button" title="Delete" {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td class="dt-empty" colspan="40"><span class="dt-empty-msg">No {{ m.item_noun_plural }} yet. Use <strong>New {{ m.item_noun }}</strong>{% if m.kind == 'orders' %} or <strong>Import</strong> a CSV{% endif %}.</span></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% for r in rows %}
+        <form id="inv-{{ r.item.id }}" method="post" action="{{ url_for('inventory.update_item', key=key, item_id=r.item.id) }}"
+              data-record-label="{{ m.item_noun }} #{{ r.item.number }}">
+          <input type="hidden" name="rack_id_was" value="{{ r.item.rack_id_fk or '' }}">
+          <input type="hidden" name="position_was" value="{{ r.position }}">
+        </form>
+      {% endfor %}
+      <div class="dt-bottom-bar">
+        <span class="dt-bottom-count dt-count">{{ rows|length }} {{ m.item_noun if rows|length == 1 else m.item_noun_plural }}</span>
+        <div class="dt-bottom-spacer"></div>
+        <div class="dt-pagination">
+          <span class="dt-page-label">Page 1</span>
+          <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+          <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+          <select class="dt-page-size" aria-label="Rows per page"><option value="100" selected>100</option><option value="100000">All</option></select>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  {# ================================ GRID ================================ #}
+  {% if m.has('storage') %}
+    <div data-layout-panel="grid" hidden>
+      <section class="data-table-card">
+        {{ rack_grid('inv-' ~ key, grid, url_for('inventory.place_item', key=key, item_id=0)|replace('/0/', '/{id}/'),
+                     rack_noun='box', rack_dialog_id='inv-rack-dialog',
+                     new_rack_payload={'rows': 9, 'cols': 9, 'kind': 'box'},
+                     empty_text='No boxes yet. Use New box to add a freezer box or shelf.') }}
+      </section>
+    </div>
+  {% endif %}
+
+  {# ================================ BOARD =============================== #}
+  {% if m.has('board') and m.statuses %}
+    <div data-layout-panel="board" hidden>
+      <div class="board" data-board data-status-url="{{ url_for('inventory.set_status', key=key, item_id=0) }}">
+        {% for s in m.statuses %}
+          {% set col_rows = rows | selectattr('item.status', 'equalto', s) | list %}
+          <section class="board-col" data-status="{{ s }}">
+            <header class="board-col-head">
+              <span class="status-pill-static" data-status="{{ s }}">{{ s }}</span>
+              <span class="board-count" data-board-count>{{ col_rows|length }}</span>
+            </header>
+            <div class="board-cards" data-board-drop>
+              {% for r in col_rows %}
+                {% set i = r.item %}
+                <article class="board-card" draggable="true" data-id="{{ i.id }}" data-record-edit="item-dialog"
+                         data-record-payload="{{ r.payload | tojson | forceescape }}">
+                  <div class="board-card-top"><span class="ident text-muted">#{{ i.number }}</span>{% if i.owner %}{{ i.owner | owner_badge }}{% endif %}</div>
+                  <div class="board-card-name">{{ i.name or '(unnamed)' }}</div>
+                  <div class="board-card-meta">{{ [i.vendor, i.catalog_number, (i.quantity ~ ' ' ~ i.unit)|trim] | select | join(' · ') }}</div>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{# ============================ ITEM DIALOG ============================ #}
+<dialog id="item-dialog" class="record-dialog" aria-labelledby="item-dialog-title">
+  <form method="post" data-record-form
+        data-create-action="{{ url_for('inventory.save_item', key=key) }}"
+        data-update-action="{{ url_for('inventory.save_item', key=key) }}"
+        data-new-title="New {{ m.item_noun }}" data-edit-title="{{ m.item_noun|capitalize }} {label}"
+        data-new-submit="Create {{ m.item_noun }}" data-edit-submit="Save">
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="item-dialog-title" data-record-title>New {{ m.item_noun }}</h3>
+        <p class="record-dialog-sub">{{ m.label }} · a new {{ m.item_noun }} gets #{{ next_number }}.</p>
+      </div>
+      <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <input type="hidden" name="id">
+      <label class="record-wide">{{ m.name_label }} <input name="name" {% if m.kind == 'orders' %}required{% endif %} autocomplete="off"></label>
+      <fieldset class="record-group">
+        <legend>{{ m.item_noun|capitalize }}</legend>
+        <label>{{ m.category_label }}
+          {% if m.categories %}
+            <select name="category"><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}</select>
+          {% else %}<input name="category">{% endif %}
+        </label>
+        {% if m.statuses %}
+          <label>Status <select name="status">{% for s in m.statuses %}<option value="{{ s }}">{{ s|capitalize }}</option>{% endfor %}</select></label>
+        {% endif %}
+        <label>{{ 'Requested by' if m.kind == 'orders' else 'Owner' }} <input name="owner" list="inv-owner-options"></label>
+        {% if m.has('sharing') %}
+          <label>Belongs to
+            <select name="is_shared"><option value="0">Personal: only me (and admins) can edit</option><option value="1">Lab common: anyone can use and edit</option></select>
+          </label>
+        {% endif %}
+      </fieldset>
+      {% if m.has('supplier') or m.has('quantity') %}
+        <fieldset class="record-group">
+          <legend>Supply</legend>
+          {% if m.has('supplier') %}
+            <label>Vendor <input name="vendor"></label>
+            <label>Catalog # <input name="catalog_number"></label>
+            <label>Lot <input name="lot"></label>
+          {% endif %}
+          {% if m.has('quantity') %}
+            <label>Quantity <input name="quantity"></label>
+            <label>Unit <input name="unit" placeholder="mL, mg, µL, kit…"></label>
+          {% endif %}
+        </fieldset>
+      {% endif %}
+      {% if m.fields %}
+        <fieldset class="record-group">
+          <legend>Details</legend>
+          {% for fd in m.fields %}
+            {% set name = 'attr_' ~ fd.key %}
+            {% if fd.type == 'source' %}
+              <label>{{ fd.label }}: from
+                <select name="{{ name }}_kind" data-source-kind>
+                  <option value="">Not recorded</option>
+                  {% for source in sources %}<option value="{{ source.kind }}" data-list="inv-src-{{ loop.index0 }}">{{ source.label }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>ID in that colony <input name="{{ name }}_ref" data-source-ref autocomplete="off" placeholder="e.g. mouse 12, tank T004"></label>
+            {% elif fd.type == 'select' %}
+              <label>{{ fd.label }} <select name="{{ name }}"><option value="">Not set</option>{% for o in fd.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
+            {% elif fd.type == 'textarea' %}
+              <label class="col-span-full">{{ fd.label }} <textarea name="{{ name }}" rows="2"></textarea></label>
+            {% else %}
+              <label>{{ fd.label }} <input name="{{ name }}" {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% endif %}></label>
+            {% endif %}
+          {% endfor %}
+        </fieldset>
+      {% endif %}
+      <fieldset class="record-group">
+        <legend>Where and when</legend>
+        {% if m.has('storage') %}
+          <label>Box <select name="rack_id"><option value="">Not in a box</option>{% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select></label>
+          <label>Position <input name="position" class="font-mono" placeholder="e.g. D7"></label>
+        {% endif %}
+        <label {% if not m.has('storage') %}class="col-span-full"{% endif %}>Location note <input name="location_note" placeholder="freezer, shelf, room…"></label>
+        {% if m.has('received') %}<label>Received <input type="date" name="received_on"></label>{% endif %}
+        {% if m.has('expiry') %}<label>Expires <input type="date" name="expires_on"></label>{% endif %}
+      </fieldset>
+      <label class="record-wide">Notes <textarea name="notes" rows="3"></textarea></label>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary" data-record-submit>Create {{ m.item_noun }}</button>
+    </footer>
+  </form>
+</dialog>
+
+{% if m.has('storage') %}
+  {% call rack_dialog('inv-rack-dialog', url_for('inventory.save_rack', key=key), url_for('inventory.save_rack', key=key),
+                      url_for('inventory.delete_rack', key=key, rack_id=0), noun='box') %}
+    <label class="col-span-full">Kind
+      <select name="kind">
+        {% for kind in ['box', 'rack', 'shelf', 'drawer', 'freezer'] %}<option value="{{ kind }}">{{ kind|capitalize }}</option>{% endfor %}
+      </select>
+    </label>
+  {% endcall %}
+{% endif %}
+{% endblock %}
+
+{% block body_end %}
+<script>
+  /* Inline autosave, with the toolbar indicator used by every sheet. */
+  (function () {
+    const status = document.querySelector('[data-save-status]');
+    let clear = null;
+    const say = (state, text) => {
+      if (!status) return;
+      clearTimeout(clear);
+      status.dataset.state = state;
+      status.textContent = text;
+      if (state === 'saved') clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
+    };
+    const timers = new Map();
+    async function save(form) {
+      say('saving', 'Saving…');
+      try {
+        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
+        // The row now shows what was saved; remember it for the next save.
+        if ('position' in body) {
+          const was = (n) => form.querySelector(`[name="${n}_was"]`);
+          if (was('rack_id')) was('rack_id').value = body.rack_id;
+          if (was('position')) was('position').value = body.position;
+          const pos = document.querySelector(`[form="${form.id}"][name="position"]`);
+          if (pos) pos.value = body.position;
+        }
+        say('saved', 'All changes saved');
+      } catch (error) {
+        say('error', `Couldn’t save ${form.dataset.recordLabel || 'this change'}: ${error.message}`);
+      }
+    }
+    document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
+      const queue = (delay) => {
+        const form = document.getElementById(input.getAttribute('form'));
+        if (!form) return;
+        clearTimeout(timers.get(form.id));
+        timers.set(form.id, setTimeout(() => save(form), delay));
+      };
+      input.addEventListener('input', () => queue(450));
+      input.addEventListener('change', () => {
+        if (input.classList.contains('status-pill')) input.dataset.status = input.value;
+        if (input.classList.contains('scope-pill')) input.dataset.scope = input.value === '1' ? 'lab' : 'mine';
+        if (input.type === 'date') input.dataset.empty = input.value ? '0' : '1';
+        queue(0);
+      });
+    });
+
+    // A box move on the grid updates the row, so it does not post the old box back.
+    document.addEventListener('rack-grid:moved', (event) => {
+      const { id, rackId, position } = event.detail || {};
+      const form = document.getElementById(`inv-${id}`);
+      if (!form) return;
+      const set = (sel, v) => { const el = document.querySelector(sel); if (el) el.value = v || ''; };
+      set(`[form="inv-${id}"][name="rack_id"]`, rackId);
+      set(`[form="inv-${id}"][name="position"]`, position);
+      form.querySelector('[name="rack_id_was"]').value = rackId || '';
+      form.querySelector('[name="position_was"]').value = position || '';
+    });
+  })();
+
+  /* Source picker in the dialog: suggest IDs from the chosen colony. */
+  (function () {
+    const dialog = document.getElementById('item-dialog');
+    const kind = dialog.querySelector('[data-source-kind]');
+    const ref = dialog.querySelector('[data-source-ref]');
+    if (!kind || !ref) return;
+    const sync = () => {
+      const list = kind.selectedOptions[0] && kind.selectedOptions[0].dataset.list;
+      if (list) ref.setAttribute('list', list); else ref.removeAttribute('list');
+    };
+    kind.addEventListener('change', sync);
+    dialog.addEventListener('record-dialog:open', sync);
+  })();
+
+  /* Board: drag a card to another status; click to open it. */
+  (function () {
+    const board = document.querySelector('[data-board]');
+    if (!board) return;
+    let dragged = null;
+    board.querySelectorAll('.board-card').forEach((card) => {
+      card.addEventListener('dragstart', (e) => { dragged = card; card.classList.add('is-dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', card.dataset.id); });
+      card.addEventListener('dragend', () => { card.classList.remove('is-dragging'); dragged = null; });
+    });
+    const recount = () => board.querySelectorAll('.board-col').forEach((col) => {
+      col.querySelector('[data-board-count]').textContent = col.querySelectorAll('.board-card').length;
+    });
+    board.querySelectorAll('.board-col').forEach((col) => {
+      const drop = col.querySelector('[data-board-drop]');
+      col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('is-drop-target'); });
+      col.addEventListener('dragleave', () => col.classList.remove('is-drop-target'));
+      col.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        col.classList.remove('is-drop-target');
+        if (!dragged || dragged.closest('.board-col') === col) return;
+        const card = dragged;
+        const from = card.parentElement;
+        drop.prepend(card);
+        recount();
+        const body = new FormData();
+        body.append('status', col.dataset.status);
+        const response = await fetch(board.dataset.statusUrl.replace('/0/', `/${card.dataset.id}/`), { method: 'POST', body, headers: { 'X-Autosave': '1' } });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.ok === false) {
+          from.prepend(card);
+          recount();
+          alert(result.error || 'Could not move it.');
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}
