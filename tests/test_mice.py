@@ -235,12 +235,8 @@ class CohortDobTests(Case):
         self.assertEqual((mouse(self.mid)["litter_id"], mouse(self.mid)["date_of_birth"]), (code, days_ago(40)))
         self.assertEqual(one("select date_of_birth from litters where id=?", self.old_litter), days_ago(60))
 
-    # BUG: populate_mouse_from_form -> get_or_create_litter(code, dob) writes
-    # the typed DOB onto an *existing* litter, with no confirm and no
-    # can_edit_litter check. So a member who types someone else's litter
-    # code and a date on their own mouse re-dates every mouse in that
-    # litter, which /colony/litters/<id>/update would refuse them.
-    @unittest.expectedFailure
+    # A litter's DOB is every member's age: joining someone else's litter
+    # with a different date keeps the litter's date (services.get_or_create_litter).
     def test_joining_someone_elses_litter_does_not_redate_it(self):
         theirs = self.make_colony(self.o, self.other, n_mice=1, dob=days_ago(90))
         mine = self.make_mouse(self.m, self.member)
@@ -550,11 +546,8 @@ class MouseLifecycleTests(Case):
         self.assertNotEqual(dst["cage_id_fk"], c["cage_id"])
         self.assertEqual(count("notifications", "recipient_username=? and title='Mouse transfer received'", self.other), 1)
 
-    # BUG (inconsistent rule): the cage's "Add existing mouse" and wean
-    # distribute both refuse to put a mouse into a cage you may not edit,
-    # but the mouse sheet (update_mouse / bulk-update cage_id) will move
-    # your own mouse into anyone's private cage.
-    @unittest.expectedFailure
+    # The mouse sheet follows the cage's own rule ("Add existing mouse",
+    # wean distribute): a private cage takes mice only from its owner or an admin.
     def test_member_cannot_move_own_mouse_into_someone_elses_private_cage(self):
         theirs = uniq("C")
         self.make_cage(self.o, theirs, purpose="Experiments")

@@ -666,8 +666,17 @@ def get_or_create_litter(session, litter_code: str, dob: date | None = None) -> 
         litter = LitterRecord(litter_id=litter_code, date_of_birth=dob)
         session.add(litter)
         session.flush()
-    elif dob:
-        litter.date_of_birth = dob
+    elif dob and dob != litter.date_of_birth:
+        # A litter's date of birth is the age of every mouse in it: only
+        # someone who may edit all of them re-dates it (as on the Litters
+        # tab). Anyone else's mouse just joins with the litter's date.
+        from flask import flash, has_request_context
+        from . import access
+        if not has_request_context() or access.can_edit_litter(litter):
+            litter.date_of_birth = dob
+        else:
+            flash(f"Litter {litter.litter_id} keeps its date of birth "
+                  f"({litter.date_of_birth or 'not set'}): it has mice you can't edit.", "info")
     return litter
 
 

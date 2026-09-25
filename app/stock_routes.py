@@ -400,15 +400,17 @@ def save_unit(key: str):
                 for i in range(count):
                     unit = StockUnit(module_id_fk=row.id, number=number + i, owner=user,
                                      purpose=mv.default_purpose, set_up_on=date.today(), updated_by=user)
-                    # A new vial takes every field; "_was" copies only guard edits
-                    # (and a reused dialog can still hold the last vial's).
-                    fresh = {k: v for k, v in request.form.items() if not k.endswith("_was")}
-                    _unit_from_form(session, mv, unit, fresh, placing=False, users=users)
+                    # In its rack first, so rules that depend on the incubator's
+                    # temperature (when progeny emerge) see the right one.
                     if rack is not None:
                         unit.rack_id_fk = rack.id
                         unit.rack = rack
                         if i < len(cells):
                             unit.rack_row, unit.rack_col = cells[i]
+                    # A new vial takes every field; "_was" copies only guard edits
+                    # (and a reused dialog can still hold the last vial's).
+                    fresh = {k: v for k, v in request.form.items() if not k.endswith("_was")}
+                    _unit_from_form(session, mv, unit, fresh, placing=False, users=users)
                     if unit.purpose == presets.PROGENY and not unit.ready_on and unit.set_up_on:
                         unit.ready_on = unit.set_up_on + timedelta(days=mv.interval("develop", svc.rack_temperature(mv, rack)))
                     session.add(unit)
