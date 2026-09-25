@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from . import access, audit
 from .db import SessionLocal
 from .models import (
-    CageRecord, InventoryItem, InventoryModule, InventoryRack, MouseRack,
+    CageRecord, InventoryItem, InventoryModule, InventoryRack, MouseRack, PlasmidBox, PlasmidRecord,
     StockIncubator, StockModule, StockRack, StockUnit, UserAccount,
 )
 
@@ -40,9 +40,13 @@ class Kind:
     count_noun: str
 
 
-def _colony_label(session, row) -> str:
+def _builtin_label(session, key: str, default: str) -> str:
     from .inventory_service import builtin_labels
-    return builtin_labels(session).get("colony", "Mouse colony")
+    return builtin_labels(session).get(key, default)
+
+
+def _colony_label(session, row) -> str:
+    return _builtin_label(session, "colony", "Mouse colony")
 
 
 def _module_label(model):
@@ -57,6 +61,11 @@ CONTAINERS: tuple[Kind, ...] = (
          lambda s, r: r.room or "",
          lambda s, r: s.scalar(select(func.count(CageRecord.id)).where(CageRecord.rack_id_fk == r.id)) or 0,
          "cages"),
+    Kind("plasmid_box", "Plasmid boxes", "box", PlasmidBox, "plasmid_boxes",
+         lambda s, r: _builtin_label(s, "plasmids", "Plasmids"),
+         lambda s, r: r.location or "",
+         lambda s, r: s.scalar(select(func.count(PlasmidRecord.id)).where(PlasmidRecord.box_id_fk == r.id)) or 0,
+         "plasmids"),
     Kind("inventory_box", "Inventory boxes", "box", InventoryRack, "inventory_racks", _module_label(InventoryModule),
          lambda s, r: r.kind or "",
          lambda s, r: s.scalar(select(func.count(InventoryItem.id)).where(InventoryItem.rack_id_fk == r.id)) or 0,
