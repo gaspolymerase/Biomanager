@@ -33,6 +33,7 @@ from .models import (
 )
 from . import access
 from . import organism_service as svc
+from . import inventory as inventory_presets
 from . import positions
 from .icons import housing_icon
 from .organisms import (
@@ -153,6 +154,11 @@ def _views_for(mv: svc.ModuleView) -> list[dict]:
 
 @bp.route("/")
 def index():
+    """Every database in one place: the built-in pages, the organism
+    modules and the lab inventories, each renameable."""
+    from . import inventory_service as inventories
+    from .models import InventoryItem, MouseRecord, PlasmidRecord, TankRecord
+
     with SessionLocal() as session:
         modules = svc.list_modules(session, include_disabled=True)
         cards = []
@@ -162,7 +168,38 @@ def index():
                 "census": svc.census(session, module),
                 "capabilities": svc.capability_labels(module),
             })
-        return render_template("organisms/index.html", cards=cards)
+        names = inventories.builtin_labels(session)
+        count = lambda model: session.scalar(select(func.count()).select_from(model)) or 0
+        builtins = [
+            {"key": "colony", "icon": "mouse", "url": url_for("colony", view="mice"), "count": count(MouseRecord), "noun": "mice"},
+            {"key": "zebrafish", "icon": "fish", "url": url_for("zebrafish"), "count": count(TankRecord), "noun": "tanks"},
+            {"key": "plasmids", "icon": "plasmid", "url": url_for("plasmids"), "count": count(PlasmidRecord), "noun": "plasmids"},
+        ]
+        for b in builtins:
+            b["label"] = names[b["key"]]
+            b["default"] = inventories.BUILTIN_DATABASES[b["key"]][0]
+        item_counts = dict(session.execute(select(InventoryItem.module_id_fk, func.count())
+                                           .group_by(InventoryItem.module_id_fk)).all())
+        inventory_cards = [{"module": inventories.view(m), "count": item_counts.get(m.id, 0)}
+                           for m in inventories.list_modules(session, include_disabled=True)]
+        return render_template("organisms/index.html", cards=cards, builtins=builtins,
+                               inventory_cards=inventory_cards)
+
+
+@bp.route("/builtin/<key>/rename", methods=["POST"])
+def rename_builtin(key: str):
+    """Rename the mouse colony, zebrafish or plasmid pages. An empty name
+    goes back to the default."""
+    from . import inventory_service as inventories
+
+    if key not in inventories.BUILTIN_DATABASES:
+        abort(404)
+    label = (request.form.get("label") or "").strip()[:80]
+    with SessionLocal() as session:
+        inventories.set_setting(session, f"db_label:{key}", label)
+        session.commit()
+    flash(f"Renamed to {label or inventories.BUILTIN_DATABASES[key][0]}.", "success")
+    return redirect(url_for("organisms.index"))
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -190,6 +227,7 @@ def new_module():
             capability_groups=capability_groups(),
             identity_modes=IDENTITY_MODES,
             age_units=AGE_UNITS,
+            inventory_presets=inventory_presets.PRESETS,
         )
 
 

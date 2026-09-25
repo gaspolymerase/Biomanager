@@ -471,10 +471,11 @@
         const cell = document.createElement('td');
         cell.className = 'dt-empty';
         cell.colSpan = this.table.tHead.rows[0].cells.length;
+        cell.appendChild(document.createElement('span')).className = 'dt-empty-msg';
         row.appendChild(cell);
         this.tbody.appendChild(row);
       }
-      row.firstChild.textContent = this.query
+      row.firstChild.firstChild.textContent = this.query
         ? `Nothing matches “${this.search.value.trim()}”.`
         : `No ${this.nounPlural} match this filter.`;
     }

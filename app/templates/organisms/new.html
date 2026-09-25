@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
 {% block page_title %}New database{% endblock %}
-{% block page_heading %}New organism database{% endblock %}
-{% block page_subtitle %}Start from a preset or an empty sheet, then pick exactly what this organism needs{% endblock %}
+{% block page_heading %}New database{% endblock %}
+{% block page_subtitle %}A lab inventory for things you keep or buy, or an organism database for animals you house{% endblock %}
 {% block page_shell_class %}shell-page workbench{% endblock %}
 
 {% block page_actions %}
@@ -12,6 +12,29 @@
 {% endblock %}
 
 {% block content %}
+
+{# ---- Lab inventories ---------------------------------------------------- #}
+<section class="mb-6">
+  <h2 class="mb-1 flex items-center gap-2">{{ icon('flask', 'size-[17px] text-brand-600') }} Lab inventory</h2>
+  <p class="mb-3 text-[12.5px] text-muted">
+    Samples, orders, reagents, antibodies or a list of your own, with freezer boxes,
+    mine / lab common stock, and status boards. Pick one to name it.
+  </p>
+  <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+    {% for key, p in inventory_presets.items() %}
+      <a class="card flex flex-col gap-2 p-4 no-underline transition-all hover:border-brand-300 hover:shadow-sm"
+         href="{{ url_for('inventory.new_module', preset=key) }}">
+        <span class="flex items-center gap-2">
+          {{ icon(p.icon, "size-[17px] text-brand-600") }}
+          <span class="text-[14px] font-semibold text-ink">{{ p.label }}</span>
+        </span>
+        <span class="text-[12px] leading-snug text-muted">{{ p.blurb }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+
+<h2 class="mb-3 flex items-center gap-2">{{ icon('paw', 'size-[17px] text-brand-600') }} Organism database</h2>
 
 {# ---- Step 1: preset ---------------------------------------------------- #}
 <section class="mb-4">

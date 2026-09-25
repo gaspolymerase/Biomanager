@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block page_title %}Plasmids{% endblock %}
-{% block page_heading %}Plasmids{% endblock %}
+{% block page_title %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
+{% block page_heading %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
 {% block page_subtitle %}Reference a plasmid in the notebook with <code class="ident">@plasmid 123</code>{% endblock %}
 {% block page_shell_class %}shell-page-wide{% endblock %}
 

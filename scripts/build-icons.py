@@ -46,6 +46,7 @@ FROM_FONTAWESOME = {
     "protocol": "clipboard-check",
     "position": "location-crosshairs",
     "amount": "flask",
+    "target": "bullseye",
     # --- navigation & chrome ---
     "home": "house",
     "calendar": "calendar-days",
@@ -198,6 +199,15 @@ CUSTOM["cage"] = '''
 <path d="M168 96c11 0 20 9 20 20v28h-40v-28c0-11 9-20 20-20zm88 0c11 0 20 9
 20 20v28h-40v-28c0-11 9-20 20-20zm88 0c11 0 20 9 20 20v28h-40v-28c0-11
 9-20 20-20z"/>
+'''
+
+# An antibody (IgG): the Y of two heavy chains, a light chain beside each
+# arm. Bold strokes so the Y survives at 15px.
+CUSTOM["antibody"] = '''
+<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<path d="M256 468V288L118 128M256 288l138-160" stroke-width="58"/>
+<path d="M186 300 72 168M326 300l114-132" stroke-width="34"/>
+</g>
 '''
 
 # An aquatic tank: glass box with a water line.
