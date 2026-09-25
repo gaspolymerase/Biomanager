@@ -11,10 +11,11 @@
 	tls internal
 }
 
+# Nothing to say: Caddy fetches certificates for *.ts.net names from the
+# host's Tailscale by itself. An explicit `tls { get_certificate tailscale }`
+# would also switch on Let's Encrypt for the name, which can never succeed
+# for a private tailnet name and only runs into rate limits.
 (tls_tailscale) {
-	tls {
-		get_certificate tailscale
-	}
 }
 
 (tls_acme) {
