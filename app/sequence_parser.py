@@ -21,6 +21,31 @@ from __future__ import annotations
 
 import re
 
+# Every IUPAC nucleotide letter: the four bases, U, and the ambiguity codes
+# (R = A/G, Y = C/T, … N = any). A sequence keeps all of them; dropping the
+# ambiguity codes shifts every downstream coordinate.
+IUPAC_BASES = "ACGTURYKMSWBDHVN"
+_NOT_IUPAC = re.compile(f"[^{IUPAC_BASES}{IUPAC_BASES.lower()}]")
+# What raw pasted text may contain besides bases: whitespace and the
+# position numbers of a GenBank ORIGIN block or a numbered listing.
+_RAW_NOISE = re.compile(r"[\s\d]")
+
+
+def clean_bases(text: str) -> str:
+    """Keep the IUPAC nucleotide letters, uppercased; drop everything else."""
+    return _NOT_IUPAC.sub("", text or "").upper()
+
+
+def looks_like_bases(text: str) -> bool:
+    """True when text is only bases, whitespace and position numbers.
+
+    The raw-sequence fallback uses this so a binary file or a Word document
+    is refused rather than mined for the few letters that happen to be
+    A, C, G or T."""
+    body = _RAW_NOISE.sub("", text or "")
+    return bool(body) and not _NOT_IUPAC.search(body)
+
+
 # Pastel colors used to tint features by type. Same palette SnapGene-ish
 # uses; SeqViz will apply these via feature.color directly.
 FEATURE_TYPE_COLORS = {
@@ -51,8 +76,12 @@ def parse_fasta(raw: str) -> dict | None:
         return None
     lines = raw.splitlines()
     name = lines[0][1:].strip().split()[0] if lines[0][1:].strip() else "sequence"
-    seq = "".join(l.strip() for l in lines[1:] if not l.startswith(">"))
-    seq = re.sub(r"[^ACGTNUacgtnu]", "", seq).upper()
+    body = "".join(l.strip() for l in lines[1:] if not l.startswith(">"))
+    # Alignment gaps and a stop mark are tolerated; any other letter means
+    # this is not a nucleotide FASTA (a protein, or prose).
+    if not looks_like_bases(re.sub(r"[-*.]", "", body)):
+        return None
+    seq = clean_bases(body)
     return {
         "sequence": seq,
         "is_circular": False,  # FASTA gives no topology hint; default linear
@@ -154,7 +183,9 @@ def parse_genbank(raw: str) -> dict | None:
             cleaned = re.sub(r"\d+", "", raw_line).replace(" ", "").strip()
             seq += cleaned
 
-    seq = re.sub(r"[^ACGTNUacgtnu]", "", seq).upper()
+    seq = clean_bases(seq)
+    if not seq:
+        return None
 
     # Normalize features: parse the location into start/end + direction.
     normalized = []
@@ -162,7 +193,7 @@ def parse_genbank(raw: str) -> dict | None:
         if feat.get("type") in ("source", ""):
             # Source covers the whole sequence — skip in feature display.
             continue
-        start, end, direction = _parse_location(feat.get("location_raw", ""))
+        start, end, direction = _parse_location(feat.get("location_raw", ""), len(seq))
         if start is None or end is None:
             continue
         # Pick a feature name in priority order.
@@ -197,14 +228,31 @@ def parse_genbank(raw: str) -> dict | None:
 _LOC_NUM = re.compile(r"(\d+)\s*\.\.\s*(\d+)")
 
 
-def _parse_location(loc: str) -> tuple[int | None, int | None, int]:
+def span_of_parts(parts: list[tuple[int, int]]) -> tuple[int, int]:
+    """One (start, end) for a feature made of several 0-based parts.
+
+    Parts listed in order that step backwards cross the origin of a
+    circular sequence: join(55..60,1..5) runs 55→60 then 1→5. That span is
+    kept as start > end, which is how the map (Open Vector Editor) draws a
+    feature wrapping the origin; folding it to min..max would paint the
+    whole plasmid instead. Parts that run forwards give the outer bounds."""
+    if len(parts) == 1:
+        return parts[0]
+    wraps = any(parts[i + 1][0] < parts[i][0] for i in range(len(parts) - 1))
+    if wraps:
+        return parts[0][0], parts[-1][1]
+    return min(s for s, _ in parts), max(e for _, e in parts)
+
+
+def _parse_location(loc: str, length: int = 0) -> tuple[int | None, int | None, int]:
     """Parse a GenBank location string. Returns (start, end, direction) where
-    indices are 0-based inclusive ends as in SeqViz expectations."""
+    indices are 0-based inclusive ends as in SeqViz expectations. A feature
+    crossing the origin comes back with start > end (see span_of_parts)."""
     if not loc:
         return None, None, 1
     direction = -1 if "complement" in loc else 1
-    # Find the first numeric range. Joins / orders are folded to the outer
-    # min..max bounds (good enough for visualization).
+    # Partial-end markers (<1..>20) do not change the span.
+    loc = loc.replace("<", "").replace(">", "")
     matches = _LOC_NUM.findall(loc)
     if not matches:
         # Single position like "123"
@@ -213,9 +261,15 @@ def _parse_location(loc: str) -> tuple[int | None, int | None, int]:
             return None, None, direction
         pos = int(m.group(0)) - 1
         return pos, pos, direction
-    starts = [int(a) for a, _ in matches]
-    ends = [int(b) for _, b in matches]
-    return min(starts) - 1, max(ends) - 1, direction
+    parts = [(int(a) - 1, int(b) - 1) for a, b in matches]
+    # join(complement(60..55), complement(5..1)) style lists the minus-strand
+    # parts last-first; put them back in sequence order.
+    if direction == -1 and not loc.lstrip().startswith("complement") and len(parts) > 1:
+        parts.reverse()
+    start, end = span_of_parts(parts)
+    if length and (start >= length or end >= length):
+        return None, None, direction
+    return start, end, direction
 
 
 def parse_sequence_text(raw: str) -> dict | None:
@@ -225,12 +279,11 @@ def parse_sequence_text(raw: str) -> dict | None:
         return parse_fasta(raw)
     if raw_strip.upper().startswith("LOCUS"):
         return parse_genbank(raw)
-    # Treat as raw bases.
-    cleaned = re.sub(r"[^ACGTNUacgtnu]", "", raw_strip)
-    if not cleaned:
+    # Treat as raw bases, but only if that is all it is.
+    if not looks_like_bases(raw_strip):
         return None
     return {
-        "sequence": cleaned.upper(),
+        "sequence": clean_bases(raw_strip),
         "is_circular": False,
         "format": "raw",
         "name": "",
@@ -304,7 +357,9 @@ def parse_snapgene_dna(raw_bytes: bytes) -> dict | None:
     if not sequence:
         return None
 
-    sequence = re.sub(r"[^ACGTNUacgtnu]", "", sequence).upper()
+    sequence = clean_bases(sequence)
+    if not sequence:
+        return None
     features = _parse_snapgene_features_xml(features_xml) if features_xml else []
 
     return {
@@ -340,9 +395,9 @@ def _parse_snapgene_features_xml(xml_text: str) -> list[dict]:
         direction = -1 if d_int == 2 else (1 if d_int == 1 else 0)
 
         # Collect all segments to find the overall span. SnapGene uses
-        # 1-based inclusive coordinates in "start-end" format.
-        starts: list[int] = []
-        ends: list[int] = []
+        # 1-based inclusive coordinates in "start-end" format; a segment
+        # across the origin reads end < start, which is kept (span_of_parts).
+        parts: list[tuple[int, int]] = []
         seg_color = ""
         for seg in f.iter("Segment"):
             rng = seg.attrib.get("range", "")
@@ -350,15 +405,13 @@ def _parse_snapgene_features_xml(xml_text: str) -> list[dict]:
                 continue
             try:
                 s, e = rng.split("-", 1)
-                starts.append(int(s) - 1)
-                ends.append(int(e) - 1)
+                parts.append((int(s) - 1, int(e) - 1))
             except ValueError:
                 continue
             seg_color = seg_color or seg.attrib.get("color", "")
-        if not starts:
+        if not parts:
             continue
-        start = min(starts)
-        end = max(ends)
+        start, end = span_of_parts(parts)
 
         note_text = ""
         for q in f.iter("Q"):
@@ -393,6 +446,10 @@ def parse_sequence_bytes(raw_bytes: bytes, filename: str = "") -> dict | None:
         parsed = parse_snapgene_dna(raw_bytes)
         if parsed:
             return parsed
+    # A .dna that is not SnapGene, or any file with NUL bytes, is binary:
+    # there is no sequence text to fall back to.
+    if filename.lower().endswith(".dna") or b"\x00" in raw_bytes[:4096]:
+        return None
     # Text fallback.
     try:
         text = raw_bytes.decode("utf-8")
