@@ -1,5 +1,9 @@
 # Running BioManager on a lab server
 
+Setting it up is below. Once it runs, **[RUNBOOK.md](RUNBOOK.md)** says what
+to do when an alert arrives, the site is down, a restore is needed, someone
+joins or leaves, or the server is lost.
+
 One machine (a department VM or a lab-owned Linux box) runs the whole
 stack in Docker:
 

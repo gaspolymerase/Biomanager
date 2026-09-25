@@ -9,14 +9,18 @@ lands in shell history.
     python scripts/reset-password.py haoxuan         # reset that account
     python scripts/reset-password.py haoxuan --admin # …and make them admin
 
-Talks to SQLite directly rather than importing the app, which keeps it fast
-and means it still works when the app itself will not start. For a Postgres
-deployment, use Settings -> Manage users instead.
+Talks to the database directly rather than importing the app, which keeps
+it fast and means it still works when the app itself will not start.
+
+On a server (PostgreSQL, DATABASE_URL set), run it inside the app container:
+
+    docker compose exec app python scripts/reset-password.py NAME --admin --enable
 """
 from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -31,7 +35,28 @@ MIN_LENGTH = 12  # app/security.py MIN_PASSWORD_LENGTH
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "biomanager.db"
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
+class _Postgres:
+    """Just enough of sqlite3's connection interface for this script."""
+
+    def __init__(self, url: str):
+        import psycopg
+        self._conn = psycopg.connect(url.replace("postgresql+psycopg://", "postgresql://")
+                                        .replace("postgres://", "postgresql://"))
+
+    def execute(self, sql: str, params=()):
+        return self._conn.execute(sql.replace("?", "%s"), params)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+
+def connect(db_path: Path):
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if url.startswith(("postgres://", "postgresql")) and db_path == DEFAULT_DB:
+        return _Postgres(url)
     if not db_path.exists():
         sys.exit(f"No database at {db_path}\n"
                  f"Pass --db if it lives somewhere else (a packaged .app keeps it in\n"
@@ -89,7 +114,7 @@ def main() -> int:
         if args.admin:
             updates["role"] = "admin"
         if args.enable:
-            updates["disabled"] = 0
+            updates["disabled"] = False
             if role == "pending":  # a sign-up nobody approved yet
                 updates.setdefault("role", "member")
 
