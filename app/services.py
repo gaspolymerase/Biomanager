@@ -85,6 +85,7 @@ def init_database() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_schema_updates()
     rebuild_samples_table()
+    migrate_cage_locations()
     backfill_cage_owners()
     stamp_alembic_baseline()
     warn_if_database_is_synced()
@@ -228,6 +229,17 @@ def ensure_schema_updates() -> None:
             alter_statements.append("ALTER TABLE tasks ADD COLUMN color VARCHAR(20) DEFAULT ''")
         if "owner" not in cols:
             alter_statements.append("ALTER TABLE tasks ADD COLUMN owner VARCHAR(80) DEFAULT ''")
+
+    # Rack naming schemes and structured cage placement (2026-09-24).
+    if "mouse_racks" in table_columns and "naming" not in table_columns["mouse_racks"]:
+        alter_statements.append("ALTER TABLE mouse_racks ADD COLUMN naming TEXT DEFAULT '{}'")
+    if "fish_racks" in table_columns and "naming" not in table_columns["fish_racks"]:
+        alter_statements.append("ALTER TABLE fish_racks ADD COLUMN naming TEXT DEFAULT '{}'")
+    if "mouse_cages" in table_columns:
+        for column, ddl in (("rack_id_fk", "INTEGER REFERENCES mouse_racks(id)"),
+                            ("rack_row", "INTEGER"), ("rack_col", "INTEGER")):
+            if column not in table_columns["mouse_cages"]:
+                alter_statements.append(f"ALTER TABLE mouse_cages ADD COLUMN {column} {ddl}")
 
     if alter_statements:
         with engine.begin() as connection:
@@ -601,33 +613,31 @@ def get_or_create_litter(session, litter_code: str, dob: date | None = None) -> 
     return litter
 
 
-ROW_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-_POSITION_RE = re.compile(r"^\s*(?P<rack>.+?)\s*[-/: ]\s*(?P<row>[A-Za-z])\s*(?P<col>\d{1,2})\s*$")
+def migrate_cage_locations() -> int:
+    """Move cage placements written into the location text ("B-D7", the
+    format used before racks had structured positions) into the cage's rack
+    fields, and clear the text. Text that names no rack ("789", "shelf 2")
+    is a free-text location note and is left alone. Idempotent."""
+    from .models import MouseRack
+    from . import positions
 
-
-def cage_position_text(rack_name: str, row: int, col: int) -> str:
-    """"B", 4, 7 → "B-D7". Rows and columns are 1-based."""
-    return f"{rack_name}-{ROW_LETTERS[row - 1]}{col}"
-
-
-def parse_cage_position(text: str, racks_by_name: dict) -> tuple | None:
-    """"B-D7" → (rack, 4, 7) when rack "B" exists and D7 is inside it.
-
-    Accepts "-", "/", ":" or a space between rack and position, and any
-    letter case; rack names may themselves contain those characters,
-    because the position is read from the end. Anything else is None, which
-    the grid shows as unplaced rather than guessing."""
-    match = _POSITION_RE.match(text or "")
-    if not match:
-        return None
-    rack = racks_by_name.get(match.group("rack").strip().lower())
-    if rack is None:
-        return None
-    row = ROW_LETTERS.index(match.group("row").upper()) + 1
-    col = int(match.group("col"))
-    if not (1 <= row <= rack.rows and 1 <= col <= rack.cols):
-        return None
-    return rack, row, col
+    pattern = re.compile(r"^\s*(?P<rack>.+?)\s*[-/: ]\s*(?P<pos>[A-Za-z]\s*\d{1,2})\s*$")
+    moved = 0
+    with SessionLocal() as session:
+        racks = {r.name.lower(): r for r in session.scalars(select(MouseRack))}
+        if not racks:
+            return 0
+        for cage in session.scalars(select(CageRecord).where(CageRecord.rack_id_fk.is_(None))):
+            match = pattern.match(cage.cage_location or "")
+            rack = racks.get(match.group("rack").strip().lower()) if match else None
+            cell = positions.parse(match.group("pos"), rack.naming, rack.rows, rack.cols) if rack else None
+            if cell:
+                cage.rack_id_fk, (cage.rack_row, cage.rack_col) = rack.id, cell
+                cage.cage_location = ""
+                moved += 1
+        if moved:
+            session.commit()
+    return moved
 
 
 def mouse_racks(session) -> list:
@@ -687,6 +697,13 @@ def mouse_is_active(mouse: MouseRecord) -> bool:
     return mouse.date_of_death is None and normalize_status(mouse.status) not in inactive_statuses
 
 
+def _cage_position(cage) -> str:
+    from . import positions
+    if cage is None or cage.rack is None:
+        return ""
+    return positions.label(cage.rack_row, cage.rack_col, cage.rack.naming, cage.rack.cols)
+
+
 def mouse_display_row(mouse: MouseRecord, current_username: str | None = None, current_role: str | None = None) -> dict[str, object]:
     dob = mouse.litter.date_of_birth if mouse.litter else None
     ages = calculate_age_fields(dob)
@@ -711,6 +728,9 @@ def mouse_display_row(mouse: MouseRecord, current_username: str | None = None, c
         "transgene_4": genotype_parts[3] if len(genotype_parts) > 3 else "",
         "cage_id": mouse.cage.cage_id if mouse.cage else "",
         "cage_location": mouse.cage.cage_location if mouse.cage else "",
+        "cage_rack_id": mouse.cage.rack_id_fk if mouse.cage else None,
+        "cage_rack": mouse.cage.rack.name if mouse.cage and mouse.cage.rack else "",
+        "cage_position": _cage_position(mouse.cage),
         "owner": mouse.owner,
         "litter_id": mouse.litter.litter_id if mouse.litter else "",
         "date_of_birth": dob.isoformat() if dob else "",

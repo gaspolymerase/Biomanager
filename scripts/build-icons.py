@@ -29,6 +29,23 @@ OUTPUT = PROJECT_ROOT / "app" / "static" / "icons.svg"
 
 # name-in-app -> font-awesome solid file
 FROM_FONTAWESOME = {
+    # --- column headers: one glyph per kind of value ---
+    "sex": "venus-mars",
+    "female": "venus",
+    "male": "mars",
+    "age": "hourglass-half",
+    "born": "cake-candles",
+    "died": "calendar-xmark",
+    "litter": "people-group",
+    "status": "circle-half-stroke",
+    "note": "note-sticky",
+    "count": "hashtag",
+    "barcode": "barcode",
+    "vendor": "building",
+    "resistance": "capsules",
+    "protocol": "clipboard-check",
+    "position": "location-crosshairs",
+    "amount": "flask",
     # --- navigation & chrome ---
     "home": "house",
     "calendar": "calendar-days",
