@@ -1383,3 +1383,41 @@ class StockFrozen(Base):
     owner: Mapped[str] = mapped_column(String(80), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Model-wide table settings. Keep this block last in the file.
+#
+# Every integer primary key uses SQLite AUTOINCREMENT, so an id is never
+# handed out twice: without it SQLite reuses the highest id after that row
+# is deleted, and old references (audit entries, links, printed labels)
+# silently point at the new record (the option is SQLite-only).
+#
+# Every foreign key is DEFERRABLE INITIALLY DEFERRED: references are checked
+# when the transaction commits, not statement by statement. The ORM only
+# orders an UPDATE that unlinks a child before the DELETE of its parent
+# when a relationship() ties the two, so "unlink, then delete" (or undo
+# re-inserting a row its restored links point at) would otherwise fail at
+# random. What matters is that nothing dangles once committed.
+#
+# The listener covers tables defined anywhere, later ones included;
+# app/integrity.py upgrades existing databases to match.
+# ---------------------------------------------------------------------------
+from sqlalchemy import event as _event  # noqa: E402
+
+
+def _autoincrement_everywhere(tables) -> None:
+    for _table in tables:
+        _table.dialect_options["sqlite"]["autoincrement"] = True
+        for _constraint in _table.foreign_key_constraints:
+            _constraint.deferrable, _constraint.initially = True, "DEFERRED"
+            for _fk in _constraint.elements:
+                _fk.deferrable, _fk.initially = True, "DEFERRED"
+
+
+_autoincrement_everywhere(Base.metadata.tables.values())
+
+
+@_event.listens_for(Base.metadata, "before_create")
+def _autoincrement_before_create(metadata, connection, tables=(), **kw) -> None:
+    _autoincrement_everywhere(tables or metadata.tables.values())
