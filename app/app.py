@@ -1995,6 +1995,12 @@ def delete_mouse(mouse_row_id: int):
                 record_label=f"Mouse #{mouse.mouse_id}",
                 details=f"gender={mouse.gender} genotype={mouse.genotype} owner={mouse.owner}",
             )
+            # Its weights and experiment places belong to it and go with it;
+            # left behind they would block the delete (or, before foreign
+            # keys were enforced, attach to whichever mouse got the id next).
+            for child in (MouseWeight, ExperimentMouse):
+                for row in db_session.scalars(select(child).where(child.mouse_id_fk == mouse.id)):
+                    db_session.delete(row)
             db_session.delete(mouse)
             db_session.commit()
     return redirect(url_for("colony", view="mice"))

@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import String, func, inspect, select, text
 
 from .db import BASE_DIR, Base, SessionLocal, engine
+from .integrity import ensure_integrity
 from .paths import uploads_dir
 from .models import (
     AnimalRecord,
@@ -85,6 +86,7 @@ def init_database() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_schema_updates()
     rebuild_samples_table()
+    ensure_integrity()  # ids never reused, foreign keys enforced (app/integrity.py)
     migrate_cage_locations()
     backfill_cage_owners()
     stamp_alembic_baseline()

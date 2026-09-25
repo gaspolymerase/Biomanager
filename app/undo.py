@@ -111,6 +111,8 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
 
     reverted = skipped = 0
     notes: list[str] = []
+    touched: list = []       # rows this undo edited or re-inserted
+    previous: dict = {}      # (id(row), field) -> value before the undo
 
     # The reversal is itself a batch, so the log shows both directions.
     with audit.batch(session, "update", f"undo of batch #{batch.id}",
@@ -137,6 +139,11 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
                 # database; deleting it before their restored cage is
                 # flushed would let the ORM null that restored value.
                 session.flush()
+                held = _unlink_references(session, model, row)
+                if held:
+                    skipped += 1
+                    notes.append(f"{entry.record_label}: kept, still used by {held}")
+                    continue
                 session.delete(row)
                 reverted += 1
 
@@ -150,7 +157,9 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
                     if not isinstance(pair, list) or len(pair) != 2:
                         continue
                     if hasattr(row, field):
+                        previous.setdefault((id(row), field), getattr(row, field))
                         setattr(row, field, audit._decode(pair[0]))
+                touched.append(row)
                 reverted += 1
 
             elif entry.action == "delete":
@@ -165,8 +174,24 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
                     continue
                 values = {k: audit._decode(v) for k, v in snapshot.items()
                           if hasattr(model, k)}
-                session.add(model(**values))
+                restored = model(**values)
+                session.add(restored)
+                touched.append(restored)
                 reverted += 1
+
+        # A restored link may name a record that is gone for good (deleted
+        # later, outside this batch). Foreign keys refuse the commit then, so
+        # say so instead: an optional link is cleared, a required one keeps
+        # the row out (a restored row) or keeps its current value (an edit).
+        session.flush()
+        for obj in touched:
+            for label, fixed in _missing_parents(session, obj, previous):
+                notes.append(f"{audit._label(obj)}: {label}")
+                if fixed is None:
+                    session.delete(obj)
+                    reverted -= 1
+                    skipped += 1
+                    break
 
         batch.undone_at = datetime.utcnow()
         batch.undone_by = actor
@@ -174,6 +199,69 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
 
     return {"ok": True, "reverted": reverted, "skipped": skipped,
             "problems": problems if force else [], "notes": notes}
+
+
+def _unlink_references(session, model, row) -> str:
+    """Before undoing a create, clear optional links other records have to
+    it since (as deleting it from the app would). Returns what still needs
+    it through a required link, in words; the row is then left in place."""
+    from sqlalchemy import func
+
+    from .db import Base
+
+    required, optional = [], []
+    for table in Base.metadata.sorted_tables:
+        for fk in table.foreign_keys:
+            if fk.column.table is not model.__table__:
+                continue
+            child = _model_for(table.name)
+            if child is None:
+                continue
+            key = child.__mapper__.get_property_by_column(fk.parent).key
+            where = getattr(child, key) == row.id
+            if fk.parent.nullable:
+                optional.append((child, key, where))
+                continue
+            n = session.scalar(select(func.count()).select_from(child).where(where)) or 0
+            if n:
+                required.append(f"{n} {table.name.replace('_', ' ')} row{'s' if n != 1 else ''}")
+    if required:
+        return ", ".join(required)  # kept as it is, links and all
+    for child, key, where in optional:
+        for other in session.scalars(select(child).where(where)):
+            if other is not row:
+                setattr(other, key, None)
+    return ""
+
+
+def _missing_parents(session, obj, previous: dict):
+    """(message, fixed) for each link on obj naming a record that is gone.
+    fixed is None when the row cannot stand (a required link on a restored
+    row); otherwise the link was cleared or put back."""
+    from sqlalchemy import inspect as sa_inspect
+
+    state = sa_inspect(obj)
+    if state.deleted or state.detached or state.was_deleted:
+        return  # removed again later in this undo
+    mapper = state.mapper
+    for fk in mapper.local_table.foreign_keys:
+        attr = mapper.get_property_by_column(fk.parent).key
+        value = getattr(obj, attr, None)
+        if value is None:
+            continue
+        parent = _model_for(fk.column.table.name)
+        if parent is None or session.get(parent, value) is not None:
+            continue
+        noun = fk.column.table.name.replace("_", " ")
+        if fk.parent.nullable:
+            setattr(obj, attr, None)
+            yield f"its {noun} #{value} no longer exists; link cleared", True
+        elif (id(obj), attr) in previous:
+            setattr(obj, attr, previous[(id(obj), attr)])
+            yield f"its {noun} #{value} no longer exists; {attr} left as it was", True
+        else:
+            yield f"not restored: its {noun} #{value} no longer exists", None
+            return
 
 
 def recent(session, limit: int = 50, actor: str | None = None) -> list[BatchRecord]:
