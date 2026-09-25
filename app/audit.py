@@ -38,6 +38,7 @@ TRACKED_TABLES = {
     "stock_modules", "stock_incubators", "stock_racks", "stock_genotypes", "stock_units",
     "stock_frozen",
 }
+TRACKED_TABLES |= {"plasmid_boxes"}   # so deleting a box (which unplaces its plasmids) can be undone
 
 # High-churn or derived rows: logging them would bury the signal.
 IGNORED_TABLES = {

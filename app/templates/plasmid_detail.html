@@ -23,7 +23,9 @@
       {% else %}<span class="plasmid-meta-item text-muted">No owner: anyone can edit</span>{% endif %}
       <span class="plasmid-meta-item" title="{{ 'In a box' if plasmid.stored else 'Not stored' }}">
         <span class="life-dot{% if plasmid.stored %} is-alive{% endif %}"></span>
-        {% if plasmid.stored %}{{ plasmid.storage_box }} · <span class="ident">{{ plasmid.position }}</span>{% else %}Not stored{% endif %}
+        {% if plasmid.stored %}{{ plasmid.storage_box }} · <span class="ident">{{ plasmid.position }}</span>{% if plasmid.box_location %} · {{ plasmid.box_location }}{% endif %}
+        {% elif plasmid.storage_box %}{{ plasmid.storage_box }} · no cell yet
+        {% else %}Not stored{% endif %}
       </span>
       {% if locked %}
         <span class="plasmid-meta-item plasmid-meta-lock">{{ icon('lock') }} Read only</span>
@@ -37,7 +39,6 @@
 
 {% block content %}
 {{ sheet_ui.owners_list(usernames) }}
-<datalist id="plasmid-existing-boxes">{% for b in boxes %}<option value="{{ b }}"></option>{% endfor %}</datalist>
 <datalist id="plasmid-resistance">
   <option value="Amp"></option><option value="Kan"></option><option value="Cam"></option>
   <option value="Spec"></option><option value="Hyg"></option><option value="Puro"></option>
@@ -93,12 +94,23 @@
 <section class="plasmid-tab-panel" data-panel="storage">
   <div class="card max-w-[760px] overflow-hidden">
     <form method="post" action="{{ url_for('update_plasmid', row_id=plasmid.row_id) }}" class="modal-grid p-4">
-      <input type="hidden" name="storage_box_was" value="{{ plasmid.storage_box }}">
+      <input type="hidden" name="box_id_was" value="{{ plasmid.box_id }}">
       <input type="hidden" name="position_was" value="{{ plasmid.position }}">
       <label>Owner <input name="owner" value="{{ plasmid.owner }}" list="sheet-owners" {% if locked %}disabled{% endif %}></label>
-      <label>Storage location <input name="location" value="{{ plasmid.location }}" placeholder="−80 freezer, shelf 2" {% if locked %}disabled{% endif %}></label>
-      <label>Box <input name="storage_box" value="{{ plasmid.storage_box }}" list="plasmid-existing-boxes" placeholder="e.g. Plasmid box A" {% if locked %}disabled{% endif %}></label>
-      <label>Position <input name="position" value="{{ plasmid.position }}" class="font-mono" placeholder="e.g. B4" {% if locked %}disabled{% endif %}></label>
+      <label>Storage location <input name="location" value="{{ plasmid.location }}" placeholder="−80 freezer, shelf 2 (when not in a box)" {% if locked %}disabled{% endif %}></label>
+      <label>Box
+        <select name="box_id" {% if locked %}disabled{% endif %}>
+          <option value="">Not in a box</option>
+          {% for location, group in boxes | groupby('location') %}
+            {% if location %}<optgroup label="{{ location }}">{% endif %}
+            {% for b in group %}<option value="{{ b.id }}" {% if b.id == plasmid.box_id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+            {% if location %}</optgroup>{% endif %}
+          {% endfor %}
+        </select>
+      </label>
+      <label>Position <input name="position" value="{{ plasmid.position }}" class="font-mono"
+                             placeholder="{{ 'e.g. ' ~ plasmid.box_span if plasmid.box_span else 'pick a box first' }}"
+                             title="Named the way the box names its cells{{ ' (' ~ plasmid.box_span ~ ')' if plasmid.box_span }}" {% if locked %}disabled{% endif %}></label>
       <label class="col-span-full">Notes
         <textarea name="notes" rows="4" placeholder="Stock concentration, lot, related orders…" {% if locked %}disabled{% endif %}>{{ plasmid.notes }}</textarea>
       </label>

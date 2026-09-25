@@ -3985,11 +3985,14 @@ def global_search():
                 | PlasmidRecord.location.ilike(like) | PlasmidRecord.notes.ilike(like)
             )
         for p in db_session.scalars(plasmid_stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(limit)).all():
+            # Where it is, in its box's own position names ("Box A · D7").
+            where = _plasmid_where(p, _box_of(db_session, p))
             results.append({
                 "type": "plasmid",
                 "id": p.plasmid_id,
                 "label": f"Plasmid #{p.plasmid_id} · {p.name or '(no name)'}",
-                "sublabel": f"{p.backbone or '?'} · {p.resistance or 'no resistance'} · {p.owner or 'no owner'}",
+                "sublabel": f"{p.backbone or '?'} · {p.resistance or 'no resistance'} · {p.owner or 'no owner'}"
+                            + (f" · {where}" if where else ""),
                 "url": url_for("plasmid_detail", row_id=p.id),
             })
 
@@ -4797,39 +4800,15 @@ def notebook_search_entity(entity_type: str):
 # the sequence editor (/plasmids/<id>), and the writes behind them.
 #
 # Every write checks access.can_edit: a plasmid is its owner's (or anyone's
-# while unowned); admins can change anything. Box positions are 0-based
-# row/column pairs, shown as a row letter and a 1-based column ("B4"), the
-# way the box grid labels its cells.
+# while unowned); admins can change anything. Boxes are PlasmidBox rows
+# (app/plasmid_service.py): each has a size and a naming scheme, and every
+# position is shown and typed in it ("D7"). Resizing, renaming or deleting a
+# box is access.can_edit_rack (its creator or an admin); putting a plasmid
+# in any box is open to whoever may edit the plasmid.
 # ---------------------------------------------------------------------------
 
-PLASMID_BOX_MAX = 20   # the largest box the grid draws, rows and columns
-PLASMID_BOX_FILL = 9   # the grid's default box size; batch moves fill this
-PLASMID_ROW_LETTERS = "ABCDEFGHIJKLMNOPQRST"
-_PLASMID_POSITION_RE = re.compile(r"^([A-Za-z])\s*-?\s*(\d{1,2})$")
-
-
-def plasmid_position_label(p) -> str:
-    if p.box_row is None or p.box_col is None:
-        return ""
-    row = p.box_row
-    letter = PLASMID_ROW_LETTERS[row] if 0 <= row < len(PLASMID_ROW_LETTERS) else f"{row + 1}-"
-    return f"{letter}{p.box_col + 1}"
-
-
-def parse_plasmid_position(raw: str) -> tuple[int | None, int | None]:
-    """"B4" → (1, 3). Blank → (None, None). Raises ValueError with a message
-    worth showing for anything else, including cells outside the box."""
-    raw = (raw or "").strip()
-    if not raw:
-        return None, None
-    m = _PLASMID_POSITION_RE.match(raw)
-    if not m:
-        raise ValueError(f"“{raw}” is not a box position. Use a row letter and a column number, like B4.")
-    row = ord(m.group(1).upper()) - ord("A")
-    col = int(m.group(2)) - 1
-    if not (0 <= row < PLASMID_BOX_MAX and 0 <= col < PLASMID_BOX_MAX):
-        raise ValueError(f"{raw.upper()} is outside the box (rows A–T, columns 1–{PLASMID_BOX_MAX}).")
-    return row, col
+from . import plasmid_service as pbox  # noqa: E402
+from .models import PlasmidBox  # noqa: E402
 
 
 def _plasmid_denied(p) -> str:
@@ -4845,55 +4824,16 @@ def _next_plasmid_id(db_session) -> int:
     return (db_session.scalar(select(func.max(PlasmidRecord.plasmid_id))) or 0) + 1
 
 
-def _plasmid_at(db_session, box: str, row: int, col: int, other_than=None):
-    """The plasmid in a cell, if any (other than `other_than`). Runs without
-    autoflush, so a plasmid being created is not inserted by the lookup."""
-    stmt = select(PlasmidRecord).where(PlasmidRecord.storage_box == box, PlasmidRecord.box_row == row,
-                                       PlasmidRecord.box_col == col)
-    if other_than is not None and other_than.id is not None:
-        stmt = stmt.where(PlasmidRecord.id != other_than.id)
-    with db_session.no_autoflush:
-        return db_session.scalar(stmt)
+def _box_of(db_session, p):
+    return db_session.get(PlasmidBox, p.box_id_fk) if p.box_id_fk else None
 
 
-def _place_plasmid(db_session, p, box: str, row: int | None, col: int | None, swap: bool = False) -> str | None:
-    """Put `p` at (box, row, col), or unplaced in `box` when row/col is None.
-    Refuses cells outside the box and occupied cells, unless `swap`, when
-    the occupant takes p's old place (if the user may move it). Returns a
-    message on refusal, having changed nothing."""
-    box = (box or "").strip()[:80]
-    if not box or row is None or col is None:
-        p.storage_box, p.box_row, p.box_col = box, None, None
-        return None
-    if not (0 <= row < PLASMID_BOX_MAX and 0 <= col < PLASMID_BOX_MAX):
-        return f"That cell is outside the box (rows A–T, columns 1–{PLASMID_BOX_MAX})."
-    holder = _plasmid_at(db_session, box, row, col, p)
-    if holder is not None:
-        where = f"{PLASMID_ROW_LETTERS[row]}{col + 1} in {box}"
-        if not swap:
-            return f"{where} already holds plasmid #{holder.plasmid_id}."
-        if not access.can_edit(holder):
-            return f"{where} holds plasmid #{holder.plasmid_id}, which you may not move."
-        # The occupant takes p's old cell; a plasmid coming from the tray
-        # leaves the occupant unplaced in the same box.
-        if p.box_row is not None and p.box_col is not None and p.storage_box:
-            holder.storage_box, holder.box_row, holder.box_col = p.storage_box, p.box_row, p.box_col
-        else:
-            holder.box_row = holder.box_col = None
-        stamp_updated(holder)
-    p.storage_box, p.box_row, p.box_col = box, row, col
-    return None
-
-
-def _free_plasmid_cells(db_session, box: str, exclude_ids=()) -> list[tuple[int, int]]:
-    taken = {
-        (r, c) for r, c in db_session.execute(
-            select(PlasmidRecord.box_row, PlasmidRecord.box_col)
-            .where(PlasmidRecord.storage_box == box, PlasmidRecord.box_row.is_not(None),
-                   PlasmidRecord.id.not_in(list(exclude_ids) or [0]))
-        )
-    }
-    return [(r, c) for r in range(PLASMID_BOX_FILL) for c in range(PLASMID_BOX_FILL) if (r, c) not in taken]
+def _plasmid_where(p, box) -> str:
+    """"Box A · D7", "Box A" (no cell yet), or ""."""
+    if box is None:
+        return ""
+    position = pbox.label(p, box)
+    return f"{box.name} · {position}" if position else box.name
 
 
 def _submitted_sequence(file_field: str) -> tuple[dict | None, str]:
@@ -4927,27 +4867,58 @@ def _apply_parsed_sequence(p, parsed: dict) -> None:
     p.sequence_uploaded_at = datetime.utcnow()
 
 
-def _plasmid_values(p) -> dict:
+def _plasmid_values(p, box) -> dict:
     """What the sheet shows for a row, as the server now has it."""
     return {
         "name": p.name, "backbone": p.backbone, "insert_seq": p.insert_seq,
         "resistance": p.resistance, "owner": p.owner, "location": p.location,
-        "notes": p.notes, "storage_box": p.storage_box or "", "position": plasmid_position_label(p),
+        "notes": p.notes, "box_id": str(p.box_id_fk or ""), "storage_box": box.name if box else "",
+        "position": pbox.label(p, box),
     }
 
 
-def _plasmid_stored(p) -> bool:
-    """Physically stored: it has a cell in a box."""
-    return bool(p.storage_box) and p.box_row is not None and p.box_col is not None
-
-
-def _plasmid_payload(p, editable: bool) -> dict:
+def _plasmid_payload(p, box, editable: bool) -> dict:
     """The record dialog's view of a plasmid (see static/record-dialog.js)."""
-    values = _plasmid_values(p)
+    values = _plasmid_values(p, box)
     return {
         "id": p.id, "_label": _plasmid_label(p), "_locked": not editable,
         "plasmid_id": p.plasmid_id, **values,
-        "storage_box_was": values["storage_box"], "position_was": values["position"],
+        "box_id_was": values["box_id"], "position_was": values["position"],
+    }
+
+
+def _plasmid_grid(rows, boxes, new_payload) -> dict:
+    """The rack grid's payload (static/rack-grid.js): boxes grouped by their
+    freezer, and every plasmid as a tile. Rows and columns are 1-based
+    here; the page posts moves 0-based (data-index-base="0")."""
+    counts = {}
+    for r in rows:
+        if r["p"].box_id_fk:
+            counts[r["p"].box_id_fk] = counts.get(r["p"].box_id_fk, 0) + 1
+    items = []
+    for r in rows:
+        p = r["p"]
+        placed = pbox.is_stored(p)
+        items.append({
+            "id": p.id, "label": f"#{p.plasmid_id}", "sub": p.name or "",
+            "badge": (p.resistance or "")[:5], "rack": p.box_id_fk,
+            "row": p.box_row + 1 if placed else None, "col": p.box_col + 1 if placed else None,
+            "locked": not r["editable"],
+            "title": " · ".join(filter(None, [f"#{p.plasmid_id}", p.name, p.backbone, p.resistance, p.owner,
+                                              "" if r["editable"] else "read only"])),
+            "search": " ".join(filter(None, [f"#{p.plasmid_id}", p.name, p.backbone, p.insert_seq,
+                                             p.resistance, p.owner, r["position"]])).lower(),
+            "edit": {"data-record-edit": "plasmid-dialog", "data-record-payload": json.dumps(r["payload"])},
+        })
+    return {
+        "racks": [{"id": b.id, "name": b.name, "rows": b.rows, "cols": b.cols, "group": b.location or "",
+                   "naming": positions.scheme(b.naming),
+                   "edit": {"data-record-edit": "plasmid-box-dialog",
+                            "data-record-payload": json.dumps(pbox.box_payload(b, counts.get(b.id, 0)))}}
+                  for b in boxes],
+        "items": items,
+        "create": {"attrs": {"data-record-edit": "plasmid-dialog"}, "payload": new_payload,
+                   "rack_field": "box_id", "row_field": None, "col_field": None, "text_field": "position"},
     }
 
 
@@ -4974,46 +4945,54 @@ def plasmids():
     me = g.user.username
     with SessionLocal() as db_session:
         records = db_session.scalars(select(PlasmidRecord).order_by(PlasmidRecord.plasmid_id.desc())).all()
+        boxes = pbox.all_boxes(db_session)
+        box_by_id = {b.id: b for b in boxes}
         rows = []
         for p in records:
             editable = access.can_edit(p)
+            box = box_by_id.get(p.box_id_fk)
             rows.append({
-                "p": p, "editable": editable, "mine": p.owner == me,
-                "stored": _plasmid_stored(p), "position": plasmid_position_label(p),
+                "p": p, "box": box, "editable": editable, "mine": p.owner == me,
+                "stored": pbox.is_stored(p), "position": pbox.label(p, box),
+                "where": _plasmid_where(p, box),
                 "length": len(p.full_sequence or ""),
-                "payload": _plasmid_payload(p, editable),
+                "payload": _plasmid_payload(p, box, editable),
             })
         next_id = _next_plasmid_id(db_session)
         usernames = current_lab_usernames(db_session)
-        # Every box name in use feeds the box pickers and the grid's selector.
-        boxes = sorted({(p.storage_box or "").strip() for p in records if (p.storage_box or "").strip()})
-        active_box = (request.args.get("box") or "").strip()
-        if not active_box and boxes:
-            active_box = boxes[0]
+        new_payload = {"owner": me, "plasmid_id": next_id, "count": 1}
+        grid = _plasmid_grid(rows, boxes, new_payload)
         counts = {
             "all": len(rows),
             "mine": sum(1 for r in rows if r["mine"]),
             "sequence": sum(1 for r in rows if r["length"]),
             "stored": sum(1 for r in rows if r["stored"]),
         }
-    return render_template(
-        "plasmids.html",
-        rows=rows,
-        counts=counts,
-        usernames=usernames,
-        next_plasmid_id=next_id,
-        boxes=boxes,
-        active_box=active_box,
-        box_max=PLASMID_BOX_MAX,
-    )
+        box_list = [{"id": b.id, "name": b.name, "location": b.location or ""} for b in boxes]
+        return render_template(
+            "plasmids.html",
+            rows=rows,
+            counts=counts,
+            usernames=usernames,
+            next_plasmid_id=next_id,
+            new_payload=new_payload,
+            boxes=box_list,
+            grid=grid,
+            max_batch=pbox.MAX_BATCH,
+        )
 
 
 def _create_plasmid():
-    """New plasmid from the dialog. The number comes from the server when
-    the one the dialog offered was taken meanwhile; a sequence that cannot
-    be read, or a box cell that is taken, is reported rather than dropped
-    in silence (the plasmid itself is still created)."""
+    """New plasmids from the dialog: one, or up to 50 alike ("How many"),
+    or one per line of a pasted list of names. They get consecutive
+    numbers and sit side by side in the chosen box from the given position
+    (or its first free cells); what does not fit waits in the box without a
+    cell, and is reported. The number comes from the server when the one
+    the dialog offered was taken meanwhile. A sequence that cannot be read,
+    or a cell that is taken, is reported rather than dropped in silence
+    (the plasmids are still created). One batch, so it can be undone."""
     form = request.form
+    user = g.user.username
     parsed, seq_problem = _submitted_sequence("sequence_file")
 
     raw_id = (form.get("plasmid_id") or "").strip()
@@ -5022,93 +5001,155 @@ def _create_plasmid():
         return redirect(url_for("plasmids"))
     requested = int(raw_id) if raw_id else None
 
+    names = [line.strip()[:200] for line in (form.get("names") or "").splitlines() if line.strip()]
+    raw_count = str(len(names)) if names else (form.get("count") or "1").strip()
+    count = int(raw_count) if raw_count.isdigit() else 0
+    if not 1 <= count <= pbox.MAX_BATCH:
+        flash(f"Make between 1 and {pbox.MAX_BATCH} plasmids at a time (asked for {raw_count}).", "error")
+        return redirect(url_for("plasmids"))
+
     name = (form.get("name") or "").strip()[:200] or ((parsed or {}).get("name") or "")[:200]
-    if not name:
+    if not names and not name:
         flash("Give the plasmid a name.", "error")
         return redirect(url_for("plasmids"))
 
-    # Where it is stored: "position" (B4) from the dialog, or the older
-    # 0-based box_row / box_col pair.
-    box = (form.get("storage_box") or "").strip()[:80]
-    position_problem = ""
-    row = col = None
-    try:
-        if (form.get("position") or "").strip():
-            row, col = parse_plasmid_position(form.get("position"))
-        elif (form.get("box_row") or "").strip() or (form.get("box_col") or "").strip():
-            row, col = _plasmid_int(form.get("box_row")), _plasmid_int(form.get("box_col"))
-            if row is None or col is None:
-                raise ValueError("A box position needs both a row and a column.")
-    except ValueError as exc:
-        position_problem = str(exc)
-        row = col = None
-    if row is not None and not box:
-        position_problem = "A position needs a box; the plasmid was saved without one."
-        row = col = None
-
-    notes: list[str] = []
     for _attempt in range(3):
         with SessionLocal() as db_session:
-            plasmid_id = requested or _next_plasmid_id(db_session)
-            if requested and db_session.scalar(select(PlasmidRecord.id).where(PlasmidRecord.plasmid_id == requested)):
-                plasmid_id = _next_plasmid_id(db_session)
+            try:
+                made = _make_plasmids(db_session, form, user, count, name, names, requested, parsed)
+                db_session.commit()
+            except IntegrityError:
+                # Someone took a number between our check and the commit.
+                db_session.rollback()
+                requested = None
+                continue
+            break
+    else:
+        flash("Couldn’t allocate plasmid numbers. Try again.", "error")
+        return redirect(url_for("plasmids"))
+
+    ids = made["ids"]
+    first, last = ids[0], ids[-1]
+    if count == 1:
+        if raw_id and first != int(raw_id):
+            made["notes"].insert(0, f"Plasmid #{raw_id} was taken by the time you saved, so this one is #{first}.")
+        if parsed:
+            flash(f"Added plasmid #{first} with a {parsed['format'].upper()} sequence "
+                  f"({len(parsed['sequence'])} bp · {len(parsed.get('features') or [])} features).", "success")
+        else:
+            flash(f"Added plasmid #{first} {made['names'][0]}.", "success")
+    else:
+        if raw_id and first != int(raw_id):
+            made["notes"].insert(0, f"Some of #{raw_id}–#{int(raw_id) + count - 1} were taken, "
+                                    f"so these are #{first}–#{last}.")
+        where = f" in {made['box']}" if made["box"] else ""
+        cells = made["cells"]
+        if cells:
+            where += f" ({cells[0]}–{cells[-1]})" if len(cells) > 1 else f" ({cells[0]})"
+        seq = f" with a {parsed['format'].upper()} sequence" if parsed else ""
+        flash(f"Added {count} plasmids, #{first}–#{last}{seq}{where}. Undo it from Batch history.", "success")
+    for note in made["notes"]:
+        flash(note, "warning")
+    if seq_problem:
+        flash(f"{seq_problem} The plasmid{'s were' if count > 1 else ' was'} saved without a sequence; "
+              f"add one on {'their pages' if count > 1 else 'its page'}.", "warning")
+    return redirect(url_for("plasmids"))
+
+
+def _make_plasmids(db_session, form, user, count, name, names, requested, parsed) -> dict:
+    """The writes behind _create_plasmid, inside one batch."""
+    notes: list[str] = []
+    label = (f"New plasmid {name or names[0]}" if count == 1
+             else f"New plasmids ×{count}" + (f" ({names[0]}…)" if names else f" ({name})"))
+    with audit.batch(db_session, "create", label, "plasmids") as batch_row:
+        batch_row.record_count = count
+        _given, box, problem = pbox.box_from_form(db_session, form, user)
+        if problem:
+            notes.append(f"{problem} The plasmid{'s are' if count > 1 else ' is'} not in a box.")
+        # Where the first one goes: "position" (D7) from the dialog, or the
+        # older 0-based box_row / box_col pair; blank takes the first free cell.
+        position = (form.get("position") or "").strip()
+        legacy = (form.get("box_row") or "").strip() or (form.get("box_col") or "").strip()
+        start, mode = None, "next"
+        try:
+            if position or legacy:
+                if box is None:
+                    raise ValueError("A position needs a box; the plasmid was saved without one."
+                                     if count == 1 else "A position needs a box; the plasmids were saved without one.")
+                if position:
+                    start = pbox.parse(position, box)
+                else:
+                    start = (_plasmid_int(form.get("box_row")), _plasmid_int(form.get("box_col")))
+                    if None in start:
+                        raise ValueError("A box position needs both a row and a column.")
+                    if not (0 <= start[0] < box.rows and 0 <= start[1] < box.cols):
+                        raise ValueError(f"That cell is outside the box {box.name} ({pbox.span(box)}).")
+                mode = "exact" if count == 1 else "from"
+        except ValueError as exc:
+            notes.append(f"{exc}" + (f" The new plasmid{'s are' if count > 1 else ' is'} in {box.name} but not placed."
+                                      if box is not None else ""))
+            mode = "none"
+
+        cells = []
+        if box is not None and mode in ("next", "from"):
+            cells = pbox.free_cells(db_session, box, count, start if mode == "from" else None)
+            if len(cells) < count:
+                missing = count - len(cells)
+                notes.append(f"{box.name} had room for {len(cells)} of {count}"
+                             + (f" from {pbox.cell_label(box, *start)}" if mode == "from" else "")
+                             + f"; {'the other ' if cells else ''}{missing} "
+                             + ("is" if missing == 1 else "are") + " in it without a position.")
+
+        top = _next_plasmid_id(db_session)
+        first = top
+        if requested:
+            clash = db_session.scalar(select(func.count(PlasmidRecord.id)).where(
+                PlasmidRecord.plasmid_id.between(requested, requested + count - 1)))
+            if not clash:
+                first = requested
+        owner = form.get("owner", user).strip()[:120]
+        made = []
+        for i in range(count):
             record = PlasmidRecord(
-                plasmid_id=plasmid_id,
-                name=name,
+                plasmid_id=first + i,
+                name=names[i] if names else name,
                 backbone=(form.get("backbone") or "").strip()[:200],
                 insert_seq=(form.get("insert_seq") or "").strip()[:200],
                 resistance=(form.get("resistance") or "").strip()[:80],
-                owner=form.get("owner", g.user.username).strip()[:120],
+                owner=owner,
                 location=(form.get("location") or "").strip()[:120],
                 notes=(form.get("notes") or "").strip(),
             )
-            problem = _place_plasmid(db_session, record, box, row, col)
-            if problem:
-                record.storage_box, record.box_row, record.box_col = box, None, None
-                position_problem = f"{problem} The new plasmid is in {box} but not placed."
+            pbox.put_in(record, box)
+            if mode == "exact":
+                refused, _ = pbox.place(db_session, record, box, *start)
+                if refused:
+                    pbox.put_in(record, box)
+                    notes.append(f"{refused} The new plasmid is in {box.name} but not placed.")
+            elif i < len(cells):
+                record.box_row, record.box_col = cells[i]
             db_session.add(record)
             if parsed:
                 _apply_parsed_sequence(record, parsed)
             stamp_updated(record)
-            try:
-                db_session.commit()
-            except IntegrityError:
-                # Someone took the number between our check and the commit.
-                db_session.rollback()
-                requested = None
-                continue
-            saved_id, row_id = record.plasmid_id, record.id
-            break
-    else:
-        flash("Couldn’t allocate a plasmid number. Try again.", "error")
-        return redirect(url_for("plasmids"))
-
-    if raw_id and saved_id != int(raw_id):
-        notes.append(f"Plasmid #{raw_id} was taken by the time you saved, so this one is #{saved_id}.")
-    if parsed:
-        flash(
-            f"Added plasmid #{saved_id} with a {parsed['format'].upper()} sequence "
-            f"({len(parsed['sequence'])} bp · {len(parsed.get('features') or [])} features).",
-            "success",
-        )
-    else:
-        flash(f"Added plasmid #{saved_id} {name}.", "success")
-    for note in notes:
-        flash(note, "warning")
-    if seq_problem:
-        flash(f"{seq_problem} Plasmid #{saved_id} was saved without a sequence; add one on its page.", "warning")
-    if position_problem:
-        flash(position_problem, "warning")
-    return redirect(url_for("plasmids"))
+            made.append(record)
+    return {
+        "ids": [r.plasmid_id for r in made], "names": [r.name for r in made],
+        "box": box.name if box is not None else "",
+        "cells": [pbox.label(r, box) for r in made if box is not None and pbox.label(r, box)],
+        "notes": notes,
+    }
 
 
-def _plasmid_answer(p, message: str = "", error: str = "", status: int = 409):
+def _plasmid_answer(db_session, p, message: str = "", error: str = "", status: int = 409):
     """Answer a plasmid save: JSON for the sheet's autosave, else a flash
     and a redirect back to the page the form was on."""
     if request.headers.get("X-Autosave") == "1":
         if error:
             return jsonify({"ok": False, "error": error}), status
-        return jsonify({"ok": True, "row": {"active": _plasmid_stored(p), "values": _plasmid_values(p)}})
+        box = _box_of(db_session, p)
+        return jsonify({"ok": True, "row": {"active": pbox.is_stored(p), "values": _plasmid_values(p, box)},
+                        "payload": _plasmid_payload(p, box, access.can_edit(p))})
     if error:
         flash(error, "error")
     elif message:
@@ -5122,7 +5163,9 @@ def update_plasmid(row_id: int):
     """Inline edits from the sheet (X-Autosave, JSON back) and the record
     dialog / detail page forms (redirect back). Only fields the form sent
     change; box and position follow the `_was` stale-form guard, because
-    the box grid can move a plasmid while its sheet row is on screen."""
+    the box grid can move a plasmid while its sheet row is on screen.
+    The box comes as `box_id` (or, from older forms, a `storage_box`
+    name); the position is typed in the box's own naming ("D7")."""
     form = request.form
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
@@ -5132,9 +5175,9 @@ def update_plasmid(row_id: int):
             flash("That plasmid no longer exists.", "error")
             return redirect(url_for("plasmids"))
         if not access.can_edit(p):
-            return _plasmid_answer(p, error=_plasmid_denied(p), status=403)
+            return _plasmid_answer(db_session, p, error=_plasmid_denied(p), status=403)
         if "name" in form and not form["name"].strip() and (p.name or "").strip():
-            return _plasmid_answer(p, error="A plasmid needs a name.", status=400)
+            return _plasmid_answer(db_session, p, error="A plasmid needs a name.", status=400)
         for field, limit in (("name", 200), ("backbone", 200), ("insert_seq", 200),
                              ("resistance", 80), ("owner", 120), ("location", 120)):
             if field in form:
@@ -5143,28 +5186,36 @@ def update_plasmid(row_id: int):
             p.notes = (form.get("notes") or "").strip()
 
         problem = None
-        if ("storage_box" in form or "position" in form) and form_changed(form, "storage_box", "position"):
-            box = form.get("storage_box", p.storage_box or "")
-            try:
-                row, col = parse_plasmid_position(form.get("position", plasmid_position_label(p)))
-            except ValueError as exc:
-                problem = str(exc)
-            else:
-                # Clearing the box takes the plasmid out of it; typing a
-                # position with no box is a mistake worth saying so.
-                if row is not None and not (box or "").strip() and form_changed(form, "position"):
-                    problem = "A position needs a box. Fill in the box first."
+        if (("box_id" in form or "storage_box" in form or "position" in form)
+                and form_changed(form, "box_id", "storage_box", "position")):
+            current = _box_of(db_session, p)
+            _given, box, problem = pbox.box_from_form(db_session, form, g.user.username, current)
+            if not problem:
+                typed = form.get("position") if "position" in form else pbox.label(p, current)
+                if box is None:
+                    # Clearing the box takes the plasmid out of it; typing a
+                    # position with no box is a mistake worth saying so.
+                    if (typed or "").strip() and form_changed(form, "position"):
+                        problem = "A position needs a box. Pick the box first."
+                    else:
+                        pbox.place(db_session, p, None, None, None)
                 else:
-                    problem = _place_plasmid(db_session, p, box, row, col)
+                    try:
+                        row, col = pbox.parse(typed, box)
+                    except ValueError as exc:
+                        problem = str(exc)
+                    else:
+                        problem, _ = pbox.place(db_session, p, box, row, col)
         if problem and request.headers.get("X-Autosave") == "1":
             db_session.rollback()
             return jsonify({"ok": False, "error": problem}), 409
+        # A dialog save keeps its other fields; only the move is refused
+        # (a refused move changed nothing).
         stamp_updated(p)
         db_session.commit()
         if problem:
-            # A dialog save keeps its other fields; only the move is refused.
-            return _plasmid_answer(p, error=f"Saved plasmid #{p.plasmid_id}, but not the box position: {problem}")
-        return _plasmid_answer(p, message=f"Saved plasmid #{p.plasmid_id}.")
+            return _plasmid_answer(db_session, p, error=f"Saved plasmid #{p.plasmid_id}, but not the box position: {problem}")
+        return _plasmid_answer(db_session, p, message=f"Saved plasmid #{p.plasmid_id}.")
 
 
 @app.route("/plasmids/<int:row_id>/delete", methods=["POST"])
@@ -5216,7 +5267,8 @@ def duplicate_plasmid(row_id: int):
 def bulk_plasmids():
     """Batch actions on ticked plasmids: set owner or resistance, move to a
     box, delete. One audit batch, so /batches can undo it; plasmids the user
-    may not edit are skipped and counted."""
+    may not edit are skipped and counted. Move takes `box_id` (blank takes
+    them out of their boxes), or a box name in `value` from older forms."""
     action = request.form.get("action", "")
     value = (request.form.get("value") or "").strip()
     ids = [int(i) for i in request.form.getlist("selected_ids") if i.isdigit()]
@@ -5230,6 +5282,19 @@ def bulk_plasmids():
         if action not in ("owner", "resistance", "move", "delete"):
             flash("Unknown batch action.", "error")
             return redirect(url_for("plasmids"))
+        target, target_name = None, ""
+        if action == "move":
+            if "box_id" in request.form:
+                raw = (request.form.get("box_id") or "").strip()
+                target = db_session.get(PlasmidBox, int(raw)) if raw.isdigit() else None
+                if raw and target is None:
+                    flash("That box no longer exists. Reload the page.", "error")
+                    return redirect(url_for("plasmids"))
+                target_name = target.name if target else ""
+            else:
+                target_name = value[:80]
+                target = pbox.by_name(db_session, target_name)
+                target_name = target.name if target else target_name
         editable = [p for p in records if access.can_edit(p)]
         skipped = len(records) - len(editable)
         done, unplaced = 0, 0
@@ -5237,11 +5302,12 @@ def bulk_plasmids():
         descriptions = {
             "owner": f"set owner to {value or 'nobody'} on {len(editable)} {noun(len(editable))}",
             "resistance": f"set resistance to {value or 'none'} on {len(editable)} {noun(len(editable))}",
-            "move": f"move {len(editable)} {noun(len(editable))} to {value or 'no box'}",
+            "move": f"move {len(editable)} {noun(len(editable))} to {target_name or 'no box'}",
             "delete": f"delete {len(editable)} {noun(len(editable))}",
         }
         with audit.batch(db_session, "delete" if action == "delete" else "update",
-                         descriptions[action], "plasmids"):
+                         descriptions[action], "plasmids") as batch_row:
+            batch_row.record_count = len(editable)
             if action in ("owner", "resistance"):
                 limit = 120 if action == "owner" else 80
                 for p in editable:
@@ -5250,21 +5316,26 @@ def bulk_plasmids():
                     done += 1
                 message = f"Set {action} on {done} {noun(done)}."
             elif action == "move":
-                box = value[:80]
-                moving = [p for p in editable if not (p.storage_box == box and _plasmid_stored(p))]
-                free = _free_plasmid_cells(db_session, box, [p.id for p in moving]) if box else []
+                box = target
+                if box is None and target_name:
+                    box = pbox.box_for_name(db_session, target_name, g.user.username)
+                moving = [p for p in editable if not (box is not None and p.box_id_fk == box.id and pbox.is_stored(p))]
+                free = (pbox.free_cells(db_session, box, len(moving),
+                                        taken=pbox.occupied(db_session, box.id, [p.id for p in moving]))
+                        if box is not None else [])
                 for p in moving:
-                    if box and free:
-                        p.storage_box, (p.box_row, p.box_col) = box, free.pop(0)
+                    pbox.put_in(p, box)
+                    if box is not None and free:
+                        p.box_row, p.box_col = free.pop(0)
                     else:
-                        p.storage_box, p.box_row, p.box_col = box, None, None
-                        unplaced += 1 if box else 0
+                        p.box_row = p.box_col = None
+                        unplaced += 1 if box is not None else 0
                     stamp_updated(p)
                 done = len(editable)
-                message = (f"Moved {done} {noun(done)} to {box}." if box
+                message = (f"Moved {done} {noun(done)} to {box.name}." if box is not None
                            else f"Took {done} {noun(done)} out of their boxes.")
                 if unplaced:
-                    message += f" {unplaced} did not fit in the first {PLASMID_BOX_FILL}×{PLASMID_BOX_FILL} cells and wait unplaced in the box."
+                    message += f" {unplaced} did not fit and wait in {box.name} without a position."
             else:
                 for p in editable:
                     db_session.delete(p)
@@ -5275,6 +5346,102 @@ def bulk_plasmids():
         message += f" {skipped} belong to someone else and were left alone."
     flash(message, "success" if done else "warning")
     return redirect(url_for("plasmids"))
+
+
+# ---- Boxes ------------------------------------------------------------------
+
+
+def _plasmids_page(box_id: int | None = None):
+    return redirect(url_for("plasmids", box=box_id) if box_id else url_for("plasmids"))
+
+
+@app.route("/plasmids/boxes/save", methods=["POST"])
+@login_required
+def save_plasmid_box():
+    """New box (anyone), or change one: its creator or an admin. A box
+    cannot shrink past a plasmid; a rename follows onto its plasmids."""
+    form = request.form
+
+    def number(name, default, top):
+        raw = (form.get(name) or "").strip()
+        return max(1, min(top, int(raw))) if raw.isdigit() else default
+
+    with SessionLocal() as db_session:
+        raw_id = (form.get("id") or "").strip()
+        box = db_session.get(PlasmidBox, int(raw_id)) if raw_id.isdigit() else None
+        if raw_id and box is None:
+            flash("That box no longer exists.", "error")
+            return _plasmids_page()
+        if box is not None and not access.can_edit_rack(box):
+            flash(pbox.denied_box(box), "error")
+            return _plasmids_page(box.id)
+        name = (form.get("name") or "").strip()[:80]
+        if not name:
+            flash("Give the box a name.", "error")
+            return _plasmids_page(box.id if box else None)
+        clash = pbox.by_name(db_session, name)
+        if clash is not None and (box is None or clash.id != box.id):
+            flash(f"There is already a box called {clash.name}.", "error")
+            return _plasmids_page(clash.id)
+        rows = number("rows", box.rows if box else pbox.DEFAULT_ROWS, pbox.MAX_ROWS)
+        cols = number("cols", box.cols if box else pbox.DEFAULT_COLS, pbox.MAX_COLS)
+        if box is not None and (rows < box.rows or cols < box.cols):
+            outside = db_session.scalars(select(PlasmidRecord).where(
+                PlasmidRecord.box_id_fk == box.id,
+                (PlasmidRecord.box_row >= rows) | (PlasmidRecord.box_col >= cols))
+                .order_by(PlasmidRecord.plasmid_id)).all()
+            if outside:
+                n = len(outside)
+                flash(f"{box.name} cannot shrink to {rows} × {cols}: {n} {'plasmid sits' if n == 1 else 'plasmids sit'} "
+                      f"outside that ({', '.join('#' + str(p.plasmid_id) for p in outside[:5])}{'…' if n > 5 else ''}). "
+                      f"Move them first.", "error")
+                return _plasmids_page(box.id)
+        created = box is None
+        if created:
+            box = PlasmidBox(created_by=g.user.username)
+            db_session.add(box)
+        renamed = not created and box.name != name
+        box.name, box.rows, box.cols = name, rows, cols
+        box.naming = json.dumps(positions.scheme_from_form(form))
+        box.location = (form.get("location") or "").strip()[:120]
+        if "notes" in form:
+            box.notes = (form.get("notes") or "").strip()
+        db_session.flush()
+        if renamed:
+            for p in db_session.scalars(select(PlasmidRecord).where(PlasmidRecord.box_id_fk == box.id)):
+                p.storage_box = name
+        db_session.commit()
+        flash(f"{'Added' if created else 'Saved'} box {box.name} ({rows} × {cols}, positions {pbox.span(box)}).", "success")
+        return _plasmids_page(box.id)
+
+
+@app.route("/plasmids/boxes/<int:box_id>/delete", methods=["POST"])
+@login_required
+def delete_plasmid_box(box_id: int):
+    """Delete a box: its plasmids stay, no longer in a box. One batch, so
+    Batch history can bring the box back with its plasmids in place."""
+    with SessionLocal() as db_session:
+        box = db_session.get(PlasmidBox, box_id)
+        if box is None:
+            flash("That box no longer exists.", "error")
+            return _plasmids_page()
+        if not access.can_edit_rack(box):
+            flash(pbox.denied_box(box), "error")
+            return _plasmids_page(box.id)
+        name = box.name
+        with audit.batch(db_session, "mixed", f"delete plasmid box {name}", "plasmid_boxes") as batch_row:
+            members = db_session.scalars(select(PlasmidRecord).where(PlasmidRecord.box_id_fk == box.id)).all()
+            batch_row.record_count = len(members) + 1
+            for p in members:
+                pbox.put_in(p, None)
+                stamp_updated(p)
+            db_session.flush()
+            db_session.delete(box)
+        db_session.commit()
+    n = len(members)
+    flash(f"Deleted box {name}. " + (f"Its {n} {'plasmid is' if n == 1 else 'plasmids are'} no longer in a box. " if n else "")
+          + "Undo it from Batch history.", "success")
+    return _plasmids_page()
 
 
 @app.route("/plasmids/<int:row_id>")
@@ -5289,7 +5456,8 @@ def plasmid_detail(row_id: int):
             features = json.loads(p.features_json) if p.features_json else []
         except json.JSONDecodeError:
             features = []
-        boxes = sorted({b for b in db_session.scalars(select(PlasmidRecord.storage_box)) if (b or "").strip()})
+        box = _box_of(db_session, p)
+        boxes = [{"id": b.id, "name": b.name, "location": b.location or ""} for b in pbox.all_boxes(db_session)]
         usernames = current_lab_usernames(db_session)
         data = {
             "row_id": p.id,
@@ -5301,9 +5469,13 @@ def plasmid_detail(row_id: int):
             "owner": p.owner,
             "location": p.location,
             "notes": p.notes,
-            "storage_box": p.storage_box or "",
-            "position": plasmid_position_label(p),
-            "stored": _plasmid_stored(p),
+            "box_id": p.box_id_fk or "",
+            "storage_box": box.name if box else "",
+            "box_location": box.location if box else "",
+            "box_span": pbox.span(box) if box else "",
+            "position": pbox.label(p, box),
+            "where": _plasmid_where(p, box),
+            "stored": pbox.is_stored(p),
             "sequence": p.full_sequence or "",
             "is_circular": bool(p.is_circular),
             "features": features,
@@ -5379,12 +5551,14 @@ def plasmid_clear_sequence(row_id: int):
 @app.route("/plasmids/<int:row_id>/move", methods=["POST"])
 @login_required
 def plasmid_move_in_box(row_id: int):
-    """Update a plasmid's storage_box / box_row / box_col. Used by the
-    drag-and-drop grid view. If box_row/col is empty the plasmid is moved
-    to the "unplaced" pool for that box; an occupied cell swaps."""
-    new_box = (request.form.get("storage_box") or "").strip()
-    row_raw = (request.form.get("box_row") or "").strip()
-    col_raw = (request.form.get("box_col") or "").strip()
+    """The box grid's drag and drop (static/rack-grid.js): `box_id` with a
+    0-based `box_row` / `box_col`. An occupied cell swaps, when you may
+    move both plasmids; a blank box_id and cell (the Unplaced tray) keeps
+    the plasmid in its box without a cell. Older callers send a box name
+    as `storage_box` instead (blank: out of any box)."""
+    form = request.form
+    row_raw = (form.get("box_row") or "").strip()
+    col_raw = (form.get("box_col") or "").strip()
     new_row, new_col = _plasmid_int(row_raw), _plasmid_int(col_raw)
     if (row_raw or col_raw) and (new_row is None or new_col is None):
         return jsonify({"ok": False, "error": "A box position needs both a row and a column."}), 400
@@ -5395,21 +5569,34 @@ def plasmid_move_in_box(row_id: int):
             return jsonify({"ok": False, "error": "That plasmid no longer exists."}), 404
         if not access.can_edit(p):
             return jsonify({"ok": False, "error": _plasmid_denied(p)}), 403
-        holder = (_plasmid_at(db_session, new_box, new_row, new_col, p)
-                  if new_box and new_row is not None and new_col is not None else None)
-        problem = _place_plasmid(db_session, p, new_box, new_row, new_col, swap=True)
+        current = _box_of(db_session, p)
+        if "box_id" in form and not (form.get("box_id") or "").strip():
+            box, problem = current, None
+            new_row = new_col = None
+        else:
+            _given, box, problem = pbox.box_from_form(db_session, form, g.user.username, current)
+        if problem:
+            db_session.rollback()
+            return jsonify({"ok": False, "error": problem}), 404
+        problem, holder = pbox.place(db_session, p, box, new_row, new_col, swap=True)
         if problem:
             db_session.rollback()
             return jsonify({"ok": False, "error": problem}), 409
         stamp_updated(p)
+        if holder is not None:
+            stamp_updated(holder)
         db_session.commit()
         # Where each plasmid that moved now sits, so the page can update the
         # grid and the sheet rows (and their _was guards) without a reload.
-        moved = [{"id": q.id, "storage_box": q.storage_box or "",
-                  "box_row": q.box_row if q.box_row is not None else -1,
-                  "box_col": q.box_col if q.box_col is not None else -1,
-                  "position": plasmid_position_label(q), "stored": _plasmid_stored(q)}
-                 for q in (p, holder) if q is not None]
+        moved = []
+        for q in (p, holder):
+            if q is None:
+                continue
+            qbox = _box_of(db_session, q)
+            moved.append({"id": q.id, "box_id": q.box_id_fk or "", "storage_box": qbox.name if qbox else "",
+                          "box_row": q.box_row if q.box_row is not None else -1,
+                          "box_col": q.box_col if q.box_col is not None else -1,
+                          "position": pbox.label(q, qbox), "stored": pbox.is_stored(q)})
         return jsonify({"ok": True, "moved": moved})
 
 
