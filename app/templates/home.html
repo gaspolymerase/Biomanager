@@ -30,7 +30,7 @@
   <a class="stat" href="{{ url_for('orders') }}">
     <span class="stat-label">Pending orders</span>
     <span class="stat-value">{{ counts.pending_orders }}</span>
-    <span class="stat-sub">requested + ordered</span>
+    <span class="stat-sub">still open</span>
   </a>
   <a class="stat" href="{{ url_for('colony', view='litters') }}">
     <span class="stat-label">Weanings</span>
@@ -150,6 +150,30 @@
       </div>
     {% else %}
       <div class="empty-state">{{ icon('fly') }}<p>No flips, collections or shifts due in the next two days.</p></div>
+    {% endif %}
+  </article>
+
+  {# Reagents and antibodies to restock #}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon('flask') }} Expiring &amp; low stock</h2>
+      {% if restock %}<span class="badge badge-quiet">{{ restock|length }}</span>{% endif %}
+    </header>
+    {% if restock %}
+      <div class="flex flex-col">
+        {% for r in restock %}
+          <a class="row-line" href="{{ url_for('inventory.module', key=r.key, q=r.name) }}">
+            <span class="w-20 shrink-0 text-[12px] font-semibold {% if r.expiry == 'expired' %}text-danger-700{% elif r.expiry == 'soon' %}text-warn-700{% else %}text-muted{% endif %}">
+              {% if r.expiry == 'expired' %}expired{% elif r.expiry == 'soon' %}{{ r.expires_on | relative_day }}{% else %}low{% endif %}
+            </span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">{{ r.name }}</span>
+            {% if r.low and r.expiry %}<span class="dt-status shrink-0" data-status="low">low</span>{% endif %}
+            <span class="shrink-0 text-[11.5px] text-sand-400">{{ r.module }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">{{ icon('flask') }}<p>Nothing expiring in the next 30 days or marked low.</p></div>
     {% endif %}
   </article>
 

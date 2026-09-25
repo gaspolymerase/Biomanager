@@ -2447,6 +2447,12 @@
   }
   :root[data-theme="dark"] :is(.sheet-table select.scope-pill[data-scope="lab"], .cmdk-row-type-antibody) { @apply bg-violet-500/15 text-violet-300; }
 
+  /* A box someone else made: shown, not editable. */
+  .rack-chips .btn.is-static { @apply cursor-default text-muted hover:bg-surface; }
+
+  /* A sample's source mouse links into the colony. */
+  .source-chip-link { @apply text-ink underline decoration-sand-300 underline-offset-2 hover:text-brand-700 hover:decoration-brand-400; }
+
   /* Expiry: a red date once past, amber within 30 days. */
   .sheet-table td.expiry-expired input { @apply font-semibold text-danger-700; }
   .sheet-table td.expiry-soon input { @apply font-medium text-warn-700; }
