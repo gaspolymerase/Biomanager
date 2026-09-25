@@ -249,6 +249,12 @@ def ensure_schema_updates() -> None:
     # Who made each inventory box, for who may resize or delete it (2026-09-25).
     if "inventory_racks" in table_columns and "created_by" not in table_columns["inventory_racks"]:
         alter_statements.append("ALTER TABLE inventory_racks ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
+    # Zebrafish sac rule: a sac date on fish rows, and which row a sac-log
+    # entry came from (2026-09-25).
+    if "fish" in table_columns and "sac_date" not in table_columns["fish"]:
+        alter_statements.append("ALTER TABLE fish ADD COLUMN sac_date DATE")
+    if "fish_sac_log" in table_columns and "fish_id_fk" not in table_columns["fish_sac_log"]:
+        alter_statements.append("ALTER TABLE fish_sac_log ADD COLUMN fish_id_fk INTEGER")
 
     if alter_statements:
         with engine.begin() as connection:
