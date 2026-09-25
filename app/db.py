@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .paths import data_dir, resource_root
@@ -38,3 +38,21 @@ class Base(DeclarativeBase):
 
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+# SQLite does not enforce foreign keys unless every connection asks it to.
+# app/integrity.py decides at start-up (init_database), after checking the
+# existing data: True turns enforcement on for every connection from then
+# on; False keeps it off for a database whose data still has references it
+# could not repair (it says so loudly), so the app keeps working until
+# someone fixes the data. None (not yet checked) behaves as off, so the
+# schema steps that run before the check see the database as they always did.
+FOREIGN_KEYS_ENFORCED: bool | None = None
+
+
+if engine.dialect.name == "sqlite":
+    @event.listens_for(engine, "connect")
+    def _sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f"PRAGMA foreign_keys={'ON' if FOREIGN_KEYS_ENFORCED else 'OFF'}")
+        cursor.close()
