@@ -2656,6 +2656,14 @@
   /* Built-in database cards: rename inline in the footer. */
   .db-rename { @apply ml-auto flex items-center gap-1.5; }
   .db-rename input { @apply h-7 w-[150px] text-[12px]; }
+  /* "How many" shows only while creating (orgEdit toggles [hidden]). */
+  .mouse-modal [data-new-only][hidden] { display: none; }
+  /* Latest genotype call in the animals sheet, and the Genotyping sheet. */
+  .org-call { @apply inline-flex min-w-0 items-center gap-1.5 truncate; }
+  .org-call .badge { @apply shrink-0; }
+  .org-pending { @apply text-[12px] text-muted italic; }
+  .org-gel-link { @apply inline-flex items-center gap-1 text-[12px] text-brand-700 hover:underline; }
+  .org-gel-link svg { @apply size-3.5; }
 }
 
 /* ===========================================================================

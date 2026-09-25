@@ -89,17 +89,28 @@
 {% endmacro %}
 
 
-{# Fields flagged show_in_table, for the list header and rows. #}
+{# What a custom field sorts by: numbers as numbers, dates as ISO text,
+   yes/no as 1 or nothing (so the ticked ones gather), choices and text as
+   shown. data-table.js reads it from td[data-sort-for]. #}
+{% macro sort_value(field, attrs) -%}
+  {%- set value = attrs.get(field.key) -%}
+  {%- if field.field_type == 'checkbox' -%}{{ '1' if value else '' }}
+  {%- elif value is none -%}
+  {%- else -%}{{ value }}{%- endif -%}
+{%- endmacro %}
+
+{# Fields flagged show_in_table, for the list header and rows. Sortable like
+   the built-in columns: th.dt-sortable[data-sort-key="attr_<key>"]. #}
 {% macro table_headers(fields) %}
   {% for field in fields if field.show_in_table %}
-    <th style="width: 130px;">
-      <span class="dt-col-head">{{ icon(field_icon(field), 'dt-col-icon') }}{{ field.label }}</span>
+    <th class="dt-sortable" data-sort-key="attr_{{ field.key }}" data-sort-type="{{ {'number': 'number', 'date': 'date', 'checkbox': 'number'}.get(field.field_type, 'text') }}" style="width: 130px;">
+      <span class="dt-col-head">{{ icon(field_icon(field), 'dt-col-icon') }}{{ field.label }}<span class="dt-sort-indicator"></span></span>
     </th>
   {% endfor %}
 {% endmacro %}
 
 {% macro table_cells(fields, attrs) %}
   {% for field in fields if field.show_in_table %}
-    <td>{{ field_cell(field, attrs) }}</td>
+    <td data-sort-for="attr_{{ field.key }}" data-sort-value="{{ sort_value(field, attrs) | trim }}">{{ field_cell(field, attrs) }}</td>
   {% endfor %}
 {% endmacro %}
