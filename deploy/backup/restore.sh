@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Put a backup back. Stop the app first (docker compose stop app).
+#
+#   restore.sh /backups/db/biomanager-X.dump [/backups/files/biomanager-files-X.tar.gz]
+#
+# Nothing is deleted: the current database is renamed biomanager_before_<time>
+# and the current files are moved into /appdata/.before-restore-<time>/, so a
+# wrong restore can itself be undone.
+set -euo pipefail
+: "${APPDATA_DIR:=/appdata}" "${PGDATABASE:=biomanager}"
+dump=${1:?usage: restore.sh DUMP [FILES_TARBALL]}
+files=${2:-}
+stamp=$(date -u +%Y%m%d%H%M%S)
+[ -f "$dump" ] || { echo "no such dump: $dump"; exit 1; }
+pg_restore --list "$dump" > /dev/null
+
+others=$(psql -XAtd postgres -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$PGDATABASE' AND pid <> pg_backend_pid()")
+if [ "$others" != "0" ]; then
+  echo "$others connection(s) to $PGDATABASE are open. Stop the app first: docker compose stop app"
+  exit 1
+fi
+
+kept="${PGDATABASE}_before_${stamp}"
+psql -XAtd postgres -c "ALTER DATABASE \"$PGDATABASE\" RENAME TO \"$kept\""
+createdb "$PGDATABASE"
+if ! pg_restore --no-owner --exit-on-error --dbname="$PGDATABASE" "$dump"; then
+  echo "Restore failed; putting the previous database back."
+  dropdb "$PGDATABASE"
+  psql -XAtd postgres -c "ALTER DATABASE \"$kept\" RENAME TO \"$PGDATABASE\""
+  exit 1
+fi
+echo "database restored from $(basename "$dump"); the previous one is kept as $kept"
+
+if [ -n "$files" ]; then
+  aside="$APPDATA_DIR/.before-restore-$stamp"
+  mkdir -p "$aside"
+  find "$APPDATA_DIR" -mindepth 1 -maxdepth 1 ! -name '.before-restore-*' -exec mv -t "$aside" {} +
+  tar -C "$APPDATA_DIR" -xzf "$files"
+  echo "files restored from $(basename "$files"); the previous ones are in $aside"
+fi
+echo "Start the app again: docker compose start app"

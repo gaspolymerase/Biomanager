@@ -193,7 +193,7 @@ class LineTests(AppTestCase):
         self.assertEqual(r.status_code, 403)
         r = self.post(self.m, f"/zebrafish/lines/{line}/delete")
         self.assertFlash(r, "belongs", "error")
-        self.assertEqual(row("select notes, count(*) from fish_lines where id=?", line), ("", 1))
+        self.assertEqual(row("select notes, 1 from fish_lines where id=?", line), ("", 1))
 
     def test_unowned_legacy_line_is_open_to_everyone(self):
         line = self.make_line(self.a)
@@ -772,7 +772,7 @@ class TankBulkTests(AppTestCase):
         self.post(self.a, "/zebrafish/tanks/bulk", {"action": "rack", "value": "", "selected_ids": [a]})
         self.assertEqual(cell(a), (None, None, None))
         self.post(self.a, "/zebrafish/tanks/bulk", {"action": "geno", "value": "1", "selected_ids": [a, b]})
-        self.assertEqual(count("tanks", "needs_genotyping=1 and id in (?, ?)", a, b), 2)
+        self.assertEqual(count("tanks", "needs_genotyping=true and id in (?, ?)", a, b), 2)
 
     def test_bulk_delete_keeps_tanks_with_fish_and_undo_restores_the_rest(self):
         a, b, full = self.make_tank(self.a), self.make_tank(self.a), self.make_tank(self.a)
@@ -1033,7 +1033,7 @@ class SacLogTests(AppTestCase):
         r = self.post(self.a, "/zebrafish/sac/create", {"fish_id_fk": str(fish), "count": "7", "sac_date": yesterday})
         self.assertFlash(r, "marked sac", "success")
         self.assertEqual(row("select count, status, sac_date from fish where id=?", fish), (0, "sac", yesterday))
-        self.assertEqual(rows("select substr(recorded_at, 1, 10), count from fish_sac_log where fish_id_fk=?", fish),
+        self.assertEqual([(str(at)[:10], n) for at, n in rows("select recorded_at, count from fish_sac_log where fish_id_fk=?", fish)],
                          [(yesterday, 7)])
         self.assertFlash(self.post(self.a, "/zebrafish/sac/create", {"fish_id_fk": str(fish), "count": "1"}),
                          "already sac", "error")
@@ -1090,7 +1090,7 @@ class PermissionTests(AppTestCase):
         self.assertEqual(self.autosave(self.m, f"/zebrafish/tanks/{tank}/move",
                                        {"rack_id_fk": str(rack), "row": "2", "col": "0"}).status_code, 403)
         self.assertFlash(self.post(self.m, f"/zebrafish/tanks/{tank}/delete"), "belong", "error")
-        self.assertEqual(row("select count(*), needs_genotyping, row, col from tanks where id=?", tank), (1, 0, 0, 0))
+        self.assertEqual(row("select 1, needs_genotyping, row, col from tanks where id=?", tank), (1, 0, 0, 0))
 
     def test_member_cannot_swap_onto_someone_elses_cell(self):
         rack = make_rack(self.a)

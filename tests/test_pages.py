@@ -15,7 +15,7 @@ from app.stock_routes import VIEWS as STOCK_VIEWS
 
 # Not pages: they end the session, or hand off to Google.
 SKIP = {"/logout", "/calendar/google/connect", "/calendar/google/callback"}
-PUBLIC = {"/login", "/register"}
+PUBLIC = {"/login", "/register", "/healthz"}
 
 
 def simple_get_routes() -> list[str]:

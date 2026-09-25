@@ -74,7 +74,7 @@ class RackHandOverPage(AppTestCase):
 
     def test_a_disabled_member_is_refused(self):
         gone = make_user()
-        execute("update users set disabled=1 where username=?", gone)
+        execute("update users set disabled=true where username=?", gone)
         rack = self.make_mouse_rack(self.a)
         self.assign(kind="mouse_rack", id=rack, creator=gone)
         self.assertEqual(one("select created_by from mouse_racks where id=?", rack), self.admin)

@@ -39,8 +39,8 @@ def database_path() -> Path:
     url = os.environ.get("DATABASE_URL", "").strip()
     if url:
         if not url.startswith("sqlite"):
-            sys.exit("DATABASE_URL points at a server database — use its own "
-                     "backup tooling (e.g. pg_dump) rather than this script.")
+            sys.exit("DATABASE_URL points at a server database. Back it up with "
+                     "deploy/backup/backup.sh (see deploy/README.md), not this script.")
         return Path(url.split("///", 1)[-1])
     override = os.environ.get("BIOMANAGER_DATA_DIR", "").strip()
     base = Path(override).expanduser() if override else PROJECT_ROOT / "data"

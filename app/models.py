@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -155,6 +155,23 @@ class CalendarSubscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class EncryptedText(TypeDecorator):
+    """Text stored encrypted (app/security.py), read back as plain text.
+    Values written before encryption existed read back unchanged and are
+    encrypted the next time they are saved."""
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        from .security import encrypt_text
+        return encrypt_text(value)
+
+    def process_result_value(self, value, dialect):
+        from .security import decrypt_text
+        return decrypt_text(value)
+
+
 class GoogleCalendarLink(Base):
     """Per-user OAuth credentials for Google Calendar. We persist the refresh
     token; access tokens are short-lived and re-derived as needed."""
@@ -163,8 +180,8 @@ class GoogleCalendarLink(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner: Mapped[str] = mapped_column(String(80), index=True)
     google_email: Mapped[str] = mapped_column(String(200), default="")
-    refresh_token: Mapped[str] = mapped_column(Text)
-    access_token: Mapped[str] = mapped_column(Text, default="")
+    refresh_token: Mapped[str] = mapped_column(EncryptedText)
+    access_token: Mapped[str] = mapped_column(EncryptedText, default="")
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     calendar_id: Mapped[str] = mapped_column(String(200), default="primary")
     color: Mapped[str] = mapped_column(String(20), default="#ef4444")

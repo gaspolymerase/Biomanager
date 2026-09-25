@@ -96,6 +96,7 @@ def init_database() -> None:
     seed_inventories()
     seed_stocks()
     migrate_plasmid_boxes()
+    encrypt_stored_tokens()
     with SessionLocal() as session:
         existing_chemical = session.scalar(select(ChemicalReference.id).limit(1))
         if existing_chemical is None:
@@ -125,7 +126,28 @@ def init_database() -> None:
         session.commit()
 
 
+def encrypt_stored_tokens() -> int:
+    """Encrypt Google Calendar tokens saved before they were encrypted at
+    rest. Reads the raw column (bypassing EncryptedText, which would hand
+    back plain text either way) and rewrites what is still plain."""
+    from . import security
+
+    changed = 0
+    with engine.begin() as conn:
+        found = conn.execute(text("SELECT id, refresh_token, access_token FROM google_calendar_links")).all()
+        for row_id, refresh, access in found:
+            new_refresh, new_access = security.encrypt_text(refresh), security.encrypt_text(access)
+            if (new_refresh, new_access) != (refresh, access):
+                conn.execute(text("UPDATE google_calendar_links SET refresh_token = :r, access_token = :a WHERE id = :i"),
+                             {"r": new_refresh, "a": new_access, "i": row_id})
+                changed += 1
+    return changed
+
+
 def ensure_schema_updates() -> None:
+    # These ALTERs were written for SQLite. TRUE/FALSE defaults work on both;
+    # PostgreSQL has no DATETIME type, so it gets TIMESTAMP.
+    timestamp = "TIMESTAMP" if engine.dialect.name == "postgresql" else "DATETIME"
     inspector = inspect(engine)
     table_columns = {table: {col["name"] for col in inspector.get_columns(table)} for table in inspector.get_table_names()}
     alter_statements: list[str] = []
@@ -148,7 +170,7 @@ def ensure_schema_updates() -> None:
     if "mouse_cages" in table_columns and "owner" not in table_columns["mouse_cages"]:
         alter_statements.extend([
             "ALTER TABLE mouse_cages ADD COLUMN owner VARCHAR(120) DEFAULT ''",
-            "ALTER TABLE mouse_cages ADD COLUMN is_shared BOOLEAN DEFAULT 0",
+            "ALTER TABLE mouse_cages ADD COLUMN is_shared BOOLEAN DEFAULT FALSE",
         ])
     for table in ("stock_racks", "stock_incubators"):
         if table in table_columns and "created_by" not in table_columns[table]:
@@ -177,13 +199,13 @@ def ensure_schema_updates() -> None:
         if "default_landing" not in existing:
             alter_statements.append("ALTER TABLE users ADD COLUMN default_landing VARCHAR(40) DEFAULT ''")
         if "disabled" not in existing:
-            alter_statements.append("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT 0")
+            alter_statements.append("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT FALSE")
         if "notify_transfer" not in existing:
-            alter_statements.append("ALTER TABLE users ADD COLUMN notify_transfer BOOLEAN DEFAULT 1")
+            alter_statements.append("ALTER TABLE users ADD COLUMN notify_transfer BOOLEAN DEFAULT TRUE")
         if "notify_picked" not in existing:
-            alter_statements.append("ALTER TABLE users ADD COLUMN notify_picked BOOLEAN DEFAULT 1")
+            alter_statements.append("ALTER TABLE users ADD COLUMN notify_picked BOOLEAN DEFAULT TRUE")
         if "notify_breeder_aging" not in existing:
-            alter_statements.append("ALTER TABLE users ADD COLUMN notify_breeder_aging BOOLEAN DEFAULT 1")
+            alter_statements.append("ALTER TABLE users ADD COLUMN notify_breeder_aging BOOLEAN DEFAULT TRUE")
 
     if "notebook_pages" in table_columns and "entry_date" not in table_columns["notebook_pages"]:
         alter_statements.append("ALTER TABLE notebook_pages ADD COLUMN entry_date DATE")
@@ -193,7 +215,7 @@ def ensure_schema_updates() -> None:
     for tbl in ("mice", "plasmids", "orders"):
         if tbl in table_columns:
             if "updated_at" not in table_columns[tbl]:
-                alter_statements.append(f"ALTER TABLE {tbl} ADD COLUMN updated_at DATETIME")
+                alter_statements.append(f"ALTER TABLE {tbl} ADD COLUMN updated_at {timestamp}")
             if "updated_by" not in table_columns[tbl]:
                 alter_statements.append(f"ALTER TABLE {tbl} ADD COLUMN updated_by VARCHAR(80) DEFAULT ''")
 
@@ -201,13 +223,13 @@ def ensure_schema_updates() -> None:
         if "full_sequence" not in table_columns["plasmids"]:
             alter_statements.append("ALTER TABLE plasmids ADD COLUMN full_sequence TEXT DEFAULT ''")
         if "is_circular" not in table_columns["plasmids"]:
-            alter_statements.append("ALTER TABLE plasmids ADD COLUMN is_circular BOOLEAN DEFAULT 1")
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN is_circular BOOLEAN DEFAULT TRUE")
         if "features_json" not in table_columns["plasmids"]:
             alter_statements.append("ALTER TABLE plasmids ADD COLUMN features_json TEXT DEFAULT ''")
         if "sequence_format" not in table_columns["plasmids"]:
             alter_statements.append("ALTER TABLE plasmids ADD COLUMN sequence_format VARCHAR(20) DEFAULT ''")
         if "sequence_uploaded_at" not in table_columns["plasmids"]:
-            alter_statements.append("ALTER TABLE plasmids ADD COLUMN sequence_uploaded_at DATETIME")
+            alter_statements.append(f"ALTER TABLE plasmids ADD COLUMN sequence_uploaded_at {timestamp}")
         if "storage_box" not in table_columns["plasmids"]:
             alter_statements.append("ALTER TABLE plasmids ADD COLUMN storage_box VARCHAR(80) DEFAULT ''")
         if "box_row" not in table_columns["plasmids"]:
@@ -221,11 +243,11 @@ def ensure_schema_updates() -> None:
     if "calendar_events" in table_columns:
         cols = table_columns["calendar_events"]
         if "start_at" not in cols:
-            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN start_at DATETIME")
+            alter_statements.append(f"ALTER TABLE calendar_events ADD COLUMN start_at {timestamp}")
         if "end_at" not in cols:
-            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN end_at DATETIME")
+            alter_statements.append(f"ALTER TABLE calendar_events ADD COLUMN end_at {timestamp}")
         if "is_all_day" not in cols:
-            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN is_all_day BOOLEAN DEFAULT 1")
+            alter_statements.append("ALTER TABLE calendar_events ADD COLUMN is_all_day BOOLEAN DEFAULT TRUE")
         if "color" not in cols:
             alter_statements.append("ALTER TABLE calendar_events ADD COLUMN color VARCHAR(20) DEFAULT ''")
         if "owner" not in cols:
@@ -234,11 +256,11 @@ def ensure_schema_updates() -> None:
     if "tasks" in table_columns:
         cols = table_columns["tasks"]
         if "start_at" not in cols:
-            alter_statements.append("ALTER TABLE tasks ADD COLUMN start_at DATETIME")
+            alter_statements.append(f"ALTER TABLE tasks ADD COLUMN start_at {timestamp}")
         if "end_at" not in cols:
-            alter_statements.append("ALTER TABLE tasks ADD COLUMN end_at DATETIME")
+            alter_statements.append(f"ALTER TABLE tasks ADD COLUMN end_at {timestamp}")
         if "done_at" not in cols:
-            alter_statements.append("ALTER TABLE tasks ADD COLUMN done_at DATETIME")
+            alter_statements.append(f"ALTER TABLE tasks ADD COLUMN done_at {timestamp}")
         if "color" not in cols:
             alter_statements.append("ALTER TABLE tasks ADD COLUMN color VARCHAR(20) DEFAULT ''")
         if "owner" not in cols:

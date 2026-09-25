@@ -1,0 +1,19 @@
+# HTTPS in front of BioManager. DOMAIN and TLS come from .env:
+#   TLS=internal                   Caddy's own CA (default; install its root on lab machines)
+#   TLS=you@example.edu            a public certificate from Let's Encrypt (needs public DNS + port 80)
+#   TLS=/certs/lab.crt /certs/lab.key   a certificate from your IT department, in deploy/certs/
+{$DOMAIN} {
+	tls {$TLS}
+	encode zstd gzip
+
+	request_body {
+		max_size 64MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	reverse_proxy app:8000
+}

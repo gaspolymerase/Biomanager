@@ -5,6 +5,13 @@ fresh, empty SQLite database in a temporary folder, then imports the app
 once for the whole process. The lab's real databases in data/ are never
 opened.
 
+To run the same suite on PostgreSQL, name an empty database it may wipe:
+
+    BIOMANAGER_TEST_DATABASE_URL=postgresql://localhost/biomanager_test scripts/test.sh
+
+Its public schema is dropped and recreated first, so never point this at
+a database whose data you want.
+
 Isolation: all test modules share that one database, so no test may rely
 on another test having run, or on a table being empty. Each TestCase makes
 its own uniquely named users and records (see `uniq`) and looks rows up by
@@ -19,16 +26,25 @@ import itertools
 import os
 import re
 import shutil
-import sqlite3
 import sys
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from urllib.parse import urlparse
 
 _TMP = tempfile.mkdtemp(prefix="biomanager-tests-")
 DB_PATH = os.path.join(_TMP, "test.db")
-os.environ["DATABASE_URL"] = f"sqlite:///{DB_PATH}"
+POSTGRES_URL = os.environ.get("BIOMANAGER_TEST_DATABASE_URL", "").strip()
+if POSTGRES_URL:
+    import psycopg
+
+    with psycopg.connect(POSTGRES_URL.replace("postgresql+psycopg://", "postgresql://"), autocommit=True) as _pg:
+        _pg.execute("DROP SCHEMA public CASCADE")
+        _pg.execute("CREATE SCHEMA public")
+    os.environ["DATABASE_URL"] = POSTGRES_URL
+else:
+    os.environ["DATABASE_URL"] = f"sqlite:///{DB_PATH}"
 os.environ["BIOMANAGER_DATA_DIR"] = _TMP
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 atexit.register(shutil.rmtree, _TMP, True)
@@ -39,7 +55,7 @@ if ROOT not in sys.path:
 
 from app.app import app  # noqa: E402  (runs init_database on the temp file)
 from app import services  # noqa: E402
-from app.db import SessionLocal  # noqa: E402
+from app.db import SessionLocal, engine  # noqa: E402
 from app.models import UserAccount  # noqa: E402
 
 # Uploaded files go to the temp folder, not app/static/uploads.
@@ -48,6 +64,9 @@ services.UPLOAD_DIR.mkdir(exist_ok=True)
 
 # A view that raises should fail the test with its traceback, not a bare 500.
 app.config["TESTING"] = True
+
+ON_POSTGRES = engine.dialect.name == "postgresql"
+only_sqlite = unittest.skipIf(ON_POSTGRES, "tests SQLite-only machinery")
 
 TODAY = date.today()
 T = TODAY.isoformat()
@@ -71,14 +90,34 @@ def days_ahead(n: int) -> str:
 
 # ---------------------------------------------------------------- database
 
+def _driver_sql(sql: str) -> str:
+    """Tests write `?` placeholders; psycopg wants `%s` (and `%%` for a
+    literal percent sign)."""
+    return sql.replace("%", "%%").replace("?", "%s") if ON_POSTGRES else sql
+
+
+def _as_stored_by_sqlite(value):
+    """Tests compare against what SQLite hands back — dates as ISO text,
+    booleans as 0/1 — so PostgreSQL's typed values are put in that shape."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S.%f")  # SQLAlchemy's SQLite format
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
 def rows(sql: str, *args) -> list[tuple]:
-    """Run a read query against the test database (a fresh connection, so
+    """Run a read query against the test database (a new transaction, so
     it always sees what the app committed)."""
-    con = sqlite3.connect(DB_PATH)
-    try:
-        return con.execute(sql, args).fetchall()
-    finally:
-        con.close()
+    with engine.connect() as con:
+        found = con.exec_driver_sql(_driver_sql(sql), tuple(args)).fetchall()
+    if not ON_POSTGRES:
+        return [tuple(r) for r in found]
+    return [tuple(_as_stored_by_sqlite(v) for v in r) for r in found]
 
 
 def row(sql: str, *args):
@@ -96,12 +135,8 @@ def one(sql: str, *args):
 def execute(sql: str, *args) -> None:
     """Write straight to the database — only to set up a state the UI can
     no longer produce (legacy data, a migration's input)."""
-    con = sqlite3.connect(DB_PATH)
-    try:
-        con.execute(sql, args)
-        con.commit()
-    finally:
-        con.close()
+    with engine.begin() as con:
+        con.exec_driver_sql(_driver_sql(sql), tuple(args))
 
 
 def count(table: str, where: str = "1=1", *args) -> int:
