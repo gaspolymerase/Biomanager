@@ -59,6 +59,9 @@ MAX_DETAIL = 2000
 
 def _label(obj) -> str:
     """The most human name this row has."""
+    custom = getattr(obj, "audit_label", None)
+    if isinstance(custom, str) and custom:
+        return custom
     for attr in ("mouse_id", "cage_id", "litter_id", "code", "sample_id",
                  "tank_id", "clutch_id", "strain_name", "name", "title",
                  "item_name", "username", "key"):

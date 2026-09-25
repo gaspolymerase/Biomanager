@@ -154,7 +154,9 @@
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'rack-tile';
-      el.draggable = true;
+      // Someone else's record opens read-only and cannot be dragged.
+      el.draggable = !item.locked;
+      if (item.locked) el.dataset.locked = 'true';
       el.dataset.id = item.id;
       if (item.tone) el.dataset.tone = String(item.tone).toLowerCase();
       el.title = item.title || [item.label, item.sub].filter(Boolean).join(' · ');

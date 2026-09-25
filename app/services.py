@@ -146,6 +146,9 @@ def ensure_schema_updates() -> None:
             "ALTER TABLE mouse_cages ADD COLUMN owner VARCHAR(120) DEFAULT ''",
             "ALTER TABLE mouse_cages ADD COLUMN is_shared BOOLEAN DEFAULT 0",
         ])
+    for table in ("stock_racks", "stock_incubators"):
+        if table in table_columns and "created_by" not in table_columns[table]:
+            alter_statements.append(f"ALTER TABLE {table} ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
     if "strains" in table_columns and "strain_number" not in table_columns["strains"]:
         alter_statements.append("ALTER TABLE strains ADD COLUMN strain_number VARCHAR(80) DEFAULT ''")
     if "litters" in table_columns:
@@ -1337,6 +1340,7 @@ def seed_stocks() -> None:
     moving anything kept in the old organism-engine versions."""
     from . import stock_service
     stock_service.seed_modules()
+    stock_service.tidy_genotype_lists()
 
 
 def seed_inventories() -> None:
