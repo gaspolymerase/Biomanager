@@ -58,6 +58,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
       TLS: ${TLS:-internal}
+      ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./certs:/certs:ro
