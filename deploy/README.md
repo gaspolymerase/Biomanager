@@ -53,6 +53,44 @@ their own Tailscale account (Machines → biomanager → Share). The cloud
 firewall then needs no inbound rules at all: not for 80/443, and not for SSH,
 which also goes over Tailscale.
 
+## Signing in with Google or Microsoft
+
+Optional. People can then sign in with an account they already have instead
+of a BioManager password. New accounts still wait for an admin's approval,
+and anyone who already has an account connects Google or Microsoft from
+**Settings → Sign-in methods**. How it works: `app/oidc.py`.
+
+The provider has to know about the server first. Register it once, then put
+the two values in `.env` and run `docker compose up -d`.
+
+**Google** (console.cloud.google.com):
+
+1. Create a project (for example "BioManager"), then go to **APIs & Services →
+   OAuth consent screen**. Choose **External**, add the app name and your
+   email, and leave the scopes at the defaults (`openid`, `email`, `profile`).
+   While the app is in *Testing*, only the test users you list can sign in;
+   either add each lab member there, or **Publish** the app. These scopes
+   don't need Google's verification.
+2. **Credentials → Create credentials → OAuth client ID**, type **Web
+   application**, with the authorised redirect URI
+   `https://DOMAIN/auth/google/callback`.
+3. Copy the client ID and secret into `BIOMANAGER_GOOGLE_CLIENT_ID` and
+   `BIOMANAGER_GOOGLE_CLIENT_SECRET`.
+
+**Microsoft** (entra.microsoft.com, or portal.azure.com → Microsoft Entra ID):
+
+1. **App registrations → New registration.** Pick who may sign in: accounts
+   in any organisation and personal Microsoft accounts (tenant `common`), or
+   only your organisation (then set `BIOMANAGER_MICROSOFT_TENANT` to its
+   tenant ID). Redirect URI: platform **Web**, `https://DOMAIN/auth/microsoft/callback`.
+2. **Certificates & secrets → New client secret.** Note when it expires and
+   put a reminder in your calendar: sign-in with Microsoft stops working that day.
+3. Copy the **Application (client) ID** and the secret's **Value** into
+   `BIOMANAGER_MICROSOFT_CLIENT_ID` and `BIOMANAGER_MICROSOFT_CLIENT_SECRET`.
+
+A university or hospital tenant may not let you register apps yourself;
+then IT registers it with the same redirect URI.
+
 ## Moving an existing lab onto the server
 
 The SQLite database from a laptop or the desktop app is copied once,
