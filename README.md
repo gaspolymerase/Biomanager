@@ -366,6 +366,29 @@ Two ordering details worth knowing if you touch `app/audit.py`:
 
 The SQLite database is created automatically at `data/biomanager.db`.
 
+## Running the tests
+
+```bash
+scripts/test.sh
+# which is:
+.venv/bin/python -m unittest discover -s tests -t .
+```
+
+The suite in `tests/` uses only the standard library's `unittest` (it also
+runs under pytest, if you have it). It starts the app once on a fresh
+SQLite database in a temp folder — `data/` is never opened — and drives the
+real routes with Flask's test client, as an admin and as members, so
+permissions and validation are checked along with behaviour. One module per
+area (`test_mice.py`, `test_plasmids.py`, `test_stocks.py`, …); shared
+set-up and factories are in `tests/base.py`. Run one module, class or test
+with `scripts/test.sh tests.test_mice` (or `tests.test_mice.SomeClass`).
+
+Every test makes its own uniquely named records and must not depend on
+another test having run. A test marked `@unittest.expectedFailure`
+documents a known bug; when the bug is fixed it shows up as an "unexpected
+success" — remove the marker then. GitHub Actions runs the suite on every
+push (`.github/workflows/tests.yml`).
+
 ## Desktop App
 
 Build a clickable native app (no terminal needed to launch):
