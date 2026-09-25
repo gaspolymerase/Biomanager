@@ -143,8 +143,8 @@
         <input type="password" name="current_password" autocomplete="current-password" required>
       </label>
       <label class="field-label">New password
-        <input type="password" name="new_password" autocomplete="new-password" minlength="6" required>
-        <span class="field-hint normal-case tracking-normal">At least 6 characters.</span>
+        <input type="password" name="new_password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
+        <span class="field-hint normal-case tracking-normal">At least {{ min_password_length }} characters. Changing it signs out your other sessions.</span>
       </label>
       <label class="field-label">Confirm new password
         <input type="password" name="confirm_password" autocomplete="new-password" required>

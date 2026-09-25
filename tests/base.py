@@ -149,9 +149,14 @@ def user_id(username: str) -> int:
 
 def client_for(username: str):
     """A Flask test client logged in as `username`."""
+    from app import security
     c = app.test_client()
+    with SessionLocal() as s, app.app_context():
+        user = s.get(UserAccount, user_id(username))
+        stamp = security.session_stamp(user)
     with c.session_transaction() as sess:
-        sess["user_id"] = user_id(username)
+        sess["user_id"] = user.id
+        sess["auth"] = stamp
     return c
 
 

@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import SessionLocal
-from . import access, positions
+from . import access, positions, security
 from .formutil import form_changed
 # Importing this registers the SQLAlchemy flush listener that writes
 # audit_log rows for every tracked change; nothing here calls into it.
@@ -115,7 +115,9 @@ from .services import (
 
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
+# See app/security.py: a key from SECRET_KEY, or one made once and kept in
+# the data folder, never a published default.
+app.config["SECRET_KEY"] = security.secret_key()
 init_database()
 
 # Configurable organism modules (flies, worms, and anything a lab adds) live
@@ -132,6 +134,10 @@ app.register_blueprint(inventory_bp)
 app.register_blueprint(stocks_bp)
 app.register_blueprint(labels_bp)
 app.register_blueprint(admin_racks_bp)
+
+with SessionLocal() as _db_session:
+    if _db_session.scalar(select(func.count(UserAccount.id))) == 0:
+        security.announce_setup_code(app.logger)
 
 
 # When running as a frozen .app/.exe, uploads live in the user's data folder
@@ -230,11 +236,19 @@ def load_current_user():
         return
     with SessionLocal() as db_session:
         user = db_session.get(UserAccount, user_id)
-        if user is None or getattr(user, "disabled", False):
+        # A password change or reset ends every session signed in with the
+        # old password (see security.session_stamp).
+        if (user is None or getattr(user, "disabled", False)
+                or not security.session_matches(session.get("auth"), user)):
             session.clear()
             g.user = None
             return
         g.user = user
+
+
+# Cookies, upload limits, the cross-site check and security headers. After
+# load_current_user: the uploads check needs g.user.
+security.init_app(app)
 
 
 @app.errorhandler(IntegrityError)
@@ -286,7 +300,7 @@ def inject_icon():
 
 @app.context_processor
 def inject_user():
-    return {"current_user": g.get("user")}
+    return {"current_user": g.get("user"), "min_password_length": security.MIN_PASSWORD_LENGTH}
 
 
 # ---------------------------------------------------------------------------
@@ -1259,23 +1273,37 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        keys = security.login_keys(username)
+        wait = security.login_throttle.retry_after(*keys)
+        if wait:
+            minutes = -(-wait // 60)
+            flash(f"Too many failed sign-in attempts. Try again in {minutes} minute{'s' if minutes != 1 else ''}.", "error")
+            return render_template("auth.html", mode="login"), 429
+        if security.https_required_but_missing():
+            flash("This server only accepts sign-ins over HTTPS. Open it with an https:// address.", "error")
+            return render_template("auth.html", mode="login")
         with SessionLocal() as db_session:
             user = db_session.scalar(select(UserAccount).where(UserAccount.username == username))
-            if user is None or not check_password_hash(user.password_hash, password):
+            if not security.check_password(user, password):
+                security.login_throttle.failed(*keys)
                 flash("Incorrect username or password.", "error")
+            elif user.role == "pending":
+                flash("Your account is waiting for a lab admin to approve it.", "error")
             elif getattr(user, "disabled", False):
                 flash("This account is disabled. Contact an admin.", "error")
             else:
+                security.login_throttle.succeeded(*keys)
                 session.clear()
+                session.permanent = True
                 session["user_id"] = user.id
+                session["auth"] = security.session_stamp(user)
                 flash(f"Welcome, {user.display_name or user.username}.", "success")
                 landing = (user.default_landing or "").strip()
                 if landing in ALLOWED_LANDING_ENDPOINTS:
                     fallback = url_for(landing)
                 else:
                     fallback = url_for("colony")
-                destination = request.args.get("next") or fallback
-                return redirect(destination)
+                return redirect(security.safe_next(request.args.get("next")) or fallback)
     return render_template("auth.html", mode="login")
 
 
@@ -1286,7 +1314,8 @@ def settings():
     with SessionLocal() as db_session:
         user = db_session.get(UserAccount, g.user.id)
         if user is None:
-            return redirect(url_for("logout"))
+            session.clear()
+            return redirect(url_for("login"))
         if request.method == "POST":
             action = request.form.get("action", "profile")
             if action == "profile":
@@ -1311,14 +1340,17 @@ def settings():
                 confirm = request.form.get("confirm_password", "")
                 if not check_password_hash(user.password_hash, current):
                     flash("Current password is incorrect.", "error")
-                elif len(new_pw) < 6:
-                    flash("New password must be at least 6 characters.", "error")
+                elif problem := security.password_problem(new_pw, user.username):
+                    flash(problem, "error")
                 elif new_pw != confirm:
                     flash("New passwords do not match.", "error")
                 else:
                     user.password_hash = generate_password_hash(new_pw)
                     db_session.commit()
-                    flash("Password updated.", "success")
+                    # Other sessions (another browser, a lost laptop) end;
+                    # this one carries on under the new password.
+                    session["auth"] = security.session_stamp(user)
+                    flash("Password updated. Any other signed-in sessions have been signed out.", "success")
             return redirect(url_for("settings"))
         user_data = {
             "username": user.username,
@@ -1535,6 +1567,9 @@ def admin_toggle_role(user_id: int):
         if target.id == g.user.id:
             flash("You cannot change your own role.", "error")
             return redirect(url_for("admin_users"))
+        if target.role == "pending":
+            flash(f"Approve {target.username} before changing their role.", "error")
+            return redirect(url_for("admin_users"))
         target.role = "member" if target.role == "admin" else "admin"
         db_session.commit()
         flash(f"{target.username} is now {target.role}.", "success")
@@ -1552,6 +1587,13 @@ def admin_toggle_disabled(user_id: int):
         if target.id == g.user.id:
             flash("You cannot disable your own account.", "error")
             return redirect(url_for("admin_users"))
+        if target.role == "pending":
+            # A sign-up waiting for approval: enabling it is the approval.
+            target.role = "member"
+            target.disabled = False
+            db_session.commit()
+            flash(f"{target.username} approved. They can sign in now.", "success")
+            return redirect(url_for("admin_users"))
         target.disabled = not target.disabled
         db_session.commit()
         flash(f"{target.username} {'disabled' if target.disabled else 'enabled'}.", "success")
@@ -1562,22 +1604,32 @@ def admin_toggle_disabled(user_id: int):
 @admin_required
 def admin_reset_password(user_id: int):
     new_password = (request.form.get("new_password") or "").strip()
-    if len(new_password) < 6:
-        flash("Reset password must be at least 6 characters.", "error")
-        return redirect(url_for("admin_users"))
     with SessionLocal() as db_session:
         target = db_session.get(UserAccount, user_id)
         if target is None:
             flash("User not found.", "error")
             return redirect(url_for("admin_users"))
+        if problem := security.password_problem(new_password, target.username):
+            flash(problem, "error")
+            return redirect(url_for("admin_users"))
         target.password_hash = generate_password_hash(new_password)
         db_session.commit()
-        flash(f"Password reset for {target.username}.", "success")
+        # Their sessions end (session_stamp); an admin resetting their own
+        # password stays signed in here.
+        if target.id == g.user.id:
+            session["auth"] = security.session_stamp(target)
+        flash(f"Password reset for {target.username}. Their other sessions have been signed out.", "success")
     return redirect(url_for("admin_users"))
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    """Sign up. The first account is the lab's admin, and on a server needs
+    the setup code printed at start-up, so nobody else on the network can
+    claim it first. Everyone after that waits for an admin's approval."""
+    with SessionLocal() as db_session:
+        first = db_session.scalar(select(func.count(UserAccount.id))) == 0
+    needs_code = first and security.setup_code_required()
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         display_name = request.form.get("display_name", "").strip()
@@ -1585,6 +1637,10 @@ def register():
         confirm_password = request.form.get("confirm_password", "")
         if not username or not password:
             flash("Username and password are required.", "error")
+        elif needs_code and not security.setup_code_matches(request.form.get("setup_code")):
+            flash("That setup code is not right. It is printed in the server log when BioManager starts.", "error")
+        elif problem := security.password_problem(password, username):
+            flash(problem, "error")
         elif password != confirm_password:
             flash("Passwords do not match.", "error")
         else:
@@ -1593,22 +1649,32 @@ def register():
                 if existing is not None:
                     flash("That username already exists.", "error")
                 else:
-                    user_count = len(db_session.scalars(select(UserAccount)).all())
-                    role = "admin" if user_count == 0 else "member"
                     user = UserAccount(
                         username=username,
                         display_name=display_name,
                         password_hash=generate_password_hash(password),
-                        role=role,
+                        role="admin" if first else "pending",
+                        disabled=not first,
                     )
                     db_session.add(user)
+                    if not first:
+                        admins = db_session.scalars(select(UserAccount.username).where(
+                            UserAccount.role == "admin", UserAccount.disabled.is_(False))).all()
+                        for admin_name in admins:
+                            add_notification(db_session, admin_name, "Account waiting for approval",
+                                             f"{display_name or username} signed up as {username}. "
+                                             "Approve them in Settings → Manage users.")
                     db_session.commit()
-                    flash("Account created. You can sign in now.", "success")
+                    if first:
+                        security.clear_setup_code()
+                        flash("Admin account created. You can sign in now.", "success")
+                    else:
+                        flash("Account created. A lab admin needs to approve it before you can sign in.", "success")
                     return redirect(url_for("login"))
-    return render_template("auth.html", mode="register")
+    return render_template("auth.html", mode="register", first_account=first, needs_setup_code=needs_code)
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     flash("You have been signed out.", "success")

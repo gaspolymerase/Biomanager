@@ -355,16 +355,20 @@ Two ordering details worth knowing if you touch `app/audit.py`:
 
 1. Create and activate a virtual environment.
 2. Install dependencies with `pip install -r requirements.txt`.
-3. Optionally set a secret key:
-   `export SECRET_KEY='change-this-for-real-use'`
-4. Build the stylesheet once: `cd frontend && npm install && npm run build:css && cd ..`.
-5. Start the app with `python run.py`. On macOS port 5000 is taken by
+3. Build the stylesheet once: `cd frontend && npm install && npm run build:css && cd ..`.
+4. Start the app with `python run.py`. On macOS port 5000 is taken by
    AirPlay/Control Center, so use `PORT=5055 python run.py` if the page does
-   not load.
-6. Open `http://127.0.0.1:5000` (or the port you set).
-7. Register the first user. That first account becomes `admin`.
+   not load. `FLASK_DEBUG=1` turns on reloading and in-browser tracebacks;
+   `run.py` refuses it on anything but a loopback address.
+5. Open `http://127.0.0.1:5000` (or the port you set).
+6. Register the first user, who becomes `admin`. The page asks for the
+   **setup code** printed in the terminal when the app started (it is also
+   in `data/setup-code`, which is deleted once the admin exists). The desktop
+   app does not ask: only this machine can reach it.
 
-The SQLite database is created automatically at `data/biomanager.db`.
+The SQLite database is created automatically at `data/biomanager.db`. No
+`SECRET_KEY` is needed: without one, a random key is made on first run and
+kept in `data/secret_key` (readable by you only).
 
 ## Running the tests
 
@@ -402,30 +406,77 @@ The script installs `pywebview` + `pyinstaller`, ensures the frontend bundle is 
 
 ## Shared Server Setup
 
-To let multiple people use the same database, point the app at a central PostgreSQL server:
+Running BioManager for a whole lab means other people can send it requests,
+so it runs differently from a laptop. What decides which requests to trust is
+in `app/security.py`; its docstring explains each check.
 
 ```bash
-export DATABASE_URL='postgresql://USERNAME:PASSWORD@HOST:5432/biomanager'
-export SECRET_KEY='a-long-random-secret'
-python run.py
+pip install -r requirements.txt            # includes gunicorn
+export DATABASE_URL='postgresql://USERNAME:PASSWORD@localhost:5432/biomanager'
+export BIOMANAGER_PROXY_HOPS=1             # behind Caddy/nginx (below)
+gunicorn -c gunicorn.conf.py wsgi:app      # never python run.py
 ```
 
-The app automatically converts `postgresql://...` or `postgres://...` into the SQLAlchemy driver format it needs.
+`wsgi.py` sets `BIOMANAGER_ENV=production`, refuses to start with debug on,
+and turns on Secure cookies — so the server **must be reached over HTTPS**.
+gunicorn listens on `127.0.0.1:8000` only; put a reverse proxy in front for
+TLS. With Caddy that is two lines:
 
-Recommended production stack:
+```
+lab-biomanager.example.edu {
+    reverse_proxy 127.0.0.1:8000
+}
+```
 
-- PostgreSQL on a shared server
-- Flask app behind Gunicorn or another WSGI server
-- Nginx or a reverse proxy in front
-- HTTPS enabled
-- regular database backups
+With nginx, pass the headers the app reads:
+
+```
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+client_max_body_size 64m;
+```
+
+Settings (environment variables, all optional):
+
+| Variable | Default | Does |
+| --- | --- | --- |
+| `SECRET_KEY` | kept in the data folder | signs session cookies; 32+ characters in production |
+| `BIOMANAGER_HTTPS` | on in production | Secure cookies; `0` only for a trusted plain-HTTP network |
+| `BIOMANAGER_PROXY_HOPS` | `0` | proxies in front whose `X-Forwarded-*` headers to trust |
+| `BIOMANAGER_TRUSTED_ORIGINS` | — | other origins allowed to post, comma separated |
+| `BIOMANAGER_SESSION_DAYS` | `7` | idle days before a sign-in expires |
+| `BIOMANAGER_MAX_UPLOAD_MB` | `64` | largest upload accepted |
+| `WEB_CONCURRENCY` | 1 on SQLite, 3 on Postgres | gunicorn worker processes |
+
+`gunicorn.conf.py` loads the app once before forking (`preload_app`), so the
+start-up schema updates and seeding run once, not in every worker at the
+same moment. On first start the log prints the setup code for the first
+admin account.
+
+Keep the server off the open internet: on the campus network or VPN, or a
+private network such as Tailscale.
 
 ## Multi-User Notes
 
-- The first registered account becomes `admin`.
-- Later accounts become `member`.
-- All main data pages now require login.
-- This is a good first shared-lab setup, but later we should add stronger role permissions, audit history, and schema migrations.
+- **The first account is the admin**, and on a server needs the setup code
+  from the log, so nobody else on the network can claim it first.
+- **Everyone after that waits for approval.** A sign-up is created as
+  *awaiting approval*; admins get a notification and approve it in
+  Settings → Manage users. `scripts/reset-password.py NAME --enable` does the
+  same from the command line on SQLite.
+- **Passwords are at least 12 characters.** Ten failed sign-ins in 15 minutes
+  lock out that username and that address for the rest of the window.
+- **Changing or resetting a password signs out every other session** of
+  that account — the fix for a lost laptop.
+- **Changes from other websites are refused.** Every POST is checked against
+  the browser's `Sec-Fetch-Site`/`Origin` headers, so a malicious page cannot
+  make a signed-in member's browser edit records. Sign out is a POST too.
+- **Uploads need a login**, get unguessable names, and are served so that an
+  uploaded HTML or SVG file downloads rather than running in the app.
+- Google Calendar refresh tokens are still stored unencrypted in the
+  database: treat database backups as sensitive.
 
 ## Notes
 

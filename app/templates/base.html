@@ -144,9 +144,11 @@
                     </a>
                   {% endif %}
                   <div class="menu-rule"></div>
-                  <a class="menu-item menu-item-danger" href="{{ url_for('logout') }}" role="menuitem">
-                    {{ icon('sign-out') }} Sign out
-                  </a>
+                  <form method="post" action="{{ url_for('logout') }}">
+                    <button type="submit" class="menu-item menu-item-danger" role="menuitem">
+                      {{ icon('sign-out') }} Sign out
+                    </button>
+                  </form>
                 </div>
               </div>
             </div>

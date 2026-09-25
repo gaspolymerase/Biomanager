@@ -16,6 +16,10 @@ import webview
 
 from app.app import app
 
+# Only this machine can reach the desktop app (it binds 127.0.0.1 on a random
+# port), so creating its first account does not need the server setup code.
+app.config["LOCAL_SETUP"] = True
+
 
 def _pick_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
