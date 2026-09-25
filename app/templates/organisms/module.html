@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% import "organisms/_fields.html" as F %}
+{% import "organisms/_fields.html" as F with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog, view_switch with context %}
 
 {% set view_label = (views | selectattr('key', 'equalto', active_view) | map(attribute='label') | first) or 'Configure' %}
@@ -66,26 +66,26 @@
         <thead>
           <tr>
             {% if module.tracks_individuals %}
-              <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>ID</span></th>
+              <th style="width: 130px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}ID</span></th>
             {% endif %}
             {% if module.tracks_groups %}
-              <th style="width: 70px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Count</span></th>
+              <th style="width: 70px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Count</span></th>
             {% endif %}
             {% if module.has('housing') %}
-              <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.housing_noun|title }}</span></th>
+              <th style="width: 130px;"><span class="dt-col-head">{{ icon(housing_icon, 'dt-col-icon') }}{{ module.housing_noun|title }}</span></th>
             {% endif %}
             {% if module.has('lines') %}
-              <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
+              <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
             {% endif %}
-            <th style="width: 100px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Sex</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="status"></span>Status</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Born</span></th>
-            <th style="width: 70px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Age</span></th>
+            <th style="width: 100px;"><span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}Sex</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born</span></th>
+            <th style="width: 70px;"><span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age</span></th>
             {% if module.has('genotyping') %}
-              <th style="width: 160px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Genotype</span></th>
+              <th style="width: 160px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
             {% endif %}
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
             <th style="width: 78px;"></th>
           </tr>
         </thead>
@@ -265,19 +265,19 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>{{ module.housing_noun|title }}</span></th>
-            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.container_noun|title }}</span></th>
+            <th style="width: 130px;"><span class="dt-col-head">{{ icon(housing_icon, 'dt-col-icon') }}{{ module.housing_noun|title }}</span></th>
+            <th style="width: 150px;"><span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}{{ module.container_noun|title }}</span></th>
             {% if module.has('housing_grid') %}
-              <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Position</span></th>
+              <th style="width: 80px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position</span></th>
             {% endif %}
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Purpose</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose</span></th>
             {% if module.has('lines') %}
-              <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
+              <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
             {% endif %}
-            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Held</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Last serviced</span></th>
+            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Held</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Last serviced</span></th>
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
             <th style="width: 78px;"></th>
           </tr>
         </thead>
@@ -290,7 +290,7 @@
               </td>
               <td>{{ unit.location.name if unit.location else '' }}</td>
               {% if module.has('housing_grid') %}
-                <td><span class="ident">{% if unit.row and unit.col and unit.row <= 26 %}{{ 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[unit.row - 1] }}{{ unit.col }}{% endif %}</span></td>
+                <td><span class="ident">{{ unit_positions.get(unit.id, '') }}</span></td>
               {% endif %}
               <td>{% if unit.purpose %}<span class="badge badge-quiet">{{ unit.purpose }}</span>{% endif %}</td>
               {% if module.has('lines') %}
@@ -305,7 +305,7 @@
                   <button type="button" class="row-icon-btn" title="Edit"
                           data-org-edit="housing-dialog" data-org-payload='{{ {
                             "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
-                            "row": unit.row, "col": unit.col, "purpose": unit.purpose,
+                            "position": unit_positions.get(unit.id, ''), "purpose": unit.purpose,
                             "line_id_fk": unit.line_id_fk, "owner": unit.owner,
                             "protocol": unit.protocol, "card_id": unit.card_id,
                             "established_on": unit.established_on.isoformat() if unit.established_on else "",
@@ -371,8 +371,9 @@
         </select>
       </label>
       {% if module.has('housing_grid') %}
-        <label class="field-label">Row<input type="number" name="row" min="1"></label>
-        <label class="field-label">Column<input type="number" name="col" min="1"></label>
+        <label class="field-label">Position<input name="position" class="font-mono" placeholder="e.g. D7">
+          <span class="field-hint normal-case tracking-normal">Named the way the {{ module.container_noun }} names it.</span>
+        </label>
       {% endif %}
       <label class="field-label">Purpose
         <select name="purpose">
@@ -485,15 +486,15 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
-            <th style="width: 190px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Name</span></th>
-            <th style="width: 220px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Genotype</span></th>
+            <th style="width: 140px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Code</span></th>
+            <th style="width: 190px;"><span class="dt-col-head">{{ icon('type', 'dt-col-icon') }}Name</span></th>
+            <th style="width: 220px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
             {{ F.table_headers(own_fields) }}
-            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Alive</span></th>
+            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Alive</span></th>
             {% if module.has('preservation') %}
-              <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Last frozen</span></th>
+              <th style="width: 110px;"><span class="dt-col-head">{{ icon('snowflake', 'dt-col-icon') }}Last frozen</span></th>
             {% endif %}
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
             <th style="width: 78px;"></th>
           </tr>
         </thead>
@@ -602,17 +603,17 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Type</span></th>
-            <th style="width: 170px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Male / sire</span></th>
-            <th style="width: 170px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Female / dam</span></th>
+            <th style="width: 130px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Code</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Type</span></th>
+            <th style="width: 170px;"><span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}Male / sire</span></th>
+            <th style="width: 170px;"><span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}Female / dam</span></th>
             {% if module.has('housing') %}
-              <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.housing_noun|title }}</span></th>
+              <th style="width: 120px;"><span class="dt-col-head">{{ icon(housing_icon, 'dt-col-icon') }}{{ module.housing_noun|title }}</span></th>
             {% endif %}
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Set up</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Collected</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Set up</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Collected</span></th>
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
             <th style="width: 78px;"></th>
           </tr>
         </thead>
@@ -741,19 +742,19 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Code</span></th>
+            <th style="width: 140px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Code</span></th>
             {% if module.has('lines') %}
-              <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
+              <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
             {% endif %}
-            <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Born</span></th>
-            <th style="width: 70px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Age</span></th>
+            <th style="width: 120px;"><span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born</span></th>
+            <th style="width: 70px;"><span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age</span></th>
             {% if module.has('nursery') %}
-              <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Stage</span></th>
+              <th style="width: 110px;"><span class="dt-col-head">{{ icon('layers', 'dt-col-icon') }}Stage</span></th>
             {% endif %}
-            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Initial</span></th>
-            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Now</span></th>
+            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Initial</span></th>
+            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Now</span></th>
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
             <th style="width: 78px;"></th>
           </tr>
         </thead>
@@ -1021,13 +1022,13 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Lot</span></th>
-            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ module.line_noun|title }}</span></th>
-            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Method</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Frozen</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Vials left</span></th>
-            <th style="width: 170px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Storage</span></th>
-            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="check"></span>Recovery</span></th>
+            <th style="width: 140px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Lot</span></th>
+            <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
+            <th style="width: 150px;"><span class="dt-col-head">{{ icon('flask-vial', 'dt-col-icon') }}Method</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('snowflake', 'dt-col-icon') }}Frozen</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Vials left</span></th>
+            <th style="width: 170px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Storage</span></th>
+            <th style="width: 150px;"><span class="dt-col-head">{{ icon('heart-pulse', 'dt-col-icon') }}Recovery</span></th>
             <th style="width: 78px;"></th>
           </tr>
         </thead>

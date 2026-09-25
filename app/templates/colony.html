@@ -106,7 +106,7 @@
          content so dates, statuses and IDs never truncate — the sheet
          scrolls sideways instead, with the ID column and row actions
          pinned. #}
-      <section class="data-table-card sheet" data-table-id="mice-v2"
+      <section class="data-table-card sheet" data-table-id="mice-v3"
                data-selection-scope="mice"
                data-selection-noun="mouse" data-selection-noun-plural="mice">
         <div class="dt-toolbar">
@@ -143,45 +143,52 @@
                 <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
                   <input type="checkbox" data-select-all aria-label="Select all visible mice">
                 </th>
-                <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="mouse_id" style="width: 88px; min-width: 88px;"
+                <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="mouse_id" style="width: 76px; min-width: 76px;"
                     title="Mouse ID. The dot is green while the mouse is alive.">
-                  <span class="dt-col-head"><span class="dt-col-type is-id"></span>Mouse<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mouse<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="gender" style="width: 76px;">
-                  <span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Sex<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="gender" style="width: 64px;">
+                  <span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}Sex<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="age" style="width: 76px;" title="Age from the litter's date of birth">
-                  <span class="dt-col-head"><span class="dt-col-type is-number"></span>Age<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="age" style="width: 68px;" title="Age from the litter's date of birth">
+                  <span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="status" style="width: 128px;" title="What the mouse is for: experiment, breeder, geno…">
+                  <span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status<span class="dt-sort-indicator"></span></span>
                 </th>
                 {% for n in range(1, 5) %}
-                  <th class="dt-sortable" data-sort-key="transgene_{{ n }}" style="width: 150px;"
+                  <th class="dt-sortable" data-sort-key="transgene_{{ n }}" style="width: 136px;"
                       {% if n > 2 and not sheet.tg_used[n - 1] %}data-default-hidden="1"{% endif %}>
-                    <span class="dt-col-head"><span class="dt-col-type is-text"></span>Transgene {{ n }}<span class="dt-sort-indicator"></span></span>
+                    <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Transgene {{ n }}<span class="dt-sort-indicator"></span></span>
                   </th>
                 {% endfor %}
-                <th class="dt-sortable" data-sort-key="cage_id" style="width: 92px;" title="Type “new” to allocate the next cage">
-                  <span class="dt-col-head"><span class="dt-col-type is-id"></span>Cage<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="cage_id" style="width: 72px;" title="Type “new” to allocate the next cage">
+                  <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}Cage<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cage_location" style="width: 120px;">
-                  <span class="dt-col-head"><span class="dt-col-type is-text"></span>Location<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="cage_rack" style="width: 104px;" title="The cage's rack">
+                  <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="owner" style="width: 84px;">
-                  <span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="cage_position" style="width: 84px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
+                  <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="litter_id" style="width: 128px;">
-                  <span class="dt-col-head"><span class="dt-col-type is-id"></span>Litter<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="owner" style="width: 76px;">
+                  <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 140px;">
-                  <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Born<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="litter_id" style="width: 116px;">
+                  <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}Litter<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="status" style="width: 144px;">
-                  <span class="dt-col-head"><span class="dt-col-type" data-icon="status"></span>Status<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 132px;">
+                  <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="date_of_death" style="width: 140px;">
-                  <span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Died<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="date_of_death" style="width: 132px;">
+                  <span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Died<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="note" style="min-width: 240px;">
-                  <span class="dt-col-head"><span class="dt-col-type is-text"></span>Note<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="cage_location" style="width: 128px;" title="Free-text location note for the cage (room, shelf…)"
+                    {% if not sheet.location_notes_used %}data-default-hidden="1"{% endif %}>
+                  <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location note<span class="dt-sort-indicator"></span></span>
+                </th>
+                <th class="dt-sortable" data-sort-key="note" style="min-width: 220px;">
+                  <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Note<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
               </tr>
@@ -218,6 +225,15 @@
                   <td class="sheet-num" title="{% if row.age_weeks is not none %}{{ row.age_weeks }} weeks · {{ row.age_days }} days{% endif %}">
                     {% if row.age_weeks is not none %}{{ row.age_weeks }}<span class="sheet-unit">w</span>{% else %}<span class="sheet-empty">–</span>{% endif %}
                   </td>
+                  <td>
+                    <select class="status-pill" name="status" form="{{ f }}" data-status="{{ row.status|lower }}"
+                            data-autosave="1" aria-label="Status" {% if locked %}disabled{% endif %}>
+                      <option value="" {% if not row.status %}selected{% endif %}>–</option>
+                      {% for s_value in sheet.status_choices %}
+                        <option value="{{ s_value }}" {% if s_value == row.status %}selected{% endif %}>{{ s_value }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
                   {% for n in range(1, 5) %}
                     <td><input name="transgene_{{ n }}" form="{{ f }}" value="{{ row['transgene_' ~ n] }}"
                                list="strain-name-options" data-autosave="1" aria-label="Transgene {{ n }}"
@@ -225,8 +241,16 @@
                   {% endfor %}
                   <td><input class="ident" name="cage_id" form="{{ f }}" value="{{ row.cage_id }}" placeholder="–"
                              data-autosave="1" aria-label="Cage" {% if locked %}disabled{% endif %}></td>
-                  <td><input name="cage_location" form="{{ f }}" value="{{ row.cage_location }}"
-                             list="options-cage_location" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
+                  <td>
+                    <select name="cage_rack" form="{{ f }}" data-autosave="1" aria-label="Rack" {% if locked %}disabled{% endif %}>
+                      <option value="">–</option>
+                      {% for rack in sheet.racks %}
+                        <option value="{{ rack.id }}" {% if rack.id == row.cage_rack_id %}selected{% endif %}>{{ rack.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td><input class="ident" name="cage_position" form="{{ f }}" value="{{ row.cage_position }}" placeholder="–"
+                             data-autosave="1" aria-label="Position in the rack" {% if locked %}disabled{% endif %}></td>
                   <td>
                     <div class="owner-cell-wrap{% if row.owner %} has-badge{% endif %}">
                       {% if row.owner %}{{ row.owner | owner_badge }}{% endif %}
@@ -239,17 +263,10 @@
                   <td><input type="date" name="date_of_birth" form="{{ f }}" value="{{ row.date_of_birth }}" data-empty="{{ '0' if row.date_of_birth else '1' }}"
                              data-autosave="1" data-original-dob="{{ row.date_of_birth }}" data-original-litter="{{ row.litter_id }}"
                              aria-label="Date of birth" {% if locked %}disabled{% endif %}></td>
-                  <td>
-                    <select class="status-pill" name="status" form="{{ f }}" data-status="{{ row.status|lower }}"
-                            data-autosave="1" aria-label="Status" {% if locked %}disabled{% endif %}>
-                      <option value="" {% if not row.status %}selected{% endif %}>–</option>
-                      {% for s_value in sheet.status_choices %}
-                        <option value="{{ s_value }}" {% if s_value == row.status %}selected{% endif %}>{{ s_value }}</option>
-                      {% endfor %}
-                    </select>
-                  </td>
                   <td><input type="date" name="date_of_death" form="{{ f }}" value="{{ row.date_of_death }}" data-empty="{{ '0' if row.date_of_death else '1' }}"
                              data-autosave="1" aria-label="Date of death" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="cage_location" form="{{ f }}" value="{{ row.cage_location }}" title="{{ row.cage_location }}"
+                             list="options-cage_location" data-autosave="1" aria-label="Location note" {% if locked %}disabled{% endif %}></td>
                   <td><input class="note-cell" name="note" form="{{ f }}" value="{{ row.note }}" title="{{ row.note }}" placeholder="Add a note"
                              data-autosave="1" aria-label="Note" {% if locked %}disabled{% endif %}></td>
                   <td class="sheet-pin sheet-pin-end">
@@ -259,7 +276,10 @@
                                 "id": row.id, "mouse_id": row.mouse_id, "locked": locked,
                                 "gender": row.gender, "transgene_1": row.transgene_1, "transgene_2": row.transgene_2,
                                 "transgene_3": row.transgene_3, "transgene_4": row.transgene_4,
-                                "cage_id": row.cage_id, "cage_location": row.cage_location, "owner": row.owner,
+                                "cage_id": row.cage_id, "cage_rack": row.cage_rack_id or "", "cage_position": row.cage_position,
+                                "cage_location": row.cage_location, "owner": row.owner,
+                                "cage_rack_was": row.cage_rack_id or "", "cage_position_was": row.cage_position,
+                                "cage_location_was": row.cage_location,
                                 "litter_id": row.litter_id, "date_of_birth": row.date_of_birth, "status": row.status,
                                 "date_of_death": row.date_of_death, "note": row.note } | tojson }}'>
                         {{ icon('edit') }}
@@ -276,7 +296,7 @@
                   </td>
                 </tr>
               {% else %}
-                <tr><td class="dt-empty" colspan="18">
+                <tr><td class="dt-empty" colspan="20">
                   No mice here yet. Use <strong>New mouse</strong>, or <strong>Add many</strong> to import a batch.
                 </td></tr>
               {% endfor %}
@@ -290,6 +310,12 @@
           <form id="mouse-update-{{ row.id }}" method="post" action="{{ url_for('update_mouse', mouse_row_id=row.id) }}"
                 data-mouse-label="{{ row.mouse_id }}">
             <input type="hidden" name="confirm_cohort_dob_change" value="0">
+            {# What this row's cage cells showed; the server only changes a
+               cage field that differs, so a stale row cannot undo an edit
+               made on another row of the same cage. #}
+            <input type="hidden" name="cage_rack_was" value="{{ row.cage_rack_id or '' }}">
+            <input type="hidden" name="cage_position_was" value="{{ row.cage_position }}">
+            <input type="hidden" name="cage_location_was" value="{{ row.cage_location }}">
           </form>
         {% endfor %}
 
@@ -375,6 +401,9 @@
           </header>
           <div class="record-dialog-body">
             <input type="hidden" name="confirm_cohort_dob_change" value="0">
+            <input type="hidden" name="cage_rack_was">
+            <input type="hidden" name="cage_position_was">
+            <input type="hidden" name="cage_location_was">
             <fieldset class="record-group">
               <legend>Identity</legend>
               <label>Sex
@@ -400,7 +429,11 @@
             <fieldset class="record-group">
               <legend>Housing and dates</legend>
               <label>Cage <input name="cage_id" placeholder="number, or “new”"></label>
-              <label>Location <input name="cage_location" list="options-cage_location"></label>
+              <label>Rack
+                <select name="cage_rack"><option value="">Not in a rack</option>{% for rack in sheet.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
+              </label>
+              <label>Position <input name="cage_position" class="font-mono" placeholder="e.g. D7"></label>
+              <label>Location note <input name="cage_location" list="options-cage_location" placeholder="room, shelf…"></label>
               <label>Litter <input name="litter_id"></label>
               <label>Born <input type="date" name="date_of_birth"></label>
               <label>Died <input type="date" name="date_of_death"></label>
@@ -418,8 +451,24 @@
       <div data-layout-scope>
         <div class="mb-3 flex flex-wrap items-center gap-2.5">
           {{ view_switch('mouse-cages', 'Cage cards', 'Rack grid') }}
-          <span class="text-[12px] text-muted">A cage’s location, written as <span class="ident">rack-position</span> (e.g. <span class="ident">B-D7</span>), places it on the rack grid.</span>
+          <div class="rack-chips" role="group" aria-label="Rack settings">
+            <span class="rack-chips-label">Racks</span>
+            {% for rack in cage_racks.racks %}
+              <button type="button" class="btn btn-sm" title="Size and position names for {{ rack.name }}"
+                      data-record-edit="mouse-rack-dialog" data-record-payload="{{ rack.edit['data-record-payload'] }}">
+                {{ icon('sliders') }} {{ rack.name }}
+              </button>
+            {% endfor %}
+            <button type="button" class="btn btn-sm" data-record-edit="mouse-rack-dialog"
+                    data-record-payload='{{ {"rows": 8, "cols": 10, "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"} | tojson }}'>
+              {{ icon('plus') }} New rack
+            </button>
+          </div>
         </div>
+        <p class="-mt-1.5 mb-3 text-[12px] text-muted">
+          Set a cage’s <strong>Rack</strong> and <strong>Position</strong> on its card, in the mouse sheet, or by dragging on the rack grid.
+          Each rack names its positions its own way (A1, 1-1, 37…); change it under the rack’s button above.
+        </p>
 
         <div data-layout-panel="grid" hidden>
           <section class="data-table-card">
@@ -449,7 +498,9 @@
         </div>
         <form method="post" action="{{ url_for('create_cage') }}" class="inline-create-grid">
           <input name="cage_id" value="{{ next_cage_id_value }}" placeholder="Cage_ID" readonly required>
-          <input name="cage_location" list="options-cage_location" placeholder="Cage Location">
+          <select name="rack_id" aria-label="Rack"><option value="">Rack</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
+          <input name="position" class="font-mono" placeholder="Position, e.g. D7" aria-label="Position">
+          <input name="cage_location" list="options-cage_location" placeholder="Location note">
           <input name="purpose" list="options-purpose" placeholder="Purpose">
           <input type="date" name="date_give_birth" placeholder="Date give birth">
           <input name="card_id" placeholder="Card ID">
@@ -462,11 +513,19 @@
 
         <div class="cage-stack">
           {% for cage in cage_rows %}
-            <article class="cage-card cage-purpose-{{ cage.purpose|lower }}" data-purpose="{{ cage.purpose|lower }}">
+            <article class="cage-card cage-purpose-{{ cage.purpose|lower }}" data-purpose="{{ cage.purpose|lower }}" data-cage-row-id="{{ cage.id }}">
               <form method="post" action="{{ url_for('update_cage', cage_row_id=cage.id) }}" class="cage-form autosave-form">
                 <div class="cage-header-grid">
                   <label><span>Cage_ID</span><input value="{{ cage.cage_id }}" readonly></label>
-                  <label><span>Cage Location</span><input name="cage_location" value="{{ cage.cage_location }}" list="options-cage_location" data-autosave="1"></label>
+                  <label><span>Rack</span>
+                    <select name="rack_id" data-autosave="1" data-cage-rack>
+                      <option value="">–</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}"{% if rack.id == cage.rack_id %} selected{% endif %}>{{ rack.name }}</option>{% endfor %}
+                    </select>
+                  </label>
+                  <label><span>Position</span><input name="position" value="{{ cage.position }}" class="font-mono" placeholder="e.g. D7" data-autosave="1" data-cage-position></label>
+                  <input type="hidden" name="rack_id_was" value="{{ cage.rack_id or '' }}">
+                  <input type="hidden" name="position_was" value="{{ cage.position }}">
+                  <label><span>Location note</span><input name="cage_location" value="{{ cage.cage_location }}" list="options-cage_location" data-autosave="1"></label>
                   <label><span>Purpose</span><input name="purpose" value="{{ cage.purpose }}" list="options-purpose" data-autosave="1" data-cage-purpose-input="1"></label>
                   <label><span>Active</span><input value="{{ 'Y' if cage.active else 'N' }}" readonly></label>
                   <label><span>Notes</span><input name="notes" value="{{ cage.notes }}" data-autosave="1"></label>
@@ -569,7 +628,11 @@
           <div class="record-dialog-body">
             <fieldset class="record-group">
               <legend>Where</legend>
-              <label>Location <input name="cage_location" class="font-mono" placeholder="e.g. B-D7" list="options-cage_location"></label>
+              <label>Rack
+                <select name="rack_id"><option value="">Not in a rack</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
+              </label>
+              <label>Position <input name="position" class="font-mono" placeholder="e.g. D7"></label>
+              <label>Location note <input name="cage_location" list="options-cage_location" placeholder="room, shelf…"></label>
               <label>Room <input name="room"></label>
               <label class="col-span-full">Location detail <input name="location_detail"></label>
             </fieldset>
@@ -1191,6 +1254,63 @@ function rowsForForm(form) {
   return document.querySelectorAll(`[form="${form.id}"]`);
 }
 
+/* Rack, position and location note belong to the cage, so every mouse row
+   of that cage shows them. After any save the server returns the cage's
+   current values; write them into every row of that cage, including the
+   hidden `_was` copies that tell the server what a row last showed. */
+function setValue(el, value) {
+  if (!el) return;
+  el.value = value == null ? '' : value;
+  if (el.type === 'date') el.dataset.empty = el.value ? '0' : '1';
+  if (el.name === 'cage_location') el.title = el.value;
+}
+
+function syncCage(state, sourceForm) {
+  document.querySelectorAll('.sheet-table tbody tr[data-id]').forEach((tr) => {
+    const cageInput = tr.querySelector('input[name="cage_id"]');
+    if (!cageInput || cageInput.value.trim() !== String(state.cage_id)) return;
+    setValue(tr.querySelector('select[name="cage_rack"]'), state.rack_id);
+    setValue(tr.querySelector('input[name="cage_position"]'), state.position);
+    setValue(tr.querySelector('input[name="cage_location"]'), state.location);
+    const rowForm = document.getElementById(`mouse-update-${tr.dataset.id}`);
+    if (rowForm) {
+      setValue(rowForm.querySelector('[name="cage_rack_was"]'), state.rack_id);
+      setValue(rowForm.querySelector('[name="cage_position_was"]'), state.position);
+      setValue(rowForm.querySelector('[name="cage_location_was"]'), state.location);
+    }
+    const open = tr.querySelector('[data-mouse-edit]');
+    if (open) {
+      try {
+        const payload = JSON.parse(open.dataset.mousePayload || '{}');
+        Object.assign(payload, {
+          cage_id: state.cage_id, cage_rack: state.rack_id, cage_position: state.position,
+          cage_location: state.location, cage_rack_was: state.rack_id,
+          cage_position_was: state.position, cage_location_was: state.location,
+        });
+        open.dataset.mousePayload = JSON.stringify(payload);
+      } catch (_) { /* leave it */ }
+    }
+  });
+  // A cage card (Cages tab) remembers what it now shows.
+  if (sourceForm && sourceForm.querySelector('[name="rack_id_was"]')) {
+    setValue(sourceForm.querySelector('[name="rack_id_was"]'), state.rack_id);
+    setValue(sourceForm.querySelector('[name="position_was"]'), state.position);
+    setValue(sourceForm.querySelector('[name="position"]'), state.position);
+  }
+}
+
+/* A cage dragged on the rack grid: its card on the same page follows, so a
+   later edit on the card does not post the old position back. */
+document.addEventListener('rack-grid:moved', (event) => {
+  const { id, rackId, position } = event.detail || {};
+  const card = document.querySelector(`.cage-card[data-cage-row-id="${id}"]`);
+  if (!card) return;
+  setValue(card.querySelector('select[name="rack_id"]'), rackId || '');
+  setValue(card.querySelector('input[name="position"]'), position || '');
+  setValue(card.querySelector('[name="rack_id_was"]'), rackId || '');
+  setValue(card.querySelector('[name="position_was"]'), position || '');
+});
+
 async function saveFormInBackground(form) {
   form.dataset.saveState = 'saving';
   savesInFlight += 1;
@@ -1208,6 +1328,7 @@ async function saveFormInBackground(form) {
       throw new Error(body.error || `The server answered ${response.status}.`);
     }
     form.dataset.saveState = 'saved';
+    if (body.cage) syncCage(body.cage, form);
     rowsForForm(form).forEach((el) => el.closest('td')?.classList.remove('has-error'));
     savesInFlight -= 1;
     if (savesInFlight === 0) showSaveStatus('saved', 'All changes saved');
