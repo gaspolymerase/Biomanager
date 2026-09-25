@@ -1,0 +1,8 @@
+[Unit]
+Description=BioManager weekly image refresh (deploy/host/maintenance.sh)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/biomanager/Biomanager/deploy/host/maintenance.sh
+TimeoutStartSec=45min
