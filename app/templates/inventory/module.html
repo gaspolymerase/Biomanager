@@ -112,7 +112,7 @@
         {{ sheet_ui.tools() }}
         {% if m.kind == 'orders' %}
           <button type="button" class="dt-toolbar-btn" data-csv-module="{{ key }}"
-                  onclick="window.csvImportModule = this.dataset.csvModule; openCsvImport('order')">{{ icon('import') }} Import</button>
+                  data-on-click="csv-import" data-arg="order">{{ icon('import') }} Import</button>
         {% endif %}
         <button type="button" class="dt-toolbar-btn" data-record-edit="item-dialog" data-record-payload='{{ dict(new_payload, count=10) | tojson }}'
                 title="Several {{ m.item_noun_plural }} at once: identical copies, or one per pasted name">{{ icon('plus') }} Add many</button>
@@ -420,7 +420,7 @@
         <h3 id="item-dialog-title" data-record-title>New {{ m.item_noun }}</h3>
         <p class="record-dialog-sub" data-new-only data-next-number="{{ next_number }}">{{ m.label }} · a new {{ m.item_noun }} gets <span data-number-span>#{{ next_number }}</span>.</p>
       </div>
-      <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
@@ -502,7 +502,7 @@
       <label class="record-wide">Notes <textarea name="notes" rows="3"></textarea></label>
     </div>
     <footer class="record-dialog-foot">
-      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
       <button type="submit" class="btn btn-primary" data-record-submit>Create {{ m.item_noun }}</button>
     </footer>
   </form>
@@ -522,7 +522,7 @@
 
 {% block body_end %}
 <script type="application/json" id="inv-page-data">{{ {"isAdmin": is_admin, "me": current_user.username} | tojson }}</script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   /* Keep everything that shows an item in step after a save, a board drag
      or a grid move: the row's cells and its "_was" copies, the dot, the
      Open button's and the board card's payloads, the board column. The

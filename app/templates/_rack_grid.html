@@ -64,7 +64,7 @@
           <h3 id="{{ id }}-title" data-record-title>New {{ noun }}</h3>
           <p class="record-dialog-sub">Set its size and how its positions are named, to match the labels on the physical rack.</p>
         </div>
-        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
       </header>
       <div class="record-dialog-body">
         <input type="hidden" name="id">
@@ -121,7 +121,7 @@
         </fieldset>
       </div>
       <footer class="record-dialog-foot">
-        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
         <button type="submit" class="btn btn-primary" data-record-submit>Create {{ noun }}</button>
       </footer>
     </form>

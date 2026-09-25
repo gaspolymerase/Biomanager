@@ -135,7 +135,7 @@
           <h3 id="{{ id }}-title" data-record-title>{{ title }}</h3>
           {% if sub %}<p class="record-dialog-sub">{{ sub }}</p>{% endif %}
         </div>
-        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
       </header>
       <div class="record-dialog-body">
 {% endmacro %}
@@ -143,7 +143,7 @@
 {% macro dialog_close(submit) %}
       </div>
       <footer class="record-dialog-foot">
-        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
         <button type="submit" class="btn btn-primary" data-record-submit>{{ submit }}</button>
       </footer>
     </form>
@@ -354,7 +354,7 @@
               {{ t.tank_id }} is then retired, and kept in the history.
             </p>
           </div>
-          <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+          <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
         </header>
         <div class="record-dialog-body">
           {% for p in tr.return_plan %}
@@ -369,7 +369,7 @@
           {% endfor %}
         </div>
         <footer class="record-dialog-foot">
-          <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
           <button type="submit" class="btn btn-primary">{{ icon('back') }} Returned</button>
         </footer>
       </form>
@@ -1072,7 +1072,7 @@
 {% endblock %}
 
 {% block body_end %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   /* Inline editing, the save indicator and the live dots come from
      static/sheet.js (data-autosave-sheet on each sheet). */
 

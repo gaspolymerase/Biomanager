@@ -61,7 +61,7 @@
     </div>
     <div class="dt-toolbar-spacer"></div>
     {{ sheet_ui.tools() }}
-    <button type="button" class="dt-toolbar-btn" onclick="openCsvImport('plasmid')" title="Load plasmids from a CSV file">{{ icon('import') }} Import</button>
+    <button type="button" class="dt-toolbar-btn" data-on-click="csv-import" data-arg="plasmid" title="Load plasmids from a CSV file">{{ icon('import') }} Import</button>
     <button type="button" class="dt-toolbar-btn" data-record-edit="plasmid-dialog"
             data-record-payload='{{ dict(new_payload, count=10) | tojson }}'
             title="Several plasmids at once: the same construct, or a list of names, with consecutive numbers side by side in a box">{{ icon('duplicate') }} Add many</button>
@@ -287,7 +287,7 @@
         <h3 id="plasmid-dialog-title" data-record-title>New plasmid</h3>
         <p class="record-dialog-sub" data-plasmid-sub data-next-id="{{ next_plasmid_id }}">It will be plasmid #{{ next_plasmid_id }}, or the next free number if that is taken when you save.</p>
       </div>
-      <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
@@ -325,7 +325,7 @@
           {{ icon('upload') }}
           <div>
             <strong>Drop a .dna, .gb, .gbk or .fasta file</strong>
-            <span>or <button type="button" class="dropzone-browse" onclick="document.getElementById('plasmid-new-file').click()">choose one</button></span>
+            <span>or <button type="button" class="dropzone-browse" data-on-click="click" data-arg="plasmid-new-file">choose one</button></span>
           </div>
           <div class="dropzone-file" id="plasmid-new-filename"></div>
         </div>
@@ -338,7 +338,7 @@
     </div>
     <footer class="record-dialog-foot">
       <span class="record-dialog-hint" data-plasmid-hint></span>
-      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
       <button type="submit" class="btn btn-primary" data-record-submit>Create plasmid</button>
     </footer>
   </form>
@@ -355,7 +355,7 @@
 {% endblock %}
 
 {% block body_end %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   /* Open a given box (after saving one, the server sends ?box=<id>): the
      rack grid reads its remembered box when it starts, which is after this. */
   (function () {

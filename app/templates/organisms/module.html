@@ -366,7 +366,7 @@
       </div>
       <div class="dt-toolbar-spacer"></div>
       {{ sheet_ui.tools() }}
-      <button type="button" class="dt-toolbar-btn" onclick="document.getElementById('location-dialog').showModal()">
+      <button type="button" class="dt-toolbar-btn" data-on-click="open-dialog" data-arg="location-dialog">
         {{ icon('grid') }} {{ module.container_noun|capitalize }}s
       </button>
       <a class="dt-toolbar-btn" href="{{ url_for('labels.module_cards', module_key=module.key) }}">{{ icon('print') }} Labels</a>
@@ -1704,7 +1704,7 @@
 {% endblock %}
 
 {% block body_end %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   const CURRENT_USER = {{ (current_user.username if current_user else '') | tojson }};
 
   /* Fill a dialog's form from a row payload and open it.

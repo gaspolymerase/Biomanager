@@ -57,7 +57,7 @@
       <h3 id="biocal-subs-title">Connected calendars</h3>
       <p class="record-dialog-sub">Show events from Google Calendar or any iCal feed alongside your own. They are read-only here.</p>
     </div>
-    <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+    <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
   </header>
   <div class="record-dialog-body">
     <section class="biocal-subs-section">
@@ -88,7 +88,7 @@
   <form id="biocal-form" class="biocal-form">
     <header class="record-dialog-head">
       <div><h3 id="biocal-modal-title">New item</h3></div>
-      <button type="button" class="modal-close" onclick="document.getElementById('biocal-modal').close()" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="biocal-modal" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id" id="biocal-id">
@@ -135,7 +135,7 @@
     </div>
     <footer class="record-dialog-foot">
       <button type="button" class="btn btn-danger mr-auto" id="biocal-delete" hidden>{{ icon('trash') }} Delete</button>
-      <button type="button" class="btn" onclick="document.getElementById('biocal-modal').close()">Cancel</button>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="biocal-modal">Cancel</button>
       <button type="submit" class="btn btn-primary">Save</button>
     </footer>
   </form>
@@ -143,10 +143,10 @@
 
 {# TOAST UI Calendar UMD bundle — exposes window.tui.Calendar. #}
 <script src="{{ url_for('static', filename='notebook-build/calendar-app.js') }}?v={{ asset_version('notebook-build/calendar-app.js') }}" defer
-        onload="window.__tuiLoaded = true"
-        onerror="window.__tuiMissing = true"></script>
+        data-loaded-flag="__tuiLoaded"
+        data-missing-flag="__tuiMissing"></script>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 (function () {
   const tuiHost = document.getElementById('biocal-tui');
   const listHost = document.getElementById('biocal-list');

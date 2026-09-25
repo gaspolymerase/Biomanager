@@ -164,7 +164,7 @@
 {% endblock %}
 
 {% block body_end %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     const body = document.querySelector('[data-field-body]');
     const count = document.querySelector('[data-field-count]');
