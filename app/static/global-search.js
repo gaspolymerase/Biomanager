@@ -16,8 +16,10 @@
   let debounceTimer = null;
 
   const TYPE_LABEL = {
-    mouse: 'Mouse', plasmid: 'Plasmid', order: 'Order',
-    sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', item: 'Item', vial: 'Fly / worm', tank: 'Tank', 'fish-line': 'Fish line', clutch: 'Clutch', page: 'Notebook',
+    mouse: 'Mouse', cage: 'Cage', litter: 'Litter', experiment: 'Experiment', strain: 'Strain',
+    vial: 'Fly / worm', tank: 'Tank', 'fish-line': 'Fish line', clutch: 'Clutch',
+    plasmid: 'Plasmid', order: 'Order', sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', item: 'Item',
+    page: 'Notebook',
   };
 
   function build() {
@@ -30,7 +32,7 @@
       <div class="cmdk-card" role="dialog" aria-label="Global search">
         <div class="cmdk-input-row">
           <svg class="icon cmdk-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-          <input id="cmdk-input" type="text" placeholder="Search mice, plasmids, samples, reagents, antibodies, notebook…" autocomplete="off">
+          <input id="cmdk-input" type="text" placeholder="Search mice, cages, litters, experiments, plasmids, samples, notebook…" autocomplete="off">
           <kbd class="cmdk-kbd">esc</kbd>
         </div>
         <div id="cmdk-results" class="cmdk-results"></div>
@@ -105,7 +107,7 @@
       if (!groups[item.type]) groups[item.type] = [];
       groups[item.type].push({ ...item, _idx: idx });
     });
-    const known = ['mouse', 'vial', 'tank', 'fish-line', 'clutch', 'plasmid', 'order', 'sample', 'reagent', 'antibody', 'item', 'page'];
+    const known = ['mouse', 'cage', 'litter', 'experiment', 'strain', 'vial', 'tank', 'fish-line', 'clutch', 'plasmid', 'order', 'sample', 'reagent', 'antibody', 'item', 'page'];
     // Any other type the server sends still shows, after the known ones.
     const order = known.concat(Object.keys(groups).filter((t) => !known.includes(t)));
     let html = '';

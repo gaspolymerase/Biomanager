@@ -13,7 +13,7 @@
 
 {% block page_actions %}
   <a class="btn" href="{{ url_for('colony', view='mice') }}">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Back to colony
+    {{ icon('back') }} Back to colony
   </a>
 {% endblock %}
 
@@ -21,7 +21,7 @@
 
 {% for warning in warnings %}
   <div class="flash-message flash-warning mb-3">
-    <svg class="icon size-4 shrink-0" aria-hidden="true"><use href="/static/icons.svg#warning"></use></svg>{{ warning }}
+    {{ icon('warning', 'size-4 shrink-0') }}{{ warning }}
   </div>
 {% endfor %}
 
@@ -31,7 +31,7 @@
 
     <form method="post" action="{{ url_for('batch_mice_preview') }}" class="card">
       <header class="card-head">
-        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#duplicate"></use></svg> One prototype, many mice</h2>
+        <h2>{{ icon('duplicate') }} One prototype, many mice</h2>
         <span class="badge badge-quiet">next ID #{{ next_id }}</span>
       </header>
 
@@ -60,16 +60,16 @@
             </select>
           </label>
 
-          <label class="field-label">TG1
+          <label class="field-label">Transgene 1
             <input name="transgene_1" list="strain-name-options">
           </label>
-          <label class="field-label">TG2
+          <label class="field-label">Transgene 2
             <input name="transgene_2" list="strain-name-options">
           </label>
-          <label class="field-label">TG3
+          <label class="field-label">Transgene 3
             <input name="transgene_3" list="strain-name-options">
           </label>
-          <label class="field-label">TG4
+          <label class="field-label">Transgene 4
             <input name="transgene_4" list="strain-name-options">
           </label>
           <label class="field-label">Genotype
@@ -118,7 +118,7 @@
       <footer class="flex items-center justify-between gap-3 border-t border-sand-100 bg-sand-50/60 px-4 py-3">
         <span class="text-[12px] text-muted">Up to {{ max_batch }} at a time.</span>
         <button type="submit" class="btn btn-primary btn-lg">
-          <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye"></use></svg> Preview
+          {{ icon('eye') }} Preview
         </button>
       </footer>
     </form>
@@ -126,7 +126,7 @@
     <form method="post" action="{{ url_for('batch_mice_preview') }}"
           enctype="multipart/form-data" class="card self-start">
       <header class="card-head">
-        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#upload"></use></svg> Or load a CSV</h2>
+        <h2>{{ icon('upload') }} Or load a CSV</h2>
       </header>
       <div class="flex flex-col gap-3 p-4">
         <p class="text-[12.5px] leading-snug text-muted">
@@ -154,7 +154,7 @@
         </div>
 
         <button type="submit" class="btn btn-primary">
-          <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#eye"></use></svg> Preview file
+          {{ icon('eye') }} Preview file
         </button>
       </div>
     </form>
@@ -171,10 +171,10 @@
       <span class="text-[12px] text-muted">assigned in order when you save</span>
       <div class="dt-toolbar-spacer"></div>
       <button type="button" class="dt-toolbar-btn" onclick="batchFill()">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#arrow-down"></use></svg> Fill down
+        {{ icon('arrow-down') }} Fill down
       </button>
       <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#undo"></use></svg> Start over
+        {{ icon('undo') }} Start over
       </a>
     </div>
 
@@ -231,7 +231,7 @@
       </span>
       <div class="dt-bottom-spacer"></div>
       <button type="submit" class="btn btn-primary btn-lg">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg> Create {{ rows|length }} mice
+        {{ icon('check') }} Create {{ rows|length }} mice
       </button>
     </div>
   </form>

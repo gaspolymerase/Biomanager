@@ -6,10 +6,10 @@
 
 {% block page_actions %}
   <a class="btn" href="{{ url_for('notebook') }}">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#notebook"></use></svg> Notebook
+    {{ icon('notebook') }} Notebook
   </a>
   <a class="btn btn-primary" href="{{ url_for('colony', view='mice') }}">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#mouse"></use></svg> Open colony
+    {{ icon('mouse') }} Open {{ db_labels.get('colony', 'Mouse colony')|lower }}
   </a>
 {% endblock %}
 
@@ -35,7 +35,7 @@
   <a class="stat" href="{{ url_for('colony', view='litters') }}">
     <span class="stat-label">Weanings</span>
     <span class="stat-value">{{ weanings|length }}</span>
-    <span class="stat-sub">within ±7 days of P21</span>
+    <span class="stat-sub">within ±7 days of P{{ wean_offset_days }}</span>
   </a>
   <a class="stat col-span-2 sm:col-span-1" href="{{ url_for('notebook') }}">
     <span class="stat-label">Notebook pages</span>
@@ -50,7 +50,7 @@
   {# Sac candidates #}
   <article class="card flex flex-col">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#warning"></use></svg> Mice older than 30 weeks</h2>
+      <h2>{{ icon('warning') }} Mice older than 30 weeks</h2>
       <a class="card-head-link" href="{{ url_for('colony', view='mice') }}">View all</a>
     </header>
     {% if sac_candidates %}
@@ -68,7 +68,7 @@
       </div>
     {% else %}
       <div class="empty-state">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>
+        {{ icon('check') }}
         <p>No mice past 30 weeks.</p>
       </div>
     {% endif %}
@@ -77,7 +77,7 @@
   {# Upcoming weanings #}
   <article class="card flex flex-col">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#baby"></use></svg> Upcoming weanings</h2>
+      <h2>{{ icon('baby') }} Upcoming weanings</h2>
       <a class="card-head-link" href="{{ url_for('colony', view='litters') }}">View litters</a>
     </header>
     {% if weanings %}
@@ -100,7 +100,7 @@
       </div>
     {% else %}
       <div class="empty-state">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#baby"></use></svg>
+        {{ icon('baby') }}
         <p>No weanings due in the next week.</p>
       </div>
     {% endif %}
@@ -109,7 +109,7 @@
   {# Genotyping queue #}
   <article class="card flex flex-col">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#microscope"></use></svg> Genotyping queue</h2>
+      <h2>{{ icon('microscope') }} Genotyping queue</h2>
       <a class="card-head-link" href="{{ url_for('colony', view='mice') }}">View mice</a>
     </header>
     {% if geno_queue %}
@@ -126,7 +126,7 @@
       </div>
     {% else %}
       <div class="empty-state">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#microscope"></use></svg>
+        {{ icon('microscope') }}
         <p>Nothing waiting on genotyping.</p>
       </div>
     {% endif %}
@@ -215,7 +215,7 @@
   {# Upcoming events #}
   <article class="card flex flex-col">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg> Next 14 days</h2>
+      <h2>{{ icon('calendar') }} Next 14 days</h2>
       <a class="card-head-link" href="{{ url_for('calendar') }}">Open calendar</a>
     </header>
     {% if events_list %}
@@ -232,7 +232,7 @@
       </div>
     {% else %}
       <div class="empty-state">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg>
+        {{ icon('calendar') }}
         <p>No events scheduled in the next 2 weeks.</p>
       </div>
     {% endif %}
@@ -243,7 +243,7 @@
 <section class="mt-3">
   <article class="card flex flex-col">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#cart"></use></svg> Recent orders</h2>
+      <h2>{{ icon('cart') }} Recent orders</h2>
       <a class="card-head-link" href="{{ url_for('orders') }}">View all</a>
     </header>
     {% if orders_list %}
@@ -260,7 +260,7 @@
       </div>
     {% else %}
       <div class="empty-state">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#cart"></use></svg>
+        {{ icon('cart') }}
         <p>No orders yet. <a href="{{ url_for('orders') }}">Create one</a>.</p>
       </div>
     {% endif %}
