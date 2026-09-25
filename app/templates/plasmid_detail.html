@@ -67,7 +67,7 @@
       <summary>{{ icon('upload') }} Replace the sequence from a file</summary>
       <form method="post" action="{{ url_for('plasmid_upload_sequence', row_id=plasmid.row_id) }}"
             enctype="multipart/form-data" class="flex flex-col gap-3 px-4 py-3.5"
-            {% if plasmid.length_bp %}onsubmit="return confirm('Replace the {{ plasmid.length_bp }} bp sequence and its {{ plasmid.features|length }} feature(s) of plasmid #{{ plasmid.plasmid_id }}? The old one stays in the audit history.')"{% endif %}>
+            {% if plasmid.length_bp %}data-confirm="Replace the {{ plasmid.length_bp }} bp sequence and its {{ plasmid.features|length }} feature(s) of plasmid #{{ plasmid.plasmid_id }}? The old one stays in the audit history."{% endif %}>
         <label class="field-label">SnapGene .dna, GenBank .gb / .gbk, or FASTA
           <input type="file" name="file" accept=".dna,.fasta,.fa,.gb,.gbk,.txt" class="mt-1.5 text-[12.5px] normal-case tracking-normal">
         </label>
@@ -81,7 +81,7 @@
 
     {% if plasmid.length_bp %}
       <form method="post" action="{{ url_for('plasmid_clear_sequence', row_id=plasmid.row_id) }}" class="mt-3"
-            onsubmit="return confirm('Clear the whole {{ plasmid.length_bp }} bp sequence of plasmid #{{ plasmid.plasmid_id }}? The old one stays in the audit history.')">
+            data-confirm="Clear the whole {{ plasmid.length_bp }} bp sequence of plasmid #{{ plasmid.plasmid_id }}? The old one stays in the audit history.">
         <input type="hidden" name="confirm" value="1">
         <button type="submit" class="btn btn-ghost btn-sm text-danger-700">{{ icon('trash') }} Clear sequence</button>
       </form>
