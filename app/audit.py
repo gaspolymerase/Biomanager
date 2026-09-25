@@ -33,7 +33,7 @@ TRACKED_TABLES = {
     "tanks", "fish", "fish_lines", "clutches", "water_systems", "fish_racks", "fish_sac_log",
     "organisms", "organism_housing", "organism_lines", "organism_cohorts",
     "organism_crosses", "organism_modules", "organism_module_fields",
-    "organism_preservation", "users",
+    "organism_preservation", "organism_genotypes", "users",
     "inventory_modules", "inventory_items", "inventory_racks", "mouse_racks",
     "stock_modules", "stock_incubators", "stock_racks", "stock_genotypes", "stock_units",
     "stock_frozen",

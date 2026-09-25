@@ -189,22 +189,39 @@
     /* The value a row sorts by: an editable cell of that name if the row
        has one (so a sort reflects edits made since the page loaded),
        otherwise the data-* attribute. */
+    /* A cell can also carry its own sort value, for columns rendered as
+       text rather than inputs (e.g. a database's custom fields):
+       <td data-sort-for="attr_size" data-sort-value="12.5">. */
     _sortValue(tr, key) {
       const cell = tr.querySelector(`[name="${key}"]`);
       if (cell) return String(cell.value || '');
+      const valued = tr.querySelector(`[data-sort-for="${key}"]`);
+      if (valued) return valued.dataset.sortValue || '';
       return tr.dataset[key] || '';
     }
 
+    /* th[data-sort-type]: "number" compares numerically, "date" and
+       "text" as text (ISO dates sort correctly that way). Without it the
+       column is guessed: numbers numerically, anything else as text. */
     _applySort() {
       const key = this.sortKey;
       const dir = this.sortDir;
+      const th = this.table && Array.from(this.table.querySelectorAll('th.dt-sortable'))
+        .find((h) => h.dataset.sortKey === key);
+      const type = (th && th.dataset.sortType) || '';
+      const isoDate = /^\d{4}-\d{2}-\d{2}/;
       this.filtered.sort((a, b) => {
         const av = this._sortValue(a, key);
         const bv = this._sortValue(b, key);
         // Empty cells sink to the bottom whichever way the sort runs.
         if (!av.trim() !== !bv.trim()) return av.trim() ? -1 : 1;
+        if (type === 'date' || type === 'text' || (isoDate.test(av) && isoDate.test(bv))) {
+          return av.localeCompare(bv, undefined, { numeric: type === 'text' }) * dir;
+        }
         const aNum = parseFloat(av), bNum = parseFloat(bv);
         if (!isNaN(aNum) && !isNaN(bNum) && av.trim() && bv.trim()) return (aNum - bNum) * dir;
+        // A number column with a non-number in it: numbers first.
+        if (type === 'number' && isNaN(aNum) !== isNaN(bNum)) return isNaN(aNum) ? 1 : -1;
         return av.localeCompare(bv) * dir;
       });
     }

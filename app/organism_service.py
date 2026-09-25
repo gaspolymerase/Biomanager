@@ -15,7 +15,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
+from sqlalchemy.orm import Session
 
 from .models import (
     ModuleField,
@@ -23,6 +24,7 @@ from .models import (
     OrgCross,
     OrgDue,
     OrgEvent,
+    OrgGenotype,
     OrgHousing,
     OrgLine,
     OrgLocation,
@@ -572,6 +574,108 @@ def next_code(session, module: OrganismModule, entity: str) -> str:
     return f"{prefix}{highest + 1:03d}"
 
 
+def code_sequence(first: str, count: int) -> list[str]:
+    """`count` consecutive codes starting at `first`: M-009 → M-009, M-010,
+    M-011 (zero padding kept). A code with no number at the end gets one:
+    TANK → TANK-01, TANK-02."""
+    first = (first or "").strip()
+    if count <= 1 or not first:
+        return [first] * max(count, 1)
+    match = re.search(r"(\d+)$", first)
+    if match is None:
+        width = max(2, len(str(count)))
+        return [f"{first}-{n:0{width}d}" for n in range(1, count + 1)]
+    stem, digits = first[:match.start()], match.group(1)
+    start = int(digits)
+    return [f"{stem}{start + n:0{len(digits)}d}" for n in range(count)]
+
+
+def codes_in_use(session, model, module_id: int, codes) -> list[str]:
+    """Which of `codes` already name a record of this kind in the module."""
+    wanted = [c for c in codes if c]
+    if not wanted:
+        return []
+    taken = set(session.scalars(select(model.code).where(
+        model.module_id_fk == module_id, model.code.in_(wanted))).all())
+    return [c for c in wanted if c in taken]
+
+
+# ---------------------------------------------------------------------------
+# Genotyping
+#
+# A call is an OrgGenotype row against a subject (usually an animal record,
+# sometimes a housing unit when a whole tank or vial was typed together).
+# The subject's own `genotype` text is left as the person typed it; the
+# latest call is shown beside it.
+# ---------------------------------------------------------------------------
+
+ZYGOSITIES = ("het", "hom", "wt", "hemi", "carrier", "trans-het", "unknown")
+
+
+def organism_label(o: Organism) -> str:
+    return o.code or f"#{o.id}"
+
+
+def latest_calls(session, module_id: int, kind: str = "organism") -> dict[int, OrgGenotype]:
+    """The most recent call per subject of one kind."""
+    rows = session.scalars(select(OrgGenotype).where(
+        OrgGenotype.module_id_fk == module_id, OrgGenotype.subject_kind == kind)
+        .order_by(OrgGenotype.called_on, OrgGenotype.id)).all()
+    latest: dict[int, OrgGenotype] = {}
+    for row in rows:
+        latest[row.subject_id] = row
+    return latest
+
+
+def genotype_assays(session, module_id: int) -> list[str]:
+    """Assays used before in this module, most recent first."""
+    seen: list[str] = []
+    for assay in session.scalars(select(OrgGenotype.assay).where(
+            OrgGenotype.module_id_fk == module_id, OrgGenotype.assay != "")
+            .order_by(OrgGenotype.id.desc())):
+        if assay not in seen:
+            seen.append(assay)
+    return seen
+
+
+def resolve_genotype_subject(session, module: OrganismModule, text: str):
+    """(kind, row) for what a person typed as the subject of a call: an
+    animal's code, "#<id>" for an uncoded group, or a housing unit's code.
+    (None, None) when nothing in this module answers to it."""
+    text = (text or "").strip()
+    if not text:
+        return None, None
+    if re.fullmatch(r"#\d+", text):
+        row = session.get(Organism, int(text[1:]))
+        if row is not None and row.module_id_fk == module.id:
+            return "organism", row
+        return None, None
+    matches = session.scalars(select(Organism).where(
+        Organism.module_id_fk == module.id,
+        func.lower(Organism.code) == text.lower()).order_by(Organism.id.desc())).all()
+    if matches:
+        mv = view(module)
+        alive = [o for o in matches if mv.is_alive(o)]
+        return "organism", (alive or matches)[0]
+    unit = session.scalar(select(OrgHousing).where(
+        OrgHousing.module_id_fk == module.id,
+        func.lower(OrgHousing.code) == text.lower()).order_by(OrgHousing.id.desc()))
+    if unit is not None:
+        return "housing", unit
+    return None, None
+
+
+def safe_link(raw: str) -> str | None:
+    """A gel image link, if it is one: http(s) or a path on this server.
+    None for anything else (javascript:, data:, …)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if re.match(r"^https?://\S+$", raw, re.I) or (raw.startswith("/") and not raw.startswith("//")):
+        return raw[:300]
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Derived schedule
 #
@@ -679,7 +783,100 @@ def recompute_due(session, module: OrganismModule) -> int:
             row.due_on, row.assigned_to = due_on, owner
     for row in open_rows.values():
         session.delete(row)
+    mark_schedule_fresh(session, module.id)
     return created
+
+
+# ---------------------------------------------------------------------------
+# Schedule freshness
+#
+# OrgDue rows are the materialised schedule. Every write route recomputes
+# them in the same transaction, so the home page can read them as they are
+# rather than rebuilding every module's schedule on each load. It only
+# recomputes a module when the rows may be stale:
+#
+#   * something changed one of the module's records (or the module) in a
+#     transaction that did not recompute it — an undo, an import, any code
+#     path outside organism_routes. A flush listener notices and marks the
+#     module dirty when that transaction commits;
+#   * or the last recompute was not today (a once-a-day safety net).
+#
+# The state is one app_settings row per module: the ISO date of the last
+# recompute, or "" when dirty.
+# ---------------------------------------------------------------------------
+
+SCHEDULE_KEY = "org_schedule_fresh:{}"
+_TOUCHED = "org_schedule_touched"
+
+
+def _put_setting(session, key: str, value: str) -> None:
+    """inventory_service.set_setting, but also finding a row added earlier
+    in this (unflushed: the app's sessions do not autoflush) transaction,
+    so recomputing one module twice before a flush cannot insert it twice."""
+    from .inventory_service import set_setting
+    from .models import AppSetting
+    pending = next((o for o in session.new if isinstance(o, AppSetting) and o.key == key), None)
+    if pending is not None:
+        pending.value = value
+    else:
+        set_setting(session, key, value)
+
+
+def mark_schedule_fresh(session, module_id: int) -> None:
+    _put_setting(session, SCHEDULE_KEY.format(module_id), date.today().isoformat())
+    session.info.get(_TOUCHED, set()).discard(module_id)
+
+
+def mark_schedule_dirty(session, module_id: int) -> None:
+    _put_setting(session, SCHEDULE_KEY.format(module_id), "")
+
+
+def schedule_is_fresh(session, module_id: int) -> bool:
+    from .inventory_service import get_setting
+    return get_setting(session, SCHEDULE_KEY.format(module_id)) == date.today().isoformat()
+
+
+def _touched_module_id(obj):
+    if isinstance(obj, OrganismModule):
+        return obj.id
+    if isinstance(obj, (Organism, OrgHousing, OrgLine, OrgCohort)):
+        return getattr(obj, "module_id_fk", None)
+    return None
+
+
+@event.listens_for(Session, "after_flush")
+def _note_schedule_inputs(session, flush_context):
+    """Remember which modules' records this transaction wrote, so a commit
+    that did not recompute their schedule can mark it stale."""
+    touched = None
+    for obj in list(session.new) + list(session.dirty) + list(session.deleted):
+        module_id = _touched_module_id(obj)
+        if module_id:
+            if touched is None:
+                touched = session.info.setdefault(_TOUCHED, set())
+            touched.add(module_id)
+
+
+@event.listens_for(Session, "before_commit")
+def _flag_stale_schedules(session):
+    # Flush first (the app's sessions do not autoflush) so writes still
+    # pending at commit are seen too.
+    if session.new or session.dirty or session.deleted:
+        session.flush()
+    if not session.info.get(_TOUCHED):
+        return
+    touched = session.info.pop(_TOUCHED, set())
+    if not touched:
+        return
+    with session.no_autoflush:
+        for module_id in touched:
+            if session.get(OrganismModule, module_id) is not None:
+                mark_schedule_dirty(session, module_id)
+
+
+@event.listens_for(Session, "after_soft_rollback")
+def _forget_schedule_inputs(session, previous_transaction):
+    session.info.pop(_TOUCHED, None)
 
 
 def due_items(session, module: OrganismModule, horizon_days: int = 14, include_done: bool = False):
@@ -1025,8 +1222,11 @@ def home_due(session, horizon_days: int = 2) -> list[dict]:
         mv = view(module)
         if not mv.has("schedule") or not mv.schedule_rules:
             continue
-        recompute_due(session, module)
-        session.flush()
+        # The materialised rows are current unless something changed them
+        # behind the schedule's back, or they were last built before today.
+        if not schedule_is_fresh(session, module.id):
+            recompute_due(session, module)
+            session.flush()
         for item in due_items(session, module, horizon_days=horizon_days):
             items.append({
                 "module": mv.label, "key": mv.key, "icon": item["icon"],
