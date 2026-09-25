@@ -153,6 +153,41 @@
     {% endif %}
   </article>
 
+  {# Zebrafish: mating tanks due back, tanks waiting on genotyping #}
+  {% if zebrafish_due.any %}
+    <article class="card flex flex-col">
+      <header class="card-head">
+        <h2>{{ icon('fish') }} Zebrafish</h2>
+        <a class="card-head-link" href="{{ url_for('zebrafish', view='tanks') }}">Open tanks</a>
+      </header>
+      {% if zebrafish_due.mating or zebrafish_due.geno %}
+        <div class="flex flex-col">
+          {% for t in zebrafish_due.mating %}
+            <a class="row-line" href="{{ url_for('zebrafish', view='tanks') }}#tank-{{ t.id }}">
+              <span class="w-20 shrink-0 text-[12px] font-semibold {% if t.overdue %}text-danger-700{% else %}text-warn-700{% endif %}">{{ t.due | relative_day }}</span>
+              <span class="min-w-0 flex-1 truncate text-ink-soft">Return mating tank <span class="ident">{{ t.tank_id }}</span></span>
+              {% if t.owner %}{{ t.owner | owner_badge }}{% endif %}
+            </a>
+          {% endfor %}
+          {% for t in zebrafish_due.geno %}
+            <a class="row-line" href="{{ url_for('zebrafish', view='tanks', mode='geno') }}">
+              <span class="w-20 shrink-0 text-[12px] font-semibold text-muted">Genotype</span>
+              <span class="min-w-0 flex-1 truncate text-ink-soft"><span class="ident">{{ t.tank_id }}</span>{% if t.line %} · {{ t.line }}{% endif %}</span>
+              {% if t.owner %}{{ t.owner | owner_badge }}{% endif %}
+            </a>
+          {% endfor %}
+          {% if zebrafish_due.geno_total > zebrafish_due.geno|length %}
+            <a class="row-line text-[12px] text-muted" href="{{ url_for('zebrafish', view='tanks', mode='geno') }}">
+              and {{ zebrafish_due.geno_total - zebrafish_due.geno|length }} more in the genotyping queue
+            </a>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="empty-state">{{ icon('fish') }}<p>No mating tanks due back and nothing waiting on genotyping.</p></div>
+      {% endif %}
+    </article>
+  {% endif %}
+
   {# Upcoming events #}
   <article class="card flex flex-col">
     <header class="card-head">

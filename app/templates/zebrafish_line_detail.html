@@ -65,7 +65,7 @@
           <li class="flex items-center gap-2 px-4 py-2.5">
             <span class="ident font-semibold text-ink">{{ t.tank_id }}</span>
             <span class="status-pill-static" data-status="{{ t.purpose }}">{{ t.purpose }}</span>
-            {% if t.rack %}<span class="ml-auto text-[12px] text-muted">{{ t.rack.name }}</span>{% endif %}
+            {% if t.rack %}<span class="ml-auto text-[12px] text-muted">{{ t.rack.name }}{% if tank_positions.get(t.id) %} · {{ tank_positions[t.id] }}{% endif %}</span>{% endif %}
           </li>
         {% endfor %}
       </ul>

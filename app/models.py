@@ -619,6 +619,8 @@ class FishRecord(Base):
     sex: Mapped[str] = mapped_column(String(20), default="mixed")
     status: Mapped[str] = mapped_column(String(40), default="alive")
     date_of_fertilization: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Set when the status turns sac (today, editable); cleared on revival.
+    sac_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     clutch_id_fk: Mapped[int | None] = mapped_column(ForeignKey("clutches.id"), nullable=True)
     genotype: Mapped[str] = mapped_column(String(200), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
@@ -674,6 +676,8 @@ class FishSacLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tank_id_fk: Mapped[int | None] = mapped_column(ForeignKey("tanks.id"), nullable=True)
     line_id_fk: Mapped[int | None] = mapped_column(ForeignKey("fish_lines.id"), nullable=True)
+    # The fish row whose status change wrote this entry; reviving it removes it.
+    fish_id_fk: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     count: Mapped[int] = mapped_column(Integer, default=1)
     reason: Mapped[str] = mapped_column(String(200), default="")
     recorded_by: Mapped[str] = mapped_column(String(80), default="")

@@ -30,7 +30,7 @@ from .models import AuditEntry, BatchRecord
 TRACKED_TABLES = {
     "mice", "mouse_cages", "litters", "strains", "plasmids", "orders",
     "samples", "animals", "experiments", "experiment_mice",
-    "tanks", "fish", "fish_lines", "clutches", "water_systems", "fish_racks",
+    "tanks", "fish", "fish_lines", "clutches", "water_systems", "fish_racks", "fish_sac_log",
     "organisms", "organism_housing", "organism_lines", "organism_cohorts",
     "organism_crosses", "organism_modules", "organism_module_fields",
     "organism_preservation", "users",

@@ -1076,6 +1076,7 @@ def home_dashboard():
 
     return render_template(
         "home.html",
+        zebrafish_due=zebrafish_home_summary(),
         stock_due=stock_due[:12],
         stock_due_total=len(stock_due),
         greeting=greeting,
@@ -3731,6 +3732,36 @@ def global_search():
                 "url": url_for("stocks.module", key=mv.key),
             })
 
+        # Zebrafish tanks, lines and clutches.
+        for t in db_session.scalars(
+                select(TankRecord).options(joinedload(TankRecord.line))
+                .where(TankRecord.tank_id.ilike(like) | TankRecord.card_id.ilike(like)
+                       | TankRecord.owner.ilike(like) | TankRecord.notes.ilike(like))
+                .order_by(TankRecord.tank_id).limit(limit)).all():
+            results.append({
+                "type": "tank", "id": t.id, "label": f"Tank {t.tank_id}",
+                "sublabel": " · ".join(filter(None, [t.purpose, t.line.name if t.line else "", t.owner])),
+                "url": url_for("zebrafish", view="tanks") + f"#tank-{t.id}",
+            })
+        for ln in db_session.scalars(
+                select(FishLine).where(FishLine.name.ilike(like) | FishLine.zfin_name.ilike(like)
+                                       | FishLine.allele.ilike(like) | FishLine.transgene_summary.ilike(like))
+                .order_by(FishLine.name).limit(limit)).all():
+            results.append({
+                "type": "fish-line", "id": ln.id, "label": ln.name,
+                "sublabel": " · ".join(filter(None, ["Zebrafish line", ln.zfin_name, ln.background])),
+                "url": url_for("zebrafish_line_detail", line_id=ln.id),
+            })
+        for c in db_session.scalars(
+                select(ClutchRecord).where(ClutchRecord.clutch_id.ilike(like) | ClutchRecord.notes.ilike(like))
+                .order_by(ClutchRecord.date_of_fertilization.desc()).limit(limit)).all():
+            results.append({
+                "type": "clutch", "id": c.id, "label": f"Clutch {c.clutch_id}",
+                "sublabel": " · ".join(filter(None, [c.date_of_fertilization.isoformat() if c.date_of_fertilization else "",
+                                                     f"{c.embryo_count} embryos" if c.embryo_count else "", c.owner])),
+                "url": url_for("zebrafish", view="clutches") + f"#clutch-{c.id}",
+            })
+
         # Notebook pages — owner-scoped.
         page_stmt = (
             select(NotebookPage)
@@ -4793,7 +4824,16 @@ def utilities():
 # ZEBRAFISH MODULE — parallel to the mouse colony.
 # ---------------------------------------------------------------------------
 
-ZEBRAFISH_VIEWS = ("tanks", "fish", "clutches", "lines", "racks", "water", "genotyping", "sac")
+ZEBRAFISH_VIEWS = ("tanks", "fish", "clutches", "lines", "water")
+# Older view names, still in bookmarks and reminders, and where they live now.
+ZEBRAFISH_VIEW_ALIASES = {"racks": "grid", "genotyping": "geno", "sac": "table"}
+
+# Statuses that mean the fish are gone. Setting one stamps the sac date and
+# writes a sac-log entry; going back to a living status undoes both, the
+# way a mouse's date of death follows its status.
+FISH_DEAD_STATUSES = {"sac", "dead"}
+# Tank purposes the whole lab works out of, like the mouse breeder cages.
+FISH_SHARED_PURPOSES = {"breeding", "shared"}
 
 
 def _fish_age_label(dof):
@@ -4815,13 +4855,174 @@ def _fish_age_label(dof):
     return f"{years}ypf"
 
 
+# ---- Rules shared by every zebrafish write ---------------------------------
+
+
+def zf_tank_shared(tank) -> bool:
+    return (getattr(tank, "purpose", "") or "").strip().lower() in FISH_SHARED_PURPOSES
+
+
+def zf_can_edit(record) -> bool:
+    """access.can_edit for fish records. A tank is editable when it is
+    yours, unowned or a shared breeding tank; a fish row follows its tank.
+    Lines, racks and water systems carry no owner and stay open to the lab."""
+    if isinstance(record, FishRecord):
+        record = record.tank or record
+    if isinstance(record, TankRecord):
+        return access.can_edit(record, shared=zf_tank_shared(record))
+    return access.can_edit(record)
+
+
+def zf_denied(record) -> str:
+    """Why a record is read only, in words worth showing."""
+    if isinstance(record, FishRecord) and record.tank is not None:
+        record = record.tank
+    owner = (getattr(record, "owner", "") or "").strip() or "someone else"
+    if isinstance(record, TankRecord):
+        what = f"Tank {record.tank_id} and its fish belong"
+    elif isinstance(record, ClutchRecord):
+        what = f"Clutch {record.clutch_id} belongs"
+    else:
+        what = "That record belongs"
+    return f"{what} to {owner}. Ask them, or an admin, to make the change."
+
+
+def fish_alive(fish) -> bool:
+    return (fish.status or "alive").strip().lower() not in FISH_DEAD_STATUSES and fish.sac_date is None
+
+
+def zf_reply(view: str, error: str = "", row=None, status: int = 409, **args):
+    """Answer a zebrafish write. Autosave (sheet.js, the rack grid) gets
+    JSON; a form post goes back where it came from, or to the zebrafish
+    view it belongs to — never the colony."""
+    if request.headers.get("X-Autosave") == "1":
+        if error:
+            return jsonify({"ok": False, "error": error}), status
+        return jsonify({"ok": True, **({"row": row} if row is not None else {})})
+    if error:
+        flash(error, "error")
+    referrer = request.referrer or ""
+    if referrer.startswith(request.host_url):
+        return redirect(referrer)
+    return redirect(url_for("zebrafish", view=view, **args))
+
+
+class ZfInputError(ValueError):
+    """A typed value that cannot be saved; the message says why."""
+
+
+def zf_int(form, name: str, label: str, default=None, lo=None, hi=None):
+    raw = (form.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ZfInputError(f"{label} must be a whole number, not “{raw}”.") from None
+    if lo is not None and value < lo:
+        raise ZfInputError(f"{label} can’t be less than {lo}.")
+    if hi is not None and value > hi:
+        raise ZfInputError(f"{label} can’t be more than {hi}.")
+    return value
+
+
+def zf_float(form, name: str, label: str):
+    raw = (form.get(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        raise ZfInputError(f"{label} must be a number, not “{raw}”.") from None
+
+
+def zf_date(form, name: str, label: str):
+    raw = (form.get(name) or "").strip()
+    if not raw:
+        return None
+    value = parse_date(raw)
+    if value is None:
+        raise ZfInputError(f"{label}: “{raw}” is not a date.")
+    return value
+
+
+def zf_ref(s, model, raw, label: str):
+    """The id of an existing row; None for blank. A missing row is an
+    error rather than a dangling id."""
+    raw = str(raw or "").strip()
+    if not raw:
+        return None
+    row = s.get(model, int(raw)) if raw.isdigit() else None
+    if row is None:
+        raise ZfInputError(f"That {label} no longer exists. Reload the page.")
+    return row.id
+
+
+def zf_choice(raw, allowed, label: str, current=None) -> str:
+    """One of the allowed values (any case), or the record's own existing
+    value unchanged, so a custom status from before is not lost."""
+    raw = (raw or "").strip()
+    for option in allowed:
+        if raw.lower() == option.lower():
+            return option
+    if current is not None and raw == (current or ""):
+        return raw
+    raise ZfInputError(f"{label} must be one of: {', '.join(allowed)}.")
+
+
+def zf_next_code(s, column, prefix: str, width: int = 0) -> str:
+    """The next code after the highest one in use, so deleting a record
+    never hands its ID to the next one (a printed tank card still says it)."""
+    pattern = re.compile(re.escape(prefix) + r"(\d+)$")
+    numbers = [int(m.group(1)) for code in s.scalars(select(column).where(column.like(f"{prefix}%")))
+               if (m := pattern.match(code or ""))]
+    return f"{prefix}{max(numbers, default=0) + 1:0{width}d}"
+
+
+def zf_unique(s, column, raw, noun: str, own_id=None, max_len: int = 80) -> str:
+    """A required, unique identifier (tank ID, clutch ID, line name)."""
+    value = (raw or "").strip()
+    if not value:
+        raise ZfInputError(f"A {noun} needs a name." if noun == "line" else f"A {noun} needs an ID.")
+    if len(value) > max_len:
+        raise ZfInputError(f"Keep the {noun} {'name' if noun == 'line' else 'ID'} under {max_len} characters.")
+    model = column.class_
+    clash = s.scalar(select(model.id).where(column == value, model.id != (own_id or 0)))
+    if clash is not None:
+        raise ZfInputError(f"{value} is already used by another {noun}.")
+    return value
+
+
+def zf_selected(s, model, form) -> list:
+    ids = [int(v) for v in form.getlist("selected_ids") if v.isdigit()]
+    return list(s.scalars(select(model).where(model.id.in_(ids)))) if ids else []
+
+
+def zf_report(changed: int, skipped: int, what: str, noun: str, plural: str, blocked: list | None = None) -> None:
+    """Flash a batch result: applied to what you may edit, the rest counted."""
+    blocked = blocked or []
+    if changed:
+        flash(f"{what}: {changed} {noun if changed == 1 else plural}."
+              + (f" {skipped} skipped — not yours to edit." if skipped else ""), "success")
+    elif skipped:
+        flash(f"Nothing changed — {skipped} {noun if skipped == 1 else plural} are not yours to edit.", "error")
+    elif not blocked:
+        flash("Nothing was selected.", "error")
+    for reason in blocked[:5]:
+        flash(reason, "error")
+
+
+# ---- Page ------------------------------------------------------------------
+
+
 def _zebrafish_context(active_view: str):
+    me = access.username()
+    today = date.today()
     with SessionLocal() as s:
         systems = s.scalars(select(WaterSystem).order_by(WaterSystem.name)).all()
         racks = s.scalars(select(FishRack).order_by(FishRack.name)).all()
         lines = s.scalars(select(FishLine).order_by(FishLine.name)).all()
-        # Eager-load tank.line + tank.rack + tank.fish so the template can read
-        # them after the session closes without DetachedInstanceError.
+        # Eager-load what the template reads after the session closes.
         tanks = s.scalars(
             select(TankRecord)
             .options(joinedload(TankRecord.line),
@@ -4830,66 +5031,151 @@ def _zebrafish_context(active_view: str):
             .order_by(TankRecord.tank_id)
         ).unique().all()
         fish = s.scalars(
-            select(FishRecord).options(joinedload(FishRecord.line))
+            select(FishRecord).options(joinedload(FishRecord.line), joinedload(FishRecord.tank))
             .order_by(FishRecord.id.desc()).limit(500)
         ).all()
         clutches = s.scalars(
             select(ClutchRecord).options(joinedload(ClutchRecord.line))
             .order_by(ClutchRecord.date_of_fertilization.desc()).limit(200)
         ).all()
+        tank_by_id = {t.id: t for t in tanks}
 
-        # Decorate clutches with derived dates + age.
-        clutch_rows = []
-        for c in clutches:
-            tank_up = c.date_of_fertilization + timedelta(days=5) if c.date_of_fertilization else None
-            fin_clip = c.date_of_fertilization + timedelta(days=30) if c.date_of_fertilization else None
-            adult = c.date_of_fertilization + timedelta(days=90) if c.date_of_fertilization else None
-            clutch_rows.append({
-                "row": c,
-                "age": _fish_age_label(c.date_of_fertilization),
-                "tank_up": tank_up,
-                "fin_clip": fin_clip,
-                "adult": adult,
-            })
+        # What refers to what, for delete confirmations that say what goes.
+        parent_refs, clutch_line_refs = {}, {}
+        for fa, mo, ln in s.execute(select(ClutchRecord.father_tank_id, ClutchRecord.mother_tank_id,
+                                           ClutchRecord.line_id_fk)):
+            for tid in {fa, mo} - {None}:
+                parent_refs[tid] = parent_refs.get(tid, 0) + 1
+            if ln:
+                clutch_line_refs[ln] = clutch_line_refs.get(ln, 0) + 1
+        sac_refs = dict(s.execute(select(FishSacLog.tank_id_fk, func.count(FishSacLog.id))
+                                  .group_by(FishSacLog.tank_id_fk)).all())
+        fish_line_refs = dict(s.execute(select(FishRecord.line_id_fk, func.count(FishRecord.id))
+                                        .group_by(FishRecord.line_id_fk)).all())
+        clutch_fish_refs = dict(s.execute(select(FishRecord.clutch_id_fk, func.count(FishRecord.id))
+                                          .group_by(FishRecord.clutch_id_fk)).all())
+        live_by_line = {}
+        for fl, tl, n in s.execute(select(FishRecord.line_id_fk, TankRecord.line_id_fk, FishRecord.count)
+                                   .join(TankRecord, FishRecord.tank_id_fk == TankRecord.id)
+                                   .where(FishRecord.sac_date.is_(None))
+                                   .where(func.lower(func.coalesce(FishRecord.status, "alive")).not_in(sorted(FISH_DEAD_STATUSES)))):
+            key = fl or tl
+            if key:
+                live_by_line[key] = live_by_line.get(key, 0) + (n or 0)
+        mating_refs = {}
+        for t in tanks:
+            for tid in {t.mating_father_tank_id, t.mating_mother_tank_id} - {None}:
+                mating_refs[tid] = mating_refs.get(tid, 0) + 1
 
-        # Per-tank rollup: fish count + most-recent water reading for context.
+        # ---- Tanks ----
         tank_rows = []
         for t in tanks:
-            total = sum(f.count for f in t.fish if (f.status or "alive").lower() == "alive")
-            tank_rows.append({"row": t, "total_fish": total, "position": fish_position_label(t)})
+            total = sum(f.count or 0 for f in t.fish if fish_alive(f))
+            editable = zf_can_edit(t)
+            position = fish_position_label(t)
+            refs = [(parent_refs.get(t.id, 0), "clutch", "clutches", "will no longer name it as a parent"),
+                    (mating_refs.get(t.id, 0), "mating tank", "mating tanks", "will lose it as a parent"),
+                    (sac_refs.get(t.id, 0), "sac-log entry", "sac-log entries", "will lose its tank")]
+            affected = "; ".join(f"{n} {one if n == 1 else many} {what}" for n, one, many, what in refs if n)
+            tank_rows.append({
+                "row": t, "total_fish": total, "position": position, "editable": editable,
+                "mine": t.owner == me, "shared": zf_tank_shared(t), "fish_rows": len(t.fish),
+                "confirm": f"Delete tank {t.tank_id}?" + (f" {affected[0].upper()}{affected[1:]}." if affected else ""),
+                "payload": {
+                    "id": t.id, "_label": t.tank_id, "_locked": not editable, "tank_id": t.tank_id,
+                    "purpose": t.purpose, "line_id_fk": t.line_id_fk or "", "owner": t.owner,
+                    "rack_id_fk": t.rack_id_fk or "", "position": position, "card_id": t.card_id,
+                    "notes": t.notes, "active": "1" if t.active else "0",
+                    "rack_id_fk_was": t.rack_id_fk or "", "position_was": position, "owner_was": t.owner},
+            })
+
+        # ---- Fish ----
+        fish_rows = []
+        for f in fish:
+            tank = f.tank
+            editable = zf_can_edit(f)
+            days = (today - f.date_of_fertilization).days if f.date_of_fertilization else None
+            fish_rows.append({
+                "row": f, "tank": tank, "alive": fish_alive(f), "editable": editable,
+                "mine": bool(tank and tank.owner == me), "owner": tank.owner if tank else "",
+                "age": _fish_age_label(f.date_of_fertilization), "age_days": days if days is not None and days >= 0 else "",
+                "payload": {
+                    "id": f.id, "_label": f.individual_id or f"#{f.id}", "_locked": not editable,
+                    "tank_id_fk": f.tank_id_fk, "line_id_fk": f.line_id_fk or "", "count": f.count,
+                    "individual_id": f.individual_id, "sex": f.sex, "status": f.status,
+                    "date_of_fertilization": f.date_of_fertilization.isoformat() if f.date_of_fertilization else "",
+                    "sac_date": f.sac_date.isoformat() if f.sac_date else "",
+                    "genotype": f.genotype, "notes": f.notes},
+            })
+
+        # ---- Clutches: derived dates + age ----
+        clutch_rows = []
+        for c in clutches:
+            dof = c.date_of_fertilization
+            editable = zf_can_edit(c)
+            n_fish = clutch_fish_refs.get(c.id, 0)
+            clutch_rows.append({
+                "row": c,
+                "age": _fish_age_label(dof),
+                "age_days": (today - dof).days if dof else "",
+                "tank_up": dof + timedelta(days=5) if dof else None,
+                "fin_clip": dof + timedelta(days=30) if dof else None,
+                "adult": dof + timedelta(days=90) if dof else None,
+                "father": tank_by_id[c.father_tank_id].tank_id if c.father_tank_id in tank_by_id else "",
+                "mother": tank_by_id[c.mother_tank_id].tank_id if c.mother_tank_id in tank_by_id else "",
+                "editable": editable, "mine": c.owner == me,
+                "confirm": f"Delete clutch {c.clutch_id}?"
+                           + (f" {n_fish} fish row{'' if n_fish == 1 else 's'} will no longer name it." if n_fish else ""),
+                "payload": {
+                    "id": c.id, "_label": c.clutch_id, "_locked": not editable, "clutch_id": c.clutch_id,
+                    "date_of_fertilization": dof.isoformat() if dof else "", "line_id_fk": c.line_id_fk or "",
+                    "father_tank_id": c.father_tank_id or "", "mother_tank_id": c.mother_tank_id or "",
+                    "embryo_count": c.embryo_count, "larvae_count": c.larvae_count, "adults_count": c.adults_count,
+                    "owner": c.owner, "notes": c.notes},
+            })
+
+        # ---- Lines ----
+        line_rows = []
+        children = {}
+        for ln in lines:
+            if ln.parent_line_id_fk:
+                children[ln.parent_line_id_fk] = children.get(ln.parent_line_id_fk, 0) + 1
+        line_by_id = {ln.id: ln for ln in lines}
+        for ln in lines:
+            n_tanks = sum(1 for t in tanks if t.line_id_fk == ln.id)
+            uses = [(n_tanks, "tank", "tanks"), (fish_line_refs.get(ln.id, 0), "fish row", "fish rows"),
+                    (clutch_line_refs.get(ln.id, 0), "clutch", "clutches"),
+                    (children.get(ln.id, 0), "child line", "child lines")]
+            used = ", ".join(f"{n} {one if n == 1 else many}" for n, one, many in uses if n)
+            live = live_by_line.get(ln.id, 0)
+            line_rows.append({
+                "row": ln, "tanks": n_tanks, "live": live, "active": live > 0, "used": used,
+                "parent": line_by_id[ln.parent_line_id_fk].name if ln.parent_line_id_fk in line_by_id else "",
+                "payload": {
+                    "id": ln.id, "_label": ln.name, "name": ln.name, "zfin_name": ln.zfin_name,
+                    "background": ln.background, "transgene_summary": ln.transgene_summary,
+                    "allele": ln.allele, "iacuc_protocol": ln.iacuc_protocol, "founder_info": ln.founder_info,
+                    "parent_line_id_fk": ln.parent_line_id_fk or "", "notes": ln.notes},
+            })
 
         # Per-system most recent water log.
         latest_logs = {}
         for sys_ in systems:
-            log = s.scalar(
-                select(WaterLog)
-                .where(WaterLog.system_id_fk == sys_.id)
-                .order_by(WaterLog.recorded_at.desc())
-                .limit(1)
-            )
-            latest_logs[sys_.id] = log
+            latest_logs[sys_.id] = s.scalar(
+                select(WaterLog).where(WaterLog.system_id_fk == sys_.id)
+                .order_by(WaterLog.recorded_at.desc()).limit(1))
 
-        # Genotyping queue: tanks flagged needs_genotyping=True.
-        geno_queue = s.scalars(
-            select(TankRecord)
-            .options(joinedload(TankRecord.line))
-            .where(TankRecord.needs_genotyping == True)  # noqa: E712
-            .order_by(TankRecord.tank_id)
-        ).all()
-
-        sac_log = s.scalars(
-            select(FishSacLog).order_by(FishSacLog.recorded_at.desc()).limit(100)
-        ).all()
-
-        # Next free IDs. count + 1 collides as soon as anything is deleted.
-        taken_tanks = set(s.scalars(select(TankRecord.tank_id)))
-        next_tank_n = len(taken_tanks) + 1
-        while f"T{next_tank_n:03d}" in taken_tanks:
-            next_tank_n += 1
-        taken_clutches = set(s.scalars(select(ClutchRecord.clutch_id)))
-        next_clutch_n = len(taken_clutches) + 1
-        while f"C{date.today().strftime('%y%m%d')}-{next_clutch_n}" in taken_clutches:
-            next_clutch_n += 1
+        geno_queue = [tr for tr in tank_rows if tr["row"].needs_genotyping]
+        sac_log = s.scalars(select(FishSacLog).order_by(FishSacLog.recorded_at.desc()).limit(100)).all()
+        next_tank_id = zf_next_code(s, TankRecord.tank_id, "T", 3)
+        next_clutch_id = zf_next_code(s, ClutchRecord.clutch_id, f"C{today.strftime('%y%m%d')}-")
+        usernames = current_lab_usernames(s)
+        census = {
+            "tanks": sum(1 for t in tanks if t.active),
+            "fish": sum(f.count or 0 for t in tanks for f in t.fish if fish_alive(f)),
+            "clutches": s.scalar(select(func.count(ClutchRecord.id))) or 0,
+            "lines": len(lines),
+        }
 
     # Rack grid: tanks store 0-based rows/columns; the grid payload is
     # 1-based and the page tells rack-grid.js to convert back.
@@ -4914,48 +5200,74 @@ def _zebrafish_context(active_view: str):
                                              "needs genotyping" if tr["row"].needs_genotyping else ""])),
             "search": " ".join(filter(None, [tr["row"].tank_id, tr["row"].purpose, tr["row"].owner, tr["row"].card_id,
                                              tr["row"].line.name if tr["row"].line else ""])).lower(),
-            "edit": {"data-record-edit": "tank-dialog", "data-record-payload": json.dumps({
-                "id": tr["row"].id, "_label": tr["row"].tank_id, "tank_id": tr["row"].tank_id,
-                "purpose": tr["row"].purpose, "line_id_fk": tr["row"].line_id_fk or "",
-                "owner": tr["row"].owner, "rack_id_fk": tr["row"].rack_id_fk or "",
-                "position": fish_position_label(tr["row"]),
-                "card_id": tr["row"].card_id, "notes": tr["row"].notes})},
+            "edit": {"data-record-edit": "tank-dialog", "data-record-payload": json.dumps(tr["payload"])},
         } for tr in tank_rows],
         "create": {"attrs": {"data-record-edit": "tank-dialog"},
-                   "payload": {"tank_id": f"T{next_tank_n:03d}", "purpose": "stock",
-                               "owner": g.user.username if g.user else ""},
+                   "payload": {"tank_id": next_tank_id, "purpose": "stock", "owner": me, "active": "1"},
                    "rack_field": "rack_id_fk", "text_field": "position"},
     }
 
     return {
-        "active_view": active_view if active_view in ZEBRAFISH_VIEWS else "tanks",
+        "active_view": active_view,
         "zebrafish_views": ZEBRAFISH_VIEWS,
         "fish_racks": fish_racks,
         "tank_purpose_options": TANK_PURPOSE_OPTIONS,
         "fish_sex_options": FISH_SEX_OPTIONS,
         "fish_status_options": FISH_STATUS_OPTIONS,
+        "fish_dead_statuses": sorted(FISH_DEAD_STATUSES),
         "systems": systems,
         "racks": racks,
         "lines": lines,
+        "line_rows": line_rows,
         "tanks": tanks,
         "tank_rows": tank_rows,
-        "fish": fish,
+        "fish_rows": fish_rows,
         "clutch_rows": clutch_rows,
         "latest_logs": latest_logs,
         "geno_queue": geno_queue,
         "sac_log": sac_log,
-        "next_tank_id": f"T{next_tank_n:03d}",
-        "next_clutch_id": f"C{date.today().strftime('%y%m%d')}-{next_clutch_n}",
-        "now_date": date.today(),
-        "today_iso": date.today().isoformat(),
+        "census": census,
+        "usernames": usernames,
+        "me": me,
+        "next_tank_id": next_tank_id,
+        "next_clutch_id": next_clutch_id,
+        "now_date": today,
+        "today_iso": today.isoformat(),
     }
 
 
 @app.route("/zebrafish")
 @login_required
 def zebrafish():
-    active_view = request.args.get("view", "tanks")
-    return render_template("zebrafish.html", **_zebrafish_context(active_view))
+    view = request.args.get("view", "tanks")
+    if view in ZEBRAFISH_VIEW_ALIASES:
+        return redirect(url_for("zebrafish", view="tanks", mode=ZEBRAFISH_VIEW_ALIASES[view]))
+    if view not in ZEBRAFISH_VIEWS:
+        view = "tanks"
+    return render_template("zebrafish.html", **_zebrafish_context(view))
+
+
+def zebrafish_home_summary() -> dict:
+    """The home page's zebrafish card: mating tanks due back, and tanks
+    waiting to be genotyped."""
+    horizon = date.today() + timedelta(days=1)
+    with SessionLocal() as s:
+        mating = s.scalars(
+            select(TankRecord).where(TankRecord.active.is_(True), TankRecord.purpose == "mating",
+                                     TankRecord.mating_return_at.is_not(None),
+                                     TankRecord.mating_return_at <= horizon)
+            .order_by(TankRecord.mating_return_at).limit(8)).all()
+        geno = s.scalars(
+            select(TankRecord).options(joinedload(TankRecord.line))
+            .where(TankRecord.needs_genotyping.is_(True)).order_by(TankRecord.tank_id)).all()
+        return {
+            "any": bool(s.scalar(select(func.count(TankRecord.id)))),
+            "mating": [{"id": t.id, "tank_id": t.tank_id, "due": t.mating_return_at, "owner": t.owner,
+                        "overdue": t.mating_return_at < date.today()} for t in mating],
+            "geno": [{"id": t.id, "tank_id": t.tank_id, "line": t.line.name if t.line else "", "owner": t.owner}
+                     for t in geno[:6]],
+            "geno_total": len(geno),
+        }
 
 
 # ---- Tanks -----------------------------------------------------------------
@@ -4970,16 +5282,48 @@ def fish_position_label(tank) -> str:
     return positions.label(tank.row + 1, tank.col + 1, rack.naming, rack.cols)
 
 
-def apply_fish_position(s, tank, raw) -> str | None:
-    """Set a tank's row/col from a typed position; an error message instead
-    of a guess. Needs the tank's rack to be set first."""
-    raw = (raw or "").strip()
-    if not raw:
-        tank.row = tank.col = None
+def zf_free_cell(s, rack, exclude_id=None):
+    """The first empty (row, col) of a rack, 0-based, or None when full."""
+    taken = {(r, c) for r, c in s.execute(
+        select(TankRecord.row, TankRecord.col).where(
+            TankRecord.rack_id_fk == rack.id, TankRecord.id != (exclude_id or 0)))}
+    for r in range(rack.rows):
+        for c in range(rack.cols):
+            if (r, c) not in taken:
+                return r, c
+    return None
+
+
+def zf_place(tank, rack, row=None, col=None) -> None:
+    """Put a tank in a rack cell (0-based), or no rack. The column is set
+    directly as well as the relationship: the change history (and so
+    batch undo) only sees columns written by hand."""
+    tank.rack_id_fk = rack.id if rack is not None else None
+    tank.rack = rack
+    tank.row, tank.col = (row, col) if rack is not None else (None, None)
+
+
+def apply_fish_position(s, tank, rack_raw, position_raw) -> str | None:
+    """Place a tank from a rack and a typed position; an error message
+    instead of a guess. No rack unplaces the tank whatever the position
+    says. A rack with a blank position keeps the tank's cell if it is
+    already there, otherwise takes the first free one."""
+    rack_raw = str(rack_raw or "").strip()
+    raw = str(position_raw or "").strip()
+    if not rack_raw:
+        zf_place(tank, None)
         return None
-    rack = s.get(FishRack, tank.rack_id_fk) if tank.rack_id_fk else None
+    rack = s.get(FishRack, int(rack_raw)) if rack_raw.isdigit() else None
     if rack is None:
-        return f"Pick a rack before giving a position (“{raw}” was not saved)."
+        return "That rack no longer exists. Reload the page."
+    if not raw:
+        if tank.rack_id_fk == rack.id and tank.row is not None:
+            return None
+        cell = zf_free_cell(s, rack, tank.id)
+        if cell is None:
+            return f"{rack.name} is full. Pick another rack, or make room first."
+        zf_place(tank, rack, *cell)
+        return None
     cell = positions.parse(raw, rack.naming, rack.rows, rack.cols)
     if cell is None:
         return (f"“{raw}” is not a position in {rack.name} "
@@ -4990,109 +5334,165 @@ def apply_fish_position(s, tank, raw) -> str | None:
         TankRecord.id != (tank.id or 0)))
     if holder is not None:
         return f"{rack.name} · {raw} already holds tank {holder.tank_id}. Drag on the rack grid to swap."
-    tank.row, tank.col = row, col
+    zf_place(tank, rack, row, col)
     return None
+
+
+def zf_tank_state(t) -> dict:
+    """What sheet.js refreshes on a tank row after a save."""
+    return {"active": bool(t.active), "values": {
+        "tank_id": t.tank_id, "purpose": t.purpose, "owner": t.owner,
+        "rack_id_fk": str(t.rack_id_fk or ""), "position": fish_position_label(t)}}
+
+
+def zf_active_flag(raw) -> bool:
+    return str(raw if raw is not None else "1").strip().lower() not in ("0", "false", "no", "off")
 
 
 @app.route("/zebrafish/tanks/create", methods=["POST"])
 @login_required
 def zebrafish_create_tank():
+    form = request.form
     with SessionLocal() as s:
-        tank_id = (request.form.get("tank_id") or "").strip()
-        if not tank_id:
-            taken = set(s.scalars(select(TankRecord.tank_id)))
-            n = len(taken) + 1
-            while f"T{n:03d}" in taken:
-                n += 1
-            tank_id = f"T{n:03d}"
-        rack_id = request.form.get("rack_id_fk") or None
-        line_id = request.form.get("line_id_fk") or None
-        tank = TankRecord(
-            tank_id=tank_id,
-            rack_id_fk=int(rack_id) if rack_id else None,
-            row=int(request.form["row"]) if request.form.get("row") else None,
-            col=int(request.form["col"]) if request.form.get("col") else None,
-            purpose=request.form.get("purpose", "stock"),
-            line_id_fk=int(line_id) if line_id else None,
-            owner=request.form.get("owner", g.user.username if g.user else "").strip(),
-            card_id=request.form.get("card_id", "").strip(),
-            notes=request.form.get("notes", "").strip(),
-        )
+        try:
+            code = (form.get("tank_id") or "").strip()
+            tank = TankRecord(
+                tank_id=zf_unique(s, TankRecord.tank_id, code, "tank") if code
+                else zf_next_code(s, TankRecord.tank_id, "T", 3),
+                purpose=zf_choice(form.get("purpose") or "stock", TANK_PURPOSE_OPTIONS, "Purpose"),
+                line_id_fk=zf_ref(s, FishLine, form.get("line_id_fk"), "line"),
+                owner=(form.get("owner", access.username()) or "").strip(),
+                card_id=(form.get("card_id") or "").strip(),
+                notes=(form.get("notes") or "").strip(),
+                active=zf_active_flag(form.get("active")),
+            )
+            rack_id = zf_ref(s, FishRack, form.get("rack_id_fk"), "rack")
+            position = (form.get("position") or "").strip()
+            # A 0-based row/col (older clients) stands in for a typed position.
+            row = zf_int(form, "row", "Row", lo=0)
+            col = zf_int(form, "col", "Column", lo=0)
+            if rack_id and not position and row is not None and col is not None:
+                rack = s.get(FishRack, rack_id)
+                if row >= rack.rows or col >= rack.cols:
+                    raise ZfInputError(f"Row {row}, column {col} is outside {rack.name} ({rack.rows} × {rack.cols}).")
+                position = positions.label(row + 1, col + 1, rack.naming, rack.cols)
+        except ZfInputError as error:
+            return zf_reply("tanks", str(error))
         s.add(tank)
-        if "position" in request.form:
-            error = apply_fish_position(s, tank, request.form.get("position"))
+        if rack_id:
+            error = apply_fish_position(s, tank, rack_id, position)
             if error:
-                flash(f"Tank {tank_id} was created but not placed: {error}", "error")
+                zf_place(tank, None)
+                flash(f"Tank {tank.tank_id} was created but not placed: {error}", "error")
         s.commit()
-    return autosave_response("zebrafish")
+    return zf_reply("tanks")
 
 
 @app.route("/zebrafish/tanks/<int:tank_row_id>/update", methods=["POST"])
 @login_required
 def zebrafish_update_tank(tank_row_id: int):
+    form = request.form
     with SessionLocal() as s:
         t = s.get(TankRecord, tank_row_id)
         if t is None:
-            return autosave_response("zebrafish")
-        for fld in ("tank_id", "purpose", "owner", "card_id", "notes"):
-            if fld in request.form:
-                setattr(t, fld, (request.form.get(fld) or "").strip())
-        if "rack_id_fk" in request.form:
-            v = request.form.get("rack_id_fk") or None
-            t.rack_id_fk = int(v) if v else None
-        if "line_id_fk" in request.form:
-            v = request.form.get("line_id_fk") or None
-            t.line_id_fk = int(v) if v else None
-        if "row" in request.form:
-            v = request.form.get("row") or ""
-            t.row = int(v) if v.isdigit() else None
-        if "col" in request.form:
-            v = request.form.get("col") or ""
-            t.col = int(v) if v.isdigit() else None
-        if "active" in request.form:
-            t.active = request.form.get("active", "1") not in ("0", "false", "no", "off")
-        if "position" in request.form:
-            error = apply_fish_position(s, t, request.form.get("position"))
+            return zf_reply("tanks", "That tank no longer exists. Reload the page.", status=404)
+        if not zf_can_edit(t):
+            return zf_reply("tanks", zf_denied(t), status=403)
+        try:
+            if "tank_id" in form:
+                t.tank_id = zf_unique(s, TankRecord.tank_id, form.get("tank_id"), "tank", t.id)
+            if "purpose" in form:
+                t.purpose = zf_choice(form.get("purpose"), TANK_PURPOSE_OPTIONS, "Purpose", t.purpose)
+            if "line_id_fk" in form:
+                t.line_id_fk = zf_ref(s, FishLine, form.get("line_id_fk"), "line")
+            # Owner, rack and position also show on the rack grid and the
+            # dialog, so a stale row only writes what it actually changed.
+            if "owner" in form and form_changed(form, "owner"):
+                t.owner = (form.get("owner") or "").strip()
+            for fld in ("card_id", "notes"):
+                if fld in form:
+                    setattr(t, fld, (form.get(fld) or "").strip())
+            if "active" in form:
+                t.active = zf_active_flag(form.get("active"))
+        except ZfInputError as error:
+            s.rollback()
+            return zf_reply("tanks", str(error))
+        if ("rack_id_fk" in form or "position" in form) and form_changed(form, "rack_id_fk", "position"):
+            rack_raw = form.get("rack_id_fk") if "rack_id_fk" in form else t.rack_id_fk
+            position = form.get("position", "")
+            if "position_was" in form and not form_changed(form, "position"):
+                # Only the rack changed: the cell text belongs to the old rack.
+                position = ""
+            error = apply_fish_position(s, t, rack_raw, position)
             if error:
                 s.rollback()
-                flash(error, "error")
-                return autosave_response("zebrafish")
+                return zf_reply("tanks", error)
         s.commit()
-    return autosave_response("zebrafish")
+        state = zf_tank_state(t)
+    return zf_reply("tanks", row=state)
 
 
 @app.route("/zebrafish/tanks/<int:tank_row_id>/move", methods=["POST"])
 @login_required
 def zebrafish_move_tank(tank_row_id: int):
-    """Drag-and-drop within rack grid. Same swap-on-collision behavior as the
-    plasmid box move endpoint."""
-    new_rack = (request.form.get("rack_id_fk") or "").strip()
-    row_raw = (request.form.get("row") or "").strip()
-    col_raw = (request.form.get("col") or "").strip()
-    new_rack_id = int(new_rack) if new_rack.isdigit() else None
-    new_row = int(row_raw) if row_raw.lstrip("-").isdigit() else None
-    new_col = int(col_raw) if col_raw.lstrip("-").isdigit() else None
+    """Drag-and-drop on the rack grid (0-based row/col). Dropping on an
+    occupied cell swaps the two tanks; a blank rack unplaces."""
+    form = request.form
     with SessionLocal() as s:
         t = s.get(TankRecord, tank_row_id)
         if t is None:
-            return jsonify({"ok": False}), 404
-        if new_rack_id and new_row is not None and new_col is not None:
-            occupant = s.scalar(
-                select(TankRecord)
-                .where(TankRecord.rack_id_fk == new_rack_id)
-                .where(TankRecord.row == new_row)
-                .where(TankRecord.col == new_col)
-                .where(TankRecord.id != t.id)
-            )
-            if occupant is not None:
-                occupant.rack_id_fk = t.rack_id_fk
-                occupant.row = t.row
-                occupant.col = t.col
-        t.rack_id_fk = new_rack_id
-        t.row = new_row
-        t.col = new_col
+            return jsonify({"ok": False, "error": "That tank no longer exists."}), 404
+        if not zf_can_edit(t):
+            return jsonify({"ok": False, "error": zf_denied(t)}), 403
+        try:
+            rack_id = zf_ref(s, FishRack, form.get("rack_id_fk"), "rack")
+            row = zf_int(form, "row", "Row")
+            col = zf_int(form, "col", "Column")
+        except ZfInputError as error:
+            return jsonify({"ok": False, "error": str(error)}), 409
+        if rack_id is None:
+            zf_place(t, None)
+            s.commit()
+            return jsonify({"ok": True})
+        rack = s.get(FishRack, rack_id)
+        if row is None or col is None or not (0 <= row < rack.rows and 0 <= col < rack.cols):
+            return jsonify({"ok": False, "error": f"That cell is outside {rack.name} ({rack.rows} × {rack.cols})."}), 409
+        occupant = s.scalar(select(TankRecord).where(
+            TankRecord.rack_id_fk == rack.id, TankRecord.row == row, TankRecord.col == col,
+            TankRecord.id != t.id))
+        if occupant is not None:
+            if not zf_can_edit(occupant):
+                return jsonify({"ok": False, "error": zf_denied(occupant)}), 403
+            occupant.rack_id_fk, occupant.row, occupant.col = t.rack_id_fk, t.row, t.col
+        t.rack_id_fk, t.row, t.col = rack.id, row, col
         s.commit()
     return jsonify({"ok": True})
+
+
+def zf_delete_tank(s, t) -> str | None:
+    """Delete a tank, or say why not. Its fish rows would go with it, so a
+    tank holding any is refused. Clutches, mating tanks and sac-log entries
+    naming it keep everything else and lose the link — left in place, the
+    id would point at whichever tank reuses it."""
+    if t.fish:
+        n = len(t.fish)
+        return f"Tank {t.tank_id} still holds {n} fish row{'' if n == 1 else 's'}. Move or delete them first."
+    for c in s.scalars(select(ClutchRecord).where(
+            (ClutchRecord.father_tank_id == t.id) | (ClutchRecord.mother_tank_id == t.id))):
+        if c.father_tank_id == t.id:
+            c.father_tank_id = None
+        if c.mother_tank_id == t.id:
+            c.mother_tank_id = None
+    for m in s.scalars(select(TankRecord).where(
+            (TankRecord.mating_father_tank_id == t.id) | (TankRecord.mating_mother_tank_id == t.id))):
+        if m.mating_father_tank_id == t.id:
+            m.mating_father_tank_id = None
+        if m.mating_mother_tank_id == t.id:
+            m.mating_mother_tank_id = None
+    for entry in s.scalars(select(FishSacLog).where(FishSacLog.tank_id_fk == t.id)):
+        entry.tank_id_fk = None
+    s.delete(t)
+    return None
 
 
 @app.route("/zebrafish/tanks/<int:tank_row_id>/delete", methods=["POST"])
@@ -5100,9 +5500,45 @@ def zebrafish_move_tank(tank_row_id: int):
 def zebrafish_delete_tank(tank_row_id: int):
     with SessionLocal() as s:
         t = s.get(TankRecord, tank_row_id)
-        if t is not None:
-            s.delete(t)
+        if t is None:
+            return redirect(url_for("zebrafish", view="tanks"))
+        if not zf_can_edit(t):
+            flash(zf_denied(t), "error")
+            return redirect(url_for("zebrafish", view="tanks"))
+        code = t.tank_id
+        # A batch, so the delete and the links it clears undo together.
+        with audit.batch(s, "delete", f"delete tank {code}", "tanks"):
+            error = zf_delete_tank(s, t)
+        if error:
+            s.rollback()
+            flash(error, "error")
+        else:
             s.commit()
+            flash(f"Deleted tank {code}. Undo it from Batch history if that was a mistake.", "success")
+    return redirect(url_for("zebrafish", view="tanks"))
+
+
+@app.route("/zebrafish/tanks/<int:tank_row_id>/duplicate", methods=["POST"])
+@login_required
+def zebrafish_duplicate_tank(tank_row_id: int):
+    """A new tank like this one — same purpose, line and rack (first free
+    cell) — with the next free ID, owned by whoever made the copy."""
+    with SessionLocal() as s:
+        t = s.get(TankRecord, tank_row_id)
+        if t is None:
+            return redirect(url_for("zebrafish", view="tanks"))
+        copy = TankRecord(tank_id=zf_next_code(s, TankRecord.tank_id, "T", 3), purpose=t.purpose,
+                          line_id_fk=t.line_id_fk, owner=access.username(), card_id="", notes=t.notes)
+        s.add(copy)
+        note = ""
+        if t.rack is not None:
+            cell = zf_free_cell(s, t.rack)
+            if cell:
+                zf_place(copy, t.rack, *cell)
+            else:
+                note = f" {t.rack.name} is full, so it is not placed."
+        s.commit()
+        flash(f"Copied tank {t.tank_id} to {copy.tank_id}.{note}", "success")
     return redirect(url_for("zebrafish", view="tanks"))
 
 
@@ -5112,61 +5548,189 @@ def zebrafish_toggle_geno(tank_row_id: int):
     with SessionLocal() as s:
         t = s.get(TankRecord, tank_row_id)
         if t is None:
-            return jsonify({"ok": False}), 404
+            return jsonify({"ok": False, "error": "That tank no longer exists."}), 404
+        if not zf_can_edit(t):
+            return jsonify({"ok": False, "error": zf_denied(t)}), 403
         t.needs_genotyping = not bool(t.needs_genotyping)
         s.commit()
         return jsonify({"ok": True, "needs_genotyping": t.needs_genotyping})
 
 
+@app.route("/zebrafish/tanks/bulk", methods=["POST"])
+@login_required
+def zebrafish_bulk_tanks():
+    """Batch actions on ticked tanks: set purpose or owner, move to a rack,
+    flag for genotyping, delete. Applied to the tanks you may edit."""
+    form = request.form
+    action = (form.get("action") or "").strip()
+    value = (form.get("value") or "").strip()
+    labels = {"purpose": "Set purpose", "owner": "Set owner", "rack": "Moved",
+              "geno": "Genotyping flag", "delete": "Deleted"}
+    if action not in labels:
+        flash("Pick an action.", "error")
+        return redirect(url_for("zebrafish", view="tanks"))
+    changed = skipped = 0
+    blocked: list[str] = []
+    with SessionLocal() as s:
+        try:
+            if action == "purpose":
+                value = zf_choice(value, TANK_PURPOSE_OPTIONS, "Purpose")
+            rack = s.get(FishRack, zf_ref(s, FishRack, value, "rack")) if action == "rack" and value else None
+        except ZfInputError as error:
+            flash(str(error), "error")
+            return redirect(url_for("zebrafish", view="tanks"))
+        what = {"purpose": f"set purpose = {value}", "owner": f"set owner = {value or '(blank)'}",
+                "rack": f"move to {rack.name if rack else '(no rack)'}", "geno": f"genotyping flag {'on' if value != '0' else 'off'}",
+                "delete": "delete tanks"}[action]
+        with audit.batch(s, "delete" if action == "delete" else "update", what, "tanks") as batch_row:
+            for t in zf_selected(s, TankRecord, form):
+                if not zf_can_edit(t):
+                    skipped += 1
+                    continue
+                if action == "purpose":
+                    t.purpose = value
+                elif action == "owner":
+                    t.owner = value
+                elif action == "geno":
+                    t.needs_genotyping = value != "0"
+                elif action == "rack":
+                    if rack is not None and t.rack_id_fk == rack.id and t.row is not None:
+                        continue
+                    error = apply_fish_position(s, t, rack.id if rack else "", "")
+                    if error:
+                        blocked.append(f"{t.tank_id}: {error}")
+                        continue
+                    s.flush()
+                elif action == "delete":
+                    error = zf_delete_tank(s, t)
+                    if error:
+                        blocked.append(error)
+                        continue
+                changed += 1
+            batch_row.record_count = changed
+        s.commit()
+    zf_report(changed, skipped, labels[action], "tank", "tanks", blocked)
+    return redirect(url_for("zebrafish", view="tanks"))
+
+
 # ---- Fish (group rows) -----------------------------------------------------
+
+
+def zf_apply_fish_status(s, f, previous_status: str | None) -> None:
+    """The mouse rule for fish. Turning sac (or dead) stamps today as the
+    sac date unless one was given, and logs the fish on the sac log;
+    turning back to a living status clears the date and that log entry."""
+    dead_now = (f.status or "").strip().lower() in FISH_DEAD_STATUSES
+    dead_before = (previous_status or "").strip().lower() in FISH_DEAD_STATUSES
+    if dead_now and not dead_before:
+        f.sac_date = f.sac_date or date.today()
+        if f.count:
+            s.flush()  # a new row needs its id for the log link
+            s.add(FishSacLog(tank_id_fk=f.tank_id_fk, line_id_fk=f.line_id_fk or (f.tank.line_id_fk if f.tank else None),
+                             fish_id_fk=f.id, count=f.count, reason=f"Status set to {f.status}",
+                             recorded_by=access.username()))
+    elif dead_before and not dead_now:
+        f.sac_date = None
+        for entry in s.scalars(select(FishSacLog).where(FishSacLog.fish_id_fk == f.id)) if f.id else []:
+            s.delete(entry)
+
+
+def zf_fish_state(f) -> dict:
+    return {"active": fish_alive(f), "values": {
+        "status": f.status, "count": f.count, "sex": f.sex, "tank_id_fk": str(f.tank_id_fk or ""),
+        "sac_date": f.sac_date.isoformat() if f.sac_date else ""}}
+
+
+def zf_fish_from_form(s, f, form) -> None:
+    """Write the posted fields onto a fish row. Raises ZfInputError."""
+    if "individual_id" in form:
+        f.individual_id = (form.get("individual_id") or "").strip()
+    for fld in ("genotype", "notes"):
+        if fld in form:
+            setattr(f, fld, (form.get(fld) or "").strip())
+    if "count" in form:
+        f.count = zf_int(form, "count", "Count", default=0, lo=0, hi=100000)
+    if "sex" in form:
+        f.sex = zf_choice(form.get("sex"), FISH_SEX_OPTIONS, "Sex", f.sex)
+    if "status" in form:
+        f.status = zf_choice(form.get("status"), FISH_STATUS_OPTIONS + ["dead"], "Status", f.status)
+    if "line_id_fk" in form:
+        f.line_id_fk = zf_ref(s, FishLine, form.get("line_id_fk"), "line")
+    if "date_of_fertilization" in form:
+        f.date_of_fertilization = zf_date(form, "date_of_fertilization", "Fertilised")
+    if "sac_date" in form:
+        f.sac_date = zf_date(form, "sac_date", "Sac date")
 
 
 @app.route("/zebrafish/fish/create", methods=["POST"])
 @login_required
 def zebrafish_create_fish():
+    form = request.form
     with SessionLocal() as s:
-        tank_fk = request.form.get("tank_id_fk")
-        if not tank_fk:
-            return redirect(url_for("zebrafish", view="fish"))
-        line_id = request.form.get("line_id_fk") or None
-        s.add(FishRecord(
-            tank_id_fk=int(tank_fk),
-            line_id_fk=int(line_id) if line_id else None,
-            individual_id=request.form.get("individual_id", "").strip(),
-            count=int(request.form.get("count", "1") or 1),
-            sex=request.form.get("sex", "mixed"),
-            status=request.form.get("status", "alive"),
-            date_of_fertilization=parse_date(request.form.get("date_of_fertilization")),
-            genotype=request.form.get("genotype", "").strip(),
-            notes=request.form.get("notes", "").strip(),
-        ))
+        try:
+            tank_id = zf_ref(s, TankRecord, form.get("tank_id_fk"), "tank")
+            if tank_id is None:
+                raise ZfInputError("Choose the tank these fish are in.")
+            tank = s.get(TankRecord, tank_id)
+            if not zf_can_edit(tank):
+                raise ZfInputError(zf_denied(tank))
+            f = FishRecord(tank=tank, count=1, sex="mixed", status="alive")
+            zf_fish_from_form(s, f, form)
+        except ZfInputError as error:
+            return zf_reply("fish", str(error))
+        s.add(f)
+        zf_apply_fish_status(s, f, "alive")
         s.commit()
-    return redirect(url_for("zebrafish", view="fish"))
+    return zf_reply("fish")
 
 
 @app.route("/zebrafish/fish/<int:fish_row_id>/update", methods=["POST"])
 @login_required
 def zebrafish_update_fish(fish_row_id: int):
+    form = request.form
     with SessionLocal() as s:
         f = s.get(FishRecord, fish_row_id)
         if f is None:
-            return autosave_response("zebrafish")
-        for fld in ("individual_id", "sex", "status", "genotype", "notes"):
-            if fld in request.form:
-                setattr(f, fld, (request.form.get(fld) or "").strip())
-        if "count" in request.form:
-            v = (request.form.get("count") or "1").strip()
-            f.count = int(v) if v.lstrip("-").isdigit() else 1
-        if "line_id_fk" in request.form:
-            v = request.form.get("line_id_fk") or None
-            f.line_id_fk = int(v) if v else None
-        if "tank_id_fk" in request.form:
-            v = request.form.get("tank_id_fk") or None
-            f.tank_id_fk = int(v) if v else f.tank_id_fk
-        if "date_of_fertilization" in request.form:
-            f.date_of_fertilization = parse_date(request.form.get("date_of_fertilization"))
+            return zf_reply("fish", "That fish row no longer exists. Reload the page.", status=404)
+        if not zf_can_edit(f):
+            return zf_reply("fish", zf_denied(f), status=403)
+        previous_status = f.status
+        try:
+            if "tank_id_fk" in form:
+                tank_id = zf_ref(s, TankRecord, form.get("tank_id_fk"), "tank")
+                if tank_id is None:
+                    raise ZfInputError("Fish have to be in a tank.")
+                if tank_id != f.tank_id_fk:
+                    tank = s.get(TankRecord, tank_id)
+                    if not zf_can_edit(tank):
+                        raise ZfInputError(f"Can’t move fish into {tank.tank_id}: " + zf_denied(tank))
+                    f.tank = tank
+            zf_fish_from_form(s, f, form)
+        except ZfInputError as error:
+            s.rollback()
+            return zf_reply("fish", str(error))
+        zf_apply_fish_status(s, f, previous_status)
         s.commit()
-    return autosave_response("zebrafish")
+        state = zf_fish_state(f)
+    return zf_reply("fish", row=state)
+
+
+@app.route("/zebrafish/fish/<int:fish_row_id>/duplicate", methods=["POST"])
+@login_required
+def zebrafish_duplicate_fish(fish_row_id: int):
+    with SessionLocal() as s:
+        f = s.get(FishRecord, fish_row_id)
+        if f is None:
+            return redirect(url_for("zebrafish", view="fish"))
+        if not zf_can_edit(f):
+            flash(zf_denied(f), "error")
+            return redirect(url_for("zebrafish", view="fish"))
+        s.add(FishRecord(tank_id_fk=f.tank_id_fk, line_id_fk=f.line_id_fk, individual_id="", count=f.count,
+                         sex=f.sex, status=f.status, date_of_fertilization=f.date_of_fertilization,
+                         sac_date=f.sac_date, clutch_id_fk=f.clutch_id_fk, genotype=f.genotype, notes=f.notes))
+        s.commit()
+        flash("Copied the fish row.", "success")
+    return redirect(url_for("zebrafish", view="fish"))
 
 
 @app.route("/zebrafish/fish/<int:fish_row_id>/delete", methods=["POST"])
@@ -5175,50 +5739,149 @@ def zebrafish_delete_fish(fish_row_id: int):
     with SessionLocal() as s:
         f = s.get(FishRecord, fish_row_id)
         if f is not None:
+            if not zf_can_edit(f):
+                flash(zf_denied(f), "error")
+                return redirect(url_for("zebrafish", view="fish"))
+            # The sac log is history: it keeps the entry, not the link.
+            for entry in s.scalars(select(FishSacLog).where(FishSacLog.fish_id_fk == f.id)):
+                entry.fish_id_fk = None
             s.delete(f)
             s.commit()
+    return redirect(url_for("zebrafish", view="fish"))
+
+
+@app.route("/zebrafish/fish/bulk", methods=["POST"])
+@login_required
+def zebrafish_bulk_fish():
+    """Batch actions on ticked fish rows: set status, move to a tank, sac."""
+    form = request.form
+    action = (form.get("action") or "").strip()
+    value = (form.get("value") or "").strip()
+    labels = {"status": "Set status", "tank": "Moved", "sac": "Sac’d"}
+    if action not in labels:
+        flash("Pick an action.", "error")
+        return redirect(url_for("zebrafish", view="fish"))
+    changed = skipped = 0
+    blocked: list[str] = []
+    with SessionLocal() as s:
+        try:
+            if action == "status":
+                value = zf_choice(value, FISH_STATUS_OPTIONS + ["dead"], "Status")
+            tank = s.get(TankRecord, zf_ref(s, TankRecord, value, "tank") or 0) if action == "tank" else None
+            if action == "tank" and tank is None:
+                raise ZfInputError("Choose the tank to move them to.")
+            if tank is not None and not zf_can_edit(tank):
+                raise ZfInputError(f"Can’t move fish into {tank.tank_id}: " + zf_denied(tank))
+        except ZfInputError as error:
+            flash(str(error), "error")
+            return redirect(url_for("zebrafish", view="fish"))
+        what = {"status": f"set status = {value}", "tank": f"move to tank {tank.tank_id if tank else ''}",
+                "sac": "sac fish"}[action]
+        with audit.batch(s, "update", what, "fish") as batch_row:
+            for f in zf_selected(s, FishRecord, form):
+                if not zf_can_edit(f):
+                    skipped += 1
+                    continue
+                previous = f.status
+                if action == "tank":
+                    f.tank = tank
+                else:
+                    if action == "sac" and (f.status or "").lower() in FISH_DEAD_STATUSES:
+                        continue
+                    f.status = "sac" if action == "sac" else value
+                    zf_apply_fish_status(s, f, previous)
+                changed += 1
+            batch_row.record_count = changed
+        s.commit()
+    zf_report(changed, skipped, labels[action], "fish row", "fish rows", blocked)
     return redirect(url_for("zebrafish", view="fish"))
 
 
 # ---- Lines -----------------------------------------------------------------
 
 
+def zf_line_parent(s, line_id, raw):
+    """A parent line that keeps the lineage a tree: not the line itself,
+    and not one of its own descendants."""
+    parent_id = zf_ref(s, FishLine, raw, "parent line")
+    if parent_id is None or line_id is None:
+        return parent_id
+    seen = set()
+    cursor = parent_id
+    while cursor is not None and cursor not in seen:
+        if cursor == line_id:
+            raise ZfInputError("A line can’t descend from itself. Pick a parent that is not this line or one of its descendants.")
+        seen.add(cursor)
+        cursor = s.scalar(select(FishLine.parent_line_id_fk).where(FishLine.id == cursor))
+    return parent_id
+
+
+LINE_TEXT_FIELDS = ("zfin_name", "background", "transgene_summary", "allele", "iacuc_protocol", "founder_info", "notes")
+
+
 @app.route("/zebrafish/lines/create", methods=["POST"])
 @login_required
 def zebrafish_create_line():
+    form = request.form
     with SessionLocal() as s:
-        parent = request.form.get("parent_line_id_fk") or None
-        s.add(FishLine(
-            name=(request.form.get("name") or "").strip() or "Unnamed line",
-            zfin_name=request.form.get("zfin_name", "").strip(),
-            background=request.form.get("background", "").strip(),
-            transgene_summary=request.form.get("transgene_summary", "").strip(),
-            allele=request.form.get("allele", "").strip(),
-            iacuc_protocol=request.form.get("iacuc_protocol", "").strip(),
-            founder_info=request.form.get("founder_info", "").strip(),
-            parent_line_id_fk=int(parent) if parent else None,
-            notes=request.form.get("notes", "").strip(),
-        ))
+        try:
+            ln = FishLine(name=zf_unique(s, FishLine.name, form.get("name"), "line", max_len=200),
+                          parent_line_id_fk=zf_line_parent(s, None, form.get("parent_line_id_fk")),
+                          **{fld: (form.get(fld) or "").strip() for fld in LINE_TEXT_FIELDS})
+        except ZfInputError as error:
+            return zf_reply("lines", str(error))
+        s.add(ln)
         s.commit()
-    return redirect(url_for("zebrafish", view="lines"))
+    return zf_reply("lines")
 
 
 @app.route("/zebrafish/lines/<int:line_id>/update", methods=["POST"])
 @login_required
 def zebrafish_update_line(line_id: int):
+    form = request.form
     with SessionLocal() as s:
         ln = s.get(FishLine, line_id)
         if ln is None:
-            return autosave_response("zebrafish")
-        for fld in ("name", "zfin_name", "background", "transgene_summary",
-                    "allele", "iacuc_protocol", "founder_info", "notes"):
-            if fld in request.form:
-                setattr(ln, fld, (request.form.get(fld) or "").strip())
-        if "parent_line_id_fk" in request.form:
-            v = request.form.get("parent_line_id_fk") or None
-            ln.parent_line_id_fk = int(v) if v else None
+            return zf_reply("lines", "That line no longer exists. Reload the page.", status=404)
+        if not zf_can_edit(ln):
+            return zf_reply("lines", zf_denied(ln), status=403)
+        try:
+            if "name" in form:
+                ln.name = zf_unique(s, FishLine.name, form.get("name"), "line", ln.id, max_len=200)
+            for fld in LINE_TEXT_FIELDS:
+                if fld in form:
+                    setattr(ln, fld, (form.get(fld) or "").strip())
+            if "parent_line_id_fk" in form:
+                ln.parent_line_id_fk = zf_line_parent(s, ln.id, form.get("parent_line_id_fk"))
+        except ZfInputError as error:
+            s.rollback()
+            return zf_reply("lines", str(error))
         s.commit()
-    return autosave_response("zebrafish")
+        state = {"values": {"name": ln.name, "parent_line_id_fk": str(ln.parent_line_id_fk or "")}}
+    return zf_reply("lines", row=state)
+
+
+def zf_line_uses(s, ln) -> str:
+    """What still uses a line, in words; empty when nothing does."""
+    uses = [
+        (s.scalar(select(func.count(TankRecord.id)).where(TankRecord.line_id_fk == ln.id)), "tank", "tanks"),
+        (s.scalar(select(func.count(FishRecord.id)).where(FishRecord.line_id_fk == ln.id)), "fish row", "fish rows"),
+        (s.scalar(select(func.count(ClutchRecord.id)).where(ClutchRecord.line_id_fk == ln.id)), "clutch", "clutches"),
+        (s.scalar(select(func.count(FishLine.id)).where(FishLine.parent_line_id_fk == ln.id)), "child line", "child lines"),
+    ]
+    return ", ".join(f"{n} {one if n == 1 else many}" for n, one, many in uses if n)
+
+
+def zf_delete_line(s, ln) -> str | None:
+    """Delete a line, or say what still uses it. Sac-log entries are
+    history and only lose the link."""
+    used = zf_line_uses(s, ln)
+    if used:
+        return f"Line {ln.name} is still used by {used}. Reassign or delete those first."
+    for entry in s.scalars(select(FishSacLog).where(FishSacLog.line_id_fk == ln.id)):
+        entry.line_id_fk = None
+    s.delete(ln)
+    return None
 
 
 @app.route("/zebrafish/lines/<int:line_id>/delete", methods=["POST"])
@@ -5226,9 +5889,71 @@ def zebrafish_update_line(line_id: int):
 def zebrafish_delete_line(line_id: int):
     with SessionLocal() as s:
         ln = s.get(FishLine, line_id)
-        if ln is not None:
-            s.delete(ln)
+        if ln is None:
+            return redirect(url_for("zebrafish", view="lines"))
+        name = ln.name
+        with audit.batch(s, "delete", f"delete line {name}", "fish_lines"):
+            error = zf_delete_line(s, ln)
+        if error:
+            s.rollback()
+            flash(error, "error")
+        else:
             s.commit()
+            flash(f"Deleted line {name}.", "success")
+    return redirect(url_for("zebrafish", view="lines"))
+
+
+@app.route("/zebrafish/lines/<int:line_id>/duplicate", methods=["POST"])
+@login_required
+def zebrafish_duplicate_line(line_id: int):
+    with SessionLocal() as s:
+        ln = s.get(FishLine, line_id)
+        if ln is None:
+            return redirect(url_for("zebrafish", view="lines"))
+        taken = set(s.scalars(select(FishLine.name)))
+        name, n = f"{ln.name} copy", 2
+        while name in taken:
+            name, n = f"{ln.name} copy {n}", n + 1
+        s.add(FishLine(name=name, parent_line_id_fk=ln.parent_line_id_fk,
+                       **{fld: getattr(ln, fld) for fld in LINE_TEXT_FIELDS}))
+        s.commit()
+        flash(f"Copied line {ln.name} to {name}.", "success")
+    return redirect(url_for("zebrafish", view="lines"))
+
+
+@app.route("/zebrafish/lines/bulk", methods=["POST"])
+@login_required
+def zebrafish_bulk_lines():
+    """Batch actions on ticked lines: set background or IACUC protocol,
+    delete (lines still in use are kept, and named)."""
+    form = request.form
+    action = (form.get("action") or "").strip()
+    value = (form.get("value") or "").strip()
+    labels = {"background": "Set background", "iacuc_protocol": "Set IACUC #", "delete": "Deleted"}
+    if action not in labels:
+        flash("Pick an action.", "error")
+        return redirect(url_for("zebrafish", view="lines"))
+    changed = skipped = 0
+    blocked: list[str] = []
+    with SessionLocal() as s:
+        what = "delete lines" if action == "delete" else f"{labels[action].lower()} = {value or '(blank)'}"
+        with audit.batch(s, "delete" if action == "delete" else "update", what, "fish_lines") as batch_row:
+            for ln in zf_selected(s, FishLine, form):
+                if not zf_can_edit(ln):
+                    skipped += 1
+                    continue
+                if action == "delete":
+                    error = zf_delete_line(s, ln)
+                    if error:
+                        blocked.append(error)
+                        continue
+                    s.flush()
+                else:
+                    setattr(ln, action, value)
+                changed += 1
+            batch_row.record_count = changed
+        s.commit()
+    zf_report(changed, skipped, labels[action], "line", "lines", blocked)
     return redirect(url_for("zebrafish", view="lines"))
 
 
@@ -5242,15 +5967,19 @@ def zebrafish_line_detail(line_id: int):
             flash("Line not found.", "error")
             return redirect(url_for("zebrafish", view="lines"))
 
-        # Build the ancestor chain.
+        # The ancestor chain. The seen set stops at a cycle written before
+        # parents were checked, rather than looping forever.
         ancestors = []
+        seen = {ln.id}
         cursor = ln.parent_line
-        while cursor is not None and len(ancestors) < 10:
+        while cursor is not None and cursor.id not in seen and len(ancestors) < 20:
             ancestors.insert(0, cursor)
+            seen.add(cursor.id)
             cursor = cursor.parent_line
 
         # Direct children.
-        children = s.scalars(select(FishLine).where(FishLine.parent_line_id_fk == ln.id)).all()
+        children = s.scalars(select(FishLine).where(FishLine.parent_line_id_fk == ln.id,
+                                                    FishLine.id != ln.id)).all()
 
         # Tanks currently holding this line.
         # Racks are read after the session closes, so load them now.
@@ -5258,32 +5987,48 @@ def zebrafish_line_detail(line_id: int):
             select(TankRecord).options(joinedload(TankRecord.rack))
             .where(TankRecord.line_id_fk == ln.id).order_by(TankRecord.tank_id)
         ).all()
+        tank_positions = {t.id: fish_position_label(t) for t in line_tanks}
 
         all_lines = s.scalars(select(FishLine).order_by(FishLine.name)).all()
 
     return render_template(
         "zebrafish_line_detail.html",
         line=ln, ancestors=ancestors, children=children,
-        line_tanks=line_tanks, all_lines=all_lines,
+        line_tanks=line_tanks, tank_positions=tank_positions, all_lines=all_lines,
     )
 
 
 # ---- Racks -----------------------------------------------------------------
 
 
+def zf_rack_fields(s, r, form) -> None:
+    """Name, size, water system and naming from the rack dialog. Raises
+    ZfInputError. Sizes are clamped to what the grid can draw."""
+    if "name" in form or r.id is None:
+        name = (form.get("name") or "").strip() or r.name or "Rack"
+        clash = s.scalar(select(FishRack.id).where(FishRack.name == name, FishRack.id != (r.id or 0)))
+        if clash is not None:
+            raise ZfInputError(f"There is already a rack called {name}.")
+        r.name = name
+    r.rows = max(1, min(26, zf_int(form, "rows", "Rows", default=r.rows or 8)))
+    r.cols = max(1, min(40, zf_int(form, "cols", "Columns", default=r.cols or 10)))
+    if "system_id_fk" in form:
+        r.system_id_fk = zf_ref(s, WaterSystem, form.get("system_id_fk"), "water system")
+    if "naming_mode" in form or r.id is None:
+        r.naming = json.dumps(positions.scheme_from_form(form))
+
+
 @app.route("/zebrafish/racks/create", methods=["POST"])
 @login_required
 def zebrafish_create_rack():
     with SessionLocal() as s:
-        sys_fk = request.form.get("system_id_fk") or None
-        s.add(FishRack(
-            name=(request.form.get("name") or "").strip() or "Rack",
-            system_id_fk=int(sys_fk) if sys_fk else None,
-            rows=int(request.form.get("rows", "8") or 8),
-            cols=int(request.form.get("cols", "10") or 10),
-            naming=json.dumps(positions.scheme_from_form(request.form)),
-            notes=request.form.get("notes", "").strip(),
-        ))
+        r = FishRack(notes=(request.form.get("notes") or "").strip())
+        try:
+            zf_rack_fields(s, r, request.form)
+        except ZfInputError as error:
+            flash(str(error), "error")
+            return redirect(url_for("zebrafish", view="tanks", mode="grid"))
+        s.add(r)
         s.commit()
     return redirect(url_for("zebrafish", view="tanks", mode="grid"))
 
@@ -5297,32 +6042,37 @@ def zebrafish_update_rack(rack_id: int):
         r = s.get(FishRack, rack_id)
         if r is None:
             flash("That rack no longer exists.", "error")
-        else:
-            r.name = (request.form.get("name") or "").strip() or r.name
-            r.rows = max(1, min(26, int(request.form.get("rows") or r.rows)))
-            r.cols = max(1, min(40, int(request.form.get("cols") or r.cols)))
-            sys_fk = request.form.get("system_id_fk")
-            if sys_fk is not None:
-                r.system_id_fk = int(sys_fk) if sys_fk.isdigit() else None
-            if "naming_mode" in request.form:
-                r.naming = json.dumps(positions.scheme_from_form(request.form))
-            s.commit()
-            flash(f"Saved rack {r.name}.", "success")
+            return redirect(url_for("zebrafish", view="tanks", mode="grid"))
+        try:
+            zf_rack_fields(s, r, request.form)
+        except ZfInputError as error:
+            s.rollback()
+            flash(str(error), "error")
+            return redirect(url_for("zebrafish", view="tanks", mode="grid"))
+        s.commit()
+        flash(f"Saved rack {r.name}.", "success")
     return redirect(url_for("zebrafish", view="tanks", mode="grid"))
 
 
 @app.route("/zebrafish/racks/<int:rack_id>/delete", methods=["POST"])
 @login_required
 def zebrafish_delete_rack(rack_id: int):
+    """Delete a rack; its tanks stay, unplaced. Refused when that would
+    move tanks you may not edit."""
     with SessionLocal() as s:
         r = s.get(FishRack, rack_id)
         if r is not None:
-            # Detach tanks from the deleted rack rather than cascading delete.
-            for t in r.tanks:
-                t.rack_id_fk = None
-                t.row = None
-                t.col = None
-            s.delete(r)
+            theirs = [t.tank_id for t in r.tanks if not zf_can_edit(t)]
+            if theirs:
+                flash(f"{r.name} holds tanks you can’t edit ({', '.join(theirs[:5])}"
+                      f"{'…' if len(theirs) > 5 else ''}). Ask their owners, or an admin.", "error")
+                return redirect(url_for("zebrafish", view="tanks", mode="grid"))
+            with audit.batch(s, "delete", f"delete rack {r.name}", "fish_racks"):
+                for t in r.tanks:
+                    t.rack_id_fk = None
+                    t.row = None
+                    t.col = None
+                s.delete(r)
             s.commit()
     return redirect(url_for("zebrafish", view="tanks", mode="grid"))
 
@@ -5333,45 +6083,55 @@ def zebrafish_delete_rack(rack_id: int):
 @app.route("/zebrafish/systems/create", methods=["POST"])
 @login_required
 def zebrafish_create_system():
+    form = request.form
     with SessionLocal() as s:
-        s.add(WaterSystem(
-            name=(request.form.get("name") or "").strip() or "System",
-            room=request.form.get("room", "").strip(),
-            target_temp_c=_safe_float(request.form.get("target_temp_c")),
-            target_ph=_safe_float(request.form.get("target_ph")),
-            target_conductivity=_safe_float(request.form.get("target_conductivity")),
-            notes=request.form.get("notes", "").strip(),
-        ))
+        try:
+            name = (form.get("name") or "").strip()
+            if not name:
+                raise ZfInputError("A water system needs a name.")
+            if s.scalar(select(WaterSystem.id).where(WaterSystem.name == name)) is not None:
+                raise ZfInputError(f"There is already a water system called {name}.")
+            s.add(WaterSystem(
+                name=name,
+                room=(form.get("room") or "").strip(),
+                target_temp_c=zf_float(form, "target_temp_c", "Target °C"),
+                target_ph=zf_float(form, "target_ph", "Target pH"),
+                target_conductivity=zf_float(form, "target_conductivity", "Target µS/cm"),
+                notes=(form.get("notes") or "").strip(),
+            ))
+        except ZfInputError as error:
+            flash(str(error), "error")
+            return redirect(url_for("zebrafish", view="water"))
         s.commit()
     return redirect(url_for("zebrafish", view="water"))
-
-
-def _safe_float(v):
-    if v is None or v == "":
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
 
 
 @app.route("/zebrafish/water/log", methods=["POST"])
 @login_required
 def zebrafish_log_water():
+    form = request.form
     with SessionLocal() as s:
-        sys_fk = request.form.get("system_id_fk")
-        if not sys_fk:
+        try:
+            system_id = zf_ref(s, WaterSystem, form.get("system_id_fk"), "water system")
+            if system_id is None:
+                raise ZfInputError("Pick the water system this reading is for.")
+            log = WaterLog(
+                system_id_fk=system_id,
+                ph=zf_float(form, "ph", "pH"),
+                conductivity=zf_float(form, "conductivity", "Conductivity"),
+                temperature_c=zf_float(form, "temperature_c", "Temperature"),
+                salinity=zf_float(form, "salinity", "Salinity"),
+                alarm=form.get("alarm") in ("1", "on", "true", "yes"),
+                recorded_by=access.username(),
+                notes=(form.get("notes") or "").strip(),
+            )
+            if (all(v is None for v in (log.ph, log.conductivity, log.temperature_c, log.salinity))
+                    and not log.alarm and not log.notes):
+                raise ZfInputError("Enter at least one reading, a note or an alarm.")
+        except ZfInputError as error:
+            flash(str(error), "error")
             return redirect(url_for("zebrafish", view="water"))
-        s.add(WaterLog(
-            system_id_fk=int(sys_fk),
-            ph=_safe_float(request.form.get("ph")),
-            conductivity=_safe_float(request.form.get("conductivity")),
-            temperature_c=_safe_float(request.form.get("temperature_c")),
-            salinity=_safe_float(request.form.get("salinity")),
-            alarm=request.form.get("alarm") in ("1", "on", "true", "yes"),
-            recorded_by=g.user.username if g.user else "",
-            notes=request.form.get("notes", "").strip(),
-        ))
+        s.add(log)
         s.commit()
     return redirect(url_for("zebrafish", view="water"))
 
@@ -5405,29 +6165,43 @@ def zebrafish_water_series(system_id: int):
 # ---- Clutches + mating wizard ---------------------------------------------
 
 
+def zf_clutch_from_form(s, c, form) -> None:
+    """Write the posted fields onto a clutch. Raises ZfInputError."""
+    if "clutch_id" in form:
+        c.clutch_id = zf_unique(s, ClutchRecord.clutch_id, form.get("clutch_id"), "clutch", c.id)
+    if "date_of_fertilization" in form:
+        c.date_of_fertilization = zf_date(form, "date_of_fertilization", "Fertilised") or c.date_of_fertilization
+    if "line_id_fk" in form:
+        c.line_id_fk = zf_ref(s, FishLine, form.get("line_id_fk"), "line")
+    if "father_tank_id" in form:
+        c.father_tank_id = zf_ref(s, TankRecord, form.get("father_tank_id"), "male tank")
+    if "mother_tank_id" in form:
+        c.mother_tank_id = zf_ref(s, TankRecord, form.get("mother_tank_id"), "female tank")
+    for fld, label in (("embryo_count", "Embryos"), ("larvae_count", "Larvae"), ("adults_count", "Adults")):
+        if fld in form:
+            setattr(c, fld, zf_int(form, fld, label, default=0, lo=0, hi=1000000))
+    if "owner" in form:
+        c.owner = (form.get("owner") or "").strip()
+    if "notes" in form:
+        c.notes = (form.get("notes") or "").strip()
+
+
 @app.route("/zebrafish/clutches/create", methods=["POST"])
 @login_required
 def zebrafish_create_clutch():
+    form = request.form
     with SessionLocal() as s:
-        cn = (s.scalar(select(func.count(ClutchRecord.id))) or 0) + 1
-        clutch_id = (request.form.get("clutch_id") or f"C{date.today().strftime('%y%m%d')}-{cn}").strip()
-        line_id = request.form.get("line_id_fk") or None
-        ftank = request.form.get("father_tank_id") or None
-        mtank = request.form.get("mother_tank_id") or None
-        s.add(ClutchRecord(
-            clutch_id=clutch_id,
-            date_of_fertilization=parse_date(request.form.get("date_of_fertilization")) or date.today(),
-            line_id_fk=int(line_id) if line_id else None,
-            father_tank_id=int(ftank) if ftank else None,
-            mother_tank_id=int(mtank) if mtank else None,
-            embryo_count=int(request.form.get("embryo_count", "0") or 0),
-            larvae_count=int(request.form.get("larvae_count", "0") or 0),
-            adults_count=int(request.form.get("adults_count", "0") or 0),
-            owner=g.user.username if g.user else "",
-            notes=request.form.get("notes", "").strip(),
-        ))
+        c = ClutchRecord(date_of_fertilization=date.today(), owner=access.username(),
+                         embryo_count=0, larvae_count=0, adults_count=0, notes="")
+        try:
+            if not (form.get("clutch_id") or "").strip():
+                c.clutch_id = zf_next_code(s, ClutchRecord.clutch_id, f"C{date.today().strftime('%y%m%d')}-")
+            zf_clutch_from_form(s, c, {k: v for k, v in form.items() if k != "clutch_id" or v.strip()})
+        except ZfInputError as error:
+            return zf_reply("clutches", str(error))
+        s.add(c)
         s.commit()
-    return redirect(url_for("zebrafish", view="clutches"))
+    return zf_reply("clutches")
 
 
 @app.route("/zebrafish/clutches/<int:clutch_row_id>/update", methods=["POST"])
@@ -5436,21 +6210,25 @@ def zebrafish_update_clutch(clutch_row_id: int):
     with SessionLocal() as s:
         c = s.get(ClutchRecord, clutch_row_id)
         if c is None:
-            return autosave_response("zebrafish")
-        for fld in ("clutch_id", "notes"):
-            if fld in request.form:
-                setattr(c, fld, (request.form.get(fld) or "").strip())
-        for ifld in ("embryo_count", "larvae_count", "adults_count"):
-            if ifld in request.form:
-                v = (request.form.get(ifld) or "0").strip()
-                setattr(c, ifld, int(v) if v.lstrip("-").isdigit() else 0)
-        if "date_of_fertilization" in request.form:
-            c.date_of_fertilization = parse_date(request.form.get("date_of_fertilization")) or c.date_of_fertilization
-        if "line_id_fk" in request.form:
-            v = request.form.get("line_id_fk") or None
-            c.line_id_fk = int(v) if v else None
+            return zf_reply("clutches", "That clutch no longer exists. Reload the page.", status=404)
+        if not zf_can_edit(c):
+            return zf_reply("clutches", zf_denied(c), status=403)
+        try:
+            zf_clutch_from_form(s, c, request.form)
+        except ZfInputError as error:
+            s.rollback()
+            return zf_reply("clutches", str(error))
         s.commit()
-    return autosave_response("zebrafish")
+        state = {"values": {"clutch_id": c.clutch_id, "owner": c.owner,
+                            "date_of_fertilization": c.date_of_fertilization.isoformat()}}
+    return zf_reply("clutches", row=state)
+
+
+def zf_delete_clutch(s, c) -> None:
+    """Fish raised from a clutch keep everything but the link."""
+    for f in s.scalars(select(FishRecord).where(FishRecord.clutch_id_fk == c.id)):
+        f.clutch_id_fk = None
+    s.delete(c)
 
 
 @app.route("/zebrafish/clutches/<int:clutch_row_id>/delete", methods=["POST"])
@@ -5459,36 +6237,95 @@ def zebrafish_delete_clutch(clutch_row_id: int):
     with SessionLocal() as s:
         c = s.get(ClutchRecord, clutch_row_id)
         if c is not None:
-            s.delete(c)
+            if not zf_can_edit(c):
+                flash(zf_denied(c), "error")
+                return redirect(url_for("zebrafish", view="clutches"))
+            with audit.batch(s, "delete", f"delete clutch {c.clutch_id}", "clutches"):
+                zf_delete_clutch(s, c)
             s.commit()
+    return redirect(url_for("zebrafish", view="clutches"))
+
+
+@app.route("/zebrafish/clutches/<int:clutch_row_id>/duplicate", methods=["POST"])
+@login_required
+def zebrafish_duplicate_clutch(clutch_row_id: int):
+    """Another clutch from the same cross, dated today, owned by whoever
+    made the copy."""
+    with SessionLocal() as s:
+        c = s.get(ClutchRecord, clutch_row_id)
+        if c is None:
+            return redirect(url_for("zebrafish", view="clutches"))
+        copy = ClutchRecord(clutch_id=zf_next_code(s, ClutchRecord.clutch_id, f"C{date.today().strftime('%y%m%d')}-"),
+                            date_of_fertilization=date.today(), line_id_fk=c.line_id_fk,
+                            father_tank_id=c.father_tank_id, mother_tank_id=c.mother_tank_id,
+                            embryo_count=0, larvae_count=0, adults_count=0, owner=access.username(), notes=c.notes)
+        s.add(copy)
+        s.commit()
+        flash(f"Copied clutch {c.clutch_id} to {copy.clutch_id}.", "success")
+    return redirect(url_for("zebrafish", view="clutches"))
+
+
+@app.route("/zebrafish/clutches/bulk", methods=["POST"])
+@login_required
+def zebrafish_bulk_clutches():
+    """Batch actions on ticked clutches: set owner, delete."""
+    form = request.form
+    action = (form.get("action") or "").strip()
+    value = (form.get("value") or "").strip()
+    labels = {"owner": "Set owner", "delete": "Deleted"}
+    if action not in labels:
+        flash("Pick an action.", "error")
+        return redirect(url_for("zebrafish", view="clutches"))
+    changed = skipped = 0
+    with SessionLocal() as s:
+        what = "delete clutches" if action == "delete" else f"set owner = {value or '(blank)'}"
+        with audit.batch(s, "delete" if action == "delete" else "update", what, "clutches") as batch_row:
+            for c in zf_selected(s, ClutchRecord, form):
+                if not zf_can_edit(c):
+                    skipped += 1
+                    continue
+                if action == "delete":
+                    zf_delete_clutch(s, c)
+                else:
+                    c.owner = value
+                changed += 1
+            batch_row.record_count = changed
+        s.commit()
+    zf_report(changed, skipped, labels[action], "clutch", "clutches")
     return redirect(url_for("zebrafish", view="clutches"))
 
 
 @app.route("/zebrafish/mate", methods=["POST"])
 @login_required
 def zebrafish_set_up_mating():
-    """Create a mating tank from a ♂×♀ pair. Picks an empty tank position
-    if none specified. Sets a return date (default +1 day)."""
+    """Create a mating tank from a ♂×♀ pair of tanks, with a return date
+    (default tomorrow). The fish come out of both tanks, so both have to
+    be yours to edit (or shared breeding tanks)."""
+    form = request.form
     with SessionLocal() as s:
-        father_id = request.form.get("father_tank_id")
-        mother_id = request.form.get("mother_tank_id")
-        if not father_id or not mother_id:
-            flash("Pick both a father and mother tank.", "error")
-            return redirect(url_for("zebrafish", view="clutches"))
         try:
-            return_days = int(request.form.get("return_days", "1") or 1)
-        except ValueError:
-            return_days = 1
-        # Auto-name the mating tank: M-<father>-<mother>-<date>.
-        n = (s.scalar(select(func.count(TankRecord.id))) or 0) + 1
+            father_id = zf_ref(s, TankRecord, form.get("father_tank_id"), "male tank")
+            mother_id = zf_ref(s, TankRecord, form.get("mother_tank_id"), "female tank")
+            if not father_id or not mother_id:
+                raise ZfInputError("Pick both a male and a female tank.")
+            if father_id == mother_id:
+                raise ZfInputError("Pick two different tanks for the male and the female.")
+            return_days = zf_int(form, "return_days", "Return in (days)", default=1, lo=1, hi=14)
+            for tid in (father_id, mother_id):
+                parent = s.get(TankRecord, tid)
+                if not zf_can_edit(parent):
+                    raise ZfInputError(zf_denied(parent))
+        except ZfInputError as error:
+            flash(str(error), "error")
+            return redirect(url_for("zebrafish", view="clutches"))
         tank = TankRecord(
-            tank_id=f"MT{n:03d}",
+            tank_id=zf_next_code(s, TankRecord.tank_id, "MT", 3),
             purpose="mating",
-            mating_father_tank_id=int(father_id),
-            mating_mother_tank_id=int(mother_id),
+            mating_father_tank_id=father_id,
+            mating_mother_tank_id=mother_id,
             mating_return_at=date.today() + timedelta(days=return_days),
-            owner=g.user.username if g.user else "",
-            notes=request.form.get("notes", "").strip(),
+            owner=access.username(),
+            notes=(form.get("notes") or "").strip(),
         )
         s.add(tank)
         s.commit()
@@ -5502,18 +6339,25 @@ def zebrafish_set_up_mating():
 @app.route("/zebrafish/sac/create", methods=["POST"])
 @login_required
 def zebrafish_create_sac_log():
+    form = request.form
     with SessionLocal() as s:
-        tank_fk = request.form.get("tank_id_fk") or None
-        line_fk = request.form.get("line_id_fk") or None
-        s.add(FishSacLog(
-            tank_id_fk=int(tank_fk) if tank_fk else None,
-            line_id_fk=int(line_fk) if line_fk else None,
-            count=int(request.form.get("count", "1") or 1),
-            reason=(request.form.get("reason") or "").strip(),
-            recorded_by=g.user.username if g.user else "",
-        ))
+        try:
+            tank_id = zf_ref(s, TankRecord, form.get("tank_id_fk"), "tank")
+            if tank_id is not None and not zf_can_edit(s.get(TankRecord, tank_id)):
+                raise ZfInputError(zf_denied(s.get(TankRecord, tank_id)))
+            entry = FishSacLog(
+                tank_id_fk=tank_id,
+                line_id_fk=zf_ref(s, FishLine, form.get("line_id_fk"), "line"),
+                count=zf_int(form, "count", "Count", default=1, lo=1, hi=100000),
+                reason=(form.get("reason") or "").strip()[:200],
+                recorded_by=access.username(),
+            )
+        except ZfInputError as error:
+            flash(str(error), "error")
+            return redirect(url_for("zebrafish", view="tanks") + "#sac-log")
+        s.add(entry)
         s.commit()
-    return redirect(url_for("zebrafish", view="sac"))
+    return redirect(url_for("zebrafish", view="tanks") + "#sac-log")
 
 
 @app.route("/zebrafish/tanks/<int:tank_row_id>/card")
@@ -5524,7 +6368,7 @@ def zebrafish_tank_card(tank_row_id: int):
         t = s.get(TankRecord, tank_row_id)
         if t is None:
             return redirect(url_for("zebrafish", view="tanks"))
-        return render_template("zebrafish_tank_card.html", tank=t,
+        return render_template("zebrafish_tank_card.html", tank=t, position=fish_position_label(t),
                                age_for_clutch=lambda dof: _fish_age_label(dof))
 
 
