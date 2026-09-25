@@ -124,6 +124,18 @@ def denied_message(what: str, owner: str = "") -> str:
     return f"That {what} is {who}. Ask them, or an admin, to make the change."
 
 
+def can_configure(module, user=None) -> bool:
+    """Changing a database's definition — its fields, schedule rules,
+    racks and locations, vocabulary, or deleting it — is for an admin or
+    whoever created it. Records inside it follow can_edit."""
+    if module is None:
+        return False
+    if is_admin(user):
+        return True
+    creator = (getattr(module, "created_by", "") or "").strip()
+    return bool(creator) and creator == username(user)
+
+
 def reason_denied(record, user=None, noun: str | None = None) -> str:
     """A message worth showing someone, rather than a bare 403. `noun`
     names the kind of record ("reagent", "cage"…); "record" otherwise."""

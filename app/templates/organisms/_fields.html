@@ -40,10 +40,10 @@
       <input type="date" name="{{ name }}" value="{{ value or '' }}" {% if field.required %}required{% endif %}>
 
     {% elif field.field_type == 'url' %}
-      <input type="url" name="{{ name }}" value="{{ value or '' }}" placeholder="https://">
+      <input type="url" name="{{ name }}" value="{{ value or '' }}" placeholder="https://" {% if field.required %}required{% endif %}>
 
     {% elif field.field_type == 'user' %}
-      <select name="{{ name }}">
+      <select name="{{ name }}" {% if field.required %}required{% endif %}>
         <option value="">—</option>
         {% for username in usernames %}
           <option value="{{ username }}" {% if value == username %}selected{% endif %}>{{ username }}</option>
@@ -51,7 +51,7 @@
       </select>
 
     {% elif field.field_type == 'line' %}
-      <select name="{{ name }}">
+      <select name="{{ name }}" {% if field.required %}required{% endif %}>
         <option value="">—</option>
         {% for line in lines %}
           <option value="{{ line.code }}" {% if value == line.code %}selected{% endif %}>{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>

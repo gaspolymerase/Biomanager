@@ -888,7 +888,10 @@ class OrgHousing(Base, _JsonAttrs):
     location: Mapped[OrgLocation | None] = relationship()
     line: Mapped[OrgLine | None] = relationship()
     residents: Mapped[list["Organism"]] = relationship(
-        back_populates="housing", cascade="all, delete-orphan")
+        # No delete cascade: deleting a unit unassigns its residents (their
+        # housing_id_fk goes to NULL) rather than deleting other people's
+        # animals along with it.
+        back_populates="housing")
 
 
 class OrgCross(Base, _JsonAttrs):
