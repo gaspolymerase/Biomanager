@@ -103,6 +103,7 @@ from .services import (
     next_cage_id,
     next_litter_id,
     next_mouse_id,
+    reserve_cage_ids,
     reserve_mouse_ids,
     parse_date,
     recent_notifications,
@@ -342,7 +343,7 @@ COLONY_VIEW_META: dict[str, dict[str, str]] = {
     "mice":        {"label": "Mice", "icon": "mouse",
                     "blurb": "Every mouse record, editable in place"},
     "cages":       {"label": "Cages", "icon": "cage",
-                    "blurb": "Mice grouped by cage, with breeding actions"},
+                    "blurb": "Every cage, editable in place, with its mice and breeding actions"},
     "litters":     {"label": "Litters", "icon": "baby",
                     "blurb": "Cohorts and the dates derived from their DOB"},
     "breeders":    {"label": "Breeders", "icon": "heart",
@@ -664,23 +665,38 @@ def deny(record, view: str = "mice"):
     return autosave_response(view)
 
 
+def set_mouse_cage(mouse: MouseRecord, cage: CageRecord | None) -> None:
+    """Put `mouse` in `cage` through the foreign-key column as well as the
+    relationship. The audit listener records column changes only, so a
+    move made through the relationship alone would be missing from /audit
+    and batch undo could not put the mouse back."""
+    mouse.cage = cage
+    mouse.cage_id_fk = cage.id if cage is not None else None
+
+
+def set_mouse_litter(mouse: MouseRecord, litter: LitterRecord | None) -> None:
+    """As set_mouse_cage, for the litter (and so the date of birth)."""
+    mouse.litter = litter
+    mouse.litter_id_fk = litter.id if litter is not None else None
+
+
 def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owner_on_transfer: bool = True) -> tuple[str | None, str | None]:
     original_owner = mouse.owner
     transfer_recipient = None
     litter_code = form.get("litter_id", "").strip()
     dob = parse_date(form.get("date_of_birth"))
-    mouse.litter = get_or_create_litter(db_session, litter_code, dob) if litter_code else None
+    set_mouse_litter(mouse, get_or_create_litter(db_session, litter_code, dob) if litter_code else None)
 
     # A form that does not carry the cage (a cage card's mouse row, which
     # only shows the mouse's own fields) leaves the mouse where it is.
     if "cage_id" in form or form.get("auto_new_cage") == "1":
         cage_input = form.get("cage_id", "").strip()
         if cage_input:
-            mouse.cage = get_or_create_cage(db_session, cage_input)
+            set_mouse_cage(mouse, get_or_create_cage(db_session, cage_input))
         elif form.get("auto_new_cage") == "1":
-            mouse.cage = get_or_create_cage(db_session, "new")
+            set_mouse_cage(mouse, get_or_create_cage(db_session, "new"))
         else:
-            mouse.cage = None
+            set_mouse_cage(mouse, None)
 
     if mouse.cage is not None:
         # Rack, position and location note belong to the cage; see form_changed.
@@ -730,9 +746,9 @@ def create_transfer_copy(db_session, source_mouse: MouseRecord, recipient_userna
         owner=recipient_username,
         note=f"Transferred from {sender_username or source_mouse.owner} on {date.today().isoformat()}.",
         date_of_death=None,
-        litter=source_mouse.litter,
-        cage=get_or_create_cage(db_session, "new"),
     )
+    set_mouse_litter(copied_mouse, source_mouse.litter)
+    set_mouse_cage(copied_mouse, get_or_create_cage(db_session, "new"))
     sync_mouse_transgenes(
         copied_mouse,
         [source_mouse.transgene_1, source_mouse.transgene_2, source_mouse.transgene_3, source_mouse.transgene_4],
@@ -779,6 +795,125 @@ def mouse_sheet_meta(mouse_rows: list[dict], dropdowns: dict, racks=()) -> dict:
     }
 
 
+# Cage purposes offered on the cage sheet before the lab's own presets.
+CAGE_PURPOSE_CHOICES = ["Experiments", "Breeding", "Breeder", "Stock", "Retired"]
+# A litter still counts as the cage's pups up to this age (days).
+PUP_AGE_DAYS = 28
+
+
+def _sex_label(females: int, males: int, other: int) -> str:
+    """"2♀ 1♂" for the living mice in a cage; unknown sex shown as "?"."""
+    parts = [f"{n}{sign}" for n, sign in ((females, "♀"), (males, "♂"), (other, "?")) if n]
+    return " ".join(parts)
+
+
+def cage_pup_litter(cage) -> LitterRecord | None:
+    """The youngest litter among the cage's living mice, if it is still
+    pups (born within PUP_AGE_DAYS)."""
+    today = date.today()
+    litters = {m.litter.id: m.litter for m in cage.mice
+               if mouse_is_active(m) and m.litter is not None and m.litter.date_of_birth
+               and 0 <= (today - m.litter.date_of_birth).days <= PUP_AGE_DAYS}
+    return max(litters.values(), key=lambda lit: lit.date_of_birth) if litters else None
+
+
+def cage_wean_due(cage) -> tuple[str, str]:
+    """(date, state): the P21 weaning day from the cage's litter-born date,
+    else from its pups' litter; state is "overdue", "soon" (within 3 days)
+    or ""."""
+    born = cage.date_give_birth
+    if born is None:
+        litter = cage_pup_litter(cage)
+        born = litter.date_of_birth if litter else None
+    if born is None:
+        return "", ""
+    due = born + timedelta(days=WEAN_OFFSET_DAYS)
+    left = (due - date.today()).days
+    return due.isoformat(), ("overdue" if left < 0 else "soon" if left <= 3 else "")
+
+
+def cage_genotype_auto(cage) -> str:
+    """What the living mice carry, most common first: "Ai14; Cre ×2 · Ai14"."""
+    counts: dict[str, int] = {}
+    for mouse in cage.mice:
+        if mouse_is_active(mouse):
+            key = (mouse.genotype or "").strip()
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+    return " · ".join(f"{name} ×{n}" if n > 1 else name for name, n in ordered)
+
+
+def cage_sheet_values(cage) -> dict:
+    """The cage's cells as the sheet shows them. The update route returns
+    these after a save; static/sheet.js writes them back into the row and
+    refreshes each `<name>_was` copy."""
+    wean, wean_state = cage_wean_due(cage)
+    purpose = (cage.purpose or "").strip().lower()
+    return {
+        "rack_id": cage.rack_id_fk or "",
+        "position": cage_position_label(cage),
+        "purpose": cage.purpose or "",
+        "owner": cage.owner or "",
+        "is_shared": "1" if cage.is_shared else "0",
+        "cage_location": cage.cage_location or "",
+        "genotype_summary": cage.genotype_summary or "",
+        "notes": cage.notes or "",
+        "date_give_birth": cage.date_give_birth.isoformat() if cage.date_give_birth else "",
+        "wean_due": wean,
+        "wean_state": wean_state,
+        # Breeder (and stock) cages are shared whatever the flag says.
+        "shared_implied": "1" if purpose in access.SHARED_PURPOSES else "0",
+        "breeding": "1" if is_breeder_purpose(cage.purpose) else "0",
+    }
+
+
+def cage_sheet_row(cage) -> dict:
+    """One row of the cage sheet, with the cage's mice for its sub-row."""
+    derived = cage_derived_dates(cage)
+    living = [m for m in cage.mice if mouse_is_active(m)]
+    females = sum(1 for m in living if m.gender == "F")
+    males = sum(1 for m in living if m.gender == "M")
+    ordered = sorted(cage.mice, key=lambda item: item.mouse_id)
+    pups = cage_pup_litter(cage)
+    values = cage_sheet_values(cage)
+    role = getattr(g.user, "role", None) if g.user else None
+    return {
+        **values,
+        "id": cage.id,
+        "cage_id": cage.cage_id,
+        "active": cage_is_active(cage),
+        "rack_name": cage.rack.name if cage.rack else "",
+        "genotyping_date": derived["genotyping_date"],
+        "weaning_date": derived["weaning_date"],
+        "card_id": cage.card_id,
+        "genotype_auto": cage_genotype_auto(cage),
+        "location_detail": cage.location_detail,
+        "room": cage.room,
+        "shared": access.is_shared_cage(cage),
+        "mine": access.owns(cage),
+        "can_edit": access.can_edit_cage(cage),
+        "can_breed": is_breeder_purpose(cage.purpose),
+        "live_count": len(living),
+        "total_count": len(cage.mice),
+        "sex_label": _sex_label(females, males, len(living) - females - males),
+        "pup_litter": pups.litter_id if pups else "",
+        "pup_dob": pups.date_of_birth.isoformat() if pups else "",
+        "default_father": next((str(m.mouse_id) for m in ordered if m.gender == "M"), ""),
+        "default_mother": next((str(m.mouse_id) for m in ordered if m.gender == "F"), ""),
+        "mice": [dict(mouse_display_row(m, access.username(), role), editable=can_edit_mouse(m))
+                 for m in ordered],
+        "payload": {
+            "id": cage.id, "_label": cage.cage_id, "_locked": not access.can_edit_cage(cage),
+            "rack_id": cage.rack_id_fk or "", "position": values["position"],
+            "cage_location": cage.cage_location, "purpose": cage.purpose, "room": cage.room,
+            "card_id": cage.card_id, "genotype_summary": cage.genotype_summary,
+            "location_detail": cage.location_detail, "notes": cage.notes,
+            "date_give_birth": values["date_give_birth"],
+        },
+    }
+
+
 def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[str, object]:
     """Build the colony page context.
 
@@ -817,36 +952,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         # appear to save and then be refused.
         for mouse, row in zip(mice, mouse_rows):
             row["editable"] = can_edit_mouse(mouse)
-        cage_rows = []
-        for cage in cages:
-            derived = cage_derived_dates(cage)
-            cage_rows.append(
-                {
-                    "id": cage.id,
-                    "cage_id": cage.cage_id,
-                    "cage_location": cage.cage_location,
-                    "purpose": cage.purpose,
-                    "active": cage_is_active(cage),
-                    "notes": cage.notes,
-                    "date_give_birth": cage.date_give_birth.isoformat() if cage.date_give_birth else "",
-                    "genotyping_date": derived["genotyping_date"],
-                    "weaning_date": derived["weaning_date"],
-                    "card_id": cage.card_id,
-                    "rack_id": cage.rack_id_fk,
-                    "position": cage_position_label(cage),
-                    "genotype_summary": cage.genotype_summary,
-                    "location_detail": cage.location_detail,
-                    "room": cage.room,
-                    "owner": cage.owner,
-                    "is_shared": access.is_shared_cage(cage),
-                    "can_edit": access.can_edit_cage(cage),
-                    "can_breed": is_breeder_purpose(cage.purpose),
-                    "default_father": next((str(mouse.mouse_id) for mouse in sorted(cage.mice, key=lambda item: item.mouse_id) if mouse.gender == "M"), ""),
-                    "default_mother": next((str(mouse.mouse_id) for mouse in sorted(cage.mice, key=lambda item: item.mouse_id) if mouse.gender == "F"), ""),
-                    "mice": [dict(mouse_display_row(mouse, g.user.username, g.user.role), editable=can_edit_mouse(mouse))
-                             for mouse in sorted(cage.mice, key=lambda item: item.mouse_id)],
-                }
-            )
+        cage_rows = [cage_sheet_row(cage) for cage in cages] if active_view in ("cages", "experiments") else []
         litter_rows = []
         for litter in litters:
             litter_rows.append(
@@ -871,6 +977,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
                 "strain_background": strain.strain_background,
                 "supplier": strain.supplier,
                 "description": strain.description,
+                "created_by": strain.created_by,
+                "editable": access.can_edit_strain(strain),
             }
             for strain in strains
         ]
@@ -918,6 +1026,15 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         "mouse_sheet": mouse_sheet_meta(mouse_rows, dropdowns, sheet_racks),
         "cage_racks": cage_racks,
         "cage_rows": cage_rows,
+        "cage_sheet": {
+            "purpose_choices": _merged_choices(CAGE_PURPOSE_CHOICES, dropdowns.get("purpose", []),
+                                               (r["purpose"] for r in cage_rows)),
+            "active_count": sum(1 for r in cage_rows if r["active"]),
+            "breeding_count": sum(1 for r in cage_rows if r["can_breed"]),
+            "mine_count": sum(1 for r in cage_rows if r["mine"]),
+            "location_notes_used": any(r["cage_location"] for r in cage_rows),
+        },
+        "can_edit_presets": access.can_edit_presets(),
         "litter_rows": litter_rows,
         "strain_rows": strain_rows,
         "dropdowns": dropdowns,
@@ -1941,7 +2058,7 @@ def update_mouse(mouse_row_id: int):
             if mouse.litter is not None and mouse.litter.litter_id == original_litter_id:
                 mouse.litter.date_of_birth = original_dob
             new_litter = get_or_create_litter(db_session, next_litter_id(db_session), requested_dob)
-            mouse.litter = new_litter
+            set_mouse_litter(mouse, new_litter)
         if transfer_recipient:
             create_transfer_copy(db_session, mouse, transfer_recipient, sender_username)
         stamp_updated(mouse)
@@ -1952,9 +2069,13 @@ def update_mouse(mouse_row_id: int):
                        "date_of_death": mouse.date_of_death.isoformat() if mouse.date_of_death else "",
                        "litter_id": litter.litter_id if litter else "",
                        "date_of_birth": litter.date_of_birth.isoformat() if litter and litter.date_of_birth else ""}
+        mouse_owner = mouse.owner
     result = autosave_response("mice")
     if request.headers.get("X-Autosave") == "1" and not isinstance(result, tuple):
-        return jsonify({"ok": True, "cage": state, "mouse": mouse_state})
+        return jsonify({"ok": True, "cage": state, "mouse": mouse_state,
+                        "row": {"active": mouse_state["active"],
+                                "values": {"status": mouse_state["status"], "owner": mouse_owner,
+                                           "litter_id": mouse_state["litter_id"]}}})
     return result
 
 
@@ -1975,9 +2096,9 @@ def duplicate_mouse(mouse_row_id: int):
             owner=source_mouse.owner,
             note=source_mouse.note,
             date_of_death=None,
-            cage=source_mouse.cage,
-            litter=source_mouse.litter,
         )
+        set_mouse_cage(duplicate, source_mouse.cage)
+        set_mouse_litter(duplicate, source_mouse.litter)
         sync_mouse_transgenes(duplicate, [source_mouse.transgene_1, source_mouse.transgene_2, source_mouse.transgene_3, source_mouse.transgene_4])
         db_session.add(duplicate)
         db_session.commit()
@@ -2464,38 +2585,110 @@ def export_mice():
     )
 
 
+MAX_NEW_CAGES = 20
+
+
+def _free_rack_cells(db_session, rack, count: int, start: tuple[int, int] | None) -> list[tuple[int, int]]:
+    """Up to `count` empty positions of `rack` in reading order, from
+    `start` (row, col) on, or from the first cell."""
+    taken = {(r, c) for r, c in db_session.execute(
+        select(CageRecord.rack_row, CageRecord.rack_col).where(
+            CageRecord.rack_id_fk == rack.id, CageRecord.rack_row.is_not(None)))}
+    cells = []
+    first = start or (1, 1)
+    for row in range(1, rack.rows + 1):
+        for col in range(1, rack.cols + 1):
+            if (row, col) < first or (row, col) in taken:
+                continue
+            cells.append((row, col))
+            if len(cells) == count:
+                return cells
+    return cells
+
+
 @app.route("/colony/cages/create", methods=["POST"])
 @login_required
 def create_cage():
-    """Create a cage. A blank ID takes the next free one; an ID that is
-    already a cage is refused — creating never edits an existing cage (a
-    stale form would otherwise overwrite it)."""
-    requested = request.form.get("cage_id", "").strip()
+    """Create a cage, or several ("How many", 1–20) with consecutive IDs.
+    A blank ID takes the next free one(s); a typed ID starts the run. An ID
+    that is already a cage is refused — creating never edits an existing
+    cage (a stale form would otherwise overwrite it)."""
+    form = request.form
+    requested = form.get("cage_id", "").strip()
+    raw_count = (form.get("count") or "1").strip() or "1"
+    if not raw_count.isdigit() or not 1 <= int(raw_count) <= MAX_NEW_CAGES:
+        flash(f"Make between 1 and {MAX_NEW_CAGES} cages at a time (asked for “{raw_count}”).", "error")
+        return autosave_response("cages")
+    count = int(raw_count)
     with SessionLocal() as db_session:
         if requested and requested.lower() != "new":
-            if db_session.scalar(select(CageRecord.id).where(CageRecord.cage_id == requested)):
-                flash(f"Cage {requested} already exists; nothing was changed. "
+            if count > 1 and not requested.isdigit():
+                flash(f"To make {count} cages, leave the ID blank or type the first number of the run.", "error")
+                return autosave_response("cages")
+            codes = [requested] if count == 1 else [str(int(requested) + i) for i in range(count)]
+            taken = db_session.scalars(select(CageRecord.cage_id).where(CageRecord.cage_id.in_(codes))).all()
+            if taken:
+                flash(f"Cage {', '.join(sorted(taken))} already exists; nothing was changed. "
                       "Leave the ID blank to take the next free one.", "error")
                 return autosave_response("cages")
-            cage = CageRecord(cage_id=requested, owner=g.user.username)
-            db_session.add(cage)
         else:
-            cage = new_owned_cage(db_session)
-        cage.cage_location = request.form.get("cage_location", "").strip()
-        cage.purpose = request.form.get("purpose", "").strip()
-        cage.notes = request.form.get("notes", "").strip()
-        cage.date_give_birth = parse_date(request.form.get("date_give_birth"))
-        cage.card_id = request.form.get("card_id", "").strip()
-        cage.genotype_summary = request.form.get("genotype_summary", "").strip()
-        cage.location_detail = request.form.get("location_detail", "").strip()
-        cage.room = request.form.get("room", "").strip()
-        if "rack_id" in request.form:
-            error = apply_cage_position(db_session, cage, request.form.get("rack_id"), request.form.get("position"))
-            if error:
-                flash(f"Cage {cage.cage_id} was created but not placed: {error}", "error")
+            codes = reserve_cage_ids(db_session, count)
+
+        rack = cells = None
+        placement_error = None
+        if count > 1 and (form.get("rack_id") or "").strip():
+            rack_raw = form.get("rack_id").strip()
+            rack = db_session.get(MouseRack, int(rack_raw)) if rack_raw.isdigit() else None
+            if rack is None:
+                placement_error = f"There is no rack called {rack_raw}."
+            else:
+                start = None
+                position = (form.get("position") or "").strip()
+                if position:
+                    start = positions.parse(position, rack.naming, rack.rows, rack.cols)
+                    if start is None:
+                        placement_error = f"“{position}” is not a position in rack {rack.name}."
+                if not placement_error and (start or position == ""):
+                    cells = _free_rack_cells(db_session, rack, count, start) if start else []
+                    if start and len(cells) < count:
+                        placement_error = (f"{rack.name} had room for {len(cells)} of {count} from "
+                                           f"{position}; the rest are in it without a position.")
+
+        batch_ctx = audit.batch(db_session, "create", f"add {count} cages", "mouse_cages") if count > 1 else None
+        batch_row = batch_ctx.__enter__() if batch_ctx is not None else None
+        created = []
+        for index, code in enumerate(codes):
+            cage = CageRecord(cage_id=code, owner=g.user.username)
+            db_session.add(cage)
+            cage.cage_location = form.get("cage_location", "").strip()
+            cage.purpose = form.get("purpose", "").strip()
+            cage.notes = form.get("notes", "").strip()
+            cage.date_give_birth = parse_date(form.get("date_give_birth"))
+            cage.card_id = form.get("card_id", "").strip()
+            cage.genotype_summary = form.get("genotype_summary", "").strip()
+            cage.location_detail = form.get("location_detail", "").strip()
+            cage.room = form.get("room", "").strip()
+            if count == 1:
+                if "rack_id" in form:
+                    error = apply_cage_position(db_session, cage, form.get("rack_id"), form.get("position"))
+                    if error:
+                        placement_error = error
+            elif rack is not None:
+                cage.rack_id_fk = rack.id
+                if cells is not None and index < len(cells):
+                    cage.rack_row, cage.rack_col = cells[index]
+            db_session.flush()
+            created.append(code)
+        if batch_ctx is not None:
+            batch_row.record_count = len(created)
+            batch_ctx.__exit__(None, None, None)
         db_session.commit()
-        if request.headers.get("X-Autosave") != "1":
-            flash(f"Created cage {cage.cage_id}.", "success")
+        label = f"cage {created[0]}" if count == 1 else f"{count} cages, {created[0]} to {created[-1]}"
+        if placement_error:
+            flash(f"Created {label}, but not placed: {placement_error}" if count == 1
+                  else f"Created {label}. {placement_error}", "error")
+        elif request.headers.get("X-Autosave") != "1":
+            flash(f"Created {label}.", "success")
     return autosave_response("cages")
 
 
@@ -2702,36 +2895,145 @@ def mouse_rack_payload(db_session, cages) -> dict:
     }
 
 
+# Plain text fields a cage form may carry. A form only changes what it
+# sends: the cage sheet posts its row's cells, the dialog every field.
+CAGE_TEXT_FIELDS = ("purpose", "notes", "card_id", "genotype_summary", "location_detail", "room")
+
+
+def apply_cage_form(db_session, cage, form) -> str | None:
+    """Write a cage form onto `cage`; return an error message instead of
+    saving something wrong. Rack, position and location note also change
+    from the mouse sheet and the rack grid, so they are only written when
+    they differ from the row's `_was` copy (app/formutil.py)."""
+    for field in CAGE_TEXT_FIELDS:
+        if field in form:
+            setattr(cage, field, (form.get(field) or "").strip())
+    if "cage_location" in form and form_changed(form, "cage_location"):
+        cage.cage_location = (form.get("cage_location") or "").strip()
+    if "date_give_birth" in form:
+        cage.date_give_birth = parse_date(form.get("date_give_birth"))
+    if "is_shared" in form:
+        cage.is_shared = (form.get("is_shared") or "").strip() in ("1", "on", "true", "yes")
+    if "owner" in form and form_changed(form, "owner"):
+        owner = (form.get("owner") or "").strip()
+        if owner and owner not in current_lab_usernames(db_session):
+            return f"“{owner}” is not a lab member. Pick a username from the list."
+        cage.owner = owner
+    if "rack_id" in form and form_changed(form, "rack_id", "position"):
+        return apply_cage_position(db_session, cage, form.get("rack_id"), form.get("position"))
+    return None
+
+
 @app.route("/colony/cages/<int:cage_row_id>/update", methods=["POST"])
 @login_required
 def update_cage(cage_row_id: int):
     with SessionLocal() as db_session:
         cage = db_session.get(CageRecord, cage_row_id)
         if cage is None:
+            flash("That cage no longer exists.", "error")
             return autosave_response("cages")
         blocked = deny(cage, "cages")
         if blocked:
             return blocked
-        cage.cage_location = request.form.get("cage_location", "").strip()
-        cage.purpose = request.form.get("purpose", "").strip()
-        cage.notes = request.form.get("notes", "").strip()
-        cage.date_give_birth = parse_date(request.form.get("date_give_birth"))
-        cage.card_id = request.form.get("card_id", "").strip()
-        cage.genotype_summary = request.form.get("genotype_summary", "").strip()
-        cage.location_detail = request.form.get("location_detail", "").strip()
-        cage.room = request.form.get("room", "").strip()
-        if "rack_id" in request.form and form_changed(request.form, "rack_id", "position"):
-            error = apply_cage_position(db_session, cage, request.form.get("rack_id"), request.form.get("position"))
-            if error:
-                db_session.rollback()
-                flash(error, "error")
-                return autosave_response("cages")
+        error = apply_cage_form(db_session, cage, request.form)
+        if error:
+            db_session.rollback()
+            flash(error, "error")
+            return autosave_response("cages")
         db_session.commit()
         state = cage_state(cage)
+        row = {"active": cage_is_active(cage), "values": cage_sheet_values(cage)}
     result = autosave_response("cages")
     if request.headers.get("X-Autosave") == "1" and not isinstance(result, tuple):
-        return jsonify({"ok": True, "cage": state})
+        # "cage" is what the mouse sheet syncs its rows from; "row" is the
+        # static/sheet.js shape the cage sheet reads.
+        return jsonify({"ok": True, "cage": state, "row": row})
     return result
+
+
+# ---- Batch actions on ticked cages -----------------------------------------
+
+CAGE_BULK_LABELS = {"purpose": "Set purpose", "owner": "Set owner", "rack": "Moved",
+                    "shared": "Sharing set", "retire": "Retired"}
+
+
+@app.route("/colony/cages/bulk", methods=["POST"])
+@login_required
+def bulk_cages():
+    """Batch actions on ticked cages: set purpose or owner, move to a rack
+    (unplaced there), mark shared or not, retire. Applied to the cages you
+    may edit, skipping the rest; one batch, so /batches can undo it."""
+    form = request.form
+    action = (form.get("action") or "").strip()
+    value = (form.get("value") or "").strip()
+    back = url_for("colony", view="cages", scope=access.resolve_scope(form.get("scope")))
+    if action not in CAGE_BULK_LABELS:
+        flash("Pick an action.", "error")
+        return redirect(back)
+    ids = [int(v) for v in form.getlist("selected_ids") if v.isdigit()]
+    changed = skipped = 0
+    blocked: list[str] = []
+    with SessionLocal() as db_session:
+        rack = None
+        if action == "owner" and value not in current_lab_usernames(db_session):
+            flash(f"“{value or '(blank)'}” is not a lab member, so no owner was changed. "
+                  "Pick a username from the list.", "error")
+            return redirect(back)
+        if action == "rack" and value:
+            rack = db_session.get(MouseRack, int(value)) if value.isdigit() else None
+            if rack is None:
+                flash("That rack no longer exists.", "error")
+                return redirect(back)
+        what = {"purpose": f"set cage purpose = {value or '(blank)'}",
+                "owner": f"set cage owner = {value}",
+                "rack": f"move cages to {rack.name if rack else '(no rack)'}",
+                "shared": "mark cages shared" if value == "1" else "mark cages not shared",
+                "retire": "retire cages"}[action]
+        cages = db_session.scalars(select(CageRecord).where(CageRecord.id.in_(ids))).all() if ids else []
+        with audit.batch(db_session, "update", what, "mouse_cages") as batch_row:
+            for cage in cages:
+                if not can_edit_cage(cage):
+                    skipped += 1
+                    continue
+                if action == "purpose":
+                    cage.purpose = value
+                elif action == "owner":
+                    cage.owner = value
+                elif action == "shared":
+                    cage.is_shared = value == "1"
+                elif action == "rack":
+                    if rack is not None and cage.rack_id_fk == rack.id:
+                        continue
+                    # Into the rack without a position: dragging on the
+                    # rack grid places each one.
+                    cage.rack_id_fk = rack.id if rack else None
+                    cage.rack_row = cage.rack_col = None
+                elif action == "retire":
+                    living = [m for m in cage.mice if mouse_is_active(m)]
+                    if living:
+                        blocked.append(f"cage {cage.cage_id} still holds {len(living)} living "
+                                       f"{'mouse' if len(living) == 1 else 'mice'}")
+                        continue
+                    # Retired: not a breeding or shared cage any more, and
+                    # its rack position is free for the next one.
+                    cage.purpose = "Retired"
+                    cage.is_shared = False
+                    cage.active_override = False
+                    cage.rack_id_fk = cage.rack_row = cage.rack_col = None
+                changed += 1
+            batch_row.record_count = changed
+        db_session.commit()
+    noun = lambda n: "cage" if n == 1 else "cages"  # noqa: E731
+    if changed:
+        flash(f"{CAGE_BULK_LABELS[action]} on {changed} {noun(changed)}."
+              + (f" {skipped} skipped — not yours to edit." if skipped else ""), "success")
+    elif skipped:
+        flash(f"Nothing changed — {skipped} {noun(skipped)} are not yours to edit.", "error")
+    elif not blocked:
+        flash("Nothing was changed.", "error")
+    if blocked:
+        flash("Not retired: " + "; ".join(blocked) + ". Move or end its mice first.", "error")
+    return redirect(back)
 
 
 @app.route("/colony/cages/<int:cage_row_id>/add-mouse", methods=["POST"])
@@ -2801,14 +3103,15 @@ def cage_genotyping(cage_row_id: int):
         litter.total_pups = total_pups
         litter.cohort_name = f"Cage {cage.cage_id}"
         litter.notes = f"Generated by genotyping for cage {cage.cage_id}."
+        db_session.flush()  # the litter's id, for the pups' column
         for _ in range(total_pups):
             mouse = MouseRecord(
                 mouse_id=next_mouse_id(db_session),
                 status="geno",
                 owner=g.user.username,
-                cage=cage,
-                litter=litter,
             )
+            set_mouse_cage(mouse, cage)
+            set_mouse_litter(mouse, litter)
             db_session.add(mouse)
             db_session.flush()
         db_session.commit()
@@ -3009,6 +3312,15 @@ def add_existing_mouse_to_litter(litter_row_id: int):
     return redirect(url_for("colony", view="litters"))
 
 
+def strain_denied(strain) -> str:
+    who = (strain.created_by or "").strip()
+    return (f"Strain {strain.strain_name} was added by {who}; only they or an admin can change or remove it."
+            if who else f"Strain {strain.strain_name} predates recorded creators; only an admin can change or remove it.")
+
+
+PRESETS_DENIED = "Only an admin can add, rename or remove presets. You can still pick them everywhere."
+
+
 @app.route("/colony/strains/create", methods=["POST"])
 @login_required
 def create_strain():
@@ -3029,6 +3341,7 @@ def create_strain():
                 strain_background=request.form.get("strain_background", "").strip(),
                 supplier=request.form.get("supplier", "").strip(),
                 description=request.form.get("description", "").strip(),
+                created_by=g.user.username,
             )
         )
         db_session.commit()
@@ -3043,6 +3356,9 @@ def update_strain(strain_row_id: int):
         strain = db_session.get(StrainRecord, strain_row_id)
         if strain is None:
             flash("That strain no longer exists.", "error")
+            return autosave_response("strains")
+        if not access.can_edit_strain(strain):
+            flash(strain_denied(strain), "error")
             return autosave_response("strains")
         new_name = request.form.get("strain_name", strain.strain_name).strip()
         if not new_name:
@@ -3069,6 +3385,9 @@ def delete_strain(strain_row_id: int):
     text; the strain only stops being offered as a suggestion."""
     with SessionLocal() as db_session:
         strain = db_session.get(StrainRecord, strain_row_id)
+        if strain is not None and not access.can_edit_strain(strain):
+            flash(strain_denied(strain), "error")
+            return redirect(url_for("colony", view="strains"))
         if strain is not None:
             name = strain.strain_name
             db_session.delete(strain)
@@ -3082,6 +3401,9 @@ def delete_strain(strain_row_id: int):
 def create_option():
     field_name = (request.form.get("field_name") or "").strip()
     option_value = (request.form.get("option_value") or "").strip()
+    if not access.can_edit_presets():
+        flash(PRESETS_DENIED, "error")
+        return redirect(url_for("colony", view="settings"))
     with SessionLocal() as db_session:
         if not field_name or not option_value:
             flash("Pick a column and type a value.", "error")
@@ -3105,6 +3427,9 @@ def create_option():
 @login_required
 def update_option(option_id: int):
     new_value = request.form.get("option_value", "").strip()
+    if not access.can_edit_presets():
+        flash(PRESETS_DENIED, "error")
+        return autosave_response("settings")
     with SessionLocal() as db_session:
         option = db_session.get(DropdownOption, option_id)
         if option is None:
@@ -3131,6 +3456,9 @@ def update_option(option_id: int):
 @app.route("/colony/options/<int:option_id>/delete", methods=["POST"])
 @login_required
 def delete_option(option_id: int):
+    if not access.can_edit_presets():
+        flash(PRESETS_DENIED, "error")
+        return redirect(url_for("colony", view="settings"))
     with SessionLocal() as db_session:
         option = db_session.get(DropdownOption, option_id)
         if option is not None:
