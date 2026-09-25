@@ -1217,21 +1217,116 @@ function autosaveInput(input, options) {
     form.dataset.autosaveKey = formId || `autosave-${Math.random().toString(36).slice(2)}`;
   }
   const autosaveKey = form.dataset.autosaveKey;
-  if (input.name === 'date_of_birth' && input.dataset.originalLitter && input.dataset.originalDob && input.value && input.value !== input.dataset.originalDob) {
-    const confirmed = window.confirm('This mouse is in a cohort. Detach it to a new solo litter with the new DOB? (Other cohort members keep the original DOB.)');
-    if (!confirmed) {
-      input.value = input.dataset.originalDob;
-      return;
-    }
-    const hidden = form.querySelector('input[name="confirm_cohort_dob_change"]');
-    if (hidden) hidden.value = '1';
-  }
   clearTimeout(autosaveTimers.get(autosaveKey));
   if (immediate) {
     saveFormInBackground(form);
   } else {
     autosaveTimers.set(autosaveKey, setTimeout(() => saveFormInBackground(form), 250));
   }
+}
+
+/* Alive or not, shown by the green dot beside the mouse ID. A mouse is
+   alive while it has no date of death and its status is not one that
+   means it died (sac, dead…) or left (transfer). Choosing such a status
+   fills today's date of death, which stays editable; moving a mouse back
+   to a living status (a sac entered by mistake) clears it again. The
+   server applies the same rule and its answer has the final word. */
+const END_STATUSES = new Set({{ end_statuses | tojson }});
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function sheetField(formId, name) {
+  return document.querySelector(`[form="${formId}"][name="${name}"]`);
+}
+function refreshLife(formId, activeFromServer) {
+  const status = sheetField(formId, 'status');
+  const dod = sheetField(formId, 'date_of_death');
+  const row = (status || dod)?.closest('tr');
+  if (!row) return;
+  const now = (status?.value || '').trim().toLowerCase();
+  const alive = typeof activeFromServer === 'boolean'
+    ? activeFromServer
+    : !(dod && dod.value) && !END_STATUSES.has(now) && now !== 'transfer';
+  const dot = row.querySelector('.life-dot');
+  if (dot) {
+    dot.classList.toggle('is-alive', alive);
+    dot.title = alive ? 'Alive' : 'Not alive';
+  }
+  row.dataset.active = alive ? 'true' : 'false';
+  row.classList.toggle('is-inactive', !alive);
+}
+function applyStatusChange(select, previous) {
+  const formId = select.getAttribute('form');
+  const dod = sheetField(formId, 'date_of_death');
+  const now = select.value.trim().toLowerCase();
+  if (dod) {
+    if (END_STATUSES.has(now) && !dod.value) dod.value = localToday();
+    else if (END_STATUSES.has(previous) && !END_STATUSES.has(now)) dod.value = '';
+    dod.dataset.empty = dod.value ? '0' : '1';
+  }
+  refreshLife(formId);
+}
+
+/* Changing a birth date always asks first. A mouse in a cohort shares
+   its litter's date, so saying yes moves it to a litter of its own. */
+function confirmDobChange(input) {
+  const from = input.dataset.originalDob || '';
+  const to = input.value || '';
+  if (to === from) return false;
+  const formId = input.getAttribute('form');
+  const form = formId ? document.getElementById(formId) : input.closest('form');
+  const who = form?.dataset.mouseLabel ? `mouse ${form.dataset.mouseLabel}` : 'this mouse';
+  const cohort = input.dataset.originalLitter && from;
+  const message = cohort
+    ? `Change the date of birth of ${who} from ${from} to ${to || '(blank)'}?\n\n`
+      + `It is in litter ${input.dataset.originalLitter}, so it will move to a new litter of its own. `
+      + 'The other mice in that litter keep their date.'
+    : `Change the date of birth of ${who}${from ? ` from ${from}` : ''} to ${to || '(blank)'}?`;
+  if (!window.confirm(message)) {
+    input.value = from;
+    input.dataset.empty = from ? '0' : '1';
+    return false;
+  }
+  const hidden = form?.querySelector('input[name="confirm_cohort_dob_change"]');
+  if (hidden) hidden.value = cohort ? '1' : '0';
+  input.dataset.originalDob = to;  // asked once per change
+  return true;
+}
+function wireDobInput(input) {
+  // A date typed digit by digit changes several times; ask once the value
+  // has settled, or when the field is left.
+  let timer = null;
+  const settle = () => {
+    clearTimeout(timer);
+    timer = null;
+    if (!confirmDobChange(input)) return;
+    input.dataset.dirty = '1';
+    input.dataset.empty = input.value ? '0' : '1';
+    autosaveInput(input, { immediate: true });
+  };
+  input.addEventListener('change', () => { clearTimeout(timer); timer = setTimeout(settle, 900); });
+  input.addEventListener('blur', () => { if (timer) settle(); });
+}
+
+/* After a save, the server's view of the mouse wins. */
+function syncMouse(form, state) {
+  const dod = sheetField(form.id, 'date_of_death');
+  if (dod && document.activeElement !== dod) {
+    dod.value = state.date_of_death || '';
+    dod.dataset.empty = dod.value ? '0' : '1';
+  }
+  const litter = sheetField(form.id, 'litter_id');
+  const dob = sheetField(form.id, 'date_of_birth');
+  if (litter && 'litter_id' in state && document.activeElement !== litter) litter.value = state.litter_id || '';
+  if (dob) {
+    dob.dataset.originalLitter = state.litter_id || '';
+    dob.dataset.originalDob = state.date_of_birth || '';
+    if (document.activeElement !== dob) dob.value = state.date_of_birth || '';
+  }
+  const hidden = form.querySelector('input[name="confirm_cohort_dob_change"]');
+  if (hidden) hidden.value = '0';
+  refreshLife(form.id, state.active);
 }
 
 /* The sheet's save indicator. One line in the toolbar, so a refused or
@@ -1329,6 +1424,7 @@ async function saveFormInBackground(form) {
     }
     form.dataset.saveState = 'saved';
     if (body.cage) syncCage(body.cage, form);
+    if (body.mouse) syncMouse(form, body.mouse);
     rowsForForm(form).forEach((el) => el.closest('td')?.classList.remove('has-error'));
     savesInFlight -= 1;
     if (savesInFlight === 0) showSaveStatus('saved', 'All changes saved');
@@ -1344,13 +1440,19 @@ async function saveFormInBackground(form) {
 }
 
 document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
+  if (input.name === 'date_of_birth') { wireDobInput(input); return; }
   input.addEventListener('input', () => { input.dataset.dirty = '1'; autosaveInput(input); });
   input.addEventListener('change', () => {
     input.dataset.dirty = '1';
     // Pills recolour as soon as the value changes.
     if (input.classList.contains('sex-pill')) input.dataset.sex = input.value;
-    if (input.classList.contains('status-pill')) input.dataset.status = input.value.toLowerCase();
+    if (input.classList.contains('status-pill')) {
+      const previous = input.dataset.status || '';
+      input.dataset.status = input.value.toLowerCase();
+      applyStatusChange(input, previous);
+    }
     if (input.type === 'date') input.dataset.empty = input.value ? '0' : '1';
+    if (input.name === 'date_of_death' && input.getAttribute('form')) refreshLife(input.getAttribute('form'));
     autosaveInput(input, { immediate: true });
   });
 });
@@ -1399,18 +1501,34 @@ document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
     form.querySelector('select, input:not([type=hidden])')?.focus();
   });
 
+  // Sac / dead fills today's date of death; back to a living status clears it.
+  let dialogStatus = '';
+  dialog.addEventListener('focusin', (event) => {
+    if (event.target === form.elements.status) dialogStatus = form.elements.status.value.trim().toLowerCase();
+  });
+  form.elements.status.addEventListener('change', () => {
+    const now = form.elements.status.value.trim().toLowerCase();
+    const dod = form.elements.date_of_death;
+    if (END_STATUSES.has(now) && !dod.value) dod.value = localToday();
+    else if (END_STATUSES.has(dialogStatus) && !END_STATUSES.has(now)) dod.value = '';
+    dialogStatus = now;
+  });
+
   form.addEventListener('submit', (event) => {
-    // Changing the birth date of a mouse that belongs to a litter moves it
-    // to a new solo litter; ask first, exactly as the sheet does.
+    // Any change to an existing mouse's birth date asks first. In a
+    // litter, saying yes moves it to a new litter of its own.
     const dob = form.elements.date_of_birth.value;
-    if (original.id && original.litter_id && original.date_of_birth && dob
-        && dob !== original.date_of_birth && form.elements.litter_id.value === original.litter_id) {
-      if (!window.confirm('This mouse is in a cohort. Detach it to a new solo litter with the new birth date? Other cohort members keep theirs.')) {
-        event.preventDefault();
-        return;
-      }
-      form.elements.confirm_cohort_dob_change.value = '1';
+    if (!original.id || dob === (original.date_of_birth || '')) return;
+    const cohort = original.litter_id && original.date_of_birth && form.elements.litter_id.value === original.litter_id;
+    const message = cohort
+      ? `Change the date of birth of mouse ${original.mouse_id} from ${original.date_of_birth} to ${dob || '(blank)'}?\n\n`
+        + `It is in litter ${original.litter_id}, so it will move to a new litter of its own. The other mice keep their date.`
+      : `Change the date of birth of mouse ${original.mouse_id}${original.date_of_birth ? ` from ${original.date_of_birth}` : ''} to ${dob || '(blank)'}?`;
+    if (!window.confirm(message)) {
+      event.preventDefault();
+      return;
     }
+    if (cohort) form.elements.confirm_cohort_dob_change.value = '1';
   });
 })();
 

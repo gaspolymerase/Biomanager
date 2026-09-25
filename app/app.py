@@ -82,6 +82,8 @@ from .services import (
     calculate_reagent_requirements,
     current_lab_usernames,
     mouse_is_active,
+    apply_status_rules,
+    END_STATUSES,
     mouse_racks,
     normalize_status,
     sample_source_label,
@@ -678,6 +680,7 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
     transgenes = transgene_values_from_form(form)
     sync_mouse_transgenes(mouse, transgenes)
     mouse.gender = form.get("gender", "").strip()
+    previous_status = mouse.status
     mouse.status = form.get("status", "").strip()
     status_normalized = mouse.status.lower()
     requested_owner = form.get("owner", "").strip()
@@ -685,8 +688,7 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
     mouse.date_of_death = parse_date(form.get("date_of_death"))
 
     lab_users = set(current_lab_usernames(db_session))
-    if status_normalized == "sac" and mouse.date_of_death is None:
-        mouse.date_of_death = date.today()
+    apply_status_rules(mouse, previous_status)
 
     if status_normalized == "transfer" and requested_owner and requested_owner in lab_users and requested_owner != original_owner:
         transfer_recipient = requested_owner
@@ -1476,6 +1478,7 @@ def colony():
     context = colony_context(active_view, scope)
     context["scope"] = scope
     context["scopes"] = access.SCOPES
+    context["end_statuses"] = sorted(END_STATUSES)
     return render_template("colony.html", **context)
 
 
@@ -1823,9 +1826,14 @@ def update_mouse(mouse_row_id: int):
         stamp_updated(mouse)
         db_session.commit()
         state = cage_state(mouse.cage)
+        litter = mouse.litter
+        mouse_state = {"id": mouse.id, "active": mouse_is_active(mouse), "status": mouse.status,
+                       "date_of_death": mouse.date_of_death.isoformat() if mouse.date_of_death else "",
+                       "litter_id": litter.litter_id if litter else "",
+                       "date_of_birth": litter.date_of_birth.isoformat() if litter and litter.date_of_birth else ""}
     result = autosave_response("mice")
     if request.headers.get("X-Autosave") == "1" and not isinstance(result, tuple):
-        return jsonify({"ok": True, "cage": state})
+        return jsonify({"ok": True, "cage": state, "mouse": mouse_state})
     return result
 
 
@@ -1978,6 +1986,10 @@ def bulk_update_mice():
                 mouse.cage = get_or_create_cage(db_session, value) if value else None
             elif field == "date_of_death":
                 mouse.date_of_death = parse_date(value)
+            elif field == "status":
+                previous_status = mouse.status
+                mouse.status = value
+                apply_status_rules(mouse, previous_status)
             else:
                 setattr(mouse, field, value)
             stamp_updated(mouse)
