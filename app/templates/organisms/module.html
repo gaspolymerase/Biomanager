@@ -107,6 +107,10 @@
       </div>
       <div class="dt-toolbar-spacer"></div>
       {{ sheet_ui.tools() }}
+      <button type="button" class="dt-toolbar-btn" title="Add several {{ module.organism_noun_plural }} with the same details"
+              data-org-edit="animal-dialog" data-org-payload="{{ dict(new_payload, how_many=10) | tojson | forceescape }}">
+        {{ icon('copy') }} Add many
+      </button>
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
               data-org-edit="animal-dialog" data-org-payload="{{ new_payload | tojson | forceescape }}">
         {{ icon('plus') }} New {{ module.organism_noun }}
@@ -127,7 +131,10 @@
             {{ th('birth_on', 'Born', 'born', '132px') }}
             {{ th('age', 'Age', 'age', '70px') }}
             {{ th('death_on', 'Died / removed', 'died', '132px') }}
-            {% if module.has('genotyping') %}{{ th('genotype', 'Genotype', 'dna', '160px') }}{% endif %}
+            {% if module.has('genotyping') %}
+              {{ th('genotype', 'Genotype', 'dna', '160px') }}
+              {{ th('call', 'Latest call', 'microscope', '160px', 'title="The most recent genotyping call (Genotyping tab)"') }}
+            {% endif %}
             {{ F.table_headers(own_fields) }}
             {{ th('owner', 'Owner', 'user', '96px') }}
             <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
@@ -140,10 +147,12 @@
             {% set f = 'row-a-' ~ row.id %}
             {% set locked = not r.editable %}
             {% set attrs = row.attrs_dict %}
+            {% set call = latest_calls.get(row.id) if module.has('genotyping') else none %}
             <tr data-id="{{ row.id }}" data-code="{{ row.code or '' }}"
                 data-active="{{ 'true' if r.alive else 'false' }}" data-mine="{{ 'true' if r.mine else 'false' }}"
                 data-housing="{{ row.housing.code if row.housing else '' }}" data-line="{{ row.line.code if row.line else '' }}"
                 data-age="{{ ((row.death_on or today_date) - row.birth_on).days if row.birth_on else '' }}"
+                {% if call %}data-call="{{ (call.result ~ ' ' ~ call.zygosity) | trim }}"{% endif %}
                 class="{% if not r.alive %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
               <td class="sheet-pin sheet-pin-start"><input type="checkbox" data-select-row value="{{ row.id }}" aria-label="Select {{ row.code or module.organism_noun }}"></td>
               <td>{{ sheet_ui.id_cell(row.code or '—', alive=r.alive, locked=locked, owner=row.owner, noun=module.organism_noun,
@@ -169,6 +178,16 @@
               <td><input type="date" name="death_on" form="{{ f }}" value="{{ row.death_on or '' }}" data-empty="{{ '0' if row.death_on else '1' }}" data-autosave="1" data-dead-if-set aria-label="Died or removed" {% if locked %}disabled{% endif %}></td>
               {% if module.has('genotyping') %}
                 <td><input class="ident" name="genotype" form="{{ f }}" value="{{ row.genotype }}" title="{{ row.genotype }}" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
+                <td>
+                  {% if call %}
+                    <span class="org-call" title="{{ call.assay or 'Call' }} · {{ call.called_on or '' }}{% if call.called_by %} · {{ call.called_by }}{% endif %}">
+                      <span class="ident">{{ call.result }}</span>
+                      {% if call.zygosity %}<span class="badge badge-quiet">{{ call.zygosity }}</span>{% endif %}
+                    </span>
+                  {% else %}
+                    <span class="text-sand-300">—</span>
+                  {% endif %}
+                </td>
               {% endif %}
               {{ F.table_cells(own_fields, attrs) }}
               <td>{{ sheet_ui.owner_cell(row.owner, f, locked, list_id='org-owners') }}</td>
@@ -227,6 +246,16 @@
         <input name="value" list="org-owners" placeholder="owner" aria-label="Owner" class="w-[110px]">
         <button type="submit" class="btn btn-sm">Set owner</button>
       </form>
+      {% if module.has('genotyping') %}
+        <form method="post" action="{{ url_for('organisms.genotype_batch', key=module.key) }}" class="selbar-group" data-selection-form
+              title="One call for every ticked {{ module.organism_noun }}">
+          <input type="hidden" name="return_view" value="animals">
+          <input name="assay" list="org-assays" placeholder="assay" aria-label="Assay" class="w-[96px]">
+          <input name="result" placeholder="result" aria-label="Result" class="w-[96px] font-mono">
+          <select name="zygosity" aria-label="Zygosity">{{ choice_options(zygosities, None, 'zygosity') }}</select>
+          <button type="submit" class="btn btn-sm">Record genotype</button>
+        </form>
+      {% endif %}
       <form method="post" action="{{ url_for('organisms.bulk_animals', key=module.key) }}" class="selbar-group" data-selection-form
             data-confirm="Delete {n} {{ module.organism_noun }} record(s)?">
         <input type="hidden" name="action" value="delete">
@@ -253,6 +282,12 @@
       {% if module.tracks_groups %}
         <label class="field-label">Count<input type="number" name="count" min="1" value="1"></label>
       {% endif %}
+      <label class="field-label" data-new-only>How many
+        <input type="number" name="how_many" min="1" max="50" value="1">
+        <span class="field-hint normal-case tracking-normal">
+          {% if module.identity_mode == 'group' %}Separate {{ module.organism_noun_plural }}, all with these details.{% else %}Consecutive IDs from the one above, all with these details.{% endif %}
+        </span>
+      </label>
       {% if module.has('housing') %}
         <label class="field-label">{{ module.housing_noun|capitalize }}<select name="housing_id_fk">{{ housing_options() }}</select></label>
       {% endif %}
@@ -286,6 +321,9 @@
       <button type="submit">Save</button>
     </form>
   </dialog>
+  {% if module.has('genotyping') %}
+    <datalist id="org-assays">{% for assay in assays %}<option value="{{ assay }}"></option>{% endfor %}</datalist>
+  {% endif %}
 {% endif %}
 
 {# =====================================================================
@@ -332,6 +370,10 @@
         {{ icon('grid') }} {{ module.container_noun|capitalize }}s
       </button>
       <a class="dt-toolbar-btn" href="{{ url_for('labels.module_cards', module_key=module.key) }}">{{ icon('print') }} Labels</a>
+      <button type="button" class="dt-toolbar-btn" title="Add several {{ module.housing_noun_plural }} side by side"
+              data-org-edit="housing-dialog" data-org-payload="{{ dict(new_payload, how_many=10) | tojson | forceescape }}">
+        {{ icon('copy') }} Add many
+      </button>
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
               data-org-edit="housing-dialog" data-org-payload="{{ new_payload | tojson | forceescape }}">
         {{ icon('plus') }} New {{ module.housing_noun }}
@@ -496,6 +538,12 @@
           <span class="field-hint normal-case tracking-normal">Named the way the {{ module.container_noun }} names it.</span>
         </label>
       {% endif %}
+      <label class="field-label" data-new-only>How many
+        <input type="number" name="how_many" min="1" max="30" value="1">
+        <span class="field-hint normal-case tracking-normal">
+          Consecutive IDs{% if module.has('housing_grid') %}, side by side from the position (or the first free cell){% endif %}.
+        </span>
+      </label>
       <label class="field-label">Purpose<select name="purpose">{{ choice_options(module.housing_purposes, None) }}</select></label>
       {% if module.has('lines') %}
         <label class="field-label">{{ module.line_noun|capitalize }}<select name="line_id_fk">{{ line_options() }}</select></label>
@@ -936,6 +984,148 @@
       <label class="field-label">Current count<input type="number" name="count_current" min="0"></label>
       <label class="field-label">Owner<select name="owner">{{ owner_options() }}</select></label>
       {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
+      <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
+      <button type="submit">Save</button>
+    </form>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   GENOTYPING
+   One row per call, newest first; Pending lists the living records that
+   have never been called, each with a Record button.
+   ===================================================================== #}
+{% if active_view == 'genotyping' %}
+  {% set new_call = {'called_on': today} %}
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-genotyping-v1"
+           data-noun="genotype call" data-noun-plural="genotype calls">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search calls…" autocomplete="off" aria-label="Search">
+      </div>
+      <div class="dt-chips" role="group" aria-label="Show">
+        <button type="button" class="dt-chip" data-dt-filter="call:true" aria-pressed="true" title="Every call made">All <span class="dt-chip-count">{{ chip_counts.calls }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="pending:true" aria-pressed="false" title="Living {{ module.organism_noun_plural }} with no call yet">Pending <span class="dt-chip-count">{{ chip_counts.pending }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false" title="Calls you made">Mine <span class="dt-chip-count">{{ chip_counts.mine }}</span></button>
+      </div>
+      <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+              data-org-edit="genotype-dialog" data-org-payload="{{ new_call | tojson | forceescape }}">
+        {{ icon('plus') }} New call
+      </button>
+    </div>
+
+    <div class="dt-scroll">
+      <table class="dt sheet-table" data-resizable="1">
+        <thead>
+          <tr>
+            {{ th('subject', module.organism_noun|capitalize, module.icon, '130px') }}
+            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '120px') }}{% endif %}
+            {{ th('assay', 'Assay', 'flask-vial', '130px') }}
+            {{ th('result', 'Result', 'dna', '170px') }}
+            {{ th('zygosity', 'Zygosity', 'tag', '100px') }}
+            {{ th('called_on', 'Called on', 'calendar', '112px') }}
+            {{ th('called_by', 'Called by', 'user', '104px') }}
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('file', 'dt-col-icon') }}Gel image</span></th>
+            <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+            <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in genotype_rows %}
+            {% set call = r.call %}
+            <tr data-id="c{{ call.id }}" data-call="true" data-pending="false" data-mine="{{ 'true' if r.mine else 'false' }}"
+                data-subject="{{ r.label }}" data-housing="{{ r.housing }}" data-assay="{{ call.assay }}"
+                data-result="{{ call.result }}" data-zygosity="{{ call.zygosity }}"
+                data-called_on="{{ call.called_on or '' }}" data-called_by="{{ call.called_by }}"
+                class="{% if not r.editable %}is-locked{% endif %}">
+              <td>
+                {{ sheet_ui.id_cell(r.label, locked=not r.editable, owner=r.subject.owner if r.subject else '', noun=module.organism_noun) }}
+                {% if r.kind != 'organism' %}<span class="badge badge-quiet">{{ module.housing_noun if r.kind == 'housing' else r.kind }}</span>{% endif %}
+                {% if r.subject is none %}<span class="badge badge-warn" title="The record this call was for has been deleted">deleted</span>{% endif %}
+              </td>
+              {% if module.has('housing') %}<td>{% if r.housing %}<span class="ident">{{ r.housing }}</span>{% endif %}</td>{% endif %}
+              <td><span class="sheet-cell-text">{{ call.assay }}</span></td>
+              <td><span class="sheet-cell-text ident" title="{{ call.result }}">{{ call.result }}</span></td>
+              <td>{% if call.zygosity %}<span class="badge badge-quiet">{{ call.zygosity }}</span>{% endif %}</td>
+              <td><span class="sheet-cell-text">{{ call.called_on or '' }}</span></td>
+              <td>{% if call.called_by %}{{ call.called_by | owner_badge }}{% endif %}</td>
+              <td>{% if call.image_path %}<a class="org-gel-link" href="{{ call.image_path }}" target="_blank" rel="noopener">{{ icon('external') }} Open</a>{% endif %}</td>
+              <td><span class="sheet-cell-text text-muted" title="{{ call.notes }}">{{ call.notes }}</span></td>
+              <td class="sheet-pin sheet-pin-end">
+                <div class="sheet-actions">
+                  {% if r.subject is not none and r.kind == 'organism' %}
+                    <button type="button" class="row-icon-btn" title="Record another call for {{ r.label }}" {% if not r.editable %}disabled{% endif %}
+                            data-org-edit="genotype-dialog" data-org-payload="{{ {'subject': r.label, 'assay': call.assay, 'called_on': today} | tojson | forceescape }}">{{ icon('plus') }}</button>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('organisms.delete_genotype', key=module.key, call_id=call.id) }}"
+                        data-confirm="Remove this {{ call.assay or 'genotype' }} call for {{ r.label }}?">
+                    <button type="submit" class="row-icon-btn danger-button" title="Remove" {% if not r.editable and not (r.subject is none and (call.called_by == me or current_user.role == 'admin')) %}disabled{% endif %}>{{ icon('trash') }}</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% for p in pending_rows %}
+            <tr data-id="p{{ p.subject.id }}" data-call="false" data-pending="true" data-mine="false"
+                data-subject="{{ p.label }}" data-housing="{{ p.housing }}"
+                class="{% if not p.editable %}is-locked{% endif %}">
+              <td>{{ sheet_ui.id_cell(p.label, alive=true, locked=not p.editable, owner=p.subject.owner, noun=module.organism_noun, alive_title='Alive') }}</td>
+              {% if module.has('housing') %}<td>{% if p.housing %}<span class="ident">{{ p.housing }}</span>{% endif %}</td>{% endif %}
+              <td></td>
+              <td><span class="org-pending">no call yet</span></td>
+              <td></td><td></td><td></td><td></td>
+              <td><span class="sheet-cell-text text-muted">{{ p.subject.genotype }}</span></td>
+              <td class="sheet-pin sheet-pin-end">
+                <div class="sheet-actions">
+                  <button type="button" class="row-icon-btn" title="Record a call for {{ p.label }}" {% if not p.editable %}disabled{% endif %}
+                          data-org-edit="genotype-dialog" data-org-payload="{{ {'subject': p.label, 'called_on': today} | tojson | forceescape }}">{{ icon('plus') }}</button>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if not genotype_rows and not pending_rows %}
+            <tr><td class="dt-empty" colspan="10"><span class="dt-empty-msg">
+              No {{ module.organism_noun_plural }} to genotype yet.
+            </span></td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+    <div class="dt-bottom-bar">
+      <span class="dt-bottom-count dt-count">{{ chip_counts.calls }} call{{ '' if chip_counts.calls == 1 else 's' }} · {{ chip_counts.pending }} pending</span>
+      <div class="dt-bottom-spacer"></div>
+      <div class="dt-pagination">
+        <span class="dt-page-label">Page 1</span>
+        <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+        <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+        <select class="dt-page-size" aria-label="Rows per page"><option value="100" selected>100</option><option value="100000">All</option></select>
+      </div>
+    </div>
+  </section>
+
+  <datalist id="org-subjects">{% for s in subject_choices %}<option value="{{ s.value }}">{{ s.hint }}</option>{% endfor %}</datalist>
+  <datalist id="org-assays">{% for assay in assays %}<option value="{{ assay }}"></option>{% endfor %}</datalist>
+
+  <dialog id="genotype-dialog" class="mouse-modal">
+    <form method="dialog" class="modal-topbar">
+      <h3>Genotype call</h3>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
+    </form>
+    <form method="post" action="{{ url_for('organisms.save_genotype', key=module.key) }}"
+          class="modal-body modal-grid" data-entity-form>
+      <input type="hidden" name="return_view" value="genotyping">
+      <label class="field-label">{{ module.organism_noun|capitalize }}
+        <input name="subject" list="org-subjects" required autocomplete="off" class="font-mono" placeholder="ID">
+        <span class="field-hint normal-case tracking-normal">An ID from this database{% if module.has('housing') %}, or a {{ module.housing_noun }} to call it as a whole{% endif %}.</span>
+      </label>
+      <label class="field-label">Assay<input name="assay" list="org-assays" autocomplete="off" placeholder="e.g. PCR, fin clip"></label>
+      <label class="field-label">Result<input name="result" class="font-mono text-[12px]" placeholder="e.g. tg/+"></label>
+      <label class="field-label">Zygosity<select name="zygosity">{{ choice_options(zygosities, None) }}</select></label>
+      <label class="field-label">Called on<input type="date" name="called_on"></label>
+      <label class="field-label">Gel image<input type="url" name="image_path" placeholder="https://"></label>
       <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
       <button type="submit">Save</button>
     </form>
@@ -1562,6 +1752,11 @@
     const locked = Boolean(payload && payload.locked);
     form.querySelectorAll('input:not([type=hidden]), select, textarea, button[type=submit]').forEach((el) => {
       el.disabled = locked;
+    });
+    // "How many" is for creating only; an edit neither shows nor sends it.
+    form.querySelectorAll('[data-new-only]').forEach((el) => {
+      el.hidden = !isNew;
+      el.querySelectorAll('input, select').forEach((input) => { input.disabled = locked || !isNew; });
     });
     const note = form.querySelector('[data-locked-note]');
     if (note) {
