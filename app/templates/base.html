@@ -11,9 +11,11 @@
     <link rel="stylesheet"
           href="{{ url_for('static', filename='tailwind.css') }}?v={{ asset_version('tailwind.css') }}">
 
+    {# Declarative handlers (data-on-click=…); before any page script registers its actions. #}
+    <script src="{{ url_for('static', filename='actions.js') }}?v={{ asset_version('actions.js') }}"></script>
     {% block head_extra %}{% endblock %}
 
-    <script>
+    <script nonce="{{ csp_nonce() }}">
       (function () {
         var state = 'open';
         try { state = localStorage.getItem('biomanager:rail') || 'open'; } catch (e) {}
@@ -23,7 +25,7 @@
   </head>
 
   <body data-rail="open">
-    <script>
+    <script nonce="{{ csp_nonce() }}">
       document.body.dataset.rail = document.documentElement.dataset.railBoot || 'open';
     </script>
 

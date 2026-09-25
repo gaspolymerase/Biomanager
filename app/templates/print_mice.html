@@ -12,9 +12,10 @@
       th { background: #f3f3f3; }
       @media print { button { display: none; } }
     </style>
+  <script src="{{ url_for('static', filename='actions.js') }}?v={{ asset_version('actions.js') }}"></script>
   </head>
   <body>
-    <button onclick="window.print()">Print / Save as PDF</button>
+    <button data-on-click="print">Print / Save as PDF</button>
     <h1>Mouse Export</h1>
     <p>Printed on {{ printed_on }}</p>
     <table>

@@ -167,11 +167,11 @@
 
 {# Weight entry modal #}
 <div class="csv-modal" id="weight-modal" hidden>
-  <div class="csv-modal-backdrop" onclick="closeWeightModal()"></div>
+  <div class="csv-modal-backdrop" data-on-click="closeWeightModal"></div>
   <div class="csv-modal-card" style="width: 380px;">
     <header class="csv-modal-head">
       <h3>Record weight · <span id="weight-modal-mouse"></span></h3>
-      <button type="button" class="csv-modal-close" onclick="closeWeightModal()">×</button>
+      <button type="button" class="csv-modal-close" data-on-click="closeWeightModal">×</button>
     </header>
     <form id="weight-form" method="post" class="csv-modal-body" style="display: flex; flex-direction: column; gap: 10px;">
       <label>Date <input type="date" name="weigh_date" id="weigh-date" required></label>
@@ -179,13 +179,13 @@
       <label>Notes <input name="notes" id="weigh-notes" placeholder="optional"></label>
     </form>
     <footer class="csv-modal-foot">
-      <button type="button" class="dt-bottom-action" onclick="closeWeightModal()">Cancel</button>
-      <button type="button" class="dt-bottom-action is-primary" onclick="submitWeight()">Save</button>
+      <button type="button" class="dt-bottom-action" data-on-click="closeWeightModal">Cancel</button>
+      <button type="button" class="dt-bottom-action is-primary" data-on-click="submitWeight">Save</button>
     </footer>
   </div>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 (function () {
   // ---- SVG sparkline for each row's weight history -----------------------
   function renderSparkline(container) {
@@ -309,5 +309,6 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault(); submitWeight();
   }
 });
+  BioActions.register({ closeWeightModal: closeWeightModal, submitWeight: submitWeight });
 </script>
 {% endblock %}

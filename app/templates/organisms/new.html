@@ -266,7 +266,7 @@
   </section>
 </form>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   /* Live count, and keep the always-on capabilities checked. */
   (function () {
     const boxes = Array.from(document.querySelectorAll('.cap-box'));

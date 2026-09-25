@@ -170,7 +170,7 @@
       {% endif %}
       <span class="text-[12px] text-muted">assigned in order when you save</span>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn" onclick="batchFill()">
+      <button type="button" class="dt-toolbar-btn" data-on-click="batchFill">
         {{ icon('arrow-down') }} Fill down
       </button>
       <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">
@@ -249,7 +249,7 @@
     {% for username in usernames %}<option value="{{ username }}"></option>{% endfor %}
   </datalist>
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     /* Copy the first row's value down any column that is still empty —
        the usual fix after a CSV that only filled in the first line. */
     function batchFill() {
@@ -265,6 +265,7 @@
         });
       });
     }
+    BioActions.register({ batchFill: batchFill });
   </script>
 {% endif %}
 

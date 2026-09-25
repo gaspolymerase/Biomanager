@@ -6,7 +6,7 @@
 
 {% block page_actions %}
   <a class="btn" href="{{ back_url }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Back</a>
-  <button type="button" class="btn btn-primary" onclick="window.print()">
+  <button type="button" class="btn btn-primary" data-on-click="print">
     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> Print
   </button>
 {% endblock %}

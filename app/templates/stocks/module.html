@@ -432,7 +432,7 @@
           data-new-title="New genotype" data-edit-title="Genotype" data-new-submit="Add" data-edit-submit="Save">
       <header class="record-dialog-head"><div><h3 data-record-title>New genotype</h3>
         <p class="record-dialog-sub">Renaming relabels every {{ m.unit }} (and cross parent) written with the old text.</p></div>
-        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button></header>
+        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button></header>
       <div class="record-dialog-body">
         <input type="hidden" name="id">
         <label class="record-wide">Genotype <input name="genotype" required class="font-mono" autocomplete="off"></label>
@@ -442,7 +442,7 @@
         <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
       </div>
       <footer class="record-dialog-foot">
-        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
         <button type="submit" class="btn btn-primary" data-record-submit>Add</button>
       </footer>
     </form>
@@ -521,7 +521,7 @@
           data-new-title="New {{ m.room }}" data-edit-title="{{ m.room|capitalize }} {label}" data-new-submit="Create" data-edit-submit="Save">
       <header class="record-dialog-head"><div><h3 data-record-title>New {{ m.room }}</h3>
         <p class="record-dialog-sub">Its temperature sets the {{ S.flip_verb|lower }} interval and development time of everything inside.</p></div>
-        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button></header>
+        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button></header>
       <div class="record-dialog-body">
         <input type="hidden" name="id">
         <label>Name <input name="name" required placeholder="e.g. Incubator 25 A"></label>
@@ -531,7 +531,7 @@
         <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
       </div>
       <footer class="record-dialog-foot">
-        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
         <button type="submit" class="btn btn-primary" data-record-submit>Create</button>
       </footer>
     </form>
@@ -620,7 +620,7 @@
     <form method="post" data-record-form data-create-action="{{ url_for('stocks.save_frozen', key=key) }}" data-update-action="{{ url_for('stocks.save_frozen', key=key) }}"
           data-new-title="New frozen lot" data-edit-title="Frozen {label}" data-new-submit="Add" data-edit-submit="Save">
       <header class="record-dialog-head"><div><h3 data-record-title>New frozen lot</h3></div>
-        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button></header>
+        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button></header>
       <div class="record-dialog-body">
         <input type="hidden" name="id">
         <label class="record-wide">Genotype <input name="genotype" list="stock-genotypes" required class="font-mono"></label>
@@ -634,7 +634,7 @@
         <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
       </div>
       <footer class="record-dialog-foot">
-        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
         <button type="submit" class="btn btn-primary" data-record-submit>Add</button>
       </footer>
     </form>
@@ -736,7 +736,7 @@
         <h3 id="unit-dialog-title" data-record-title>New {{ m.unit }}</h3>
         <p class="record-dialog-sub">{{ m.label }} · the next {{ m.unit }} is {{ S.code_prefix }}{{ next_number }}. Type a genotype or pick one; new ones join the list.</p>
       </div>
-      <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
@@ -776,7 +776,7 @@
       <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
     </div>
     <footer class="record-dialog-foot">
-      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
       <button type="submit" class="btn btn-primary" data-record-submit>Create</button>
     </footer>
   </form>
@@ -785,7 +785,7 @@
 {% endblock %}
 
 {% block body_end %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   /* Inline editing is static/sheet.js (data-autosave-sheet on the card).
      What is particular to vials: */
   (function () {

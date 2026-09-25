@@ -63,7 +63,7 @@
 {% endblock %}
 
 {% block body_end %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   /* Picking a preset fills the name, unless one has been typed. */
   (function () {
     const input = document.querySelector('[data-label-input]');

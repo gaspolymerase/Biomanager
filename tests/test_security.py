@@ -381,3 +381,78 @@ class EntryPoints(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContentSecurityPolicy(AppTestCase):
+    """Scripts run only from the app's own files or with this request's
+    nonce, so markup injected into a page cannot run script."""
+
+    TEMPLATES = ROOT / "app" / "templates"
+    INLINE_SCRIPT = __import__("re").compile(r'<script(?![^>]*\bsrc=)(?![^>]*type="application/json")[^>]*>')
+
+    def policy(self, response):
+        return response.headers.get("Content-Security-Policy", "")
+
+    def test_pages_carry_a_policy_with_a_fresh_nonce(self):
+        first, second = self.policy(self.m.get("/colony")), self.policy(self.m.get("/colony"))
+        self.assertIn("script-src 'self' 'nonce-", first)
+        self.assertIn("object-src 'none'", first)
+        self.assertIn("frame-ancestors 'self'", first)
+        self.assertNotIn("unsafe-inline' 'nonce", first)
+        self.assertNotEqual(first, second)  # a new nonce every response
+
+    def test_every_inline_script_on_a_page_has_that_pages_nonce(self):
+        import re
+        for url in ("/colony", "/colony?view=breeders", "/notebook", "/calendar", "/plasmids", "/home"):
+            r = self.m.get(url)
+            nonce = re.search(r"'nonce-([^']+)'", self.policy(r)).group(1)
+            for tag in self.INLINE_SCRIPT.findall(r.get_data(as_text=True)):
+                self.assertIn(f'nonce="{nonce}"', tag, f"{url}: {tag}")
+
+    def test_no_template_uses_inline_event_handlers_or_unnonced_scripts(self):
+        import re
+        handler = re.compile(r'\son[a-z]+\s*=\s*["\']', re.I)
+        bad = []
+        for path in self.TEMPLATES.rglob("*.html"):
+            text = path.read_text()
+            for i, line in enumerate(text.splitlines(), 1):
+                if handler.search(line) or "javascript:" in line:
+                    bad.append(f"{path.relative_to(ROOT)}:{i}")
+            for tag in self.INLINE_SCRIPT.findall(text):
+                if "nonce=" not in tag:
+                    bad.append(f"{path.relative_to(ROOT)}: {tag}")
+        self.assertEqual(bad, [], "use data-on-click=… (static/actions.js) and nonce=\"{{ csp_nonce() }}\"")
+
+    def test_every_action_named_in_markup_is_registered(self):
+        import re
+        builtin = {"none", "close-dialog", "open-dialog", "close-dialog-id", "click", "print", "remove-row"}
+        named = set()
+        for path in self.TEMPLATES.rglob("*.html"):
+            named |= set(re.findall(r'data-on-[a-z]+="([^"$]+)"', path.read_text()))
+        sources = "\n".join(p.read_text() for p in list(self.TEMPLATES.rglob("*.html"))
+                            + list((ROOT / "app" / "static").glob("*.js")))
+        registered = set(re.findall(r"BioActions\.register\(\{([^}]*)\}", sources, re.S))
+        keys = {k.strip().strip("'\"") for block in registered for k in re.findall(r"['\"]?([\w-]+)['\"]?\s*:", block)}
+        self.assertEqual(sorted(named - builtin - keys), [])
+
+    def test_report_only_and_off(self):
+        with mock.patch.dict(os.environ, {"BIOMANAGER_CSP": "report-only"}):
+            r = self.m.get("/colony")
+            self.assertIn("Content-Security-Policy-Report-Only", r.headers)
+            self.assertNotIn("Content-Security-Policy", r.headers)
+        with mock.patch.dict(os.environ, {"BIOMANAGER_CSP": "off"}):
+            r = self.m.get("/colony")
+            self.assertNotIn("Content-Security-Policy", r.headers)
+            self.assertNotIn("Content-Security-Policy-Report-Only", r.headers)
+
+    def test_violation_reports_are_accepted_without_a_login(self):
+        body = '{"csp-report": {"document-uri": "http://localhost/colony", "blocked-uri": "inline", "violated-directive": "script-src-elem"}}'
+        r = app.test_client().post("/csp-report", data=body, content_type="application/csp-report",
+                                   headers={"Sec-Fetch-Site": "same-origin"})
+        self.assertEqual(r.status_code, 204)
+
+    def test_uploads_keep_their_own_sandbox_policy(self):
+        with app.test_request_context("/static/uploads/x.html"):
+            h = security.add_security_headers(Response(b"", mimetype="text/html")).headers
+        self.assertIn("sandbox", h["Content-Security-Policy"])
+        self.assertNotIn("nonce", h["Content-Security-Policy"])

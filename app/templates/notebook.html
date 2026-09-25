@@ -16,11 +16,11 @@
         <input id="notebook-page-filter" type="text" placeholder="Filter pages…" autocomplete="off">
       </div>
       <div class="sidebar-head-actions">
-        <button type="button" class="notebook-new-btn" onclick="createQuickPage()" title="New blank page">
+        <button type="button" class="notebook-new-btn" data-on-click="createQuickPage" title="New blank page">
           <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg><span>New page</span>
         </button>
         <button type="button" class="notebook-new-btn notebook-new-btn-secondary"
-                onclick="openTemplatePicker()" title="Pick a template">
+                data-on-click="openTemplatePicker" title="Pick a template">
           <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#template"></use></svg>
         </button>
       </div>
@@ -53,15 +53,15 @@
         <details class="notebook-tab" {% if tab.id == selected_tab_id %}open{% endif %} data-tab-id="{{ tab.id }}">
           <summary>
             <svg class="icon notebook-tab-caret" aria-hidden="true"><use href="/static/icons.svg#chevron-right"></use></svg>
-            <span class="tab-title" ondblclick="event.stopPropagation(); renameTab({{ tab.id }})">{{ tab.title }}</span>
-            <span class="tab-actions" onclick="event.stopPropagation()">
-              <button type="button" title="Add page" onclick="event.preventDefault(); event.stopPropagation(); createPage({{ tab.id }})">
+            <span class="tab-title" data-on-dblclick="renameTab" data-arg="{{ tab.id }}" data-stop>{{ tab.title }}</span>
+            <span class="tab-actions" data-on-click="none" data-stop>
+              <button type="button" title="Add page" data-on-click="createPage" data-arg="{{ tab.id }}" data-prevent data-stop>
                 <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg>
               </button>
-              <button type="button" title="Rename topic" onclick="event.preventDefault(); event.stopPropagation(); renameTab({{ tab.id }})">
+              <button type="button" title="Rename topic" data-on-click="renameTab" data-arg="{{ tab.id }}" data-prevent data-stop>
                 <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
               </button>
-              <form method="post" action="{{ url_for('notebook_delete_tab', tab_id=tab.id) }}" onsubmit="event.stopPropagation(); return confirm('Delete topic and all its pages?')" onclick="event.stopPropagation()" style="display:inline">
+              <form method="post" action="{{ url_for('notebook_delete_tab', tab_id=tab.id) }}" data-confirm="Delete topic and all its pages?" data-on-submit="none" data-on-click="none" data-stop style="display:inline">
                 <button type="submit" title="Delete topic" class="danger-link"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
               </form>
             </span>
@@ -89,7 +89,7 @@
     </div>
 
     <div class="notebook-sidebar-footer">
-      <button type="button" class="notebook-sidebar-foot-btn" onclick="createTab()" title="Create a new topic">
+      <button type="button" class="notebook-sidebar-foot-btn" data-on-click="createTab" title="Create a new topic">
         <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#folder-plus"></use></svg> New topic
       </button>
     </div>
@@ -97,11 +97,11 @@
 
   {# Template picker modal — hidden until openTemplatePicker() runs. #}
   <div class="notebook-modal" id="notebook-template-modal" hidden>
-    <div class="notebook-modal-backdrop" onclick="closeTemplatePicker()"></div>
+    <div class="notebook-modal-backdrop" data-on-click="closeTemplatePicker"></div>
     <div class="notebook-modal-card" role="dialog" aria-label="Pick a template">
       <header class="notebook-modal-head">
         <h3>Start from a template</h3>
-        <button type="button" class="modal-close" onclick="closeTemplatePicker()" aria-label="Close">{{ icon('close') }}</button>
+        <button type="button" class="modal-close" data-on-click="closeTemplatePicker" aria-label="Close">{{ icon('close') }}</button>
       </header>
       <div class="notebook-modal-body">
         <div id="notebook-template-list" class="notebook-template-list">
@@ -109,7 +109,7 @@
         </div>
         <details class="notebook-template-new">
           <summary><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Create a new template</summary>
-          <form id="notebook-template-form" onsubmit="event.preventDefault(); submitNewTemplate();">
+          <form id="notebook-template-form" data-on-submit="submitNewTemplate" data-prevent>
             <label>Title <input name="title" required placeholder="e.g. PCR protocol"></label>
             <label>Icon <input name="icon" maxlength="4" placeholder="Optional, one character"></label>
             <label>Body (Markdown)
@@ -152,7 +152,7 @@
             </select>
           </label>
           <span class="meta-sep">·</span>
-          <button type="button" class="page-meta-action" onclick="saveCurrentPageAsTemplate()" title="Save this page's content as a reusable template">
+          <button type="button" class="page-meta-action" data-on-click="saveCurrentPageAsTemplate" title="Save this page's content as a reusable template">
             <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#template"></use></svg> Save as template
           </button>
           <span class="meta-sep">·</span>
@@ -166,14 +166,14 @@
         <h2>No page selected</h2>
         <p>Pick a page on the left, or create a topic and add a page to start writing.</p>
         {% if not tabs %}
-          <button type="button" class="btn btn-primary" onclick="createTab()">{{ icon('folder-plus') }} Create your first topic</button>
+          <button type="button" class="btn btn-primary" data-on-click="createTab">{{ icon('folder-plus') }} Create your first topic</button>
         {% endif %}
       </div>
     {% endif %}
   </div>
 </section>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Always-runs script: tab/page CRUD, title autosave, topic mover.
 // Independent of the editor bundle so the page is functional even if the
 // build hasn't been generated yet.
@@ -306,14 +306,14 @@ async function openTemplatePicker() {
     } else {
       list.innerHTML = data.templates.map((t) => `
         <div class="notebook-template-row" data-id="${t.id}">
-          <button type="button" class="notebook-template-pick" onclick="useTemplate(${t.id})">
+          <button type="button" class="notebook-template-pick" data-on-click="useTemplate" data-arg="${t.id}">
             <span class="notebook-template-icon">${t.icon ? escapeHtml(t.icon) : '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#file"></use></svg>'}</span>
             <span class="notebook-template-meta">
               <span class="notebook-template-title">${escapeHtml(t.title)}</span>
               <span class="notebook-template-preview">${escapeHtml(t.body_preview || '')}</span>
             </span>
           </button>
-          <button type="button" class="notebook-template-del" title="Delete template" aria-label="Delete template" onclick="deleteTemplate(${t.id})"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+          <button type="button" class="notebook-template-del" title="Delete template" aria-label="Delete template" data-on-click="deleteTemplate" data-arg="${t.id}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
         </div>
       `).join('');
     }
@@ -391,11 +391,12 @@ if (nbPageFilter) {
     });
   });
 }
+  BioActions.register({ closeTemplatePicker: closeTemplatePicker, createPage: createPage, createQuickPage: createQuickPage, createTab: createTab, deleteTemplate: deleteTemplate, openTemplatePicker: openTemplatePicker, renameTab: renameTab, saveCurrentPageAsTemplate: saveCurrentPageAsTemplate, submitNewTemplate: submitNewTemplate, useTemplate: useTemplate });
 </script>
 
-<script src="{{ url_for('static', filename='notebook-build/notebook-app.js') }}" defer onerror="window.__notebookBundleMissing = true"></script>
+<script src="{{ url_for('static', filename='notebook-build/notebook-app.js') }}" defer data-missing-flag="__notebookBundleMissing"></script>
 
-<script defer>
+<script nonce="{{ csp_nonce() }}" defer>
 window.addEventListener('DOMContentLoaded', () => {
   const mount = document.getElementById('editor-mount');
   const initialBody = document.getElementById('initial-body');

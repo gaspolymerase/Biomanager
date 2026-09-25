@@ -16,6 +16,7 @@
     .actions button { font-size: 12px; padding: 4px 10px; }
     @media print { .actions { display: none; } body { padding: 0; } .card { border-width: 1.5px; } }
   </style>
+  <script src="{{ url_for('static', filename='actions.js') }}?v={{ asset_version('actions.js') }}"></script>
 </head>
 <body>
   <div class="card">
@@ -35,7 +36,7 @@
     {% if tank.needs_genotyping %}<div class="alert">⚑ Needs genotyping</div>{% endif %}
 
     <div class="actions">
-      <button onclick="window.print()">Print</button>
+      <button data-on-click="print">Print</button>
     </div>
   </div>
 </body>

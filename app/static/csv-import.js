@@ -135,4 +135,13 @@
   }
 
   window.openCsvImport = open;
+
+  // <button data-on-click="csv-import" data-arg="order" data-csv-module="…">
+  // (actions.js). The button can name the inventory to import into.
+  window.BioActions.register({
+    'csv-import': function (kind) {
+      window.csvImportModule = this.dataset.csvModule || window.csvImportModule;
+      open(kind);
+    },
+  });
 })();

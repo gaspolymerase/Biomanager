@@ -140,10 +140,10 @@
 {# OVE UMD bundle. Exposes window.createVectorEditor. Loaded BEFORE the
    inline script so the global is in place when we read it. #}
 <script src="{{ url_for('static', filename='notebook-build/plasmid-app.js') }}?v={{ asset_version('notebook-build/plasmid-app.js') }}" defer
-        onload="window.__oveLoaded = true"
-        onerror="window.__oveMissing = true"></script>
+        data-loaded-flag="__oveLoaded"
+        data-missing-flag="__oveMissing"></script>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 (function () {
   // Tab switching ----------------------------------------------------------
   const tabs = document.querySelectorAll('.plasmid-tab');

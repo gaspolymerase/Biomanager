@@ -144,8 +144,8 @@
           <span class="sheet-save" data-save-status aria-live="polite"></span>
           <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
           <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
-          <button type="button" class="dt-toolbar-btn" onclick="openExportModal()">{{ icon('download') }} Export</button>
-          <button type="button" class="dt-toolbar-btn" onclick="printMouseTable()">{{ icon('print') }} Print</button>
+          <button type="button" class="dt-toolbar-btn" data-on-click="openExportModal">{{ icon('download') }} Export</button>
+          <button type="button" class="dt-toolbar-btn" data-on-click="printMouseTable">{{ icon('print') }} Print</button>
           <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">{{ icon('duplicate') }} Add many</a>
           <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                   data-mouse-edit data-mouse-payload='{{ {"owner": current_user.username, "status": "experiment"} | tojson }}'>
@@ -824,7 +824,7 @@
               <h3 id="cage-dialog-title" data-record-title>New cage</h3>
               <p class="record-dialog-sub" data-new-only>A new cage gets the next free ID ({{ next_cage_id_value }}); several get consecutive IDs.</p>
             </div>
-            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <fieldset class="record-group">
@@ -851,7 +851,7 @@
             <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
           </div>
           <footer class="record-dialog-foot">
-            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
             <button type="submit" class="btn btn-primary" data-record-submit>Create cage</button>
           </footer>
         </form>
@@ -982,7 +982,7 @@
               <h3 id="litter-dialog-title" data-record-title>New litter</h3>
               <p class="record-dialog-sub">Leave the ID blank for the next free number ({{ next_litter_id_value }}).</p>
             </div>
-            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <fieldset class="record-group">
@@ -994,7 +994,7 @@
             <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
           </div>
           <footer class="record-dialog-foot">
-            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
             <button type="submit" class="btn btn-primary" data-record-submit>Create litter</button>
           </footer>
         </form>
@@ -1046,9 +1046,9 @@
           </div>
         </div>
         <div class="breeder-search-bar">
-          <input id="breeder-search" placeholder="Search by cage, location, owner, genotype, mouse ID, note..." oninput="filterBreeders()">
-          <label class="inline-check"><input type="checkbox" id="breeder-active-only" onchange="filterBreeders()"> Alive only</label>
-          <button type="button" onclick="resetBreederSearch()">Reset</button>
+          <input id="breeder-search" placeholder="Search by cage, location, owner, genotype, mouse ID, note..." data-on-input="filterBreeders">
+          <label class="inline-check"><input type="checkbox" id="breeder-active-only" data-on-change="filterBreeders"> Alive only</label>
+          <button type="button" data-on-click="resetBreederSearch">Reset</button>
           <span id="breeder-count" class="muted-inline"></span>
         </div>
         <div class="cage-stack" id="breeder-stack">
@@ -1280,7 +1280,7 @@
               data-new-submit="Add strain" data-edit-submit="Save">
           <header class="record-dialog-head">
             <div><h3 id="strain-dialog-title" data-record-title>New strain</h3></div>
-            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <fieldset class="record-group">
@@ -1293,7 +1293,7 @@
             <label class="record-wide">Description <textarea name="description" rows="2"></textarea></label>
           </div>
           <footer class="record-dialog-foot">
-            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
             <button type="submit" class="btn btn-primary" data-record-submit>Add strain</button>
           </footer>
         </form>
@@ -1355,7 +1355,7 @@
         </article>
       </section>
 
-      <script>
+      <script nonce="{{ csp_nonce() }}">
         // Show only the preset block matching the currently selected column.
         (function () {
           const select = document.getElementById('preset-column-select');
@@ -1387,7 +1387,7 @@
               <h3 id="mouse-edit-title" data-mouse-title>New mouse</h3>
               <p class="record-dialog-sub" data-mouse-sub>The next free ID ({{ next_mouse_id_value }}) is assigned when you save.</p>
             </div>
-            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <input type="hidden" name="confirm_cohort_dob_change" value="0">
@@ -1432,7 +1432,7 @@
           </div>
           <footer class="record-dialog-foot">
             <span class="record-dialog-hint" data-mouse-hint></span>
-            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
             <button type="submit" class="btn btn-primary" data-mouse-submit>Create mouse</button>
           </footer>
         </form>
@@ -1500,7 +1500,7 @@
       </table>
     </div>
     <div class="wean-actions">
-      <button type="button" class="ghost-button" onclick="addWeanRow()">+ Add row</button>
+      <button type="button" class="ghost-button" data-on-click="addWeanRow">+ Add row</button>
       <span class="wean-actions-spacer"></span>
       <button type="submit" id="wean-submit-self" class="ghost-button" formmethod="post" title="Just wean — clear DOB, you'll move pups manually">Distribute myself</button>
       <button type="submit" id="wean-submit-distribute" formmethod="post" title="Distribute pups per the rows above and wean">Distribute</button>
@@ -1508,7 +1508,7 @@
   </form>
 </dialog>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 const autosaveTimers = new Map();
 
 /* Batch actions now live in the selection bar (selection-bar.js). */
@@ -1560,7 +1560,7 @@ function addWeanRow(prefill) {
     </td>
     <td><input name="card_id[]" placeholder="optional card label" autocomplete="off"></td>
     <td><input name="cage_id[]" placeholder="leave empty for new cage" autocomplete="off"></td>
-    <td><button type="button" class="ghost-button" onclick="this.closest('tr').remove()" title="Remove row">×</button></td>
+    <td><button type="button" class="ghost-button" data-on-click="remove-row" title="Remove row">×</button></td>
   `;
   if (prefill && prefill.gender) tr.querySelector('select[name="gender[]"]').value = prefill.gender;
   body.appendChild(tr);
@@ -2162,5 +2162,6 @@ document.querySelectorAll('input[list]').forEach((input) => {
   });
 });
 
+  BioActions.register({ addWeanRow: addWeanRow, filterBreeders: filterBreeders, openExportModal: openExportModal, printMouseTable: printMouseTable, resetBreederSearch: resetBreederSearch });
 </script>
 {% endblock %}

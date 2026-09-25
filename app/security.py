@@ -16,6 +16,11 @@ which requests to trust live here, in one place:
 - **Cookies.** HttpOnly, SameSite=Lax, Secure when served over HTTPS, and a
   rolling lifetime. A session is bound to the password it was made with,
   so changing or resetting a password signs out every other session.
+- **Scripts.** A Content-Security-Policy lets the browser run only the
+  app's own script files and inline scripts carrying this request's nonce,
+  so injected markup cannot run script even if it gets onto a page. Pages
+  use data-on-click=… (static/actions.js) instead of inline onclick.
+  BIOMANAGER_CSP=report-only logs what would be blocked without blocking.
 - **Uploads.** Only signed-in users can fetch them, and they are served
   so that an uploaded HTML or SVG file cannot run script as the app.
 - **Sign-in.** Failed attempts are rate-limited per address and per
@@ -34,6 +39,7 @@ Settings, all optional:
   BIOMANAGER_TRUSTED_ORIGINS    other origins allowed to post, comma separated
   BIOMANAGER_SESSION_DAYS=7     idle days before a sign-in expires
   BIOMANAGER_MAX_UPLOAD_MB=64   largest request body accepted
+  BIOMANAGER_CSP=enforce        enforce | report-only | off
 """
 from __future__ import annotations
 
@@ -190,6 +196,8 @@ def init_app(app) -> None:
     app.before_request(guard_uploads)
     app.after_request(add_security_headers)
     app.register_error_handler(413, too_large)
+    app.jinja_env.globals["csp_nonce"] = csp_nonce
+    app.add_url_rule(CSP_REPORT_PATH, "csp_report", csp_report, methods=["POST"])
 
 
 # ---------------------------------------------------------------- cross-site requests
@@ -201,7 +209,7 @@ def _trusted_hosts() -> set[str]:
 
 def cross_site_reason() -> str | None:
     """Why this request looks like it was sent by another site, or None."""
-    if request.method in SAFE_METHODS:
+    if request.method in SAFE_METHODS or request.path == CSP_REPORT_PATH:
         return None
     origin = request.headers.get("Origin", "")
     if origin and origin != "null" and urlparse(origin).netloc in _trusted_hosts():
@@ -235,6 +243,65 @@ def refuse_cross_site():
     return message, 403, {"Content-Type": "text/plain; charset=utf-8"}
 
 
+# ---------------------------------------------------------------- content security policy
+
+CSP_REPORT_PATH = "/csp-report"
+
+
+def csp_mode() -> str:
+    mode = os.environ.get("BIOMANAGER_CSP", "").strip().lower() or "enforce"
+    if mode not in {"enforce", "report-only", "off"}:
+        raise RuntimeError("BIOMANAGER_CSP must be enforce, report-only or off")
+    return mode
+
+
+def csp_nonce() -> str:
+    """This request's nonce, for <script nonce="{{ csp_nonce() }}">."""
+    if "csp_nonce" not in g:
+        g.csp_nonce = secrets.token_urlsafe(18)
+    return g.csp_nonce
+
+
+def content_security_policy() -> str:
+    script = f"'self' 'nonce-{csp_nonce()}'"
+    # A view whose vendor bundle compiles code at runtime can widen this for
+    # its own response only: g.csp_script_extra = "'unsafe-eval'".
+    if g.get("csp_script_extra"):
+        script += " " + g.csp_script_extra
+    return "; ".join([
+        "default-src 'self'",
+        f"script-src {script}",
+        # Inline style attributes are everywhere in the templates; styles
+        # cannot run script, so this is the part of the policy left open.
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "worker-src 'self' blob:",
+        "frame-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'self'",
+        f"report-uri {CSP_REPORT_PATH}",
+    ])
+
+
+def csp_report():
+    """Browsers post here what the policy blocked. Logged, nothing stored."""
+    raw = request.get_data(cache=False, as_text=True)[:8192]
+    try:
+        import json
+        body = json.loads(raw or "{}")
+        report = body.get("csp-report", body)
+        log.warning("CSP blocked %s on %s (%s)", report.get("blocked-uri") or report.get("blockedURL"),
+                    report.get("document-uri") or report.get("documentURL"),
+                    report.get("violated-directive") or report.get("effectiveDirective"))
+    except (ValueError, AttributeError):
+        log.warning("CSP report that could not be read: %r", raw[:300])
+    return "", 204
+
+
 # ---------------------------------------------------------------- uploads and headers
 
 def guard_uploads():
@@ -250,6 +317,10 @@ def add_security_headers(response):
     headers.setdefault("Referrer-Policy", "same-origin")
     if request.is_secure:
         headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    mode = csp_mode()
+    if mode != "off" and response.mimetype == "text/html" and not request.path.startswith(UPLOADS_PREFIX):
+        name = "Content-Security-Policy" if mode == "enforce" else "Content-Security-Policy-Report-Only"
+        headers.setdefault(name, content_security_policy())
     if request.path.startswith(UPLOADS_PREFIX):
         headers["Cache-Control"] = "private, max-age=3600"
         if response.mimetype not in INLINE_UPLOADS:
