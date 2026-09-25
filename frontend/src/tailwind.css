@@ -2574,6 +2574,33 @@
 }
 
 /* ===========================================================================
+   PLASMIDS — sheet states, detail-page ownership and editor save status.
+   =========================================================================== */
+
+@layer components {
+  /* sheet.js marks a row inactive when its dot is grey. For a plasmid that
+     only means "not in a box", which is no reason to fade the record. */
+  .plasmid-sheet .sheet-table tbody tr.is-inactive td { @apply text-ink; }
+  .plasmid-sheet .sheet-table tbody tr.is-inactive :is(input, select) { @apply text-ink-soft; }
+  .plasmid-sheet .sheet-link .sheet-id { @apply pl-0; }
+
+  .plasmid-box-status { @apply ml-auto self-center; }
+  .plasmid-tube.is-locked { @apply cursor-default border-sand-200 bg-sand-50; }
+  .plasmid-tube.is-locked .plasmid-tube-id { @apply text-ink-soft; }
+
+  /* Detail page: owner, storage and lock beside the section tabs. */
+  .plasmid-meta { @apply flex flex-wrap items-center gap-2 text-[12px] text-ink-soft; }
+  .plasmid-meta-item {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface px-2.5 py-1;
+  }
+  .plasmid-meta-lock { @apply border-warn-200 bg-warn-50 text-warn-700; }
+  .plasmid-meta-lock svg { @apply size-3; }
+  .plasmid-lock-note { @apply -mt-1 mb-3 max-w-[760px] text-[12px] text-muted; }
+
+  .ove-bar { @apply mb-2 flex min-h-5 items-center justify-between gap-3; }
+}
+
+/* ===========================================================================
    OVERRIDES OF THIRD-PARTY STYLESHEETS
    These must stay outside @layer: TOAST UI's and the notebook editor's CSS
    are unlayered, and an unlayered rule beats any layered one whatever its
