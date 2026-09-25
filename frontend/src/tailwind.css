@@ -1316,7 +1316,7 @@
 }
 
 /* ===========================================================================
-   PLASMIDS — view switcher, storage-box grid, list view, sequence drop zone.
+   PLASMIDS — view switcher, list view, sequence drop zone.
    =========================================================================== */
 
 @layer components {
@@ -1328,35 +1328,7 @@
   .plasmid-view { @apply hidden; }
   .plasmid-view.is-active { @apply block; }
 
-  /* Storage box grid */
-  .plasmid-box-header { @apply flex flex-wrap items-end gap-3 border-b border-sand-100 px-4 py-3; }
-  .plasmid-box-header :is(select, input) { @apply field mt-1 w-auto min-w-20 normal-case tracking-normal; }
-  .plasmid-box-shell { @apply grid gap-4 p-4 lg:grid-cols-[1fr_240px]; }
-  .plasmid-box-grid { @apply grid gap-1 overflow-x-auto rounded-xl bg-sand-100 p-2; }
-  .plasmid-box-corner { @apply size-full; }
-  .plasmid-box-col-label, .plasmid-box-row-label {
-    @apply grid place-items-center text-[10.5px] font-semibold text-sand-400;
-  }
-  .plasmid-box-cell {
-    @apply flex min-h-[54px] min-w-[64px] rounded-lg border border-dashed border-sand-300
-           bg-surface/60 p-0.5 transition-colors;
-  }
-  .plasmid-box-cell.is-drop-target, .plasmid-box-tray.is-drop-target { @apply border-brand-400 bg-brand-50; }
-  .plasmid-box-tray { @apply flex flex-col gap-2 rounded-xl border border-dashed border-sand-300 p-3; }
-  .plasmid-box-tray h4 { @apply text-[11px] font-semibold uppercase tracking-[0.07em] text-sand-400; }
-  .plasmid-box-tray-items { @apply flex flex-col gap-1.5; }
-  .plasmid-box-tray-empty { @apply text-[12px] text-muted; }
-
-  .plasmid-tube {
-    @apply min-w-0 flex-1 cursor-grab rounded-md border border-brand-200 bg-brand-50 shadow-xs
-           active:cursor-grabbing;
-  }
-  .plasmid-tube.is-dragging { @apply opacity-40; }
-  .plasmid-tube.is-dimmed { @apply opacity-25; }
-  .plasmid-tube-link { @apply flex min-w-0 flex-col px-1.5 py-1 no-underline; }
-  .plasmid-tube-id { @apply font-mono text-[11px] font-semibold text-brand-800; }
-  .plasmid-tube-name { @apply truncate text-[10.5px] text-ink-soft; }
-  .plasmid-tube-resist { @apply text-[10px] font-medium text-brand-700; }
+  /* The storage box grid is the shared rack grid (_rack_grid.html). */
 
   /* List view */
   .plasmid-list { @apply m-0 list-none divide-y divide-sand-100 p-0; }
@@ -2612,10 +2584,6 @@
   .plasmid-sheet .sheet-table tbody tr.is-inactive :is(input, select) { @apply text-ink-soft; }
   .plasmid-sheet .sheet-link .sheet-id { @apply pl-0; }
 
-  .plasmid-box-status { @apply ml-auto self-center; }
-  .plasmid-tube.is-locked { @apply cursor-default border-sand-200 bg-sand-50; }
-  .plasmid-tube.is-locked .plasmid-tube-id { @apply text-ink-soft; }
-
   /* Detail page: owner, storage and lock beside the section tabs. */
   .plasmid-meta { @apply flex flex-wrap items-center gap-2 text-[12px] text-ink-soft; }
   .plasmid-meta-item {
@@ -2671,6 +2639,18 @@
   .org-pending { @apply text-[12px] text-muted italic; }
   .org-gel-link { @apply inline-flex items-center gap-1 text-[12px] text-brand-700 hover:underline; }
   .org-gel-link svg { @apply size-3.5; }
+}
+
+/* ===========================================================================
+   PLASMID BOXES — the New plasmid dialog's "How many", and the box dialog.
+   =========================================================================== */
+@layer components {
+  .plasmid-many-hint { @apply col-span-full m-0 text-[11.5px] leading-snug text-muted; }
+  .record-dialog label.is-muted { @apply opacity-60; }
+  .plasmid-box-locked {
+    @apply m-0 rounded-lg border border-sand-200 bg-sand-50 px-3 py-2 text-[12px] text-muted;
+  }
+  .plasmid-box-locked[hidden] { display: none; }
 }
 
 /* ===========================================================================

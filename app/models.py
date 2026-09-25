@@ -329,6 +329,26 @@ class StrainRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class PlasmidBox(Base):
+    """A freezer box of plasmid tubes: rows × columns, its positions named
+    by a scheme (app/positions.py), kept in a freezer or shelf (`location`,
+    which groups boxes in the grid's picker). Whoever made it, or an admin,
+    may resize, rename or delete it (access.can_edit_rack); boxes made by
+    the one-off migration from the old free-text box names have no creator
+    and are admin-only."""
+    __tablename__ = "plasmid_boxes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    rows: Mapped[int] = mapped_column(Integer, default=9)
+    cols: Mapped[int] = mapped_column(Integer, default=9)
+    naming: Mapped[str] = mapped_column(Text, default="{}")
+    location: Mapped[str] = mapped_column(String(120), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class PlasmidRecord(Base):
     __tablename__ = "plasmids"
 
@@ -358,6 +378,9 @@ class PlasmidRecord(Base):
     storage_box: Mapped[str] = mapped_column(String(80), default="", index=True)
     box_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
     box_col: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The box it is in (plasmid_boxes). storage_box keeps the box's name as a
+    # readable mirror, so older code (and a rollback) still sees the box.
+    box_id_fk: Mapped[int | None] = mapped_column(ForeignKey("plasmid_boxes.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_by: Mapped[str] = mapped_column(String(80), default="")

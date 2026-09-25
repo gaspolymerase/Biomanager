@@ -92,6 +92,7 @@ def init_database() -> None:
     seed_organism_modules()
     seed_inventories()
     seed_stocks()
+    migrate_plasmid_boxes()
     with SessionLocal() as session:
         existing_chemical = session.scalar(select(ChemicalReference.id).limit(1))
         if existing_chemical is None:
@@ -208,6 +209,9 @@ def ensure_schema_updates() -> None:
             alter_statements.append("ALTER TABLE plasmids ADD COLUMN box_row INTEGER")
         if "box_col" not in table_columns["plasmids"]:
             alter_statements.append("ALTER TABLE plasmids ADD COLUMN box_col INTEGER")
+        # Plasmid boxes became their own table (2026-09-25); see migrate_plasmid_boxes.
+        if "box_id_fk" not in table_columns["plasmids"]:
+            alter_statements.append("ALTER TABLE plasmids ADD COLUMN box_id_fk INTEGER REFERENCES plasmid_boxes(id)")
 
     if "calendar_events" in table_columns:
         cols = table_columns["calendar_events"]
@@ -1365,6 +1369,64 @@ def sample_source_label(kind: str, sources: list[dict]) -> str:
         if source["kind"] == kind:
             return source["label"]
     return kind.split(":", 1)[-1].replace("_", " ").title() if kind else ""
+
+
+PLASMID_BOXES_FLAG = "migrated:plasmid_boxes"
+
+
+def migrate_plasmid_boxes() -> dict | None:
+    """Once: turn the free-text box names plasmids used into PlasmidBox rows.
+
+    Before, a box was only a name typed on each plasmid, and its size lived
+    in each browser. Every distinct (trimmed) name becomes a box of at least
+    9 × 9, grown to hold the furthest row and column used, named letters ×
+    numbers ("D7") as the old grid labelled it. Its plasmids are linked to
+    it; storage_box / box_row / box_col are left as they were, so the old
+    code still reads them after a rollback. Two plasmids in one cell keep
+    the lower number there; the other waits unplaced in the box. The boxes
+    have no creator, so only an admin may resize or delete them."""
+    import json as _json
+
+    from . import positions
+    from .inventory_service import get_setting, set_setting
+    from .models import PlasmidBox, PlasmidRecord
+
+    with SessionLocal() as session:
+        if get_setting(session, PLASMID_BOXES_FLAG):
+            return None
+        plasmids = session.scalars(select(PlasmidRecord).order_by(PlasmidRecord.plasmid_id)).all()
+        by_name: dict[str, list] = defaultdict(list)
+        for p in plasmids:
+            name = (p.storage_box or "").strip()[:80]
+            if name and p.box_id_fk is None:
+                by_name[name].append(p)
+        existing = {b.name: b for b in session.scalars(select(PlasmidBox))}
+        created = linked = doubled = 0
+        naming = _json.dumps(positions.scheme({}))
+        for name, members in sorted(by_name.items()):
+            rows = max([9] + [p.box_row + 1 for p in members if p.box_row is not None and p.box_row >= 0])
+            cols = max([9] + [p.box_col + 1 for p in members if p.box_col is not None and p.box_col >= 0])
+            box = existing.get(name)
+            if box is None:
+                box = PlasmidBox(name=name, rows=min(rows, 26), cols=min(cols, 40), naming=naming, created_by="")
+                session.add(box)
+                session.flush()
+                existing[name] = box
+                created += 1
+            taken = set()
+            for p in members:
+                p.box_id_fk, p.storage_box = box.id, name
+                cell = (p.box_row, p.box_col)
+                if p.box_row is None or p.box_col is None or not (0 <= p.box_row < box.rows and 0 <= p.box_col < box.cols) \
+                        or cell in taken:
+                    doubled += cell in taken
+                    p.box_row = p.box_col = None
+                else:
+                    taken.add(cell)
+                linked += 1
+        set_setting(session, PLASMID_BOXES_FLAG, datetime.utcnow().isoformat(timespec="seconds"))
+        session.commit()
+        return {"boxes": created, "plasmids": linked, "unplaced_doubles": doubled}
 
 
 def seed_stocks() -> None:
