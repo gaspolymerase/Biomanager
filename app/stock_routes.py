@@ -91,9 +91,9 @@ def can_configure(module: StockModule) -> bool:
 
 def can_manage(thing) -> bool:
     """Editing or deleting a rack or incubator: an admin or whoever made it
-    (anyone may add one, and anyone may record a flip)."""
-    creator = (getattr(thing, "created_by", "") or "").strip()
-    return access.is_admin() or not creator or creator == g.user.username
+    (anyone may add one, and anyone may record a flip). The same rule as
+    mouse racks and inventory boxes: access.can_edit_rack."""
+    return access.can_edit_rack(thing)
 
 
 class Invalid(ValueError):

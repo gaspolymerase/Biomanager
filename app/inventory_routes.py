@@ -122,8 +122,7 @@ def _can_configure(module: InventoryModule) -> bool:
 
 
 def _can_manage_rack(rack: InventoryRack) -> bool:
-    creator = (rack.created_by or "").strip()
-    return access.is_admin() or not creator or creator == access.username()
+    return access.can_edit_rack(rack)
 
 
 # ---------------------------------------------------------------------------
@@ -708,7 +707,7 @@ def save_rack(key: str):
         if rack is not None and rack.module_id_fk != row.id:
             abort(404)
         if rack is not None and not _can_manage_rack(rack):
-            flash(f"Only {rack.created_by} or an admin can change {rack.name}.", "error")
+            flash(f"Only {rack.created_by or 'an admin'}{' or an admin' if rack.created_by else ''} can change {rack.name}.", "error")
             return redirect(url_for("inventory.module", key=key))
         rows = _int(form.get("rows"), rack.rows if rack else 9, 1, 26)
         cols = _int(form.get("cols"), rack.cols if rack else 9, 1, 40)
@@ -742,7 +741,7 @@ def delete_rack(key: str, rack_id: int):
         rack = session.get(InventoryRack, rack_id)
         if rack is not None and rack.module_id_fk == row.id:
             if not _can_manage_rack(rack):
-                flash(f"Only {rack.created_by} or an admin can delete {rack.name}.", "error")
+                flash(f"Only {rack.created_by or 'an admin'}{' or an admin' if rack.created_by else ''} can delete {rack.name}.", "error")
                 return redirect(url_for("inventory.module", key=key))
             with audit.batch(session, "mixed", f"delete box {rack.name}", "inventory_racks"):
                 for item in session.scalars(select(InventoryItem).where(InventoryItem.rack_id_fk == rack.id)):

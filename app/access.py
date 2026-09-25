@@ -108,14 +108,14 @@ def can_edit_litter(litter, user=None) -> bool:
 def can_edit_rack(rack, user=None) -> bool:
     """Resizing, renaming or deleting a rack moves every cage in it, so it
     is for whoever created the rack, or an admin. Racks that predate the
-    creator column have no creator and stay open to everyone, like any
-    unowned record."""
+    creator column are admin-only (an admin can still change them all).
+    Used for mouse racks, inventory boxes and fly/worm racks alike."""
     if rack is None:
         return False
     if is_admin(user):
         return True
     creator = (getattr(rack, "created_by", "") or "").strip()
-    return not creator or creator == username(user)
+    return bool(creator) and creator == username(user)
 
 
 def denied_message(what: str, owner: str = "") -> str:
