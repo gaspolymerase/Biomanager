@@ -1,21 +1,23 @@
 {% extends "base.html" %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
+{% import "_sheet.html" as sheet_ui with context %}
 
 {% set zfish_views = [
-  ("tanks",    "Tanks",    "tank"),
-  ("fish",     "Fish",     "fish"),
-  ("clutches", "Clutches", "egg"),
-  ("lines",    "Lines",    "sitemap"),
-  ("water",    "Water",    "droplet"),
+  ("tanks",    "Tanks",    "tank",    census.tanks,    "tanks in use"),
+  ("fish",     "Fish",     "fish",    census.fish,     "live fish"),
+  ("clutches", "Clutches", "egg",     census.clutches, "clutches"),
+  ("lines",    "Lines",    "sitemap", census.lines,    "lines"),
+  ("water",    "Water",    "droplet", None,            ""),
 ] %}
 {% set zfish_blurbs = {
   "tanks": "Tanks on racks. Switch between the table, the rack grid and the genotyping queue.",
-  "fish": "Group-count rows, or individual fish when you need them.",
+  "fish": "Group-count rows, or individual fish when you need them. Setting a row to sac logs it on the sacrifice log.",
   "clutches": "Crosses and embryo cohorts. The fertilisation date drives tank-up, fin-clip and adult dates.",
   "lines": "The strain catalogue, with founder lineage.",
   "water": "System health: temperature, pH, conductivity and alarms.",
 } %}
 {% set tanks_sub = request.args.get('mode', 'table') %}
+{% set extra_purposes = tanks | map(attribute='purpose') | reject('in', tank_purpose_options) | reject('none') | unique | list %}
 
 {% block page_title %}{{ db_labels.get('zebrafish', 'Zebrafish') }} · {{ active_view|title }}{% endblock %}
 {% block page_heading %}{{ db_labels.get('zebrafish', 'Zebrafish') }}{% endblock %}
@@ -23,12 +25,13 @@
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_nav %}
-  <nav class="seg mb-3" role="tablist" aria-label="Zebrafish views">
-    {% for view_key, view_label, view_icon in zfish_views %}
+  <nav class="seg mb-3 max-w-full overflow-x-auto" role="tablist" aria-label="Zebrafish views">
+    {% for view_key, view_label, view_icon, view_count, count_title in zfish_views %}
       <a class="seg-item {% if active_view == view_key %}is-active{% endif %}"
          href="{{ url_for('zebrafish', view=view_key) }}" role="tab"
          aria-selected="{{ 'true' if active_view == view_key else 'false' }}">
         {{ icon(view_icon) }}{{ view_label }}
+        {% if view_count is not none %}<span class="seg-count" title="{{ view_count }} {{ count_title }}">{{ view_count }}</span>{% endif %}
       </a>
     {% endfor %}
   </nav>
@@ -44,21 +47,7 @@
   {% endif %}
 {% endblock %}
 
-{% macro sheet_toolbar(placeholder, new_label, dialog_id, payload) %}
-  <div class="dt-toolbar">
-    <div class="dt-toolbar-search">
-      {{ icon('search', 'search-icon') }}
-      <input type="text" class="dt-search" placeholder="{{ placeholder }}" autocomplete="off" aria-label="{{ placeholder }}">
-    </div>
-    <div class="dt-toolbar-spacer"></div>
-    <span class="sheet-save" data-save-status aria-live="polite"></span>
-    <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
-    <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
-            data-record-edit="{{ dialog_id }}" data-record-payload='{{ payload | tojson }}'>
-      {{ icon('plus') }} {{ new_label }}
-    </button>
-  </div>
-{% endmacro %}
+{# ---- Shared pieces ------------------------------------------------------ #}
 
 {% macro sheet_bottom(count, noun, noun_plural) %}
   <div class="dt-bottom-bar">
@@ -76,12 +65,76 @@
   </div>
 {% endmacro %}
 
-{% macro dialog_open(id, title, action, submit, update_action=None, edit_title='Edit') %}
+{% macro new_button(label, dialog_id, payload) %}
+  <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+          data-record-edit="{{ dialog_id }}" data-record-payload="{{ payload | tojson | forceescape }}">
+    {{ icon('plus') }} {{ label }}
+  </button>
+{% endmacro %}
+
+{% macro search_box(placeholder) %}
+  <div class="dt-toolbar-search">
+    {{ icon('search', 'search-icon') }}
+    <input type="text" class="dt-search" placeholder="{{ placeholder }}" autocomplete="off" aria-label="{{ placeholder }}">
+  </div>
+{% endmacro %}
+
+{# chips: (label, filter spec, count). The first is pressed by default. #}
+{% macro chips(items) %}
+  <div class="dt-chips" role="group" aria-label="Show">
+    {% for label, spec, count in items %}
+      <button type="button" class="dt-chip" data-dt-filter="{{ spec }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">
+        {{ label }} <span class="dt-chip-count">{{ count }}</span>
+      </button>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+{% macro col(key, icon_name, label, width=None, title=None, hidden=False, min=None) %}
+  <th {% if key %}class="dt-sortable" data-sort-key="{{ key }}"{% endif %}
+      style="{% if width %}width: {{ width }}px;{% endif %}{% if min %} min-width: {{ min }}px;{% endif %}"
+      {% if title %}title="{{ title }}"{% endif %} {% if hidden %}data-default-hidden="1"{% endif %}>
+    <span class="dt-col-head">{{ icon(icon_name, 'dt-col-icon') }}{{ label }}{% if key %}<span class="dt-sort-indicator"></span>{% endif %}</span>
+  </th>
+{% endmacro %}
+
+{% macro select_all(noun_plural) %}
+  <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
+    <input type="checkbox" data-select-all aria-label="Select all visible {{ noun_plural }}">
+  </th>
+{% endmacro %}
+
+{% macro options(values, selected=None, blank=None, labels={}) %}
+  {% if blank is not none %}<option value="" {% if not selected %}selected{% endif %}>{{ blank }}</option>{% endif %}
+  {% for v in values %}<option value="{{ v }}" {% if v == selected %}selected{% endif %}>{{ labels.get(v, v) }}</option>{% endfor %}
+  {# A custom value from before the list keeps showing as itself. #}
+  {% if selected and selected not in values %}<option value="{{ selected }}" selected>{{ selected }}</option>{% endif %}
+{% endmacro %}
+
+{% macro line_options(selected=None, blank='–') %}
+  <option value="" {% if not selected %}selected{% endif %}>{{ blank }}</option>
+  {% for ln in lines %}<option value="{{ ln.id }}" {% if ln.id == selected %}selected{% endif %}>{{ ln.name }}</option>{% endfor %}
+{% endmacro %}
+
+{% macro tank_options(selected=None, blank=None) %}
+  {% if blank is not none %}<option value="" {% if not selected %}selected{% endif %}>{{ blank }}</option>{% endif %}
+  {% for t in tanks %}<option value="{{ t.id }}" {% if t.id == selected %}selected{% endif %}>{{ t.tank_id }}</option>{% endfor %}
+{% endmacro %}
+
+{% macro rack_options(selected=None, blank='–') %}
+  <option value="" {% if not selected %}selected{% endif %}>{{ blank }}</option>
+  {% for r in racks %}<option value="{{ r.id }}" {% if r.id == selected %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+{% endmacro %}
+
+{% macro dialog_open(id, title, action, submit, update_action=None, edit_title='Edit', sub='') %}
   <dialog id="{{ id }}" class="record-dialog" aria-labelledby="{{ id }}-title">
     <form method="post" data-record-form data-create-action="{{ action }}" data-update-action="{{ update_action or action }}"
           data-new-title="{{ title }}" data-new-submit="{{ submit }}" data-edit-title="{{ edit_title }}" data-edit-submit="Save">
       <header class="record-dialog-head">
-        <div><h3 id="{{ id }}-title" data-record-title>{{ title }}</h3></div>
+        <div>
+          <h3 id="{{ id }}-title" data-record-title>{{ title }}</h3>
+          {% if sub %}<p class="record-dialog-sub">{{ sub }}</p>{% endif %}
+        </div>
         <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
       </header>
       <div class="record-dialog-body">
@@ -97,114 +150,198 @@
   </dialog>
 {% endmacro %}
 
+{# Row actions: Open (the record dialog), Duplicate, Delete. #}
+{% macro row_actions(dialog_id, payload, label, duplicate_url, delete_url, confirm, locked, delete_block='') %}
+  <button type="button" class="row-icon-btn" title="Open {{ label }}"
+          data-record-edit="{{ dialog_id }}" data-record-payload="{{ payload | tojson | forceescape }}">{{ icon('edit') }}</button>
+  {{ caller() if caller else '' }}
+  <form method="post" action="{{ duplicate_url }}">
+    <button type="submit" class="row-icon-btn" title="Duplicate {{ label }}">{{ icon('copy') }}</button>
+  </form>
+  <form method="post" action="{{ delete_url }}" data-confirm-delete="{{ confirm }}">
+    <button type="submit" class="row-icon-btn danger-button"
+            title="{{ delete_block or ('Delete ' ~ label) }}" {% if locked or delete_block %}disabled{% endif %}>{{ icon('trash') }}</button>
+  </form>
+{% endmacro %}
+
+{% macro reading(value, unit='') %}{% if value is not none %}{{ value }}{{ unit }}{% else %}–{% endif %}{% endmacro %}
+
 {% block content %}
-<datalist id="options-line">
-  {% for ln in lines %}<option value="{{ ln.name }}"></option>{% endfor %}
-</datalist>
+{{ sheet_ui.owners_list(usernames) }}
 
 {# ================================ TANKS ================================= #}
 {% if active_view == "tanks" and tanks_sub == 'table' %}
-  <section class="data-table-card sheet" data-table-id="zf-tanks" data-noun="tank">
-    {{ sheet_toolbar('Search tank, line, owner…', 'New tank', 'tank-dialog',
-                     {'tank_id': next_tank_id, 'owner': current_user.username, 'purpose': 'stock'}) }}
+  {% set any_mating = tank_rows | selectattr('row.mating_return_at') | list %}
+  <section class="data-table-card sheet" data-table-id="zf-tanks-v2" data-noun="tank" data-export-name="zebrafish-tanks"
+           data-autosave-sheet data-selection-scope data-selection-noun="tank" data-selection-noun-plural="tanks">
+    <div class="dt-toolbar">
+      {{ search_box('Search tank, line, owner…') }}
+      {{ chips([
+        ('All', '', tank_rows|length),
+        ('In use', 'active:true', tank_rows|selectattr('row.active')|list|length),
+        ('Mine', 'mine:true', tank_rows|selectattr('mine')|list|length),
+        ('Shared', 'shared:true', tank_rows|selectattr('shared')|list|length),
+      ]) }}
+      <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
+      {{ new_button('New tank', 'tank-dialog', {'tank_id': next_tank_id, 'owner': me, 'purpose': 'stock', 'active': '1'}) }}
+    </div>
     <div class="dt-scroll">
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 96px; min-width: 96px;"><span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank</span></th>
-            <th style="width: 130px;"><span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack</span></th>
-            <th style="width: 84px;" title="Position in the rack, named by the rack's scheme">
-              <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position</span></th>
-            <th style="width: 120px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose</span></th>
-            <th style="width: 190px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
-            <th style="width: 64px;"><span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Fish</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Card</span></th>
-            <th style="min-width: 220px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
-            <th style="width: 104px;" title="Flag the tank for genotyping"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
-            <th class="sheet-pin sheet-pin-end" style="width: 72px; min-width: 72px;"><span class="sr-only">Actions</span></th>
+            {{ select_all('tanks') }}
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="tank_id" style="width: 104px; min-width: 104px;"
+                title="Tank ID. The dot is green while the tank is in use.">
+              <span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank<span class="dt-sort-indicator"></span></span>
+            </th>
+            {{ col('rack', 'grid', 'Rack', 130) }}
+            {{ col('position', 'position', 'Position', 84, "Position in the rack, named by the rack's scheme") }}
+            {{ col('purpose', 'tag', 'Purpose', 122, 'Breeding tanks are shared: anyone in the lab can edit them') }}
+            {{ col('line', 'sitemap', 'Line', 190) }}
+            {{ col('fish', 'fish', 'Fish', 64, 'Live fish in the tank') }}
+            {{ col('owner', 'user', 'Owner', 96) }}
+            {{ col('card_id', 'barcode', 'Card', 100) }}
+            {{ col('geno', 'microscope', 'Genotyping', 112, 'Flag the tank for genotyping') }}
+            {{ col('return', 'calendar-clock', 'Return by', 112, 'When a mating tank goes back', hidden=not any_mating) }}
+            {{ col(None, 'note', 'Notes', min=200) }}
+            <th class="sheet-pin sheet-pin-end" style="width: 124px; min-width: 124px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {% for tr in tank_rows %}
             {% set t = tr.row %}
             {% set f = 'utank-' ~ t.id %}
-            <tr id="tank-{{ t.id }}" data-id="{{ t.id }}">
-              <td class="sheet-pin sheet-pin-start"><input class="ident font-semibold" form="{{ f }}" name="tank_id" value="{{ t.tank_id }}" data-autosave="1" aria-label="Tank ID"></td>
-              <td>
-                <select form="{{ f }}" name="rack_id_fk" data-autosave="1" aria-label="Rack">
-                  <option value="">–</option>
-                  {% for r in racks %}<option value="{{ r.id }}" {% if t.rack_id_fk == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
-                </select>
-              </td>
-              <td><input class="ident" form="{{ f }}" name="position" value="{{ tr.position }}" placeholder="–" data-autosave="1" aria-label="Position in the rack"></td>
-              <td>
-                <select class="status-pill" form="{{ f }}" name="purpose" data-status="{{ t.purpose }}" data-autosave="1" aria-label="Purpose">
-                  {% for p in tank_purpose_options %}<option value="{{ p }}" {% if t.purpose == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
-                </select>
+            {% set locked = not tr.editable %}
+            <tr id="tank-{{ t.id }}" data-id="{{ t.id }}" data-tank_id="{{ t.tank_id }}"
+                data-active="{{ 'true' if t.active else 'false' }}" data-mine="{{ 'true' if tr.mine else 'false' }}"
+                data-shared="{{ 'true' if tr.shared else 'false' }}" data-rack="{{ t.rack.name if t.rack else '' }}"
+                data-line="{{ t.line.name if t.line else '' }}" data-fish="{{ tr.total_fish }}"
+                data-geno="{{ '1' if t.needs_genotyping else '' }}" data-return="{{ t.mating_return_at or '' }}"
+                class="{% if not t.active %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+              <td class="sheet-pin sheet-pin-0"><input type="checkbox" data-select-row value="{{ t.id }}" aria-label="Select tank {{ t.tank_id }}"></td>
+              <td class="sheet-pin sheet-pin-1">
+                {{ sheet_ui.id_cell(t.tank_id, alive=t.active, locked=locked, owner=t.owner, noun='tank',
+                                    alive_title='In use', dead_title='Retired') }}
               </td>
               <td>
-                <select form="{{ f }}" name="line_id_fk" data-autosave="1" aria-label="Line">
-                  <option value="">–</option>
-                  {% for ln in lines %}<option value="{{ ln.id }}" {% if t.line_id_fk == ln.id %}selected{% endif %}>{{ ln.name }}</option>{% endfor %}
+                <select form="{{ f }}" name="rack_id_fk" data-autosave="1" aria-label="Rack" {% if locked %}disabled{% endif %}>
+                  {{ rack_options(t.rack_id_fk) }}
+                </select>
+              </td>
+              <td><input class="ident" form="{{ f }}" name="position" value="{{ tr.position }}" placeholder="–" data-autosave="1"
+                         aria-label="Position in the rack" {% if locked %}disabled{% endif %}></td>
+              <td>
+                <select class="status-pill" form="{{ f }}" name="purpose" data-status="{{ t.purpose }}" data-autosave="1"
+                        aria-label="Purpose" {% if locked %}disabled{% endif %}>
+                  {{ options(tank_purpose_options, t.purpose) }}
+                </select>
+              </td>
+              <td>
+                <select form="{{ f }}" name="line_id_fk" data-autosave="1" aria-label="Line" {% if locked %}disabled{% endif %}>
+                  {{ line_options(t.line_id_fk) }}
                 </select>
               </td>
               <td class="sheet-num">{{ tr.total_fish }}</td>
-              <td><input form="{{ f }}" name="owner" value="{{ t.owner }}" data-autosave="1" aria-label="Owner"></td>
-              <td><input form="{{ f }}" name="card_id" value="{{ t.card_id }}" data-autosave="1" aria-label="Card"></td>
-              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ t.notes }}" title="{{ t.notes }}" data-autosave="1" aria-label="Notes"></td>
+              <td>{{ sheet_ui.owner_cell(t.owner, f, locked) }}</td>
+              <td><input form="{{ f }}" name="card_id" value="{{ t.card_id }}" data-autosave="1" aria-label="Card" {% if locked %}disabled{% endif %}></td>
               <td>
-                <button type="button" class="flag-toggle" data-tank-id="{{ t.id }}"
+                <button type="button" class="flag-toggle" data-tank-id="{{ t.id }}" {% if locked %}disabled{% endif %}
                         aria-pressed="{{ 'true' if t.needs_genotyping else 'false' }}" title="Needs genotyping">
                   <span class="flag-toggle-dot"></span><span data-flag-label>{{ 'Queued' if t.needs_genotyping else 'No' }}</span>
                 </button>
               </td>
+              <td class="tabular-nums {% if t.mating_return_at and t.mating_return_at <= now_date and t.active %}text-danger-700 font-semibold{% else %}text-muted{% endif %}">
+                {{ t.mating_return_at or '' }}
+              </td>
+              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ t.notes }}" title="{{ t.notes }}" placeholder="Add a note"
+                         data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <a class="row-icon-btn" href="{{ url_for('zebrafish_tank_card', tank_row_id=t.id) }}" target="_blank" title="Print tank card">{{ icon('print') }}</a>
-                  <form method="post" action="{{ url_for('zebrafish_delete_tank', tank_row_id=t.id) }}" onsubmit="return confirm('Delete tank {{ t.tank_id }}?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete tank {{ t.tank_id }}">{{ icon('trash') }}</button>
-                  </form>
+                  {% call row_actions('tank-dialog', tr.payload, 'tank ' ~ t.tank_id,
+                                      url_for('zebrafish_duplicate_tank', tank_row_id=t.id),
+                                      url_for('zebrafish_delete_tank', tank_row_id=t.id), tr.confirm, locked,
+                                      ('Move or delete its ' ~ tr.fish_rows ~ ' fish row' ~ ('' if tr.fish_rows == 1 else 's') ~ ' first') if tr.fish_rows else '') %}
+                    <a class="row-icon-btn" href="{{ url_for('zebrafish_tank_card', tank_row_id=t.id) }}" target="_blank" title="Print tank card">{{ icon('print') }}</a>
+                  {% endcall %}
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="11">No tanks yet. Use <strong>New tank</strong>.</td></tr>
+            <tr><td class="dt-empty" colspan="14">No tanks yet. Use <strong>New tank</strong>.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    {# One form per row, outside the table; cells join it through form="…".
+       The _was copies are what the row showed: rack, position and owner
+       also change from the rack grid and the dialog, and a stale row must
+       not write its old value back over them (app/formutil.py). #}
     {% for tr in tank_rows %}
-      <form id="utank-{{ tr.row.id }}" method="post" action="{{ url_for('zebrafish_update_tank', tank_row_id=tr.row.id) }}" data-record-label="tank {{ tr.row.tank_id }}"></form>
+      <form id="utank-{{ tr.row.id }}" method="post" action="{{ url_for('zebrafish_update_tank', tank_row_id=tr.row.id) }}" data-record-label="tank {{ tr.row.tank_id }}">
+        <input type="hidden" name="rack_id_fk_was" value="{{ tr.row.rack_id_fk or '' }}">
+        <input type="hidden" name="position_was" value="{{ tr.position }}">
+        <input type="hidden" name="owner_was" value="{{ tr.row.owner }}">
+      </form>
     {% endfor %}
     {{ sheet_bottom(tank_rows|length, 'tank', 'tanks') }}
+
+    <div class="selbar" data-selection-bar hidden>
+      <span class="selbar-count" data-selection-count></span>
+      <form method="post" action="{{ url_for('zebrafish_bulk_tanks') }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="purpose">
+        <select name="value" aria-label="Purpose">{{ options(tank_purpose_options) }}</select>
+        <button type="submit" class="btn btn-sm">Set purpose</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_tanks') }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="owner">
+        <input name="value" placeholder="owner" list="sheet-owners" aria-label="Owner">
+        <button type="submit" class="btn btn-sm">Set owner</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_tanks') }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="rack">
+        <select name="value" aria-label="Rack">{{ rack_options(None, 'Unplace') }}</select>
+        <button type="submit" class="btn btn-sm">Move</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_tanks') }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="geno">
+        <select name="value" aria-label="Genotyping"><option value="1">Queue for genotyping</option><option value="0">Clear genotyping flag</option></select>
+        <button type="submit" class="btn btn-sm">{{ icon('microscope') }} Set</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_tanks') }}" class="selbar-group" data-selection-form
+            data-confirm="Delete {n} tank(s)? Tanks that still hold fish are kept. Clutches and sac-log entries naming them lose the link. Undo from Batch history.">
+        <input type="hidden" name="action" value="delete">
+        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+      </form>
+      <div class="selbar-spacer"></div>
+      <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+    </div>
   </section>
 
-
-
   {# The sacrifice log sits under the tanks it belongs to. #}
-  <details class="fold-card mt-4">
+  <details class="fold-card mt-4" id="sac-log">
     <summary>{{ icon('notes-medical') }} Sacrifice log <span class="seg-count">{{ sac_log|length }}</span></summary>
     <form method="post" action="{{ url_for('zebrafish_create_sac_log') }}" class="fold-card-form">
       <label>Tank
-        <select name="tank_id_fk"><option value="">–</option>{% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}</select>
+        <select name="tank_id_fk">{{ tank_options(None, '–') }}</select>
       </label>
       <label>Line
-        <select name="line_id_fk"><option value="">–</option>{% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}</select>
+        <select name="line_id_fk">{{ line_options(None) }}</select>
       </label>
       <label>Count <input type="number" name="count" min="1" value="1"></label>
       <label>Reason <input name="reason"></label>
       <button type="submit" class="btn btn-primary">Log sac</button>
     </form>
+    <p class="px-4 pb-2 text-[12px] text-muted">Setting a fish row’s status to sac logs it here by itself; use this form for fish that never had a row.</p>
     <div class="dt-scroll">
       <table class="dt">
         <thead><tr><th>When</th><th>Tank</th><th>Line</th><th>Count</th><th>Reason</th><th>By</th></tr></thead>
         <tbody>
-          {% for s in sac_log[:10] %}
+          {% for s in sac_log[:20] %}
             <tr>
               <td class="tabular-nums">{{ s.recorded_at.strftime('%b %d, %Y · %H:%M') }}</td>
-              <td>{% for t in tanks if t.id == s.tank_id_fk %}<span class="ident">{{ t.tank_id }}</span>{% endfor %}</td>
-              <td>{% for ln in lines if ln.id == s.line_id_fk %}{{ ln.name }}{% endfor %}</td>
+              <td>{% for t in tanks if t.id == s.tank_id_fk %}<span class="ident">{{ t.tank_id }}</span>{% else %}<span class="sheet-empty">–</span>{% endfor %}</td>
+              <td>{% for ln in lines if ln.id == s.line_id_fk %}{{ ln.name }}{% else %}<span class="sheet-empty">–</span>{% endfor %}</td>
               <td class="tabular-nums">{{ s.count }}</td>
               <td>{{ s.reason }}</td>
               <td>{% if s.recorded_by %}{{ s.recorded_by | owner_badge }}{% endif %}</td>
@@ -241,65 +378,83 @@
 {% if active_view == "tanks" %}
   {{ dialog_open('tank-dialog', 'New tank', url_for('zebrafish_create_tank'), 'Create tank',
                  update_action=url_for('zebrafish_update_tank', tank_row_id=0), edit_title='Tank {label}') }}
+    <input type="hidden" name="rack_id_fk_was">
+    <input type="hidden" name="position_was">
+    <input type="hidden" name="owner_was">
     <fieldset class="record-group">
       <legend>Tank</legend>
       <label>Tank ID <input name="tank_id" placeholder="auto"></label>
       <label>Purpose
-        <select name="purpose">{% for p in tank_purpose_options %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}</select>
+        <select name="purpose">
+          {% for p in tank_purpose_options + extra_purposes %}<option value="{{ p }}">{{ p|capitalize }}</option>{% endfor %}
+        </select>
       </label>
       <label>Line
-        <select name="line_id_fk"><option value="">Not set</option>{% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}</select>
+        <select name="line_id_fk">{{ line_options(None, 'Not set') }}</select>
       </label>
-      <label>Owner <input name="owner"></label>
+      <label>Owner <input name="owner" list="sheet-owners"></label>
+      <label>State
+        <select name="active"><option value="1">In use</option><option value="0">Retired</option></select>
+      </label>
     </fieldset>
     <fieldset class="record-group">
       <legend>Position</legend>
       <label>Rack
-        <select name="rack_id_fk"><option value="">Not placed</option>{% for r in racks %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
+        <select name="rack_id_fk">{{ rack_options(None, 'Not placed') }}</select>
       </label>
+      <label>Position <input name="position" class="font-mono" placeholder="first free"></label>
       <label>Card <input name="card_id"></label>
-      <label class="col-span-full">Position <input name="position" class="font-mono" placeholder="e.g. C3"></label>
     </fieldset>
     <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
   {{ dialog_close('Create tank') }}
 {% endif %}
 
 {% if active_view == "tanks" and tanks_sub == 'geno' %}
-  <section class="data-table-card sheet" data-table-id="zf-geno" data-noun="tank">
+  <section class="data-table-card sheet" data-table-id="zf-geno-v2" data-noun="tank" data-export-name="zebrafish-genotyping">
     <div class="dt-toolbar">
-      <div class="dt-toolbar-search">
-        {{ icon('search', 'search-icon') }}
-        <input type="text" class="dt-search" placeholder="Search the queue…" autocomplete="off" aria-label="Search the queue">
-      </div>
+      {{ search_box('Search the queue…') }}
+      <span class="text-[12px] text-muted">Clear a tank’s flag when its fish are genotyped.</span>
       <div class="dt-toolbar-spacer"></div>
-      <span class="text-[12px] text-muted">Flag tanks in the Table view. Clear a flag there when the fish are genotyped.</span>
+      {{ sheet_ui.tools() }}
     </div>
     <div class="dt-scroll">
       <table class="dt sheet-table">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 110px; min-width: 110px;"><span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank</span></th>
-            <th style="width: 200px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
-            <th style="width: 130px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose</span></th>
-            <th style="min-width: 240px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
-            <th class="sheet-pin sheet-pin-end" style="width: 72px; min-width: 72px;"><span class="sr-only">Card</span></th>
+            <th class="dt-sortable sheet-pin sheet-pin-start" data-sort-key="tank_id" style="width: 110px; min-width: 110px;">
+              <span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank<span class="dt-sort-indicator"></span></span>
+            </th>
+            {{ col('line', 'sitemap', 'Line', 200) }}
+            {{ col('purpose', 'tag', 'Purpose', 130) }}
+            {{ col('fish', 'fish', 'Fish', 64) }}
+            {{ col('owner', 'user', 'Owner', 96) }}
+            {{ col(None, 'note', 'Notes', min=240) }}
+            <th class="sheet-pin sheet-pin-end" style="width: 132px; min-width: 132px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          {% for t in geno_queue %}
-            <tr data-id="{{ t.id }}">
-              <td class="sheet-pin sheet-pin-start"><span class="sheet-id"><span class="ident">{{ t.tank_id }}</span></span></td>
+          {% for tr in geno_queue %}
+            {% set t = tr.row %}
+            <tr data-id="{{ t.id }}" data-tank_id="{{ t.tank_id }}" data-line="{{ t.line.name if t.line else '' }}"
+                data-purpose="{{ t.purpose }}" data-fish="{{ tr.total_fish }}" data-owner="{{ t.owner }}">
+              <td class="sheet-pin sheet-pin-start">{{ sheet_ui.id_cell(t.tank_id, alive=t.active, locked=not tr.editable, owner=t.owner, noun='tank', alive_title='In use', dead_title='Retired') }}</td>
               <td>{{ t.line.name if t.line else '–' }}</td>
               <td><span class="status-pill-static" data-status="{{ t.purpose }}">{{ t.purpose }}</span></td>
+              <td class="sheet-num">{{ tr.total_fish }}</td>
+              <td>{% if t.owner %}{{ t.owner | owner_badge }}{% endif %}</td>
               <td class="sheet-text" title="{{ t.notes }}">{{ t.notes }}</td>
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
+                  <button type="button" class="flag-toggle" data-tank-id="{{ t.id }}" aria-pressed="true" title="Clear the genotyping flag"
+                          {% if not tr.editable %}disabled{% endif %}>
+                    <span class="flag-toggle-dot"></span><span data-flag-label>Queued</span>
+                  </button>
                   <a class="row-icon-btn" href="{{ url_for('zebrafish_tank_card', tank_row_id=t.id) }}" target="_blank" title="Print tank card">{{ icon('print') }}</a>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="5">The genotyping queue is empty.</td></tr>
+            <tr><td class="dt-empty" colspan="7">The genotyping queue is empty. Flag tanks in the Table view.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -310,88 +465,151 @@
 
 {# ================================= FISH ================================= #}
 {% if active_view == "fish" %}
-  <section class="data-table-card sheet" data-table-id="zf-fish" data-noun="row">
-    {{ sheet_toolbar('Search tank, line, genotype…', 'New fish', 'fish-dialog', {'count': 1}) }}
+  {% set sex_labels = {'M': 'M', 'F': 'F', 'mixed': 'Mix', 'unknown': '?'} %}
+  <section class="data-table-card sheet" data-table-id="zf-fish-v2" data-noun="row" data-export-name="zebrafish-fish"
+           data-autosave-sheet data-selection-scope data-selection-noun="fish row" data-selection-noun-plural="fish rows">
+    <div class="dt-toolbar">
+      {{ search_box('Search tank, line, genotype…') }}
+      {{ chips([
+        ('All', '', fish_rows|length),
+        ('Alive', 'active:true', fish_rows|selectattr('alive')|list|length),
+        ('Mine', 'mine:true', fish_rows|selectattr('mine')|list|length),
+        ('Sac’d', 'active:false', fish_rows|rejectattr('alive')|list|length),
+      ]) }}
+      <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
+      {{ new_button('New fish', 'fish-dialog', {'count': 1, 'sex': 'mixed', 'status': 'alive'}) }}
+    </div>
     <div class="dt-scroll">
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 104px; min-width: 104px;"><span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank</span></th>
-            <th style="width: 180px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
-            <th style="width: 120px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Individual</span></th>
-            <th style="width: 76px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Count</span></th>
-            <th style="width: 104px;"><span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}Sex</span></th>
-            <th style="width: 118px;"><span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status</span></th>
-            <th style="width: 140px;" title="Date of fertilisation"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Fertilised</span></th>
-            <th style="width: 200px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
-            <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
-            <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
+            {{ select_all('fish rows') }}
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="rowid" style="width: 84px; min-width: 84px;"
+                title="Fish row. The dot is green while the fish are alive.">
+              <span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Row<span class="dt-sort-indicator"></span></span>
+            </th>
+            {{ col('tank', 'tank', 'Tank', 104) }}
+            {{ col('line', 'sitemap', 'Line', 180) }}
+            {{ col('individual_id', 'tag', 'Individual', 112) }}
+            {{ col('count', 'count', 'Count', 72) }}
+            {{ col('sex', 'sex', 'Sex', 70) }}
+            {{ col('age', 'age', 'Age', 72, 'Age from the date of fertilisation') }}
+            {{ col('status', 'status', 'Status', 118, 'Setting sac stamps the sac date and logs the fish') }}
+            {{ col('date_of_fertilization', 'born', 'Fertilised', 136) }}
+            {{ col('sac_date', 'died', 'Sac’d', 136) }}
+            {{ col('genotype', 'dna', 'Genotype', 180) }}
+            {{ col('owner', 'user', 'Owner', 84, "The tank's owner") }}
+            {{ col(None, 'note', 'Notes', min=200) }}
+            <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          {% for fr in fish %}
-            {% set f = 'ufish-' ~ fr.id %}
-            <tr data-id="{{ fr.id }}">
-              <td class="sheet-pin sheet-pin-start">
-                <select class="ident font-semibold" form="{{ f }}" name="tank_id_fk" data-autosave="1" aria-label="Tank">
-                  {% for t in tanks %}<option value="{{ t.id }}" {% if fr.tank_id_fk == t.id %}selected{% endif %}>{{ t.tank_id }}</option>{% endfor %}
+          {% for fr in fish_rows %}
+            {% set x = fr.row %}
+            {% set f = 'ufish-' ~ x.id %}
+            {% set locked = not fr.editable %}
+            <tr data-id="{{ x.id }}" data-rowid="{{ x.id }}" data-tank="{{ fr.tank.tank_id if fr.tank else '' }}"
+                data-line="{{ x.line.name if x.line else '' }}" data-age="{{ fr.age_days }}" data-owner="{{ fr.owner }}"
+                data-active="{{ 'true' if fr.alive else 'false' }}" data-mine="{{ 'true' if fr.mine else 'false' }}"
+                class="{% if not fr.alive %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+              <td class="sheet-pin sheet-pin-0"><input type="checkbox" data-select-row value="{{ x.id }}" aria-label="Select fish row {{ x.id }}"></td>
+              <td class="sheet-pin sheet-pin-1">
+                {{ sheet_ui.id_cell('#' ~ x.id, alive=fr.alive, locked=locked, owner=fr.owner, noun='fish',
+                                    alive_title='Alive', dead_title='Sac’d') }}
+              </td>
+              <td>
+                <select class="ident font-semibold" form="{{ f }}" name="tank_id_fk" data-autosave="1" aria-label="Tank" {% if locked %}disabled{% endif %}>
+                  {{ tank_options(x.tank_id_fk) }}
                 </select>
               </td>
               <td>
-                <select form="{{ f }}" name="line_id_fk" data-autosave="1" aria-label="Line">
-                  <option value="">–</option>
-                  {% for ln in lines %}<option value="{{ ln.id }}" {% if fr.line_id_fk == ln.id %}selected{% endif %}>{{ ln.name }}</option>{% endfor %}
+                <select form="{{ f }}" name="line_id_fk" data-autosave="1" aria-label="Line" {% if locked %}disabled{% endif %}>
+                  {{ line_options(x.line_id_fk) }}
                 </select>
               </td>
-              <td><input class="ident" form="{{ f }}" name="individual_id" value="{{ fr.individual_id }}" placeholder="–" data-autosave="1" aria-label="Individual ID"></td>
-              <td><input form="{{ f }}" type="number" min="0" name="count" value="{{ fr.count }}" data-autosave="1" aria-label="Count"></td>
+              <td><input class="ident" form="{{ f }}" name="individual_id" value="{{ x.individual_id }}" placeholder="–" data-autosave="1"
+                         aria-label="Individual ID" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" type="number" min="0" name="count" value="{{ x.count }}" data-autosave="1" aria-label="Count" {% if locked %}disabled{% endif %}></td>
               <td>
-                <select form="{{ f }}" name="sex" data-autosave="1" aria-label="Sex">
-                  {% for x in fish_sex_options %}<option value="{{ x }}" {% if fr.sex == x %}selected{% endif %}>{{ x }}</option>{% endfor %}
+                <select class="sex-pill" form="{{ f }}" name="sex" data-sex="{{ x.sex }}" data-autosave="1" aria-label="Sex" {% if locked %}disabled{% endif %}>
+                  {{ options(fish_sex_options, x.sex, labels=sex_labels) }}
                 </select>
+              </td>
+              <td class="sheet-num" title="{% if fr.age_days != '' %}{{ fr.age_days }} days{% endif %}">
+                {% if fr.age %}{{ fr.age }}{% else %}<span class="sheet-empty">–</span>{% endif %}
               </td>
               <td>
-                <select class="status-pill" form="{{ f }}" name="status" data-status="{{ fr.status }}" data-autosave="1" aria-label="Status">
-                  {% for x in fish_status_options %}<option value="{{ x }}" {% if fr.status == x %}selected{% endif %}>{{ x }}</option>{% endfor %}
+                <select class="status-pill" form="{{ f }}" name="status" data-status="{{ x.status|lower }}" data-autosave="1"
+                        data-dead-values="{{ fish_dead_statuses|join(',') }}" aria-label="Status" {% if locked %}disabled{% endif %}>
+                  {{ options(fish_status_options, x.status) }}
                 </select>
               </td>
-              <td><input form="{{ f }}" type="date" name="date_of_fertilization" value="{{ fr.date_of_fertilization or '' }}"
-                         data-empty="{{ '0' if fr.date_of_fertilization else '1' }}" data-autosave="1" aria-label="Date of fertilisation"></td>
-              <td><input class="ident" form="{{ f }}" name="genotype" value="{{ fr.genotype }}" data-autosave="1" aria-label="Genotype"></td>
-              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ fr.notes }}" title="{{ fr.notes }}" data-autosave="1" aria-label="Notes"></td>
+              <td><input form="{{ f }}" type="date" name="date_of_fertilization" value="{{ x.date_of_fertilization or '' }}"
+                         data-empty="{{ '0' if x.date_of_fertilization else '1' }}" data-autosave="1" aria-label="Date of fertilisation" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" type="date" name="sac_date" value="{{ x.sac_date or '' }}" data-dead-if-set
+                         data-empty="{{ '0' if x.sac_date else '1' }}" data-autosave="1" aria-label="Sac date" {% if locked %}disabled{% endif %}></td>
+              <td><input class="ident" form="{{ f }}" name="genotype" value="{{ x.genotype }}" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
+              <td>{% if fr.owner %}{{ fr.owner | owner_badge }}{% else %}<span class="sheet-empty">–</span>{% endif %}</td>
+              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ x.notes }}" title="{{ x.notes }}" placeholder="Add a note"
+                         data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <form method="post" action="{{ url_for('zebrafish_delete_fish', fish_row_id=fr.id) }}" onsubmit="return confirm('Delete this fish row?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete">{{ icon('trash') }}</button>
-                  </form>
+                  {{ row_actions('fish-dialog', fr.payload, 'fish row #' ~ x.id,
+                                 url_for('zebrafish_duplicate_fish', fish_row_id=x.id),
+                                 url_for('zebrafish_delete_fish', fish_row_id=x.id),
+                                 'Delete fish row #' ~ x.id ~ ' (' ~ x.count ~ ' fish in ' ~ (fr.tank.tank_id if fr.tank else 'no tank') ~ ')? To record that they were culled, set the status to sac instead.',
+                                 locked) }}
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="10">No fish yet. Use <strong>New fish</strong>{% if not tanks %} once you have a tank{% endif %}.</td></tr>
+            <tr><td class="dt-empty" colspan="15">No fish yet. Use <strong>New fish</strong>{% if not tanks %} once you have a tank{% endif %}.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% for fr in fish %}
-      <form id="ufish-{{ fr.id }}" method="post" action="{{ url_for('zebrafish_update_fish', fish_row_id=fr.id) }}" data-record-label="this fish row"></form>
+    {% for fr in fish_rows %}
+      <form id="ufish-{{ fr.row.id }}" method="post" action="{{ url_for('zebrafish_update_fish', fish_row_id=fr.row.id) }}" data-record-label="fish row #{{ fr.row.id }}"></form>
     {% endfor %}
-    {{ sheet_bottom(fish|length, 'row', 'rows') }}
+    {{ sheet_bottom(fish_rows|length, 'row', 'rows') }}
+
+    <div class="selbar" data-selection-bar hidden>
+      <span class="selbar-count" data-selection-count></span>
+      <form method="post" action="{{ url_for('zebrafish_bulk_fish') }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="status">
+        <select name="value" aria-label="Status">{{ options(fish_status_options) }}</select>
+        <button type="submit" class="btn btn-sm">Set status</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_fish') }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="tank">
+        <select name="value" aria-label="Tank">{{ tank_options(None, 'Choose a tank') }}</select>
+        <button type="submit" class="btn btn-sm">Move to tank</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_fish') }}" class="selbar-group" data-selection-form
+            data-confirm="Mark {n} fish row(s) as sac’d today? Each is logged on the sacrifice log.">
+        <input type="hidden" name="action" value="sac">
+        <button type="submit" class="btn btn-sm btn-danger">Sac</button>
+      </form>
+      <div class="selbar-spacer"></div>
+      <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+    </div>
   </section>
 
-  {{ dialog_open('fish-dialog', 'New fish', url_for('zebrafish_create_fish'), 'Add fish') }}
+  {{ dialog_open('fish-dialog', 'New fish', url_for('zebrafish_create_fish'), 'Add fish',
+                 update_action=url_for('zebrafish_update_fish', fish_row_id=0), edit_title='Fish row {label}') }}
     <fieldset class="record-group">
       <legend>Where</legend>
       <label>Tank
-        <select name="tank_id_fk" required><option value="">Choose a tank</option>{% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}</select>
+        <select name="tank_id_fk" required>{{ tank_options(None, 'Choose a tank') }}</select>
       </label>
       <label>Line
-        <select name="line_id_fk"><option value="">Not set</option>{% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}</select>
+        <select name="line_id_fk">{{ line_options(None, 'Not set') }}</select>
       </label>
     </fieldset>
     <fieldset class="record-group">
       <legend>Fish</legend>
-      <label>Count <input type="number" name="count" min="1" value="1"></label>
+      <label>Count <input type="number" name="count" min="0" value="1"></label>
       <label>Individual ID <input name="individual_id" placeholder="only for tracked individuals"></label>
       <label>Sex
         <select name="sex">{% for x in fish_sex_options %}<option value="{{ x }}">{{ x|capitalize }}</option>{% endfor %}</select>
@@ -400,7 +618,8 @@
         <select name="status">{% for x in fish_status_options %}<option value="{{ x }}">{{ x|capitalize }}</option>{% endfor %}</select>
       </label>
       <label>Fertilised <input type="date" name="date_of_fertilization"></label>
-      <label>Genotype <input name="genotype" list="options-line"></label>
+      <label>Sac’d <input type="date" name="sac_date" title="Filled in when the status turns sac"></label>
+      <label class="col-span-full">Genotype <input name="genotype"></label>
     </fieldset>
     <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
   {{ dialog_close('Add fish') }}
@@ -412,10 +631,10 @@
     <summary>{{ icon('heart') }} Set up a mating</summary>
     <form method="post" action="{{ url_for('zebrafish_set_up_mating') }}" class="fold-card-form">
       <label>Male tank
-        <select name="father_tank_id" required><option value="">Choose</option>{% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}</select>
+        <select name="father_tank_id" required>{{ tank_options(None, 'Choose') }}</select>
       </label>
       <label>Female tank
-        <select name="mother_tank_id" required><option value="">Choose</option>{% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}</select>
+        <select name="mother_tank_id" required>{{ tank_options(None, 'Choose') }}</select>
       </label>
       <label>Return in (days) <input type="number" name="return_days" min="1" max="14" value="1"></label>
       <label>Notes <input name="notes"></label>
@@ -423,62 +642,83 @@
     </form>
   </details>
 
-  <section class="data-table-card sheet" data-table-id="zf-clutches" data-noun="clutch" data-noun-plural="clutches">
-    {{ sheet_toolbar('Search clutch, line, notes…', 'New clutch', 'clutch-dialog',
-                     {'clutch_id': next_clutch_id, 'date_of_fertilization': today_iso, 'embryo_count': 0, 'larvae_count': 0, 'adults_count': 0}) }}
+  <section class="data-table-card sheet" data-table-id="zf-clutches-v2" data-noun="clutch" data-noun-plural="clutches" data-export-name="zebrafish-clutches"
+           data-autosave-sheet data-selection-scope data-selection-noun="clutch" data-selection-noun-plural="clutches">
+    <div class="dt-toolbar">
+      {{ search_box('Search clutch, line, notes…') }}
+      {{ chips([
+        ('All', '', clutch_rows|length),
+        ('Mine', 'mine:true', clutch_rows|selectattr('mine')|list|length),
+      ]) }}
+      <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
+      {{ new_button('New clutch', 'clutch-dialog', {'clutch_id': next_clutch_id, 'date_of_fertilization': today_iso, 'owner': me,
+                                                    'embryo_count': 0, 'larvae_count': 0, 'adults_count': 0}) }}
+    </div>
     <div class="dt-scroll">
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 130px; min-width: 130px;"><span class="dt-col-head">{{ icon('egg', 'dt-col-icon') }}Clutch</span></th>
-            <th style="width: 140px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Fertilised</span></th>
-            <th style="width: 76px;"><span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age</span></th>
-            <th style="width: 180px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}Male</span></th>
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}Female</span></th>
-            <th style="width: 88px;"><span class="dt-col-head">{{ icon('egg', 'dt-col-icon') }}Embryos</span></th>
-            <th style="width: 80px;"><span class="dt-col-head">{{ icon('seedling', 'dt-col-icon') }}Larvae</span></th>
-            <th style="width: 80px;"><span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Adults</span></th>
-            <th style="width: 112px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Tank-up</span></th>
-            <th style="width: 112px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Fin clip</span></th>
-            <th style="width: 112px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Adult</span></th>
-            <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
-            <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
+            {{ select_all('clutches') }}
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="clutch_id" style="width: 136px; min-width: 136px;">
+              <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}Clutch<span class="dt-sort-indicator"></span></span>
+            </th>
+            {{ col('date_of_fertilization', 'born', 'Fertilised', 136) }}
+            {{ col('age', 'age', 'Age', 70) }}
+            {{ col('line', 'sitemap', 'Line', 180) }}
+            {{ col('father', 'male', 'Male', 90, 'Male parent tank') }}
+            {{ col('mother', 'female', 'Female', 90, 'Female parent tank') }}
+            {{ col('embryo_count', 'egg', 'Embryos', 86) }}
+            {{ col('larvae_count', 'seedling', 'Larvae', 80) }}
+            {{ col('adults_count', 'fish', 'Adults', 80) }}
+            {{ col('owner', 'user', 'Owner', 96) }}
+            {{ col('tank_up', 'tank', 'Tank-up', 112, '5 dpf') }}
+            {{ col('fin_clip', 'microscope', 'Fin clip', 112, '30 dpf') }}
+            {{ col('adult', 'calendar', 'Adult', 112, '90 dpf') }}
+            {{ col(None, 'note', 'Notes', min=200) }}
+            <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {% for cr in clutch_rows %}
             {% set c = cr.row %}
             {% set f = 'uclutch-' ~ c.id %}
-            <tr id="clutch-{{ c.id }}" data-id="{{ c.id }}">
-              <td class="sheet-pin sheet-pin-start"><input class="ident font-semibold" form="{{ f }}" name="clutch_id" value="{{ c.clutch_id }}" data-autosave="1" aria-label="Clutch ID"></td>
-              <td><input form="{{ f }}" type="date" name="date_of_fertilization" value="{{ c.date_of_fertilization }}" data-autosave="1" aria-label="Date of fertilisation"></td>
+            {% set locked = not cr.editable %}
+            <tr id="clutch-{{ c.id }}" data-id="{{ c.id }}" data-clutch_id="{{ c.clutch_id }}" data-age="{{ cr.age_days }}"
+                data-line="{{ c.line.name if c.line else '' }}" data-father="{{ cr.father }}" data-mother="{{ cr.mother }}"
+                data-tank_up="{{ cr.tank_up or '' }}" data-fin_clip="{{ cr.fin_clip or '' }}" data-adult="{{ cr.adult or '' }}"
+                data-mine="{{ 'true' if cr.mine else 'false' }}" class="{% if locked %}is-locked{% endif %}">
+              <td class="sheet-pin sheet-pin-0"><input type="checkbox" data-select-row value="{{ c.id }}" aria-label="Select clutch {{ c.clutch_id }}"></td>
+              <td class="sheet-pin sheet-pin-1">{{ sheet_ui.id_cell(c.clutch_id, locked=locked, owner=c.owner, noun='clutch') }}</td>
+              <td><input form="{{ f }}" type="date" name="date_of_fertilization" value="{{ c.date_of_fertilization }}" data-autosave="1"
+                         aria-label="Date of fertilisation" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-num">{{ cr.age }}</td>
               <td>
-                <select form="{{ f }}" name="line_id_fk" data-autosave="1" aria-label="Line">
-                  <option value="">–</option>
-                  {% for ln in lines %}<option value="{{ ln.id }}" {% if c.line_id_fk == ln.id %}selected{% endif %}>{{ ln.name }}</option>{% endfor %}
+                <select form="{{ f }}" name="line_id_fk" data-autosave="1" aria-label="Line" {% if locked %}disabled{% endif %}>
+                  {{ line_options(c.line_id_fk) }}
                 </select>
               </td>
-              <td>{% for t in tanks if t.id == c.father_tank_id %}<span class="ident">{{ t.tank_id }}</span>{% endfor %}</td>
-              <td>{% for t in tanks if t.id == c.mother_tank_id %}<span class="ident">{{ t.tank_id }}</span>{% endfor %}</td>
-              <td><input form="{{ f }}" type="number" min="0" name="embryo_count" value="{{ c.embryo_count }}" data-autosave="1" aria-label="Embryos"></td>
-              <td><input form="{{ f }}" type="number" min="0" name="larvae_count" value="{{ c.larvae_count }}" data-autosave="1" aria-label="Larvae"></td>
-              <td><input form="{{ f }}" type="number" min="0" name="adults_count" value="{{ c.adults_count }}" data-autosave="1" aria-label="Adults"></td>
+              <td>{% if cr.father %}<span class="ident">{{ cr.father }}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</td>
+              <td>{% if cr.mother %}<span class="ident">{{ cr.mother }}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</td>
+              <td><input form="{{ f }}" type="number" min="0" name="embryo_count" value="{{ c.embryo_count }}" data-autosave="1" aria-label="Embryos" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" type="number" min="0" name="larvae_count" value="{{ c.larvae_count }}" data-autosave="1" aria-label="Larvae" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" type="number" min="0" name="adults_count" value="{{ c.adults_count }}" data-autosave="1" aria-label="Adults" {% if locked %}disabled{% endif %}></td>
+              <td>{{ sheet_ui.owner_cell(c.owner, f, locked) }}</td>
               <td class="tabular-nums text-muted">{{ cr.tank_up or '' }}</td>
               <td class="tabular-nums text-muted">{{ cr.fin_clip or '' }}</td>
               <td class="tabular-nums text-muted">{{ cr.adult or '' }}</td>
-              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ c.notes }}" title="{{ c.notes }}" data-autosave="1" aria-label="Notes"></td>
+              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ c.notes }}" title="{{ c.notes }}" placeholder="Add a note"
+                         data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <form method="post" action="{{ url_for('zebrafish_delete_clutch', clutch_row_id=c.id) }}" onsubmit="return confirm('Delete clutch {{ c.clutch_id }}?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete clutch">{{ icon('trash') }}</button>
-                  </form>
+                  {{ row_actions('clutch-dialog', cr.payload, 'clutch ' ~ c.clutch_id,
+                                 url_for('zebrafish_duplicate_clutch', clutch_row_id=c.id),
+                                 url_for('zebrafish_delete_clutch', clutch_row_id=c.id), cr.confirm, locked) }}
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="14">No clutches yet. Set up a mating above, or use <strong>New clutch</strong>.</td></tr>
+            <tr><td class="dt-empty" colspan="16">No clutches yet. Set up a mating above, or use <strong>New clutch</strong>.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -487,24 +727,42 @@
       <form id="uclutch-{{ cr.row.id }}" method="post" action="{{ url_for('zebrafish_update_clutch', clutch_row_id=cr.row.id) }}" data-record-label="clutch {{ cr.row.clutch_id }}"></form>
     {% endfor %}
     {{ sheet_bottom(clutch_rows|length, 'clutch', 'clutches') }}
+
+    <div class="selbar" data-selection-bar hidden>
+      <span class="selbar-count" data-selection-count></span>
+      <form method="post" action="{{ url_for('zebrafish_bulk_clutches') }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="owner">
+        <input name="value" placeholder="owner" list="sheet-owners" aria-label="Owner">
+        <button type="submit" class="btn btn-sm">Set owner</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_clutches') }}" class="selbar-group" data-selection-form
+            data-confirm="Delete {n} clutch(es)? Fish raised from them keep their rows but lose the link. Undo from Batch history.">
+        <input type="hidden" name="action" value="delete">
+        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+      </form>
+      <div class="selbar-spacer"></div>
+      <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+    </div>
   </section>
 
-  {{ dialog_open('clutch-dialog', 'New clutch', url_for('zebrafish_create_clutch'), 'Create clutch') }}
+  {{ dialog_open('clutch-dialog', 'New clutch', url_for('zebrafish_create_clutch'), 'Create clutch',
+                 update_action=url_for('zebrafish_update_clutch', clutch_row_id=0), edit_title='Clutch {label}') }}
     <fieldset class="record-group">
       <legend>Clutch</legend>
-      <label>Clutch ID <input name="clutch_id"></label>
+      <label>Clutch ID <input name="clutch_id" placeholder="auto"></label>
       <label>Fertilised <input type="date" name="date_of_fertilization" required></label>
       <label>Line
-        <select name="line_id_fk"><option value="">Not set</option>{% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}</select>
+        <select name="line_id_fk">{{ line_options(None, 'Not set') }}</select>
       </label>
+      <label>Owner <input name="owner" list="sheet-owners"></label>
     </fieldset>
     <fieldset class="record-group">
       <legend>Parents</legend>
       <label>Male tank
-        <select name="father_tank_id"><option value="">Not recorded</option>{% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}</select>
+        <select name="father_tank_id">{{ tank_options(None, 'Not recorded') }}</select>
       </label>
       <label>Female tank
-        <select name="mother_tank_id"><option value="">Not recorded</option>{% for t in tanks %}<option value="{{ t.id }}">{{ t.tank_id }}</option>{% endfor %}</select>
+        <select name="mother_tank_id">{{ tank_options(None, 'Not recorded') }}</select>
       </label>
     </fieldset>
     <fieldset class="record-group">
@@ -519,27 +777,50 @@
 
 {# ================================= LINES ================================ #}
 {% if active_view == "lines" %}
-  <section class="data-table-card sheet" data-table-id="zf-lines" data-noun="line">
-    {{ sheet_toolbar('Search line, ZFIN, allele…', 'New line', 'line-dialog', {}) }}
+  <section class="data-table-card sheet" data-table-id="zf-lines-v2" data-noun="line" data-export-name="zebrafish-lines"
+           data-autosave-sheet data-selection-scope data-selection-noun="line" data-selection-noun-plural="lines">
+    <div class="dt-toolbar">
+      {{ search_box('Search line, ZFIN, allele…') }}
+      {{ chips([
+        ('All', '', line_rows|length),
+        ('In use', 'active:true', line_rows|selectattr('active')|list|length),
+        ('No live fish', 'active:false', line_rows|rejectattr('active')|list|length),
+      ]) }}
+      <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
+      {{ new_button('New line', 'line-dialog', {}) }}
+    </div>
     <div class="dt-scroll">
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 190px; min-width: 190px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
-            <th style="width: 210px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}ZFIN name</span></th>
-            <th style="width: 120px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Background</span></th>
-            <th style="width: 220px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Transgenes</span></th>
-            <th style="width: 150px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Allele</span></th>
-            <th style="width: 120px;"><span class="dt-col-head">{{ icon('protocol', 'dt-col-icon') }}IACUC #</span></th>
-            <th style="width: 180px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Parent line</span></th>
-            <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
+            {{ select_all('lines') }}
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="name" style="width: 190px; min-width: 190px;"
+                title="Line name. The dot is green while live fish carry the line.">
+              <span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Line<span class="dt-sort-indicator"></span></span>
+            </th>
+            {{ col('zfin_name', 'database', 'ZFIN name', 210) }}
+            {{ col('background', 'layers', 'Background', 120) }}
+            {{ col('transgene_summary', 'plasmid', 'Transgenes', 220) }}
+            {{ col('allele', 'dna', 'Allele', 150) }}
+            {{ col('iacuc_protocol', 'protocol', 'IACUC #', 110) }}
+            {{ col('parent', 'sitemap', 'Parent line', 180) }}
+            {{ col('tanks', 'tank', 'Tanks', 70) }}
+            {{ col('live', 'count', 'Live fish', 84) }}
+            {{ col(None, 'note', 'Notes', min=180, hidden=True) }}
+            <th class="sheet-pin sheet-pin-end" style="width: 124px; min-width: 124px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          {% for ln in lines %}
+          {% for lr in line_rows %}
+            {% set ln = lr.row %}
             {% set f = 'uline-' ~ ln.id %}
-            <tr data-id="{{ ln.id }}">
-              <td class="sheet-pin sheet-pin-start"><a class="sheet-link" href="{{ url_for('zebrafish_line_detail', line_id=ln.id) }}">{{ ln.name }}</a></td>
+            <tr data-id="{{ ln.id }}" data-name="{{ ln.name }}" data-parent="{{ lr.parent }}" data-tanks="{{ lr.tanks }}"
+                data-live="{{ lr.live }}" data-active="{{ 'true' if lr.active else 'false' }}">
+              <td class="sheet-pin sheet-pin-0"><input type="checkbox" data-select-row value="{{ ln.id }}" aria-label="Select line {{ ln.name }}"></td>
+              <td class="sheet-pin sheet-pin-1">
+                {{ sheet_ui.id_cell(ln.name, alive=lr.active, noun='line', alive_title='In use: ' ~ lr.live ~ ' live fish', dead_title='No live fish') }}
+              </td>
               <td><input class="ident" form="{{ f }}" name="zfin_name" value="{{ ln.zfin_name }}" data-autosave="1" aria-label="ZFIN name"></td>
               <td><input form="{{ f }}" name="background" value="{{ ln.background }}" data-autosave="1" aria-label="Background"></td>
               <td><input form="{{ f }}" name="transgene_summary" value="{{ ln.transgene_summary }}" title="{{ ln.transgene_summary }}" data-autosave="1" aria-label="Transgenes"></td>
@@ -547,31 +828,57 @@
               <td><input class="ident" form="{{ f }}" name="iacuc_protocol" value="{{ ln.iacuc_protocol }}" data-autosave="1" aria-label="IACUC protocol"></td>
               <td>
                 <select form="{{ f }}" name="parent_line_id_fk" data-autosave="1" aria-label="Parent line">
-                  <option value="">–</option>
+                  <option value="" {% if not ln.parent_line_id_fk %}selected{% endif %}>–</option>
                   {% for other in lines if other.id != ln.id %}<option value="{{ other.id }}" {% if ln.parent_line_id_fk == other.id %}selected{% endif %}>{{ other.name }}</option>{% endfor %}
                 </select>
               </td>
+              <td class="sheet-num">{{ lr.tanks }}</td>
+              <td class="sheet-num">{{ lr.live }}</td>
+              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ ln.notes }}" title="{{ ln.notes }}" placeholder="Add a note" data-autosave="1" aria-label="Notes"></td>
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <form method="post" action="{{ url_for('zebrafish_delete_line', line_id=ln.id) }}" onsubmit="return confirm('Delete line {{ ln.name }}?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete line">{{ icon('trash') }}</button>
-                  </form>
+                  {% call row_actions('line-dialog', lr.payload, 'line ' ~ ln.name,
+                                      url_for('zebrafish_duplicate_line', line_id=ln.id),
+                                      url_for('zebrafish_delete_line', line_id=ln.id), 'Delete line ' ~ ln.name ~ '?', False,
+                                      ('Still used by ' ~ lr.used) if lr.used else '') %}
+                    <a class="row-icon-btn" href="{{ url_for('zebrafish_line_detail', line_id=ln.id) }}" title="Lineage and tanks for {{ ln.name }}">{{ icon('sitemap') }}</a>
+                  {% endcall %}
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="8">No lines yet. Use <strong>New line</strong>.</td></tr>
+            <tr><td class="dt-empty" colspan="12">No lines yet. Use <strong>New line</strong>.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% for ln in lines %}
-      <form id="uline-{{ ln.id }}" method="post" action="{{ url_for('zebrafish_update_line', line_id=ln.id) }}" data-record-label="line {{ ln.name }}"></form>
+    {% for lr in line_rows %}
+      <form id="uline-{{ lr.row.id }}" method="post" action="{{ url_for('zebrafish_update_line', line_id=lr.row.id) }}" data-record-label="line {{ lr.row.name }}"></form>
     {% endfor %}
-    {{ sheet_bottom(lines|length, 'line', 'lines') }}
+    {{ sheet_bottom(line_rows|length, 'line', 'lines') }}
+
+    <div class="selbar" data-selection-bar hidden>
+      <span class="selbar-count" data-selection-count></span>
+      <form method="post" action="{{ url_for('zebrafish_bulk_lines') }}" class="selbar-group" data-selection-form>
+        <select name="action" aria-label="Field">
+          <option value="background">Background</option>
+          <option value="iacuc_protocol">IACUC #</option>
+        </select>
+        <input name="value" placeholder="new value" aria-label="New value">
+        <button type="submit" class="btn btn-sm">Set</button>
+      </form>
+      <form method="post" action="{{ url_for('zebrafish_bulk_lines') }}" class="selbar-group" data-selection-form
+            data-confirm="Delete {n} line(s)? Lines still used by tanks, fish, clutches or child lines are kept. Undo from Batch history.">
+        <input type="hidden" name="action" value="delete">
+        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+      </form>
+      <div class="selbar-spacer"></div>
+      <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+    </div>
   </section>
 
-  {{ dialog_open('line-dialog', 'New line', url_for('zebrafish_create_line'), 'Create line') }}
+  {{ dialog_open('line-dialog', 'New line', url_for('zebrafish_create_line'), 'Create line',
+                 update_action=url_for('zebrafish_update_line', line_id=0), edit_title='Line {label}') }}
     <label class="record-wide">Line name <input name="name" required></label>
     <fieldset class="record-group">
       <legend>Genetics</legend>
@@ -584,9 +891,11 @@
       <legend>Records</legend>
       <label>IACUC # <input name="iacuc_protocol"></label>
       <label>Parent line
-        <select name="parent_line_id_fk"><option value="">None</option>{% for ln in lines %}<option value="{{ ln.id }}">{{ ln.name }}</option>{% endfor %}</select>
+        <select name="parent_line_id_fk">{{ line_options(None, 'None') }}</select>
       </label>
     </fieldset>
+    <label class="record-wide">Founder notes <textarea name="founder_info" rows="2"></textarea></label>
+    <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
   {{ dialog_close('Create line') }}
 {% endif %}
 
@@ -612,7 +921,7 @@
         <header class="card-head border-b border-sand-100 px-4 py-3">
           <h2>{{ icon('droplet') }} {{ sys.name }} {% if sys.room %}<span class="badge badge-quiet">{{ sys.room }}</span>{% endif %}</h2>
           <span class="text-[12px] text-muted tabular-nums">
-            Target {{ sys.target_temp_c or '–' }} °C · pH {{ sys.target_ph or '–' }} · {{ sys.target_conductivity or '–' }} µS/cm
+            Target {{ reading(sys.target_temp_c, ' °C') }} · pH {{ reading(sys.target_ph) }} · {{ reading(sys.target_conductivity, ' µS/cm') }}
           </span>
         </header>
         <div class="water-grid">
@@ -630,8 +939,9 @@
         </div>
         <footer class="border-t border-sand-100 px-4 py-2.5 text-[12px] text-muted tabular-nums">
           {% if log %}
-            Latest {{ log.recorded_at.strftime('%b %d, %H:%M') }} · {{ log.temperature_c }} °C · pH {{ log.ph }} · {{ log.conductivity }} µS
-            {% if log.salinity %} · salinity {{ log.salinity }}{% endif %}
+            Latest {{ log.recorded_at.strftime('%b %d, %H:%M') }} · {{ reading(log.temperature_c, ' °C') }} · pH {{ reading(log.ph) }} · {{ reading(log.conductivity, ' µS') }}
+            {% if log.salinity is not none %} · salinity {{ log.salinity }}{% endif %}
+            {% if log.notes %} · {{ log.notes }}{% endif %}
             {% if log.alarm %}<span class="badge badge-danger ml-1.5">{{ icon('warning') }} Alarm</span>{% endif %}
           {% else %}
             No readings yet.
@@ -647,60 +957,40 @@
 
 {% block body_end %}
 <script>
-  /* Autosave for the fish sheets, with the same toolbar indicator as the
-     mouse sheet: a refused or failed save says so where you are. */
-  (function () {
-    const status = document.querySelector('[data-save-status]');
-    let timer = null;
-    const say = (state, text) => {
-      if (!status) return;
-      clearTimeout(timer);
-      status.dataset.state = state;
-      status.textContent = text;
-      if (state === 'saved') timer = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
-    };
-    const pending = new Map();
-    async function save(form) {
-      say('saving', 'Saving…');
-      try {
-        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
-        say('saved', 'All changes saved');
-      } catch (error) {
-        say('error', `Couldn’t save ${form.dataset.recordLabel || 'this change'}: ${error.message}`);
-      }
-    }
-    document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
-      const form = () => input.form || document.getElementById(input.getAttribute('form'));
-      const queue = (delay) => {
-        const f = form();
-        if (!f) return;
-        clearTimeout(pending.get(f.id));
-        pending.set(f.id, setTimeout(() => save(f), delay));
-      };
-      input.addEventListener('input', () => queue(400));
-      input.addEventListener('change', () => {
-        if (input.classList.contains('status-pill')) input.dataset.status = input.value;
-        if (input.type === 'date') input.dataset.empty = input.value ? '0' : '1';
-        queue(0);
-      });
-    });
-  })();
+  /* Inline editing, the save indicator and the live dots come from
+     static/sheet.js (data-autosave-sheet on each sheet). */
 
-  // Genotyping flag
-  document.querySelectorAll('.flag-toggle').forEach((btn) => {
+  // Delete confirmations say what else the delete touches.
+  document.querySelectorAll('form[data-confirm-delete]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      if (!confirm(form.dataset.confirmDelete)) event.preventDefault();
+    });
+  });
+
+  // Genotyping flag, on the tank sheet and the queue.
+  const GENO_URL = {{ url_for('zebrafish_toggle_geno', tank_row_id=0) | tojson }};
+  document.querySelectorAll('.flag-toggle[data-tank-id]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const response = await fetch(`/zebrafish/tanks/${btn.dataset.tankId}/toggle-geno`, { method: 'POST' });
-      const result = await response.json().catch(() => null);
-      if (result && result.ok) {
+      const status = document.querySelector('[data-save-status]');
+      try {
+        const response = await fetch(GENO_URL.replace('/0/', `/${btn.dataset.tankId}/`), { method: 'POST', headers: { 'X-Autosave': '1' } });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `The server answered ${response.status}.`);
         btn.setAttribute('aria-pressed', result.needs_genotyping ? 'true' : 'false');
         btn.querySelector('[data-flag-label]').textContent = result.needs_genotyping ? 'Queued' : 'No';
+        const row = btn.closest('tr');
+        if (row) row.dataset.geno = result.needs_genotyping ? '1' : '';
+      } catch (error) {
+        if (status) { status.dataset.state = 'error'; status.textContent = `Couldn’t change the genotyping flag: ${error.message}`; }
       }
     });
   });
 
-
+  // The sacrifice log opens when linked to (#sac-log).
+  if (location.hash === '#sac-log') {
+    const sac = document.getElementById('sac-log');
+    if (sac) sac.open = true;
+  }
 
 {% if active_view == "water" %}
   // Water trend chart. Apple system colours: temperature red, pH purple,
