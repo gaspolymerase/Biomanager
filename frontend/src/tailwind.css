@@ -2574,6 +2574,24 @@
 }
 
 /* ===========================================================================
+   ZEBRAFISH — the tank, fish, clutch and line sheets
+   =========================================================================== */
+@layer components {
+  /* A fish group of both sexes, and the "found dead" status. */
+  .sex-pill[data-sex="mixed"] { @apply bg-violet-50 text-violet-700; }
+  :is(.status-pill, .status-pill-static)[data-status="dead"] { @apply bg-danger-50 text-danger-700; }
+
+  /* Someone else's tank: the genotyping flag reads, but does not press. */
+  .flag-toggle:disabled { @apply cursor-not-allowed opacity-50; }
+  .flag-toggle:disabled:hover { @apply bg-sand-100 text-muted; }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .sex-pill[data-sex="mixed"] { @apply bg-violet-500/15 text-violet-300; }
+  }
+  :root[data-theme="dark"] .sex-pill[data-sex="mixed"] { @apply bg-violet-500/15 text-violet-300; }
+}
+
+/* ===========================================================================
    OVERRIDES OF THIRD-PARTY STYLESHEETS
    These must stay outside @layer: TOAST UI's and the notebook editor's CSS
    are unlayered, and an unlayered rule beats any layered one whatever its

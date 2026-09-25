@@ -20,7 +20,7 @@
 <body>
   <div class="card">
     <h1>{{ tank.tank_id }}</h1>
-    <div class="sub">{{ tank.purpose|upper }}{% if tank.rack %} · {{ tank.rack.name }}{% endif %}{% if tank.row is not none and tank.col is not none %} · R{{ tank.row }} C{{ tank.col }}{% endif %}</div>
+    <div class="sub">{{ tank.purpose|upper }}{% if tank.rack %} · {{ tank.rack.name }}{% endif %}{% if position %} · {{ position }}{% endif %}</div>
 
     <div class="field"><b>Line</b><span>{{ tank.line.name if tank.line else '—' }}</span></div>
     {% if tank.line %}<div class="field"><b>ZFIN</b><span>{{ tank.line.zfin_name or '—' }}</span></div>{% endif %}
