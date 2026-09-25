@@ -30,6 +30,47 @@
   </tr>
 {% endmacro %}
 
+{% macro choice_row(name, i, value, n) %}
+  <tr data-choice-row data-count="{{ n }}">
+    <td>
+      <input type="hidden" name="{{ name }}_{{ i }}_was" value="{{ value }}" data-choice-was>
+      <input type="text" name="{{ name }}_{{ i }}_value" value="{{ value }}" maxlength="{{ 40 if name == 'statuses' else 80 }}"
+             aria-label="Name" data-choice-value {% if not value %}placeholder="New…"{% endif %}>
+    </td>
+    <td class="choice-usage">{% if n %}{{ n }} {{ m.item_noun if n == 1 else m.item_noun_plural }}{% elif value %}<span class="text-sand-400">unused</span>{% endif %}</td>
+    <td class="text-center">{% if value %}<input type="checkbox" name="{{ name }}_{{ i }}_remove" value="1" aria-label="Remove {{ value }}" data-choice-remove>{% endif %}</td>
+    <td class="choice-replace">
+      {% if n %}
+        <label data-choice-replace hidden>{{ 'they become' if n != 1 else 'it becomes' }}
+          <select name="{{ name }}_{{ i }}_replace" aria-label="What the {{ m.item_noun_plural }} on {{ value }} become"><option value="">Pick…</option></select>
+        </label>
+      {% endif %}
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro choice_editor(name, values, counts, title, add_label, hint) %}
+  {% set orphans = counts.keys() | reject('in', values) | reject('equalto', '') | list %}
+  <div class="field-label" data-choice-editor="{{ name }}">
+    <span>{{ title }}</span>
+    <table class="field-editor choice-editor">
+      <thead><tr><th>Name</th><th>Used by</th><th>Remove</th><th></th></tr></thead>
+      <tbody data-choice-body>
+        {% for v in values %}{{ choice_row(name, loop.index0, v, counts.get(v, 0)) }}{% endfor %}
+        {{ choice_row(name, values|length, '', 0) }}
+      </tbody>
+    </table>
+    <input type="hidden" name="{{ name }}_count" value="{{ values|length + 1 }}" data-choice-count>
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" class="btn btn-sm" data-choice-add>{{ icon('plus') }} {{ add_label }}</button>
+      {% if orphans %}
+        <span class="field-hint normal-case tracking-normal">Also held by {{ m.item_noun_plural }} but not listed: {{ orphans | join(', ') }}.</span>
+      {% endif %}
+    </div>
+    <span class="field-hint normal-case tracking-normal">{{ hint }}</span>
+  </div>
+{% endmacro %}
+
 {% block content %}
 <div class="grid max-w-[1000px] grid-cols-1 gap-3">
   <form method="post" class="flex flex-col gap-3" id="configure-form">
@@ -74,16 +115,12 @@
 
     <section class="card">
       <header class="card-head"><h2>{{ icon('tag') }} Choices</h2></header>
-      <div class="grid grid-cols-1 gap-3.5 p-4 sm:grid-cols-3">
-        <label class="field-label">Category column is called <input name="category_label" value="{{ m.category_label }}"></label>
-        <label class="field-label sm:col-span-2">{{ m.category_label }} choices
-          <textarea name="categories" rows="4">{{ m.categories | join('\n') }}</textarea>
-          <span class="field-hint normal-case tracking-normal">One per line. Leave empty for free text.</span>
-        </label>
-        <label class="field-label sm:col-span-3">Statuses
-          <textarea name="statuses" rows="4">{{ m.statuses | join('\n') }}</textarea>
-          <span class="field-hint normal-case tracking-normal">One per line, in workflow order; the first is given to new entries, and these are the board's columns. Leave empty for no status.</span>
-        </label>
+      <div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+        <label class="field-label lg:col-span-2 lg:max-w-[320px]">Category column is called <input name="category_label" value="{{ m.category_label }}"></label>
+        {{ choice_editor('categories', m.categories, category_counts, m.category_label ~ ' choices', 'Add a choice',
+                         'No choices means free text. Rename one and every ' ~ m.item_noun ~ ' with it follows.') }}
+        {{ choice_editor('statuses', m.statuses, status_counts, 'Statuses', 'Add a status',
+                         'In workflow order; the first is given to new entries, and these are the board’s columns. Rename one and every ' ~ m.item_noun ~ ' on it follows (no dates are stamped). None means no status.') }}
       </div>
     </section>
 
@@ -149,6 +186,80 @@
     body.addEventListener('change', (e) => {
       if (e.target.matches('[data-remove-toggle]')) e.target.closest('tr').classList.toggle('is-removed', e.target.checked);
     });
+  })();
+
+  /* Statuses and categories: one row per value, so a rename is known to
+     be a rename. Removing a value items still hold asks what they become;
+     saving asks first when anything will be relabelled. */
+  (function () {
+    const form = document.getElementById('configure-form');
+    const noun = {{ m.item_noun | tojson }}, plural = {{ m.item_noun_plural | tojson }};
+    const editors = Array.from(form.querySelectorAll('[data-choice-editor]'));
+    const n = (k) => `${k} ${k === 1 ? noun : plural}`;
+
+    function kept(editor) {
+      const seen = new Set();
+      return Array.from(editor.querySelectorAll('[data-choice-row]')).filter((tr) => {
+        const remove = tr.querySelector('[data-choice-remove]');
+        return !(remove && remove.checked);
+      }).map((tr) => tr.querySelector('[data-choice-value]').value.trim())
+        .filter((v) => v && !seen.has(v.toLowerCase()) && seen.add(v.toLowerCase()));
+    }
+
+    function sync() {
+      const changes = [];
+      editors.forEach((editor) => {
+        const values = kept(editor);
+        editor.querySelectorAll('[data-choice-row]').forEach((tr) => {
+          const was = tr.querySelector('[data-choice-was]').value;
+          const input = tr.querySelector('[data-choice-value]');
+          const remove = tr.querySelector('[data-choice-remove]');
+          const count = Number(tr.dataset.count || 0);
+          const now = input.value.trim();
+          const gone = Boolean(was) && ((remove && remove.checked) || !now);
+          tr.classList.toggle('is-removed', gone);
+          const replace = tr.querySelector('[data-choice-replace]');
+          if (replace) {
+            const select = replace.querySelector('select');
+            const others = values.filter((v) => v.toLowerCase() !== was.toLowerCase());
+            const needs = gone && count > 0 && values.length > 0
+              && !values.some((v) => v.toLowerCase() === was.toLowerCase());
+            replace.hidden = !needs;
+            select.required = needs;
+            const current = select.value;
+            select.replaceChildren(new Option('Pick…', ''), ...others.map((v) => new Option(v, v)));
+            select.value = others.includes(current) ? current : '';
+            if (needs && select.value) changes.push(`${n(count)} from “${was}” to “${select.value}”`);
+          }
+          if (!gone && was && count && now !== was) changes.push(`${n(count)} from “${was}” to “${now}”`);
+        });
+      });
+      if (changes.length) form.dataset.confirm = `Relabel ${changes.join('; ')}?`;
+      else delete form.dataset.confirm;
+    }
+
+    editors.forEach((editor) => {
+      const body = editor.querySelector('[data-choice-body]');
+      const count = editor.querySelector('[data-choice-count]');
+      const name = editor.dataset.choiceEditor;
+      editor.querySelector('[data-choice-add]').addEventListener('click', () => {
+        const i = Number(count.value);
+        const tr = document.createElement('tr');
+        tr.dataset.choiceRow = '';
+        tr.dataset.count = '0';
+        tr.innerHTML = '<td><input type="hidden" data-choice-was><input type="text" data-choice-value placeholder="New…" aria-label="Name"></td><td class="choice-usage"></td><td></td><td class="choice-replace"></td>';
+        tr.querySelector('[data-choice-was]').name = `${name}_${i}_was`;
+        const input = tr.querySelector('[data-choice-value]');
+        input.name = `${name}_${i}_value`;
+        input.maxLength = name === 'statuses' ? 40 : 80;
+        body.appendChild(tr);
+        count.value = i + 1;
+        input.focus();
+      });
+    });
+    form.addEventListener('input', sync);
+    form.addEventListener('change', sync);
+    sync();
   })();
 </script>
 {% endblock %}

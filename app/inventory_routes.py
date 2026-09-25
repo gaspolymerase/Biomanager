@@ -416,6 +416,8 @@ def save_item(key: str):
             if not _can_edit(item):
                 return _done(key, error=access.reason_denied(item, noun=mv.item_noun))
         else:
+            if (request.form.get("names") or "").strip() or (request.form.get("count") or "1").strip() != "1":
+                return _create_many(session, row, mv, request.form)
             item = InventoryItem(module_id_fk=row.id, number=svc.next_number(session, row.id),
                                  owner=g.user.username, status=mv.statuses[0] if mv.statuses else "")
             session.add(item)
@@ -432,6 +434,81 @@ def save_item(key: str):
         if error:
             return _done(key, error=f"Saved {label}, but: {error}")
         return _done(key, message=f"Saved {label}.")
+
+
+MAX_AT_ONCE = 50
+
+# Fields a batch of new items does not copy from the dialog as they are.
+MANY_ONLY = ("id", "count", "names", "rack_id", "position")
+
+
+def _create_many(session, row: InventoryModule, mv, form):
+    """How many > 1, or pasted names: identical items with consecutive
+    numbers (one per pasted name, named after it), side by side in the
+    chosen box from the given position, taking the next free cells. One
+    batch, so Batch history can undo them; nothing is created when any of
+    them would be refused."""
+    key = row.key
+    names = [x.strip()[:200] for x in (form.get("names") or "").splitlines() if x.strip()]
+    if names:
+        count = len(names)
+        if count > MAX_AT_ONCE:
+            return _done(key, error=f"Paste at most {MAX_AT_ONCE} names at a time ({count} given).")
+    else:
+        count = _int(form.get("count"), 0, -1, 10_000)
+        if not 1 <= count <= MAX_AT_ONCE:
+            return _done(key, error=f"Add between 1 and {MAX_AT_ONCE} {mv.item_noun_plural} at a time.")
+
+    rack, cells, pos = None, [], (form.get("position") or "").strip()
+    rack_raw = (form.get("rack_id") or "").strip() if mv.has("storage") else ""
+    if rack_raw:
+        rack = session.get(InventoryRack, int(rack_raw)) if rack_raw.isdigit() else None
+        if rack is None or rack.module_id_fk != row.id:
+            return _done(key, error="That box is not part of this inventory.")
+        start = None
+        if pos:
+            start = positions.parse(pos, rack.naming, rack.rows, rack.cols)
+            if start is None:
+                return _done(key, error=(
+                    f"“{pos}” is not a position in {rack.name} "
+                    f"({positions.label(1, 1, rack.naming, rack.cols)}–{positions.label(rack.rows, rack.cols, rack.naming, rack.cols)})."))
+        cells = svc.free_cells(session, rack, count, start)
+
+    fresh = {k: v for k, v in form.items() if not k.endswith("_was") and k not in MANY_ONLY}
+    number = svc.next_number(session, row.id)
+    first_status = mv.statuses[0] if mv.statuses else ""
+    created, notes = [], []
+    try:
+        with audit.batch(session, "create", f"New {mv.item_noun_plural} ×{count}", "inventory_items"):
+            for i in range(count):
+                item = InventoryItem(module_id_fk=row.id, number=number + i, owner=g.user.username, status=first_status)
+                session.add(item)
+                data = dict(fresh, name=names[i]) if names else fresh
+                _, item_notes = _item_from_form(session, mv, item, data, creating=True)
+                notes += [n for n in item_notes if n not in notes]
+                if rack is not None:
+                    item.rack_id_fk = rack.id
+                    if i < len(cells):
+                        item.rack_row, item.rack_col = cells[i]
+                item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
+                created.append(item)
+            session.flush()
+    except Refused as refused:
+        session.rollback()
+        return _done(key, error=str(refused))
+    session.commit()
+    for note in notes:
+        flash(note, "warning")
+    where = f" in {rack.name}" if rack is not None else ""
+    span = f"#{created[0].number}" if count == 1 else f"#{created[0].number}–#{created[-1].number} ({count} {mv.item_noun_plural})"
+    flash(f"Created {span}{where}.", "success")
+    unplaced = created[len(cells):] if rack is not None else []
+    if unplaced:
+        labels = ", ".join(i.name or f"#{i.number}" for i in unplaced[:5]) + ("…" if len(unplaced) > 5 else "")
+        return _done(key, error=(f"{rack.name} had room for {len(cells)} of {count}"
+                                 f"{' from ' + pos if pos else ''}: {len(unplaced)} did not fit ({labels}) "
+                                 f"and are in it without a position."))
+    return _done(key)
 
 
 @bp.route("/<key>/items/<int:item_id>/update", methods=["POST"])
@@ -813,17 +890,73 @@ def configure(key: str):
                 row.icon = form["icon"]
             row.enabled = "1" in form.getlist("enabled")
             lines = lambda name: [x.strip() for x in (form.get(name) or "").replace(",", "\n").split("\n") if x.strip()]
-            row.settings = json.dumps(presets.normalise_settings({
+            choices, plans = {}, {}
+            for name, (column, limit) in svc.CHOICE_COLUMNS.items():
+                rows = _choice_rows(form, name, limit)
+                if rows is None:  # an older form: a plain list, nothing relabelled
+                    choices[name] = lines(name)
+                    continue
+                plan = svc.plan_choices(rows, svc.choice_counts(session, row.id, column))
+                choices[name], plans[column] = plan.values, plan
+            problems = [(column, old) for column, plan in plans.items() for old in plan.problems]
+            if problems:
+                session.rollback()
+                counts = {column: svc.choice_counts(session, row.id, column) for column, _ in problems}
+                mv = svc.view(row)
+                flash("Not saved: " + " ".join(
+                    f"{_n(counts[column][old], mv)} still {'have' if counts[column][old] != 1 else 'has'} the "
+                    f"{'status' if column == 'status' else mv.category_label.lower()} “{old}”. "
+                    f"Pick what {'they' if counts[column][old] != 1 else 'it'} should become, or keep it."
+                    for column, old in problems), "error")
+                return redirect(url_for("inventory.configure", key=key))
+            settings = json.dumps(presets.normalise_settings({
                 "features": form.getlist("features"),
                 "category_label": (form.get("category_label") or "Category").strip(),
-                "categories": lines("categories"), "statuses": lines("statuses"), "fields": _fields_from_form(form),
+                "categories": choices["categories"], "statuses": choices["statuses"], "fields": _fields_from_form(form),
             }))
+            category_label = presets.normalise_settings(settings)["category_label"]
+            changes = []
+            for column, plan in plans.items():
+                counts = svc.choice_counts(session, row.id, column)
+                what = "status" if column == "status" else category_label.lower()
+                for old, (new, how) in plan.relabel.items():
+                    if counts.get(old):
+                        verb = "Rename" if how == "rename" else "Replace"
+                        changes.append(f"{verb} {what} ‘{old}’ → ‘{new}’ ({_n(counts[old], row)})")
+            if changes:
+                # One batch with the new settings, so Batch history puts the
+                # list and the items back together.
+                with audit.batch(session, "update", "; ".join(changes), "inventory_items"):
+                    row.settings = settings
+                    for column, plan in plans.items():
+                        svc.relabel_items(session, row.id, column, plan.relabel)
+            else:
+                row.settings = settings
             session.commit()
-            flash(f"Saved {row.label}.", "success")
+            flash(f"Saved {row.label}." + (" " + "; ".join(changes) + "." if changes else ""), "success")
             return redirect(url_for("inventory.module", key=key))
-        return render_template("inventory/configure.html", module=svc.view(row), features=presets.FEATURES,
+        mv = svc.view(row)
+        return render_template("inventory/configure.html", module=mv, features=presets.FEATURES,
                                field_types=presets.FIELD_TYPES, icons=ICON_CHOICES,
+                               status_counts=svc.choice_counts(session, row.id, "status"),
+                               category_counts=svc.choice_counts(session, row.id, "category"),
                                item_count=len(list(session.scalars(select(InventoryItem.id).where(InventoryItem.module_id_fk == row.id)))))
+
+
+def _n(count: int, mv) -> str:
+    return f"{count} {mv.item_noun if count == 1 else mv.item_noun_plural}"
+
+
+def _choice_rows(form, name: str, limit: int) -> list[dict] | None:
+    """The Configure rows of a choice list (statuses_0_value, _was, _remove,
+    _replace…), or None when the form sent the list as plain text."""
+    if f"{name}_count" not in form:
+        return None
+    return [{"value": (form.get(f"{name}_{i}_value") or "").strip()[:limit],
+             "was": (form.get(f"{name}_{i}_was") or "").strip(),
+             "remove": bool(form.get(f"{name}_{i}_remove")),
+             "replace": (form.get(f"{name}_{i}_replace") or "").strip()}
+            for i in range(_int(form.get(f"{name}_count"), 0, 0, 200))]
 
 
 @bp.route("/<key>/delete", methods=["POST"])
