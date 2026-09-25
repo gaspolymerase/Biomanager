@@ -110,6 +110,13 @@ docker compose exec backup restore-test.sh  # a restore test now
 
 ### Restoring
 
+The backup files belong to root and only root can read them (they hold the
+signing key), so list them through the backup service:
+
+```bash
+docker compose exec backup ls -lt /backups/db /backups/files
+```
+
 ```bash
 docker compose stop app
 docker compose --profile restore run --rm restore \
