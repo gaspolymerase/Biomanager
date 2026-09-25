@@ -124,11 +124,13 @@ from .organism_routes import bp as organism_bp  # noqa: E402
 from .inventory_routes import bp as inventory_bp  # noqa: E402
 from .stock_routes import bp as stocks_bp  # noqa: E402
 from .labels import bp as labels_bp  # noqa: E402
+from .admin_racks import bp as admin_racks_bp  # noqa: E402
 
 app.register_blueprint(organism_bp)
 app.register_blueprint(inventory_bp)
 app.register_blueprint(stocks_bp)
 app.register_blueprint(labels_bp)
+app.register_blueprint(admin_racks_bp)
 
 
 # When running as a frozen .app/.exe, uploads live in the user's data folder

@@ -180,11 +180,14 @@
         </header>
         <div class="flex flex-col items-start gap-3 p-4">
           <p class="text-[12.5px] leading-snug text-muted">
-            Promote or disable lab members and reset their passwords.
+            Promote or disable lab members and reset their passwords, and choose who looks after each rack, box and incubator.
           </p>
-          <a class="btn" href="{{ url_for('admin_users') }}">
-            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg> Manage users
-          </a>
+          <div class="flex flex-wrap gap-2">
+            <a class="btn" href="{{ url_for('admin_users') }}">
+              <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#users"></use></svg> Manage users
+            </a>
+            <a class="btn" href="{{ url_for('admin_racks.index') }}">{{ icon('box') }} Racks, boxes &amp; incubators</a>
+          </div>
         </div>
       </article>
     {% endif %}
