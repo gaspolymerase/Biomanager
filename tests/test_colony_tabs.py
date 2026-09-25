@@ -103,11 +103,8 @@ class LitterUpdateTests(AppTestCase):
         self.assertSaved(self.autosave(self.m, f"/colony/litters/{litter}/update", {"total_pups": ""}))
         self.assertEqual(one("select total_pups from litters where id=?", litter), 0)
 
-    # BUG: a litter's DOB is the age of every mouse in it. The Litters tab
-    # refuses the change (above), but the Add mouse form (/colony/mice/create,
-    # and Add many) writes the typed DOB onto the existing litter through
-    # services.get_or_create_litter with no permission check.
-    @unittest.expectedFailure
+    # A litter's DOB is the age of every mouse in it: adding a mouse (Add
+    # mouse, Add many) can't re-date a litter whose mice you can't all edit.
     def test_member_cannot_change_a_locked_litters_dob_by_adding_a_mouse_to_it(self):
         col = self.make_colony(self.o, self.other, dob=days_ago(40))
         self.m.post("/colony/mice/create", data={

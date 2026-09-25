@@ -101,15 +101,10 @@ class ForeignKeysEnforced(AppTestCase):
                 s.commit()
             s.rollback()
 
-    # BUG: on SQLite a commit refused by a deferred foreign key leaves the
-    # transaction open, and closing the session without an explicit
-    # rollback() returns the connection to the pool still inside it (holding
-    # the write lock and the refused change). The next request that gets
-    # that connection sees the refused change, and its own commit fails the
-    # same way. The views use `with SessionLocal() as s:` without a
-    # rollback, so any IntegrityError raised by a view's commit poisons a
-    # pooled connection. (session.rollback() before close avoids it.)
-    @unittest.expectedFailure
+    # On SQLite a commit refused by a deferred foreign key leaves the
+    # transaction open; the views close their session without an explicit
+    # rollback. app/db.py rolls back any open transaction when a connection
+    # returns to the pool, so the next request never sees the refused change.
     def test_a_failed_commit_does_not_leave_the_connection_in_a_transaction(self):
         engine.dispose()  # one pooled connection from here on, so the next checkout gets the same one
         tab_id = self._tab_with_page()

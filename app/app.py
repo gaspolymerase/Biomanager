@@ -691,7 +691,13 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
     # only shows the mouse's own fields) leaves the mouse where it is.
     if "cage_id" in form or form.get("auto_new_cage") == "1":
         cage_input = form.get("cage_id", "").strip()
-        if cage_input:
+        existing_cage = db_session.scalar(select(CageRecord).where(CageRecord.cage_id == cage_input)) if cage_input else None
+        if existing_cage is not None and existing_cage is not mouse.cage and not access.can_edit_cage(existing_cage):
+            # The same rule as "Add existing mouse" on the cage: a private
+            # cage takes mice only from its owner (or an admin).
+            flash(f"Cage {existing_cage.cage_id} is {existing_cage.owner or 'someone else'}’s private cage, so the "
+                  f"mouse stays where it is. Ask them, or have the cage marked shared.", "error")
+        elif cage_input:
             set_mouse_cage(mouse, get_or_create_cage(db_session, cage_input))
         elif form.get("auto_new_cage") == "1":
             set_mouse_cage(mouse, get_or_create_cage(db_session, "new"))
@@ -2239,6 +2245,11 @@ def bulk_update_mice():
         if field == "date_of_death" and value and parse_date(value) is None:
             flash(f"“{value}” is not a date (use YYYY-MM-DD).", "error")
             return redirect(back)
+        if field == "cage_id" and value and value.lower() != "new":
+            existing_cage = db_session.scalar(select(CageRecord).where(CageRecord.cage_id == value))
+            if existing_cage is not None and not access.can_edit_cage(existing_cage):
+                flash(f"Cage {value} is {existing_cage.owner or 'someone else'}’s private cage, so no mouse was moved.", "error")
+                return redirect(back)
         # "new" is one new cage for the whole selection — the mice were
         # picked together to be housed together — made only when at least
         # one selected mouse may move.
@@ -2710,9 +2721,14 @@ def _mouse_rack_from_form(db_session, rack, form) -> str | None:
         func.lower(MouseRack.name) == name.lower(), MouseRack.id != (rack.id or 0)))
     if clash:
         return f"There is already a rack called {name}."
+    try:
+        rows = int(form.get("rows") or 8)
+        cols = int(form.get("cols") or 10)
+    except ValueError:
+        return "Rows and columns must be whole numbers."
     rack.name = name
-    rack.rows = max(1, min(26, int(form.get("rows") or 8)))
-    rack.cols = max(1, min(40, int(form.get("cols") or 10)))
+    rack.rows = max(1, min(26, rows))
+    rack.cols = max(1, min(40, cols))
     rack.room = (form.get("room") or "").strip()
     rack.naming = json.dumps(positions.scheme_from_form(form))
     return None

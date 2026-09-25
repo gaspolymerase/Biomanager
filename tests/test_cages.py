@@ -576,9 +576,6 @@ class MouseRackTests(RackMixin, Case):
         rack = self.make_rack(self.m, rows_=99, cols=99)
         self.assertEqual(self.rack(rack)[1:3], (26, 40))
 
-    # BUG: _mouse_rack_from_form does int(form["rows"]) unguarded, so a
-    # non-numeric size raises ValueError (a 500) instead of a message.
-    @unittest.expectedFailure
     def test_a_non_numeric_rack_size_is_a_message_not_a_crash(self):
         r = self.m.post("/colony/racks/save", data={"id": "", "name": uniq("Rack"), "rows": "eight", "cols": "3"})
         self.assertEqual(r.status_code, 302)

@@ -56,3 +56,16 @@ if engine.dialect.name == "sqlite":
         cursor = dbapi_connection.cursor()
         cursor.execute(f"PRAGMA foreign_keys={'ON' if FOREIGN_KEYS_ENFORCED else 'OFF'}")
         cursor.close()
+
+    # A commit refused by a deferred foreign-key check leaves pysqlite's
+    # transaction open (SQLite keeps the transaction when COMMIT fails), and
+    # a session closed without an explicit rollback hands that connection
+    # back to the pool still holding the refused change and the write lock.
+    # Roll back anything still open whenever a connection returns.
+    @event.listens_for(engine, "checkin")
+    def _sqlite_rollback_on_return(dbapi_connection, connection_record) -> None:
+        if getattr(dbapi_connection, "in_transaction", False):
+            try:
+                dbapi_connection.rollback()
+            except Exception:  # a broken connection is dropped by the pool anyway
+                connection_record.invalidate()

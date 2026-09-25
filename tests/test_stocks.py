@@ -157,12 +157,6 @@ class VialCreationTests(StockCase):
                 self.assertEqual(ids, [])
                 self.assertFlash(r, message, "error")
 
-    # BUG: a new progeny vial is due by the default 25 °C timings, not its
-    # rack's. save_unit runs _unit_from_form before the vial is put in the
-    # rack, and the "becoming progeny" rule there already sets ready_on from
-    # unit_temperature() with no rack; the rack-temperature line after it
-    # (`if unit.purpose == PROGENY and not unit.ready_on`) then never runs.
-    @unittest.expectedFailure
     def test_new_progeny_vial_is_due_by_its_racks_temperature(self):
         rack = self.rack(inc=self.inc18)
         _, ids = self.create(self.a, self.key, purpose="progeny", rack_id=rack, set_up_on=T)
