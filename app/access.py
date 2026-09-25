@@ -83,6 +83,18 @@ def can_edit_mouse(mouse, user=None) -> bool:
     return can_edit(mouse, user, shared=is_shared_cage(getattr(mouse, "cage", None)))
 
 
+def can_configure(module, user=None) -> bool:
+    """Changing a database's definition — its fields, schedule rules,
+    racks and locations, vocabulary, or deleting it — is for an admin or
+    whoever created it. Records inside it follow can_edit."""
+    if module is None:
+        return False
+    if is_admin(user):
+        return True
+    creator = (getattr(module, "created_by", "") or "").strip()
+    return bool(creator) and creator == username(user)
+
+
 def reason_denied(record, user=None) -> str:
     """A message worth showing someone, rather than a bare 403."""
     owner = (getattr(record, "owner", "") or "").strip() or "someone else"

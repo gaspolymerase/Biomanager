@@ -276,6 +276,71 @@ SCHEDULE_ANCHORS = {
     "organism": [("birth_on", "Birth date"), ("last_procedure_on", "Last procedure")],
 }
 
+# Anchors that record when routine work was last done. Completing a
+# recurring item moves these to today so the clock restarts. Every other
+# anchor is a fact about the subject (a birth date, the day a unit was set
+# up) and is never rewritten by the schedule: a recurring rule counted from
+# one of those restarts from the last completion instead (see
+# organism_service.recompute_due).
+SERVICE_ANCHORS = frozenset({
+    "last_serviced_on", "last_refreshed_on", "last_frozen_on", "last_procedure_on",
+})
+
+
+def anchor_allowed(subject: str, anchor: str) -> bool:
+    """True when `anchor` is a date the `subject` kind actually has."""
+    return any(value == anchor for value, _label in SCHEDULE_ANCHORS.get(subject, ()))
+
+
+# ---------------------------------------------------------------------------
+# Statuses that end a record
+#
+# The rule, mirroring the mouse sheet: choosing a status that means the
+# animal (or group) is dead or gone stamps today as its date of death /
+# removal when none is set; moving it back to any other status clears that
+# date, so it counts as alive again. Which statuses end a record is a
+# module setting ("dead_statuses", editable in Configure); a module that has
+# never set it uses those of its statuses that appear in END_STATUS_WORDS.
+# ---------------------------------------------------------------------------
+
+END_STATUS_WORDS = frozenset({
+    "dead", "died", "found dead", "euthanized", "euthanised", "sac", "sacrificed",
+    "culled", "removed", "discarded", "lost", "transferred", "exported", "retired",
+})
+
+
+def default_dead_statuses(statuses) -> list[str]:
+    return [s for s in statuses or [] if str(s).strip().lower() in END_STATUS_WORDS]
+
+
+def pluralise(noun: str) -> str:
+    """English plural for the nouns modules use: cross → crosses,
+    mating → matings, progeny → progeny, mouse → mice."""
+    noun = (noun or "").strip()
+    if not noun:
+        return noun
+    head, _, last = noun.rpartition(" ")
+    lower = last.lower()
+    irregular = {"mouse": "mice", "child": "children", "fish": "fish", "progeny": "progeny",
+                 "sheep": "sheep", "offspring": "offspring", "larva": "larvae",
+                 "pupa": "pupae", "embryo": "embryos"}
+    if lower in irregular:
+        plural = irregular[lower]
+    elif lower.endswith(("s", "x", "z", "ch", "sh")):
+        plural = last + "es"
+    elif lower.endswith("y") and len(lower) > 1 and lower[-2] not in "aeiou":
+        plural = last[:-1] + "ies"
+    else:
+        plural = last + "s"
+    return f"{head} {plural}" if head else plural
+
+
+# Module keys that would shadow a route under /organisms/ (or read as one).
+RESERVED_KEYS = frozenset({
+    "new", "builtin", "static", "api", "index", "delete", "configure", "settings",
+    "search", "edit", "save", "bulk", "admin", "all",
+})
+
 
 # ---------------------------------------------------------------------------
 # Presets
@@ -524,8 +589,8 @@ PRESETS: tuple[Preset, ...] = (
         identity_mode="individual",
         age_unit="weeks",
         capabilities=[
-            "housing", "individuals", "lines", "crosses", "cohorts", "pedigree",
-            "genotyping", "schedule", "weights", "health", "protocol",
+            "housing", "housing_grid", "individuals", "lines", "crosses", "cohorts",
+            "pedigree", "genotyping", "schedule", "weights", "health", "protocol",
             "billing", "samples",
         ],
         schedule_rules=[
@@ -555,7 +620,7 @@ PRESETS: tuple[Preset, ...] = (
         key="custom",
         label="Custom organism",
         label_plural="Custom organisms",
-        icon="circle",
+        icon="paw",
         blurb="Start from nothing and pick every capability, noun and field yourself.",
         organism_noun="animal", organism_noun_plural="animals",
         housing_noun="enclosure", housing_noun_plural="enclosures",

@@ -153,6 +153,25 @@
     {% endif %}
   </article>
 
+  {# Organism databases (configurable engine): schedule items due soon. #}
+  {% if organism_due %}
+    <article class="card flex flex-col">
+      <header class="card-head">
+        <h2>{{ icon('paw') }} Animal databases: due</h2>
+        {% if organism_due_total > organism_due|length %}<span class="badge badge-quiet">{{ organism_due_total }}</span>{% endif %}
+      </header>
+      <div class="flex flex-col">
+        {% for d in organism_due %}
+          <a class="row-line" href="{{ url_for('organisms.module', key=d.key, view='schedule') }}">
+            <span class="w-20 shrink-0 text-[12px] font-semibold {% if d.overdue %}text-danger-700{% elif d.is_today %}text-warn-700{% else %}text-muted{% endif %}">{{ d.due | relative_day }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">{{ d.title }}</span>
+            <span class="shrink-0 text-[11.5px] text-sand-400">{{ d.module }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </article>
+  {% endif %}
+
   {# Upcoming events #}
   <article class="card flex flex-col">
     <header class="card-head">

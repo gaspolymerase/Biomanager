@@ -6,6 +6,19 @@ module's capabilities.
 
 Login is enforced for the whole blueprint in `before_request`; app.py's own
 `before_request` has already resolved `g.user` by then.
+
+Write rules every handler here follows:
+
+  * Records follow access.can_edit (yours, unowned, or you are an admin);
+    the database's definition — fields, rules, racks, vocabulary — follows
+    access.can_configure (its creator or an admin).
+  * A save only writes the inputs the form actually sent, so a dialog that
+    did not render a field (capability off) or a one-cell inline edit never
+    blanks the rest. Checkboxes are read only from full dialog forms, which
+    carry `_full=1`.
+  * Anything that can move a due date recomputes the schedule.
+  * Inline sheet edits send `X-Autosave: 1` and get JSON back (see
+    static/sheet.js for the reply shape).
 """
 from __future__ import annotations
 
@@ -18,6 +31,7 @@ from flask import (
 from sqlalchemy import func, select
 
 from .db import SessionLocal
+from .formutil import form_changed
 from .models import (
     ModuleField,
     OrgCohort,
@@ -32,6 +46,7 @@ from .models import (
     OrganismModule,
 )
 from . import access
+from . import audit
 from . import organism_service as svc
 from . import inventory as inventory_presets
 from . import stocks as stock_presets
@@ -40,29 +55,31 @@ from .icons import housing_icon
 from .organisms import (
     AGE_UNITS,
     FIELD_ENTITIES,
+    FIELD_TYPE_BY_KEY,
     FIELD_TYPES,
     IDENTITY_MODES,
     SCHEDULE_ANCHORS,
+    anchor_allowed,
     capability_groups,
+    pluralise,
 )
 
 bp = Blueprint("organisms", __name__, url_prefix="/organisms")
 
 
 # The sub-views a module can show, in order, each gated on a capability.
-# `None` means always available.
-# The icon for "animals" and "housing" is filled in per module (see
-# _views_for), so flies get a fly and vials, worms a worm and plates.
+# `None` means always available. Labels come from the module's own nouns
+# (see _views_for), so a fly database says "Vials" and a mouse one "Cages".
 MODULE_VIEWS = [
-    ("animals", "Animals", None, None),
-    ("housing", "Housing", None, "housing"),
-    ("lines", "Lines", "sitemap", "lines"),
-    ("crosses", "Crosses", "heart", "crosses"),
-    ("cohorts", "Cohorts", "baby", "cohorts"),
-    ("schedule", "Schedule", "calendar-clock", "schedule"),
-    ("environment", "Environment", "droplet", "environment"),
-    ("preservation", "Cryo", "snowflake", "preservation"),
-    ("settings", "Configure", "sliders", None),
+    ("animals", None, None),
+    ("housing", None, "housing"),
+    ("lines", "sitemap", "lines"),
+    ("crosses", "heart", "crosses"),
+    ("cohorts", "baby", "cohorts"),
+    ("schedule", "calendar-clock", "schedule"),
+    ("environment", "droplet", "environment"),
+    ("preservation", "snowflake", "preservation"),
+    ("settings", "sliders", None),
 ]
 
 
@@ -101,7 +118,7 @@ def _parse_date(raw: str | None) -> date | None:
         return None
 
 
-def _int(raw, default=0) -> int:
+def _int(raw, default=0):
     try:
         return int(str(raw).strip())
     except (TypeError, ValueError):
@@ -114,7 +131,7 @@ def _ref(session, model, module_id: int, raw) -> int | None:
     Every relation in the engine is module-local, so an id belonging to a
     different module is not a valid reference — it is either a stale form or
     a crafted request, and in both cases the right answer is None rather
-     than silently linking two species' records together.
+    than silently linking two species' records together.
     """
     row_id = _int(raw, 0)
     if not row_id:
@@ -133,8 +150,14 @@ def _module_or_404(session, key: str) -> OrganismModule:
 
 
 def _views_for(mv: svc.ModuleView) -> list[dict]:
+    labels = {
+        "animals": mv.organism_noun_plural, "housing": mv.housing_noun_plural,
+        "lines": mv.line_noun_plural, "crosses": mv.cross_noun_plural,
+        "cohorts": mv.cohort_noun_plural, "schedule": "Schedule",
+        "environment": "Environment", "preservation": "Cryo", "settings": "Configure",
+    }
     out = []
-    for key, label, icon, capability in MODULE_VIEWS:
+    for key, icon, capability in MODULE_VIEWS:
         if capability and capability not in mv.capabilities:
             continue
         # "Animals" is meaningless if the module tracks neither.
@@ -144,8 +167,77 @@ def _views_for(mv: svc.ModuleView) -> list[dict]:
             icon = mv.icon
         elif key == "housing":
             icon = housing_icon(mv.housing_noun)
-        out.append({"key": key, "label": label, "icon": icon})
+        label = (labels.get(key) or key).strip()
+        out.append({"key": key, "label": label[:1].upper() + label[1:], "icon": icon})
     return out
+
+
+# ---------------------------------------------------------------------------
+# Small write helpers
+# ---------------------------------------------------------------------------
+
+
+def _autosave() -> bool:
+    return request.headers.get("X-Autosave") == "1"
+
+
+def _redirect_back(key: str, view: str):
+    return redirect(url_for("organisms.module", key=key, view=view))
+
+
+def _fail(key: str, view: str, message: str, status: int = 400):
+    """Refuse a write: JSON for the sheet, a flash for a form."""
+    if _autosave():
+        return jsonify({"ok": False, "error": message}), status
+    flash(message, "error")
+    return _redirect_back(key, view)
+
+
+def _set_text(row, form, name: str, attr: str | None = None, limit: int | None = None) -> None:
+    if name in form:
+        value = (form.get(name) or "").strip()
+        setattr(row, attr or name, value[:limit] if limit else value)
+
+
+def _set_date(row, form, name: str) -> None:
+    if name in form:
+        setattr(row, name, _parse_date(form.get(name)))
+
+
+def _set_ref(session, row, form, name: str, model, module_id: int) -> None:
+    if name in form:
+        setattr(row, name, _ref(session, model, module_id, form.get(name)))
+
+
+def _set_flag(row, form, name: str, attr: str | None = None, invert: bool = False) -> None:
+    """Checkboxes submit nothing when unticked, so they are only read from a
+    form that renders them (the dialog, `_full=1`) or that sends them."""
+    if form.get("_full") == "1" or name in form:
+        value = bool(form.get(name))
+        setattr(row, attr or name, (not value) if invert else value)
+
+
+def _deny_configure(module: OrganismModule, key: str):
+    if access.can_configure(module):
+        return None
+    return _fail(key, "settings",
+                 "Only an admin or whoever created this database can change its setup.", 403)
+
+
+def _load_owned(session, model, module: OrganismModule, row_id: int, key: str, view: str):
+    """(row, error_response) for an edit of an existing record."""
+    row = session.get(model, row_id)
+    if row is None or row.module_id_fk != module.id:
+        if _autosave():
+            return None, (jsonify({"ok": False, "error": "That record no longer exists."}), 404)
+        abort(404)
+    if not access.can_edit(row):
+        return None, _fail(key, view, access.reason_denied(row), 403)
+    return row, None
+
+
+def _iso(value) -> str:
+    return value.isoformat() if value else ""
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +251,7 @@ def index():
     modules and the lab inventories, each renameable."""
     from . import inventory_service as inventories
     from .models import InventoryItem, MouseRecord, PlasmidRecord, TankRecord
+    from .services import END_STATUSES
 
     from . import stock_service as stocks
     from .models import StockUnit
@@ -179,13 +272,25 @@ def index():
                 "module": svc.view(module),
                 "census": svc.census(session, module),
                 "capabilities": svc.capability_labels(module),
+                "can_configure": access.can_configure(module),
             })
         names = inventories.builtin_labels(session)
         count = lambda model: session.scalar(select(func.count()).select_from(model)) or 0
+        # Alive mice, the way the colony page counts them: no date of death
+        # and no end-of-life (or transferred) status.
+        inactive = sorted(END_STATUSES | {"transfer", "transferred"})
+        alive_mice = session.scalar(select(func.count(MouseRecord.id)).where(
+            MouseRecord.date_of_death.is_(None),
+            func.lower(func.trim(func.coalesce(MouseRecord.status, ""))).notin_(inactive))) or 0
+        active_tanks = session.scalar(select(func.count(TankRecord.id)).where(
+            TankRecord.active.is_(True))) or 0
         builtins = [
-            {"key": "colony", "icon": "mouse", "url": url_for("colony", view="mice"), "count": count(MouseRecord), "noun": "mice"},
-            {"key": "zebrafish", "icon": "fish", "url": url_for("zebrafish"), "count": count(TankRecord), "noun": "tanks"},
-            {"key": "plasmids", "icon": "plasmid", "url": url_for("plasmids"), "count": count(PlasmidRecord), "noun": "plasmids"},
+            {"key": "colony", "icon": "mouse", "url": url_for("colony", view="mice"),
+             "count": alive_mice, "noun": "alive mice"},
+            {"key": "zebrafish", "icon": "fish", "url": url_for("zebrafish"),
+             "count": active_tanks, "noun": "active tanks"},
+            {"key": "plasmids", "icon": "plasmid", "url": url_for("plasmids"),
+             "count": count(PlasmidRecord), "noun": "plasmids"},
         ]
         for b in builtins:
             b["label"] = names[b["key"]]
@@ -195,23 +300,31 @@ def index():
         inventory_cards = [{"module": inventories.view(m), "count": item_counts.get(m.id, 0)}
                            for m in inventories.list_modules(session, include_disabled=True)]
         return render_template("organisms/index.html", cards=cards, builtins=builtins,
-                               inventory_cards=inventory_cards, stock_cards=stock_cards)
+                               inventory_cards=inventory_cards, stock_cards=stock_cards,
+                               is_admin=access.is_admin())
 
 
 @bp.route("/builtin/<key>/rename", methods=["POST"])
 def rename_builtin(key: str):
-    """Rename the mouse colony, zebrafish or plasmid pages. An empty name
-    goes back to the default."""
+    """Rename the mouse colony, zebrafish or plasmid pages (admins only).
+    An empty name goes back to the default."""
     from . import inventory_service as inventories
 
     if key not in inventories.BUILTIN_DATABASES:
         abort(404)
+    if not access.is_admin():
+        flash("Only an admin can rename the built-in databases.", "error")
+        return redirect(url_for("organisms.index"))
     label = (request.form.get("label") or "").strip()[:80]
     with SessionLocal() as session:
         inventories.set_setting(session, f"db_label:{key}", label)
         session.commit()
     flash(f"Renamed to {label or inventories.BUILTIN_DATABASES[key][0]}.", "success")
     return redirect(url_for("organisms.index"))
+
+
+# Builder inputs a person types; kept across a preset switch.
+TYPED_INPUTS = ("label", "label_plural", "blurb")
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -231,6 +344,11 @@ def new_module():
 
         preset_key = request.args.get("preset", "")
         prefill = svc.preset_spec(preset_key) if preset_key else {}
+        # A name typed before picking a preset survives the switch.
+        for name in TYPED_INPUTS:
+            typed = (request.args.get(name) or "").strip()
+            if typed:
+                prefill[name] = typed[:120]
         return render_template(
             "organisms/new.html",
             presets=svc.available_presets(),
@@ -258,7 +376,7 @@ def _spec_from_form(form) -> dict:
     spec.pop("key", None)
     spec["label"] = label
     spec["label_plural"] = (form.get("label_plural") or label).strip()
-    spec["icon"] = (form.get("icon") or base.get("icon") or "circle-dashed").strip()
+    spec["icon"] = (form.get("icon") or base.get("icon") or "paw").strip()
     spec["blurb"] = (form.get("blurb") or "").strip()
     spec["identity_mode"] = form.get("identity_mode") or base.get("identity_mode") or "hybrid"
     spec["age_unit"] = form.get("age_unit") or base.get("age_unit") or "days"
@@ -271,6 +389,9 @@ def _spec_from_form(form) -> dict:
         value = (form.get(noun) or "").strip()
         if value:
             spec[noun] = value
+    cross_plural = (form.get("cross_noun_plural") or "").strip()
+    if cross_plural:
+        spec["settings"] = dict(spec.get("settings") or {}, cross_noun_plural=cross_plural)
 
     # Keep the preset's rules only for capabilities that survived.
     caps = set(svc.normalize_capabilities(spec["capabilities"])) if spec["capabilities"] else set()
@@ -298,6 +419,7 @@ def module(key: str):
         if active not in {v["key"] for v in views}:
             active = views[0]["key"] if views else "settings"
 
+        me = access.username()
         fields = svc.fields_by_entity(session, row.id)
         ctx = {
             "module": mv,
@@ -314,8 +436,16 @@ def module(key: str):
             "age_units": AGE_UNITS,
             "schedule_anchors": SCHEDULE_ANCHORS,
             "today": date.today().isoformat(),
+            "today_date": date.today(),
             "metrics_text": svc.metrics_to_text(svc.measurement_metrics(mv)),
             "housing_icon": housing_icon(mv.housing_noun),
+            "can_configure": access.can_configure(row),
+            "me": me,
+        }
+        # A new record's custom fields start at their defaults.
+        ctx["attr_defaults"] = {
+            entity: {f.key: f.default_value for f in rows if f.default_value}
+            for entity, rows in fields.items()
         }
 
         lines = session.scalars(
@@ -331,10 +461,19 @@ def module(key: str):
         ctx["housing_units"] = housing
 
         if active == "animals":
-            ctx["organisms"] = session.scalars(
+            organisms = session.scalars(
                 select(Organism).where(Organism.module_id_fk == row.id)
                 .order_by(Organism.death_on.is_(None).desc(), Organism.id.desc())
             ).all()
+            ctx["animal_rows"] = [{
+                "o": o, "editable": access.can_edit(o), "alive": mv.is_alive(o),
+                "mine": bool(me) and o.owner == me,
+            } for o in organisms]
+            ctx["chip_counts"] = {
+                "all": len(organisms),
+                "alive": sum(1 for r in ctx["animal_rows"] if r["alive"]),
+                "mine": sum(1 for r in ctx["animal_rows"] if r["mine"]),
+            }
             ctx["cohorts"] = session.scalars(
                 select(OrgCohort).where(OrgCohort.module_id_fk == row.id)
                 .order_by(OrgCohort.code)
@@ -343,15 +482,23 @@ def module(key: str):
 
         elif active == "housing":
             ctx["locations"] = svc.location_tree(session, row.id)
-            ctx["occupancy"] = _occupancy(session, row.id)
+            ctx["occupancy"] = _occupancy(session, row)
             ctx["next_code"] = svc.next_code(session, row, "housing")
             ctx["unit_positions"] = {u.id: housing_position_label(u) for u in housing}
+            ctx["housing_rows"] = [{
+                "u": u, "editable": access.can_edit(u), "mine": bool(me) and u.owner == me,
+            } for u in housing]
+            ctx["chip_counts"] = {
+                "all": len(housing),
+                "active": sum(1 for u in housing if u.active),
+                "mine": sum(1 for r in ctx["housing_rows"] if r["mine"]),
+            }
             if mv.has("housing_grid"):
                 ctx["housing_racks"] = housing_rack_payload(
                     mv, ctx["locations"], housing, ctx["occupancy"], ctx["next_code"], ctx["today"])
 
         elif active == "lines":
-            ctx["line_counts"] = _line_counts(session, row.id)
+            ctx["line_counts"] = _line_counts(session, row)
             ctx["next_code"] = svc.next_code(session, row, "line")
 
         elif active == "crosses":
@@ -369,12 +516,18 @@ def module(key: str):
             ctx["crosses"] = session.scalars(
                 select(OrgCross).where(OrgCross.module_id_fk == row.id).order_by(OrgCross.code)
             ).all()
+            ctx["locations"] = svc.location_tree(session, row.id)
             ctx["next_code"] = svc.next_code(session, row, "cohort")
 
         elif active == "schedule":
             svc.recompute_due(session, row)
             session.commit()
-            ctx["due"] = svc.due_items(session, row, horizon_days=_int(request.args.get("horizon"), 21))
+            due = svc.due_items(session, row, horizon_days=_int(request.args.get("horizon"), 21))
+            for item in due:
+                subject = svc.RULE_SUBJECTS.get(item["subject_kind"])
+                subject_row = session.get(subject, item["subject_id"]) if subject else None
+                item["editable"] = access.can_edit(subject_row) if subject_row is not None else False
+            ctx["due"] = due
             ctx["horizon"] = _int(request.args.get("horizon"), 21)
 
         elif active == "environment":
@@ -407,19 +560,19 @@ def _usernames(session) -> list[str]:
     ).all())
 
 
-def _occupancy(session, module_id: int) -> dict[int, int]:
+def _occupancy(session, module: OrganismModule) -> dict[int, int]:
     rows = session.execute(
         select(Organism.housing_id_fk, func.coalesce(func.sum(Organism.count), 0))
-        .where(Organism.module_id_fk == module_id, Organism.death_on.is_(None))
+        .where(Organism.module_id_fk == module.id, svc.alive_clause(module))
         .group_by(Organism.housing_id_fk)
     ).all()
     return {hid: total for hid, total in rows if hid is not None}
 
 
-def _line_counts(session, module_id: int) -> dict[int, int]:
+def _line_counts(session, module: OrganismModule) -> dict[int, int]:
     rows = session.execute(
         select(Organism.line_id_fk, func.coalesce(func.sum(Organism.count), 0))
-        .where(Organism.module_id_fk == module_id, Organism.death_on.is_(None))
+        .where(Organism.module_id_fk == module.id, svc.alive_clause(module))
         .group_by(Organism.line_id_fk)
     ).all()
     return {lid: total for lid, total in rows if lid is not None}
@@ -428,13 +581,16 @@ def _line_counts(session, module_id: int) -> dict[int, int]:
 # ---------------------------------------------------------------------------
 # Entity write handlers
 #
-# One pair of routes per entity, sharing the attribute reader so a module's
-# custom fields are handled identically everywhere.
+# One route per entity, shared by the dialog (full form) and the sheet's
+# inline cells (a few fields, X-Autosave). Custom fields go through
+# svc.read_attrs_checked so they are handled identically everywhere.
 # ---------------------------------------------------------------------------
 
 
-def _redirect_back(key: str, view: str):
-    return redirect(url_for("organisms.module", key=key, view=view))
+def _read_attrs(session, module, entity: str, form, row, creating: bool):
+    field_rows = svc.fields_for(session, module.id, entity)
+    return svc.read_attrs_checked(form, field_rows, svc.load_dict(row.attrs),
+                                  creating=creating, full=form.get("_full") == "1")
 
 
 @bp.route("/<key>/line/save", methods=["POST"])
@@ -443,38 +599,39 @@ def save_line(key: str):
         module = _module_or_404(session, key)
         form = request.form
         row_id = _int(form.get("id"), 0)
-        field_rows = svc.fields_for(session, module.id, "line")
 
         if row_id:
-            row = session.get(OrgLine, row_id)
-            if row is None or row.module_id_fk != module.id:
-                abort(404)
-            if not access.can_edit(row):
-                flash(access.reason_denied(row), "error")
-                return _redirect_back(key, request.form.get("return_view") or "animals")
+            row, denied = _load_owned(session, OrgLine, module, row_id, key, "lines")
+            if denied:
+                return denied
         else:
             row = OrgLine(module_id_fk=module.id)
             session.add(row)
 
-        row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "line")
-        row.name = (form.get("name") or "").strip()
-        row.genotype = (form.get("genotype") or "").strip()
-        row.owner = (form.get("owner") or "").strip()
-        row.protocol = (form.get("protocol") or "").strip()
-        row.source = (form.get("source") or "").strip()
-        row.external_ref = (form.get("external_ref") or "").strip()
-        row.parent_line_id_fk = _ref(session, OrgLine, module.id, form.get("parent_line_id_fk"))
-        row.last_refreshed_on = _parse_date(form.get("last_refreshed_on"))
-        row.last_frozen_on = _parse_date(form.get("last_frozen_on"))
-        row.retired = bool(form.get("retired"))
-        row.notes = (form.get("notes") or "").strip()
-        row.attrs = svc.dump(svc.read_attrs(form, field_rows, svc.load_dict(row.attrs)))
+        if "code" in form or not row_id:
+            row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "line")
+        for name in ("name", "genotype", "owner", "protocol", "source", "external_ref", "notes"):
+            _set_text(row, form, name)
+        if "parent_line_id_fk" in form:
+            parent = _ref(session, OrgLine, module.id, form.get("parent_line_id_fk"))
+            row.parent_line_id_fk = parent if parent != row.id else None
+        _set_date(row, form, "last_refreshed_on")
+        _set_date(row, form, "last_frozen_on")
+        _set_flag(row, form, "retired")
+        attrs, errors = _read_attrs(session, module, "line", form, row, creating=not row_id)
+        if errors:
+            session.rollback()
+            return _fail(key, "lines", " ".join(errors))
+        row.attrs = svc.dump(attrs)
 
         session.flush()
         svc.log_event(session, module, "line", row.id,
                       "update" if row_id else "create", recorded_by=g.user.username)
         svc.recompute_due(session, module)
         session.commit()
+        if _autosave():
+            return jsonify({"ok": True, "row": {"active": not row.retired,
+                                                "values": {"code": row.code}}})
         flash(f"Saved {row.code}.", "success")
         return _redirect_back(key, "lines")
 
@@ -483,41 +640,51 @@ def save_line(key: str):
 def save_housing(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        mv = svc.view(module)
         form = request.form
         row_id = _int(form.get("id"), 0)
-        field_rows = svc.fields_for(session, module.id, "housing")
 
         if row_id:
-            row = session.get(OrgHousing, row_id)
-            if row is None or row.module_id_fk != module.id:
-                abort(404)
-            if not access.can_edit(row):
-                flash(access.reason_denied(row), "error")
-                return _redirect_back(key, request.form.get("return_view") or "animals")
+            row, denied = _load_owned(session, OrgHousing, module, row_id, key, "housing")
+            if denied:
+                return denied
         else:
             row = OrgHousing(module_id_fk=module.id)
             session.add(row)
 
-        row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "housing")
-        row.location_id_fk = _ref(session, OrgLocation, module.id, form.get("location_id_fk"))
-        if "position" in form:
-            error = _apply_position(session, row, form.get("position"))
-            if error:
-                flash(error, "error")
-        else:
-            row.row = _int(form.get("row"), 0) or None
-            row.col = _int(form.get("col"), 0) or None
-        row.purpose = (form.get("purpose") or "").strip()
-        row.line_id_fk = _ref(session, OrgLine, module.id, form.get("line_id_fk"))
-        row.owner = (form.get("owner") or "").strip()
-        row.protocol = (form.get("protocol") or "").strip()
-        row.card_id = (form.get("card_id") or "").strip()
-        row.established_on = _parse_date(form.get("established_on"))
-        row.last_serviced_on = _parse_date(form.get("last_serviced_on"))
-        row.active = not form.get("retired")
-        row.needs_attention = bool(form.get("needs_attention"))
-        row.notes = (form.get("notes") or "").strip()
-        row.attrs = svc.dump(svc.read_attrs(form, field_rows, svc.load_dict(row.attrs)))
+        if "code" in form or not row_id:
+            row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "housing")
+        for name in ("purpose", "owner", "protocol", "card_id", "notes"):
+            _set_text(row, form, name)
+        _set_ref(session, row, form, "line_id_fk", OrgLine, module.id)
+        _set_date(row, form, "established_on")
+        _set_date(row, form, "last_serviced_on")
+        _set_flag(row, form, "retired", attr="active", invert=True)
+        _set_flag(row, form, "needs_attention")
+        attrs, errors = _read_attrs(session, module, "housing", form, row, creating=not row_id)
+        if errors:
+            session.rollback()
+            return _fail(key, "housing", " ".join(errors))
+        row.attrs = svc.dump(attrs)
+
+        # Where it sits. A move is validated as one change: the position is
+        # read against the rack it is moving to, and a unit that cannot be
+        # placed there is left unplaced rather than keeping coordinates
+        # that belong to its old rack.
+        position_error = None
+        if form_changed(form, "location_id_fk", "position") or not row_id:
+            old_location = row.location_id_fk
+            if "location_id_fk" in form:
+                row.location_id_fk = _ref(session, OrgLocation, module.id, form.get("location_id_fk"))
+            if "position" in form and mv.has("housing_grid"):
+                position_error = _apply_position(session, row, form.get("position"))
+                if position_error:
+                    if _autosave():
+                        session.rollback()
+                        return _fail(key, "housing", position_error, 409)
+                    row.row = row.col = None
+            elif row.location_id_fk != old_location:
+                row.row = row.col = None
         row.updated_at = datetime.utcnow()
         row.updated_by = g.user.username
 
@@ -526,7 +693,15 @@ def save_housing(key: str):
                       "update" if row_id else "create", recorded_by=g.user.username)
         svc.recompute_due(session, module)
         session.commit()
-        flash(f"Saved {row.code}.", "success")
+        if _autosave():
+            return jsonify({"ok": True, "row": {"active": bool(row.active), "values": {
+                "code": row.code, "position": housing_position_label(row),
+                "location_id_fk": row.location_id_fk or ""}}})
+        if position_error:
+            where = row.location.name if row.location else f"no {mv.container_noun}"
+            flash(f"{row.code} is in {where} with no position: {position_error}", "error")
+        else:
+            flash(f"Saved {row.code}.", "success")
         return _redirect_back(key, "housing")
 
 
@@ -536,21 +711,21 @@ def location_naming(location) -> dict:
 
 def housing_position_label(unit) -> str:
     loc = unit.location
-    if loc is None or not loc.cols:
+    if loc is None or not loc.cols or not unit.row or not unit.col:
         return ""
     return positions.label(unit.row, unit.col, location_naming(loc), loc.cols)
 
 
 def _apply_position(session, unit, raw) -> str | None:
-    """Set a vial / plate's position from what was typed ("D7"), read with
-    its rack's naming scheme; an error message instead of a guess."""
+    """Set a unit's position from what was typed ("D7"), read with its
+    rack's naming scheme; an error message instead of a guess."""
     raw = (raw or "").strip()
     if not raw:
         unit.row = unit.col = None
         return None
     loc = session.get(OrgLocation, unit.location_id_fk) if unit.location_id_fk else None
     if loc is None or not loc.rows or not loc.cols:
-        return f"Pick a rack with rows and columns before giving a position (“{raw}” was not saved)."
+        return f"pick a rack with rows and columns before giving a position (“{raw}” was not saved)."
     cell = positions.parse(raw, location_naming(loc), loc.rows, loc.cols)
     if cell is None:
         n = location_naming(loc)
@@ -567,9 +742,8 @@ def _apply_position(session, unit, raw) -> str | None:
 
 @bp.route("/<key>/housing/<int:unit_id>/place", methods=["POST"])
 def place_housing(key: str, unit_id: int):
-    """Move a vial / plate on the rack grid; answers JSON. An occupied cell
-    swaps; an empty rack id takes it out of its position (it stays in its
-    incubator)."""
+    """Move a unit on the rack grid; answers JSON. An occupied cell swaps;
+    an empty rack id takes it out of its position (it stays where it is)."""
     with SessionLocal() as session:
         module = _module_or_404(session, key)
         unit = session.get(OrgHousing, unit_id)
@@ -577,9 +751,12 @@ def place_housing(key: str, unit_id: int):
             return jsonify({"ok": False, "error": "That record no longer exists."}), 404
         if not access.can_edit(unit):
             return jsonify({"ok": False, "error": access.reason_denied(unit)}), 403
+        before = housing_position_label(unit)
         rack_id = _int(request.form.get("rack_id"), 0)
         if not rack_id:
             unit.row = unit.col = None
+            svc.log_event(session, module, "housing", unit.id, "move", recorded_by=g.user.username,
+                          notes=f"Taken out of {before or 'its position'}")
             session.commit()
             return jsonify({"ok": True})
         rack = session.get(OrgLocation, rack_id)
@@ -594,7 +771,14 @@ def place_housing(key: str, unit_id: int):
             if not access.can_edit(occupant):
                 return jsonify({"ok": False, "error": f"That cell holds {occupant.code}, which you may not move."}), 403
             occupant.location_id_fk, occupant.row, occupant.col = unit.location_id_fk, unit.row, unit.col
+            svc.log_event(session, module, "housing", occupant.id, "move", recorded_by=g.user.username,
+                          notes=f"Swapped with {unit.code}")
         unit.location_id_fk, unit.row, unit.col = rack.id, row, col
+        unit.updated_at, unit.updated_by = datetime.utcnow(), g.user.username
+        session.flush()
+        after = positions.label(row, col, location_naming(rack), rack.cols)
+        svc.log_event(session, module, "housing", unit.id, "move", recorded_by=g.user.username,
+                      notes=f"Moved to {rack.name} · {after}" + (f" from {before}" if before else ""))
         session.commit()
     return jsonify({"ok": True})
 
@@ -608,17 +792,7 @@ def housing_rack_payload(mv, locations, units, occupancy, next_code, today) -> d
     grid_ids = {loc.id for loc in racks}
     items = []
     for unit in units:
-        attrs = unit.attrs_dict
-        payload = {
-            "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
-            "position": housing_position_label(unit), "purpose": unit.purpose,
-            "line_id_fk": unit.line_id_fk, "owner": unit.owner,
-            "protocol": unit.protocol, "card_id": unit.card_id,
-            "established_on": unit.established_on.isoformat() if unit.established_on else "",
-            "last_serviced_on": unit.last_serviced_on.isoformat() if unit.last_serviced_on else "",
-            "retired": not unit.active, "needs_attention": unit.needs_attention,
-            "notes": unit.notes, "attrs": attrs,
-        }
+        payload = housing_payload(unit)
         in_grid = unit.location_id_fk in grid_ids
         count = occupancy.get(unit.id, 0)
         items.append({
@@ -654,6 +828,21 @@ def housing_rack_payload(mv, locations, units, occupancy, next_code, today) -> d
     }
 
 
+def housing_payload(unit) -> dict:
+    """What the housing dialog is filled with for an existing unit."""
+    return {
+        "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
+        "position": housing_position_label(unit), "purpose": unit.purpose,
+        "line_id_fk": unit.line_id_fk, "owner": unit.owner,
+        "protocol": unit.protocol, "card_id": unit.card_id,
+        "established_on": _iso(unit.established_on),
+        "last_serviced_on": _iso(unit.last_serviced_on),
+        "retired": not unit.active, "needs_attention": unit.needs_attention,
+        "notes": unit.notes, "attrs": unit.attrs_dict,
+        "locked": not access.can_edit(unit),
+    }
+
+
 @bp.route("/<key>/animal/save", methods=["POST"])
 def save_animal(key: str):
     with SessionLocal() as session:
@@ -661,39 +850,49 @@ def save_animal(key: str):
         mv = svc.view(module)
         form = request.form
         row_id = _int(form.get("id"), 0)
-        field_rows = svc.fields_for(session, module.id, "organism")
 
         if row_id:
-            row = session.get(Organism, row_id)
-            if row is None or row.module_id_fk != module.id:
-                abort(404)
-            if not access.can_edit(row):
-                flash(access.reason_denied(row), "error")
-                return _redirect_back(key, request.form.get("return_view") or "animals")
+            row, denied = _load_owned(session, Organism, module, row_id, key, "animals")
+            if denied:
+                return denied
         else:
             row = Organism(module_id_fk=module.id)
             session.add(row)
+        previous_status, previous_death = row.status, row.death_on
 
-        code = (form.get("code") or "").strip()
-        # Individually tracked records need an ID; anonymous groups do not.
-        if not code and mv.identity_mode == "individual":
-            code = svc.next_code(session, module, "organism")
-        row.code = code or None
-        row.housing_id_fk = _ref(session, OrgHousing, module.id, form.get("housing_id_fk"))
-        row.line_id_fk = _ref(session, OrgLine, module.id, form.get("line_id_fk"))
-        row.cohort_id_fk = _ref(session, OrgCohort, module.id, form.get("cohort_id_fk"))
-        row.count = max(1, _int(form.get("count"), 1))
-        row.sex = (form.get("sex") or "").strip()
-        row.status = (form.get("status") or "").strip()
-        row.birth_on = _parse_date(form.get("birth_on"))
-        row.death_on = _parse_date(form.get("death_on"))
-        row.genotype = (form.get("genotype") or "").strip()
-        row.owner = (form.get("owner") or "").strip()
-        row.protocol = (form.get("protocol") or "").strip()
-        row.parent_a_id_fk = _ref(session, Organism, module.id, form.get("parent_a_id_fk"))
-        row.parent_b_id_fk = _ref(session, Organism, module.id, form.get("parent_b_id_fk"))
-        row.notes = (form.get("notes") or "").strip()
-        row.attrs = svc.dump(svc.read_attrs(form, field_rows, svc.load_dict(row.attrs)))
+        if "code" in form or not row_id:
+            code = (form.get("code") or "").strip()
+            # Individually tracked records need an ID; anonymous groups do not.
+            if not code and mv.identity_mode == "individual":
+                code = svc.next_code(session, module, "organism")
+            row.code = code or None
+        if "count" in form:
+            raw = (form.get("count") or "").strip()
+            count = _int(raw, None) if raw else (1 if not row_id else None)
+            if count is None or count < 1:
+                session.rollback()
+                return _fail(key, "animals",
+                             f"Count must be a whole number of 1 or more (got “{raw or 'nothing'}”). "
+                             f"To record that a group is gone, set its status or date removed.")
+            row.count = count
+        elif not row_id:
+            row.count = 1
+        for name, model in (("housing_id_fk", OrgHousing), ("line_id_fk", OrgLine),
+                            ("cohort_id_fk", OrgCohort), ("parent_a_id_fk", Organism),
+                            ("parent_b_id_fk", Organism)):
+            _set_ref(session, row, form, name, model, module.id)
+        for name in ("sex", "status", "genotype", "owner", "protocol", "notes"):
+            _set_text(row, form, name)
+        _set_date(row, form, "birth_on")
+        _set_date(row, form, "death_on")
+        _set_date(row, form, "last_procedure_on")
+        attrs, errors = _read_attrs(session, module, "organism", form, row, creating=not row_id)
+        if errors:
+            session.rollback()
+            return _fail(key, "animals", " ".join(errors))
+        row.attrs = svc.dump(attrs)
+        death_given = "death_on" in form and row.death_on != previous_death
+        svc.apply_status_rules(mv, row, previous_status, death_given=death_given)
         row.updated_at = datetime.utcnow()
         row.updated_by = g.user.username
 
@@ -701,9 +900,36 @@ def save_animal(key: str):
         svc.log_event(session, module, "organism", row.id,
                       "update" if row_id else "create", count=row.count,
                       recorded_by=g.user.username)
+        svc.recompute_due(session, module)
         session.commit()
-        flash("Saved.", "success")
+        if _autosave():
+            return jsonify({"ok": True, "row": {"active": mv.is_alive(row), "values": {
+                "code": row.code or "", "count": row.count, "status": row.status,
+                "death_on": _iso(row.death_on), "birth_on": _iso(row.birth_on)}}})
+        flash(f"Saved {row.code or mv.organism_noun}.", "success")
         return _redirect_back(key, "animals")
+
+
+def animal_payload(o, mv) -> dict:
+    return {
+        "id": o.id, "code": o.code, "count": o.count,
+        "housing_id_fk": o.housing_id_fk, "line_id_fk": o.line_id_fk,
+        "cohort_id_fk": o.cohort_id_fk, "sex": o.sex, "status": o.status,
+        "birth_on": _iso(o.birth_on), "death_on": _iso(o.death_on),
+        "genotype": o.genotype, "owner": o.owner, "protocol": o.protocol,
+        "parent_a_id_fk": o.parent_a_id_fk, "parent_b_id_fk": o.parent_b_id_fk,
+        "notes": o.notes, "attrs": o.attrs_dict, "locked": not access.can_edit(o),
+    }
+
+
+@bp.app_template_global()
+def org_animal_payload(o, mv):
+    return animal_payload(o, mv)
+
+
+@bp.app_template_global()
+def org_housing_payload(unit):
+    return housing_payload(unit)
 
 
 @bp.route("/<key>/cross/save", methods=["POST"])
@@ -712,37 +938,38 @@ def save_cross(key: str):
         module = _module_or_404(session, key)
         form = request.form
         row_id = _int(form.get("id"), 0)
-        field_rows = svc.fields_for(session, module.id, "cross")
 
         if row_id:
-            row = session.get(OrgCross, row_id)
-            if row is None or row.module_id_fk != module.id:
-                abort(404)
-            if not access.can_edit(row):
-                flash(access.reason_denied(row), "error")
-                return _redirect_back(key, request.form.get("return_view") or "animals")
+            row, denied = _load_owned(session, OrgCross, module, row_id, key, "crosses")
+            if denied:
+                return denied
         else:
-            row = OrgCross(module_id_fk=module.id)
+            row = OrgCross(module_id_fk=module.id, cross_type="pair")
             session.add(row)
 
-        row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "cross")
-        row.housing_id_fk = _ref(session, OrgHousing, module.id, form.get("housing_id_fk"))
-        row.cross_type = (form.get("cross_type") or "pair").strip()
-        row.sire_line_id_fk = _ref(session, OrgLine, module.id, form.get("sire_line_id_fk"))
-        row.dam_line_id_fk = _ref(session, OrgLine, module.id, form.get("dam_line_id_fk"))
-        row.sire_label = (form.get("sire_label") or "").strip()
-        row.dam_label = (form.get("dam_label") or "").strip()
-        row.set_up_on = _parse_date(form.get("set_up_on"))
-        row.expected_on = _parse_date(form.get("expected_on"))
-        row.collected_on = _parse_date(form.get("collected_on"))
-        row.owner = (form.get("owner") or "").strip()
-        row.notes = (form.get("notes") or "").strip()
-        row.attrs = svc.dump(svc.read_attrs(form, field_rows, svc.load_dict(row.attrs)))
+        if "code" in form or not row_id:
+            row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "cross")
+        if "cross_type" in form:
+            row.cross_type = (form.get("cross_type") or "pair").strip()
+        for name, model in (("housing_id_fk", OrgHousing), ("sire_line_id_fk", OrgLine),
+                            ("dam_line_id_fk", OrgLine)):
+            _set_ref(session, row, form, name, model, module.id)
+        for name in ("sire_label", "dam_label", "owner", "notes"):
+            _set_text(row, form, name)
+        for name in ("set_up_on", "expected_on", "collected_on"):
+            _set_date(row, form, name)
+        attrs, errors = _read_attrs(session, module, "cross", form, row, creating=not row_id)
+        if errors:
+            session.rollback()
+            return _fail(key, "crosses", " ".join(errors))
+        row.attrs = svc.dump(attrs)
 
         session.flush()
         svc.log_event(session, module, "cross", row.id,
                       "update" if row_id else "create", recorded_by=g.user.username)
         session.commit()
+        if _autosave():
+            return jsonify({"ok": True, "row": {"values": {"code": row.code}}})
         flash(f"Saved {row.code}.", "success")
         return _redirect_back(key, "crosses")
 
@@ -753,30 +980,44 @@ def save_cohort(key: str):
         module = _module_or_404(session, key)
         form = request.form
         row_id = _int(form.get("id"), 0)
-        field_rows = svc.fields_for(session, module.id, "cohort")
 
         if row_id:
-            row = session.get(OrgCohort, row_id)
-            if row is None or row.module_id_fk != module.id:
-                abort(404)
-            if not access.can_edit(row):
-                flash(access.reason_denied(row), "error")
-                return _redirect_back(key, request.form.get("return_view") or "animals")
+            row, denied = _load_owned(session, OrgCohort, module, row_id, key, "cohorts")
+            if denied:
+                return denied
         else:
-            row = OrgCohort(module_id_fk=module.id)
+            row = OrgCohort(module_id_fk=module.id, count_initial=0, count_current=0)
             session.add(row)
 
-        row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "cohort")
-        row.line_id_fk = _ref(session, OrgLine, module.id, form.get("line_id_fk"))
-        row.cross_id_fk = _ref(session, OrgCross, module.id, form.get("cross_id_fk"))
-        row.birth_on = _parse_date(form.get("birth_on"))
-        row.stage = (form.get("stage") or "").strip()
-        row.location_id_fk = _ref(session, OrgLocation, module.id, form.get("location_id_fk"))
-        row.count_initial = _int(form.get("count_initial"), 0)
-        row.count_current = _int(form.get("count_current"), row.count_initial)
-        row.owner = (form.get("owner") or "").strip()
-        row.notes = (form.get("notes") or "").strip()
-        row.attrs = svc.dump(svc.read_attrs(form, field_rows, svc.load_dict(row.attrs)))
+        if "code" in form or not row_id:
+            row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "cohort")
+        for name, model in (("line_id_fk", OrgLine), ("cross_id_fk", OrgCross),
+                            ("location_id_fk", OrgLocation)):
+            _set_ref(session, row, form, name, model, module.id)
+        _set_date(row, form, "birth_on")
+        for name in ("stage", "owner", "notes"):
+            _set_text(row, form, name)
+        counts = {}
+        for name in ("count_initial", "count_current"):
+            raw = (form.get(name) or "").strip()
+            if raw:
+                value = _int(raw, None)
+                if value is None or value < 0:
+                    session.rollback()
+                    return _fail(key, "cohorts", f"Counts must be whole numbers of 0 or more (got “{raw}”).")
+                counts[name] = value
+        if "count_initial" in form:
+            row.count_initial = counts.get("count_initial", 0)
+        if "count_current" in counts:
+            row.count_current = counts["count_current"]
+        elif not row_id:
+            # A new cohort with no current count still has everyone.
+            row.count_current = row.count_initial or 0
+        attrs, errors = _read_attrs(session, module, "cohort", form, row, creating=not row_id)
+        if errors:
+            session.rollback()
+            return _fail(key, "cohorts", " ".join(errors))
+        row.attrs = svc.dump(attrs)
 
         session.flush()
         svc.log_event(session, module, "cohort", row.id,
@@ -784,6 +1025,8 @@ def save_cohort(key: str):
                       recorded_by=g.user.username)
         svc.recompute_due(session, module)
         session.commit()
+        if _autosave():
+            return jsonify({"ok": True, "row": {"values": {"code": row.code}}})
         flash(f"Saved {row.code}.", "success")
         return _redirect_back(key, "cohorts")
 
@@ -792,25 +1035,35 @@ def save_cohort(key: str):
 def save_location(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        denied = _deny_configure(module, key)
+        if denied:
+            return denied
         form = request.form
         row_id = _int(form.get("id"), 0)
         if row_id:
             row = session.get(OrgLocation, row_id)
             if row is None or row.module_id_fk != module.id:
                 abort(404)
-            if not access.can_edit(row):
-                flash(access.reason_denied(row), "error")
-                return _redirect_back(key, request.form.get("return_view") or "animals")
         else:
             row = OrgLocation(module_id_fk=module.id)
             session.add(row)
 
-        row.name = (form.get("name") or "").strip() or "Unnamed"
-        row.kind = (form.get("kind") or "rack").strip()
-        row.parent_id_fk = _ref(session, OrgLocation, module.id, form.get("parent_id_fk"))
-        row.rows = _int(form.get("rows"), 0) or None
-        row.cols = _int(form.get("cols"), 0) or None
-        row.notes = (form.get("notes") or "").strip()
+        row.name = (form.get("name") or "").strip() or row.name or "Unnamed"
+        if "kind" in form or not row_id:
+            row.kind = (form.get("kind") or "rack").strip()
+        if "parent_id_fk" in form:
+            parent = _ref(session, OrgLocation, module.id, form.get("parent_id_fk"))
+            row.parent_id_fk = parent if parent != row.id else None
+        if "rows" in form or "cols" in form:
+            rows, cols = _int(form.get("rows"), 0) or None, _int(form.get("cols"), 0) or None
+            if row_id and (rows != row.rows or cols != row.cols):
+                # Units outside a shrunken grid lose their position rather
+                # than pointing at cells that no longer exist.
+                for unit in session.scalars(select(OrgHousing).where(OrgHousing.location_id_fk == row.id)):
+                    if unit.row and (not rows or not cols or unit.row > rows or unit.col > cols):
+                        unit.row = unit.col = None
+            row.rows, row.cols = rows, cols
+        _set_text(row, form, "notes")
         if "naming_mode" in form:
             settings = svc.load_dict(row.settings)
             settings["naming"] = positions.scheme_from_form(form)
@@ -831,7 +1084,7 @@ def save_reading(key: str):
             flash(f"Pick a {mv.container_noun} to log against.", "error")
             return _redirect_back(key, "environment")
 
-        recorded = 0
+        recorded, skipped = 0, []
         for metric in svc.measurement_metrics(mv):
             raw = (form.get(f"metric_{metric['key']}") or "").strip()
             if raw == "":
@@ -839,6 +1092,7 @@ def save_reading(key: str):
             try:
                 value = float(raw)
             except ValueError:
+                skipped.append(metric.get("label") or metric["key"])
                 continue
             session.add(OrgMeasurement(
                 module_id_fk=module.id,
@@ -854,6 +1108,8 @@ def save_reading(key: str):
             recorded += 1
         session.commit()
         flash(f"Logged {recorded} reading{'' if recorded == 1 else 's'}.", "success")
+        if skipped:
+            flash(f"Not a number, so not logged: {', '.join(skipped)}.", "error")
         return _redirect_back(key, "environment")
 
 
@@ -861,26 +1117,39 @@ def save_reading(key: str):
 def save_lot(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        mv = svc.view(module)
         form = request.form
         row_id = _int(form.get("id"), 0)
         if row_id:
-            row = session.get(OrgPreservationLot, row_id)
-            if row is None or row.module_id_fk != module.id:
-                abort(404)
-            if not access.can_edit(row):
-                flash(access.reason_denied(row), "error")
-                return _redirect_back(key, request.form.get("return_view") or "animals")
+            row, denied = _load_owned(session, OrgPreservationLot, module, row_id, key, "preservation")
+            if denied:
+                return denied
         else:
             row = OrgPreservationLot(module_id_fk=module.id)
             session.add(row)
 
-        row.line_id_fk = _ref(session, OrgLine, module.id, form.get("line_id_fk"))
+        line_id = _ref(session, OrgLine, module.id, form.get("line_id_fk"))
+        if line_id is None:
+            session.rollback()
+            return _fail(key, "preservation", f"Pick the {mv.line_noun} this lot was frozen from.")
+        vial_count = _int(form.get("vial_count"), None) if (form.get("vial_count") or "").strip() else 0
+        raw_remaining = (form.get("vials_remaining") or "").strip()
+        remaining = _int(raw_remaining, None) if raw_remaining else vial_count
+        if vial_count is None or remaining is None or vial_count < 0 or remaining < 0:
+            session.rollback()
+            return _fail(key, "preservation", "Vial counts must be whole numbers of 0 or more.")
+        if remaining > vial_count:
+            session.rollback()
+            return _fail(key, "preservation",
+                         f"Vials remaining ({remaining}) cannot be more than vials frozen ({vial_count}).")
+
+        row.line_id_fk = line_id
         row.code = (form.get("code") or "").strip()
         row.method = (form.get("method") or "").strip()
         row.frozen_on = _parse_date(form.get("frozen_on"))
         row.frozen_by = (form.get("frozen_by") or g.user.username).strip()
-        row.vial_count = _int(form.get("vial_count"), 0)
-        row.vials_remaining = _int(form.get("vials_remaining"), row.vial_count)
+        row.vial_count = vial_count
+        row.vials_remaining = remaining
         row.storage_text = (form.get("storage_text") or "").strip()
         row.position = (form.get("position") or "").strip()
         row.recovery_tested_on = _parse_date(form.get("recovery_tested_on"))
@@ -889,13 +1158,13 @@ def save_lot(key: str):
         row.notes = (form.get("notes") or "").strip()
 
         # Freezing a line resets its re-freeze clock.
-        if row.line_id_fk and row.frozen_on:
-            line = session.get(OrgLine, row.line_id_fk)
+        if row.frozen_on:
+            line = session.get(OrgLine, line_id)
             if line is not None and (line.last_frozen_on is None or row.frozen_on > line.last_frozen_on):
                 line.last_frozen_on = row.frozen_on
 
         session.flush()
-        svc.log_event(session, module, "line", row.line_id_fk or 0, "freeze",
+        svc.log_event(session, module, "line", line_id, "freeze",
                       occurred_on=row.frozen_on, count=row.vial_count,
                       recorded_by=g.user.username)
         svc.recompute_due(session, module)
@@ -904,15 +1173,26 @@ def save_lot(key: str):
         return _redirect_back(key, "preservation")
 
 
+GENOTYPE_SUBJECTS = {"organism": Organism, "housing": OrgHousing, "line": OrgLine, "cohort": OrgCohort}
+
+
 @bp.route("/<key>/genotype/save", methods=["POST"])
 def save_genotype(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
         form = request.form
+        back = request.form.get("return_view") or "animals"
+        kind = (form.get("subject_kind") or "organism").strip()
+        model = GENOTYPE_SUBJECTS.get(kind)
+        subject = session.get(model, _int(form.get("subject_id"), 0)) if model else None
+        if subject is None or subject.module_id_fk != module.id:
+            return _fail(key, back, "That record no longer exists, so no genotype was recorded.", 404)
+        if not access.can_edit(subject):
+            return _fail(key, back, access.reason_denied(subject), 403)
         session.add(OrgGenotype(
             module_id_fk=module.id,
-            subject_kind=(form.get("subject_kind") or "organism").strip(),
-            subject_id=_int(form.get("subject_id"), 0),
+            subject_kind=kind,
+            subject_id=subject.id,
             assay=(form.get("assay") or "").strip(),
             result=(form.get("result") or "").strip(),
             zygosity=(form.get("zygosity") or "").strip(),
@@ -922,7 +1202,7 @@ def save_genotype(key: str):
         ))
         session.commit()
         flash("Recorded genotype.", "success")
-        return _redirect_back(key, request.form.get("return_view") or "animals")
+        return _redirect_back(key, back)
 
 
 # ---------------------------------------------------------------------------
@@ -932,9 +1212,21 @@ def save_genotype(key: str):
 
 @bp.route("/<key>/due/<int:due_id>/done", methods=["POST"])
 def complete_due(key: str, due_id: int):
+    from .models import OrgDue
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        due = session.get(OrgDue, due_id)
+        if due is None or due.module_id_fk != module.id:
+            # Rebuilt since the page loaded (its subject was deleted or no
+            # longer qualifies): nothing to mark.
+            flash("That item is no longer on the schedule, so nothing was marked.", "info")
+            return _redirect_back(key, "schedule")
+        subject = svc.due_subject(session, due)
+        if subject is not None and not access.can_edit(subject):
+            return _fail(key, "schedule", access.reason_denied(subject), 403)
         row = svc.complete_due(session, module, due_id, g.user.username)
+        session.flush()
+        svc.recompute_due(session, module)
         session.commit()
         flash("Marked done." if row else "Already done.", "success" if row else "info")
         return _redirect_back(key, "schedule")
@@ -957,6 +1249,67 @@ DELETE_RETURN = {
 }
 
 
+def _plural_count(n: int, noun: str) -> str:
+    return f"{n} {noun if n == 1 else pluralise(noun)}"
+
+
+def _unassign_residents(session, module, unit, user: str) -> int:
+    """Take everything out of a housing unit that is about to go. The
+    animals stay (they may be someone else's); they just have no unit."""
+    moved = 0
+    for resident in session.scalars(select(Organism).where(Organism.housing_id_fk == unit.id)):
+        resident.housing_id_fk = None
+        svc.log_event(session, module, "organism", resident.id, "move", recorded_by=user,
+                      notes=f"Unassigned: {unit.code} was deleted")
+        moved += 1
+    for cross in session.scalars(select(OrgCross).where(OrgCross.housing_id_fk == unit.id)):
+        cross.housing_id_fk = None
+    return moved
+
+
+def _delete_one(session, module, mv, entity: str, row, user: str) -> tuple[bool, str]:
+    """Delete one record with the clean-up its kind needs. Returns
+    (deleted, message)."""
+    label = getattr(row, "code", None) or getattr(row, "name", None) or f"#{row.id}"
+    extra = ""
+    if entity == "line":
+        refs = svc.line_references(session, row)
+        if refs:
+            listed = ", ".join(_plural_count(n, noun) for noun, n in refs.items())
+            return False, (f"{label} is still used by {listed}. Move or delete those first, "
+                           f"or mark the {mv.line_noun} retired.")
+    elif entity == "housing":
+        moved = _unassign_residents(session, module, row, user)
+        if moved:
+            extra = (f" {_plural_count(moved, 'record')} that were in it are now without a "
+                     f"{mv.housing_noun}.")
+    elif entity == "location":
+        # Whatever sat in it stays, just unplaced; children move up a level.
+        for unit in session.scalars(select(OrgHousing).where(OrgHousing.location_id_fk == row.id)):
+            unit.location_id_fk, unit.row, unit.col = row.parent_id_fk, None, None
+        for child in session.scalars(select(OrgLocation).where(OrgLocation.parent_id_fk == row.id)):
+            child.parent_id_fk = row.parent_id_fk
+        for cohort in session.scalars(select(OrgCohort).where(OrgCohort.location_id_fk == row.id)):
+            cohort.location_id_fk = None
+    elif entity == "animal":
+        for child in session.scalars(select(Organism).where(
+                (Organism.parent_a_id_fk == row.id) | (Organism.parent_b_id_fk == row.id))):
+            if child.parent_a_id_fk == row.id:
+                child.parent_a_id_fk = None
+            if child.parent_b_id_fk == row.id:
+                child.parent_b_id_fk = None
+    elif entity == "cross":
+        for cohort in session.scalars(select(OrgCohort).where(OrgCohort.cross_id_fk == row.id)):
+            cohort.cross_id_fk = None
+    elif entity == "cohort":
+        for member in session.scalars(select(Organism).where(Organism.cohort_id_fk == row.id)):
+            member.cohort_id_fk = None
+    session.flush()
+    session.delete(row)
+    svc.log_event(session, module, entity, row.id, "delete", recorded_by=user, notes=f"Deleted {label}")
+    return True, f"Deleted {label}.{extra}"
+
+
 @bp.route("/<key>/<entity>/<int:row_id>/delete", methods=["POST"])
 def delete_row(key: str, entity: str, row_id: int):
     model = DELETABLE.get(entity)
@@ -964,25 +1317,164 @@ def delete_row(key: str, entity: str, row_id: int):
         abort(404)
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        mv = svc.view(module)
+        back = DELETE_RETURN.get(entity, "animals")
         row = session.get(model, row_id)
         if row is None or row.module_id_fk != module.id:
             abort(404)
-        if not access.can_edit(row):
-            flash(access.reason_denied(row), "error")
-            return _redirect_back(key, DELETE_RETURN.get(entity, "animals"))
-        label = getattr(row, "code", None) or getattr(row, "name", None) or f"#{row_id}"
         if entity == "location":
-            # Whatever sat in it stays, just unplaced; children move up a level.
-            for unit in session.scalars(select(OrgHousing).where(OrgHousing.location_id_fk == row.id)):
-                unit.location_id_fk, unit.row, unit.col = row.parent_id_fk, None, None
-            for child in session.scalars(select(OrgLocation).where(OrgLocation.parent_id_fk == row.id)):
-                child.parent_id_fk = row.parent_id_fk
-        session.delete(row)
-        svc.log_event(session, module, entity, row_id, "delete",
-                      recorded_by=g.user.username, notes=f"Deleted {label}")
+            denied = _deny_configure(module, key)
+            if denied:
+                return denied
+        elif not access.can_edit(row):
+            flash(access.reason_denied(row), "error")
+            return _redirect_back(key, back)
+        deleted, message = _delete_one(session, module, mv, entity, row, g.user.username)
+        if not deleted:
+            session.rollback()
+            flash(message, "error")
+            return _redirect_back(key, back)
+        session.flush()
+        svc.recompute_due(session, module)
         session.commit()
-        flash(f"Deleted {label}.", "success")
-        return _redirect_back(key, DELETE_RETURN.get(entity, "animals"))
+        flash(message, "success")
+        return _redirect_back(key, back)
+
+
+# ---------------------------------------------------------------------------
+# Batch actions from the selection bar
+# ---------------------------------------------------------------------------
+
+
+def _selected(session, model, module) -> list:
+    ids = [int(i) for i in request.form.getlist("selected_ids") if str(i).isdigit()]
+    if not ids:
+        return []
+    return list(session.scalars(select(model).where(
+        model.module_id_fk == module.id, model.id.in_(ids)).order_by(model.id)))
+
+
+@bp.route("/<key>/animals/bulk", methods=["POST"])
+def bulk_animals(key: str):
+    """Set status, housing or owner on the ticked records, or delete them.
+    One audit batch, so it can be undone from Batch history."""
+    action = request.form.get("action", "")
+    field = request.form.get("field", "")
+    value = (request.form.get("value") or "").strip()
+    with SessionLocal() as session:
+        module = _module_or_404(session, key)
+        mv = svc.view(module)
+        rows = _selected(session, Organism, module)
+        if not rows:
+            flash(f"No {mv.organism_noun_plural} selected, so nothing changed.", "info")
+            return _redirect_back(key, "animals")
+        editable = [r for r in rows if access.can_edit(r)]
+        skipped = len(rows) - len(editable)
+        noun = lambda n: mv.organism_noun if n == 1 else mv.organism_noun_plural
+        if action == "set" and field not in ("status", "housing_id_fk", "owner"):
+            return _fail(key, "animals", "Pick what to set.")
+        if action not in ("set", "delete"):
+            return _fail(key, "animals", "Unknown action.")
+        housing_id = None
+        if action == "set" and field == "housing_id_fk" and value:
+            housing_id = _ref(session, OrgHousing, module.id, value)
+            if housing_id is None:
+                return _fail(key, "animals", f"That {mv.housing_noun} no longer exists.")
+        with audit.batch(session, "delete" if action == "delete" else "update",
+                         f"{'delete' if action == 'delete' else 'set ' + field} ×{len(editable)} "
+                         f"{mv.organism_noun_plural} ({mv.label})", "organisms"):
+            for row in editable:
+                if action == "delete":
+                    _delete_one(session, module, mv, "animal", row, g.user.username)
+                    continue
+                if field == "status":
+                    previous = row.status
+                    row.status = value
+                    svc.apply_status_rules(mv, row, previous)
+                elif field == "housing_id_fk":
+                    row.housing_id_fk = housing_id
+                else:
+                    row.owner = value
+                row.updated_at, row.updated_by = datetime.utcnow(), g.user.username
+                svc.log_event(session, module, "organism", row.id, "update", count=row.count,
+                              recorded_by=g.user.username, notes=f"Batch: {field} → {value or '—'}")
+        session.flush()
+        svc.recompute_due(session, module)
+        session.commit()
+        n = len(editable)
+        if action == "delete":
+            message = f"Deleted {n} {noun(n)}."
+        else:
+            label = {"status": "status", "housing_id_fk": mv.housing_noun, "owner": "owner"}[field]
+            message = f"Set {label} on {n} {noun(n)}."
+        if skipped:
+            message += f" {skipped} belong to someone else and were left alone."
+    flash(message, "success" if editable else "error")
+    return _redirect_back(key, "animals")
+
+
+@bp.route("/<key>/housing/bulk", methods=["POST"])
+def bulk_housing(key: str):
+    """Set purpose, owner or location on the ticked units, or delete them
+    (their residents are unassigned, not deleted). One audit batch."""
+    action = request.form.get("action", "")
+    field = request.form.get("field", "")
+    value = (request.form.get("value") or "").strip()
+    with SessionLocal() as session:
+        module = _module_or_404(session, key)
+        mv = svc.view(module)
+        units = _selected(session, OrgHousing, module)
+        if not units:
+            flash(f"No {mv.housing_noun_plural} selected, so nothing changed.", "info")
+            return _redirect_back(key, "housing")
+        editable = [u for u in units if access.can_edit(u)]
+        skipped = len(units) - len(editable)
+        noun = lambda n: mv.housing_noun if n == 1 else mv.housing_noun_plural
+        if action == "set" and field not in ("purpose", "owner", "location_id_fk"):
+            return _fail(key, "housing", "Pick what to set.")
+        if action not in ("set", "delete"):
+            return _fail(key, "housing", "Unknown action.")
+        location_id = None
+        if action == "set" and field == "location_id_fk" and value:
+            location_id = _ref(session, OrgLocation, module.id, value)
+            if location_id is None:
+                return _fail(key, "housing", f"That {mv.container_noun} no longer exists.")
+        unassigned = 0
+        with audit.batch(session, "delete" if action == "delete" else "update",
+                         f"{'delete' if action == 'delete' else 'set ' + field} ×{len(editable)} "
+                         f"{mv.housing_noun_plural} ({mv.label})", "organism_housing"):
+            for unit in editable:
+                if action == "delete":
+                    unassigned += _unassign_residents(session, module, unit, g.user.username)
+                    _delete_one(session, module, mv, "housing", unit, g.user.username)
+                    continue
+                if field == "location_id_fk":
+                    if unit.location_id_fk != location_id:
+                        unit.location_id_fk = location_id
+                        unit.row = unit.col = None
+                else:
+                    setattr(unit, field, value)
+                unit.updated_at, unit.updated_by = datetime.utcnow(), g.user.username
+                svc.log_event(session, module, "housing", unit.id, "update",
+                              recorded_by=g.user.username, notes=f"Batch: {field} → {value or '—'}")
+        session.flush()
+        svc.recompute_due(session, module)
+        session.commit()
+        n = len(editable)
+        if action == "delete":
+            message = f"Deleted {n} {noun(n)}."
+            if unassigned:
+                message += (f" {_plural_count(unassigned, 'record')} that were in them are now "
+                            f"without a {mv.housing_noun}.")
+        elif field == "location_id_fk":
+            message = (f"Moved {n} {noun(n)}. They are unplaced there: drag them onto the "
+                       f"{mv.container_noun} grid to give them a position.")
+        else:
+            message = f"Set {field} on {n} {noun(n)}."
+        if skipped:
+            message += f" {skipped} belong to someone else and were left alone."
+    flash(message, "success" if editable else "error")
+    return _redirect_back(key, "housing")
 
 
 # ---------------------------------------------------------------------------
@@ -994,16 +1486,16 @@ def delete_row(key: str, entity: str, row_id: int):
 def configure(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
-        if not (access.is_admin() or access.username() == (module.created_by or "")
-                or (module.created_by or "") in ("", "system")):
-            flash("Only an admin or whoever created this database can reconfigure it.", "error")
-            return _redirect_back(key, "settings")
+        denied = _deny_configure(module, key)
+        if denied:
+            return denied
         form = request.form
 
         module.label = (form.get("label") or module.label).strip()
         module.label_plural = (form.get("label_plural") or module.label).strip()
         module.icon = (form.get("icon") or module.icon).strip()
-        module.blurb = (form.get("blurb") or "").strip()
+        if "blurb" in form:
+            module.blurb = (form.get("blurb") or "").strip()
         module.identity_mode = form.get("identity_mode") or module.identity_mode
         module.age_unit = form.get("age_unit") or module.age_unit
         for noun in ("organism_noun", "organism_noun_plural", "housing_noun",
@@ -1014,28 +1506,38 @@ def configure(key: str):
             if value:
                 setattr(module, noun, value)
 
-        capabilities = svc.normalize_capabilities(form.getlist("capabilities"))
-        if module.identity_mode == "individual":
-            capabilities = [c for c in capabilities if c != "group_counts"] + ["individuals"]
-        elif module.identity_mode == "group":
-            capabilities = [c for c in capabilities if c != "individuals"] + ["group_counts"]
-        module.capabilities = svc.dump(svc.normalize_capabilities(capabilities))
+        if "capabilities" in form or form.get("_full") == "1":
+            capabilities = svc.normalize_capabilities(form.getlist("capabilities"))
+            if module.identity_mode == "individual":
+                capabilities = [c for c in capabilities if c != "group_counts"] + ["individuals"]
+            elif module.identity_mode == "group":
+                capabilities = [c for c in capabilities if c != "individuals"] + ["group_counts"]
+            module.capabilities = svc.dump(svc.normalize_capabilities(capabilities))
 
-        for name, key_name in (("housing_purposes", "housing_purposes"),
-                               ("statuses", "statuses"),
-                               ("sexes", "sexes")):
+        for name in ("housing_purposes", "statuses", "sexes"):
             raw = form.get(name)
             if raw is not None:
                 values = [v.strip() for v in raw.split(",") if v.strip()]
-                setattr(module, key_name, svc.dump(values))
+                setattr(module, name, svc.dump(values))
 
+        settings = svc.load_dict(module.settings)
         raw_metrics = form.get("environment_metrics")
         if raw_metrics is not None:
-            settings = svc.load_dict(module.settings)
             settings["environment_metrics"] = svc.metrics_from_text(raw_metrics)
-            module.settings = svc.dump(settings)
+        if "dead_statuses" in form:
+            settings["dead_statuses"] = [v.strip() for v in form.get("dead_statuses", "").split(",") if v.strip()]
+        if "cross_noun_plural" in form:
+            plural = (form.get("cross_noun_plural") or "").strip()
+            if plural and plural != pluralise(module.cross_noun):
+                settings["cross_noun_plural"] = plural
+            else:
+                settings.pop("cross_noun_plural", None)
+        module.settings = svc.dump(settings)
 
-        module.enabled = not form.get("disabled")
+        if form.get("_full") == "1" or "disabled" in form:
+            module.enabled = not form.get("disabled")
+        session.flush()
+        svc.recompute_due(session, module)
         session.commit()
         flash("Configuration saved.", "success")
         return _redirect_back(key, "settings")
@@ -1045,22 +1547,43 @@ def configure(key: str):
 def add_field(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        denied = _deny_configure(module, key)
+        if denied:
+            return denied
         form = request.form
+        entity = form.get("entity") or "organism"
+        field_type = form.get("field_type")
+        label = (form.get("label") or "").strip()
+        field_key = svc.slugify(form.get("key") or label)
+        if entity not in dict(FIELD_ENTITIES) or field_type not in FIELD_TYPE_BY_KEY or not label:
+            return _fail(key, "settings", "Give the field a label and pick its type.")
+        existing = session.scalar(select(ModuleField).where(
+            ModuleField.module_id_fk == module.id, ModuleField.entity == entity,
+            ModuleField.key == field_key))
+        if existing is not None:
+            return _fail(key, "settings",
+                         f"{dict(FIELD_ENTITIES)[entity]} already has a field “{existing.label}” "
+                         f"({field_key}). Remove it first, or pick another name.")
         options = [v.strip() for v in (form.get("options") or "").split(",") if v.strip()]
+        default = (form.get("default_value") or "").strip()
+        if field_type == "select" and not options:
+            return _fail(key, "settings", "A choice field needs its choices, separated by commas.")
+        if default and field_type == "number":
+            try:
+                float(default)
+            except ValueError:
+                return _fail(key, "settings", f"The default for a number field must be a number (got “{default}”).")
+        if default and field_type == "select" and default not in options:
+            return _fail(key, "settings", f"The default “{default}” is not one of the choices.")
         row = svc.add_field(session, module, {
-            "entity": form.get("entity") or "organism",
-            "key": form.get("key") or form.get("label"),
-            "label": form.get("label"),
-            "field_type": form.get("field_type"),
-            "options": options,
-            "default_value": form.get("default_value"),
+            "entity": entity, "key": field_key, "label": label, "field_type": field_type,
+            "options": options, "default_value": default,
             "help_text": form.get("help_text"),
             "required": bool(form.get("required")),
             "show_in_table": bool(form.get("show_in_table")),
         })
         session.commit()
-        flash(f"Added field {row.label}." if row else "Could not add that field.",
-              "success" if row else "error")
+        flash(f"Added field {row.label}.", "success")
         return _redirect_back(key, "settings")
 
 
@@ -1068,6 +1591,9 @@ def add_field(key: str):
 def delete_field(key: str, field_id: int):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        denied = _deny_configure(module, key)
+        if denied:
+            return denied
         row = session.get(ModuleField, field_id)
         if row is None or row.module_id_fk != module.id:
             abort(404)
@@ -1082,19 +1608,38 @@ def delete_field(key: str, field_id: int):
 def save_rule(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        denied = _deny_configure(module, key)
+        if denied:
+            return denied
         form = request.form
         rules = svc.load_list(module.schedule_rules)
         rule_key = svc.slugify(form.get("key") or form.get("label") or "")
-        if not rule_key:
-            flash("Give the rule a name.", "error")
-            return _redirect_back(key, "settings")
+        if not (form.get("key") or form.get("label") or "").strip():
+            return _fail(key, "settings", "Give the rule a name.")
+        applies_to = form.get("applies_to") or "housing"
+        anchor = form.get("anchor") or ""
+        if applies_to not in SCHEDULE_ANCHORS:
+            return _fail(key, "settings", "Pick what the rule applies to.")
+        if not anchor_allowed(applies_to, anchor):
+            choices = ", ".join(label for _v, label in SCHEDULE_ANCHORS[applies_to])
+            return _fail(key, "settings",
+                         f"A {applies_to} rule counts from one of: {choices}.")
+        replacing = (form.get("replace") or "").strip()
+        existing = next((r for r in rules if r.get("key") == rule_key), None)
+        if existing is not None and replacing != rule_key:
+            return _fail(key, "settings",
+                         f"There is already a rule “{existing.get('label', rule_key)}”. "
+                         f"Remove it first, or give this one another name.")
+        offset = _int(form.get("offset_days"), None)
+        if offset is None or offset < 0:
+            return _fail(key, "settings", "Days after must be a whole number of 0 or more.")
 
         rule = {
             "key": rule_key,
             "label": (form.get("label") or rule_key).strip(),
-            "applies_to": form.get("applies_to") or "housing",
-            "anchor": form.get("anchor") or "last_serviced_on",
-            "offset_days": _int(form.get("offset_days"), 7),
+            "applies_to": applies_to,
+            "anchor": anchor,
+            "offset_days": offset,
             "icon": (form.get("icon") or "calendar-clock").strip(),
             "recurring": bool(form.get("recurring")),
             "temp_offsets": {},
@@ -1120,6 +1665,9 @@ def save_rule(key: str):
 def delete_rule(key: str, rule_key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        denied = _deny_configure(module, key)
+        if denied:
+            return denied
         rules = [r for r in svc.load_list(module.schedule_rules) if r.get("key") != rule_key]
         module.schedule_rules = svc.dump(rules)
         session.flush()
@@ -1131,10 +1679,10 @@ def delete_rule(key: str, rule_key: str):
 
 @bp.route("/<key>/delete", methods=["POST"])
 def delete_module(key: str):
-    if getattr(g.user, "role", "") != "admin":
-        abort(403)
     with SessionLocal() as session:
         module = _module_or_404(session, key)
+        if not access.can_configure(module):
+            abort(403)
         if (request.form.get("confirm") or "").strip() != module.label:
             flash("Type the database name exactly to confirm deletion.", "error")
             return _redirect_back(key, "settings")

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "organisms/_fields.html" as F with context %}
+{% import "_sheet.html" as sheet_ui with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog, view_switch with context %}
 
 {% set view_label = (views | selectattr('key', 'equalto', active_view) | map(attribute='label') | first) or 'Configure' %}
@@ -15,6 +16,47 @@
   </a>
 {% endblock %}
 
+{# Sortable header cell. #}
+{% macro th(key, label, glyph, width, extra='') %}
+  <th class="dt-sortable" data-sort-key="{{ key }}" style="width: {{ width }};" {{ extra }}>
+    <span class="dt-col-head">{{ icon(glyph, 'dt-col-icon') }}{{ label }}<span class="dt-sort-indicator"></span></span>
+  </th>
+{% endmacro %}
+
+{# Options for a select, keeping a stored value that is no longer in the list. #}
+{% macro choice_options(values, selected, blank='—') %}
+  <option value="">{{ blank }}</option>
+  {% for value in values %}<option value="{{ value }}" {% if value == selected %}selected{% endif %}>{{ value }}</option>{% endfor %}
+  {% if selected and selected not in values %}<option value="{{ selected }}" selected>{{ selected }}</option>{% endif %}
+{% endmacro %}
+
+{% macro housing_options(selected=None, blank='—') %}
+  <option value="">{{ blank }}</option>
+  {% for unit in housing_units %}<option value="{{ unit.id }}" {% if unit.id == selected %}selected{% endif %}>{{ unit.code }}</option>{% endfor %}
+{% endmacro %}
+
+{% macro line_options(selected=None, blank='—') %}
+  <option value="">{{ blank }}</option>
+  {% for line in lines %}<option value="{{ line.id }}" {% if line.id == selected %}selected{% endif %}>{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>{% endfor %}
+{% endmacro %}
+
+{% macro location_options(selected=None, blank='—') %}
+  <option value="">{{ blank }}</option>
+  {% for loc in locations %}<option value="{{ loc.id }}" {% if loc.id == selected %}selected{% endif %}>{{ loc.name }}</option>{% endfor %}
+{% endmacro %}
+
+{% macro owner_options() %}
+  <option value="">—</option>
+  {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
+{% endmacro %}
+
+{# The note a read-only dialog shows (filled by orgEdit). #}
+{% macro locked_note() %}
+  <p class="org-locked-note col-span-full" data-locked-note hidden>
+    {{ icon('lock') }} <span>Read only: this record belongs to someone else.</span>
+  </p>
+{% endmacro %}
+
 {% block page_nav %}
   <div class="mb-4 flex flex-wrap items-center gap-3">
     <nav class="seg max-w-full overflow-x-auto" role="tablist" aria-label="{{ module.label }} views">
@@ -23,14 +65,15 @@
            href="{{ url_for('organisms.module', key=module.key, view=v.key) }}" role="tab"
            aria-selected="{{ 'true' if active_view == v.key else 'false' }}">
           {{ icon(v.icon) }}{{ v.label }}
+          {% if v.key == 'schedule' and census.overdue %}<span class="seg-count is-alert">{{ census.overdue }}</span>{% endif %}
         </a>
       {% endfor %}
     </nav>
 
     <div class="flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
-      <span class="badge">{{ census.animals }} {{ module.organism_noun_plural }}</span>
-      {% if module.has('housing') %}<span class="badge">{{ census.housing }} {{ module.housing_noun_plural }}</span>{% endif %}
-      {% if module.has('lines') %}<span class="badge">{{ census.lines }} {{ module.line_noun_plural }}</span>{% endif %}
+      <span class="badge">{{ census.animals }} {{ module.organism_noun if census.animals == 1 else module.organism_noun_plural }}</span>
+      {% if module.has('housing') %}<span class="badge">{{ census.housing }} {{ module.housing_noun if census.housing == 1 else module.housing_noun_plural }}</span>{% endif %}
+      {% if module.has('lines') %}<span class="badge">{{ census.lines }} {{ module.line_noun if census.lines == 1 else module.line_noun_plural }}</span>{% endif %}
       {% if census.overdue %}<span class="badge badge-warn">{{ census.overdue }} overdue</span>{% endif %}
       {% if module.has('preservation') and census.frozen_vials %}
         <span class="badge">{{ census.frozen_vials }} vials frozen</span>
@@ -40,24 +83,33 @@
 {% endblock %}
 
 {% block content %}
+{{ sheet_ui.owners_list(usernames, 'org-owners') }}
 
 {# =====================================================================
    ANIMALS
    ===================================================================== #}
 {% if active_view == 'animals' %}
   {% set own_fields = fields.get('organism', []) %}
-  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-animals">
+  {% set dead_values = module.dead_statuses | join(',') %}
+  {% set new_payload = {'count': 1, 'code': next_code, 'attrs': attr_defaults.get('organism', {})} %}
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-animals-v2" data-autosave-sheet
+           data-noun="{{ module.organism_noun }}" data-noun-plural="{{ module.organism_noun_plural }}"
+           data-selection-scope data-selection-noun="{{ module.organism_noun }}" data-selection-noun-plural="{{ module.organism_noun_plural }}">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
-        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-        <input type="text" class="dt-search" placeholder="Search {{ module.organism_noun_plural }}…" autocomplete="off">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search {{ module.organism_noun_plural }}…" autocomplete="off" aria-label="Search">
+      </div>
+      <div class="dt-chips" role="group" aria-label="Show">
+        <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="false">All <span class="dt-chip-count">{{ chip_counts.all }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="true">Alive <span class="dt-chip-count">{{ chip_counts.alive }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ chip_counts.mine }}</span></button>
       </div>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
-      <button type="button" class="dt-toolbar-btn dt-btn-hide"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#columns"></use></svg> Columns</button>
+      {{ sheet_ui.tools() }}
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
-              data-org-edit="animal-dialog" data-org-payload='{{ {'count': 1, 'code': next_code} | tojson }}'>
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.organism_noun }}
+              data-org-edit="animal-dialog" data-org-payload="{{ new_payload | tojson | forceescape }}">
+        {{ icon('plus') }} New {{ module.organism_noun }}
       </button>
     </div>
 
@@ -65,94 +117,136 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            {% if module.tracks_individuals %}
-              <th style="width: 130px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}ID</span></th>
-            {% endif %}
-            {% if module.tracks_groups %}
-              <th style="width: 70px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Count</span></th>
-            {% endif %}
-            {% if module.has('housing') %}
-              <th style="width: 130px;"><span class="dt-col-head">{{ icon(housing_icon, 'dt-col-icon') }}{{ module.housing_noun|title }}</span></th>
-            {% endif %}
-            {% if module.has('lines') %}
-              <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
-            {% endif %}
-            <th style="width: 100px;"><span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}Sex</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born</span></th>
-            <th style="width: 70px;"><span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age</span></th>
-            {% if module.has('genotyping') %}
-              <th style="width: 160px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
-            {% endif %}
+            <th class="sheet-pin sheet-pin-start" style="width: 34px; min-width: 34px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ module.organism_noun_plural }}"></th>
+            {{ th('code', 'ID', module.icon, '120px', 'title="The dot is green while alive"') }}
+            {% if module.tracks_groups %}{{ th('count', 'Count', 'count', '76px') }}{% endif %}
+            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '130px') }}{% endif %}
+            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}{% endif %}
+            {{ th('sex', 'Sex', 'sex', '96px') }}
+            {{ th('status', 'Status', 'status', '124px') }}
+            {{ th('birth_on', 'Born', 'born', '132px') }}
+            {{ th('age', 'Age', 'age', '70px') }}
+            {{ th('death_on', 'Died / removed', 'died', '132px') }}
+            {% if module.has('genotyping') %}{{ th('genotype', 'Genotype', 'dna', '160px') }}{% endif %}
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
-            <th style="width: 78px;"></th>
+            {{ th('owner', 'Owner', 'user', '96px') }}
+            <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+            <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          {% for row in organisms %}
+          {% for r in animal_rows %}
+            {% set row = r.o %}
+            {% set f = 'row-a-' ~ row.id %}
+            {% set locked = not r.editable %}
             {% set attrs = row.attrs_dict %}
-            <tr data-id="{{ row.id }}" class="{% if row.death_on %}opacity-55{% endif %}">
-              {% if module.tracks_individuals %}
-                <td><span class="dt-row-name">{{ row.code or '—' }}</span></td>
+            <tr data-id="{{ row.id }}" data-code="{{ row.code or '' }}"
+                data-active="{{ 'true' if r.alive else 'false' }}" data-mine="{{ 'true' if r.mine else 'false' }}"
+                data-housing="{{ row.housing.code if row.housing else '' }}" data-line="{{ row.line.code if row.line else '' }}"
+                data-age="{{ ((row.death_on or today_date) - row.birth_on).days if row.birth_on else '' }}"
+                class="{% if not r.alive %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+              <td class="sheet-pin sheet-pin-start"><input type="checkbox" data-select-row value="{{ row.id }}" aria-label="Select {{ row.code or module.organism_noun }}"></td>
+              <td>{{ sheet_ui.id_cell(row.code or '—', alive=r.alive, locked=locked, owner=row.owner, noun=module.organism_noun,
+                                      alive_title='Alive', dead_title='Dead or removed') }}</td>
+              {% if module.tracks_groups %}
+                <td><input type="number" min="1" class="sheet-num" name="count" form="{{ f }}" value="{{ row.count }}" data-autosave="1" aria-label="Count" {% if locked %}disabled{% endif %}></td>
               {% endif %}
-              {% if module.tracks_groups %}<td class="font-medium">{{ row.count }}</td>{% endif %}
               {% if module.has('housing') %}
-                <td>{% if row.housing %}<span class="ident">{{ row.housing.code }}</span>{% else %}<span class="text-sand-300">—</span>{% endif %}</td>
+                <td><select name="housing_id_fk" form="{{ f }}" data-autosave="1" aria-label="{{ module.housing_noun|capitalize }}" {% if locked %}disabled{% endif %}>{{ housing_options(row.housing_id_fk, '–') }}</select></td>
               {% endif %}
               {% if module.has('lines') %}
-                <td>{% if row.line %}{{ row.line.code }}{% else %}<span class="text-sand-300">—</span>{% endif %}</td>
+                <td><select name="line_id_fk" form="{{ f }}" data-autosave="1" aria-label="{{ module.line_noun|capitalize }}" {% if locked %}disabled{% endif %}>{{ line_options(row.line_id_fk, '–') }}</select></td>
               {% endif %}
-              <td>{{ row.sex }}</td>
-              <td>{% if row.status %}<span class="dt-status" data-status="{{ row.status }}">{{ row.status }}</span>{% endif %}</td>
-              <td>{{ row.birth_on or '' }}</td>
-              <td>{{ age_label(module_row, row.birth_on, row.death_on) }}</td>
+              <td><select name="sex" form="{{ f }}" data-autosave="1" aria-label="Sex" {% if locked %}disabled{% endif %}>{{ choice_options(module.sexes, row.sex, '–') }}</select></td>
+              <td>
+                <select class="status-pill" name="status" form="{{ f }}" data-status="{{ row.status|lower }}" data-autosave="1"
+                        data-dead-values="{{ dead_values }}" aria-label="Status" {% if locked %}disabled{% endif %}>
+                  {{ choice_options(module.statuses, row.status, '–') }}
+                </select>
+              </td>
+              <td><input type="date" name="birth_on" form="{{ f }}" value="{{ row.birth_on or '' }}" data-empty="{{ '0' if row.birth_on else '1' }}" data-autosave="1" aria-label="Born" {% if locked %}disabled{% endif %}></td>
+              <td class="sheet-num">{{ age_label(module_row, row.birth_on, row.death_on) or '–' }}</td>
+              <td><input type="date" name="death_on" form="{{ f }}" value="{{ row.death_on or '' }}" data-empty="{{ '0' if row.death_on else '1' }}" data-autosave="1" data-dead-if-set aria-label="Died or removed" {% if locked %}disabled{% endif %}></td>
               {% if module.has('genotyping') %}
-                <td><span class="ident">{{ row.genotype }}</span></td>
+                <td><input class="ident" name="genotype" form="{{ f }}" value="{{ row.genotype }}" title="{{ row.genotype }}" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
               {% endif %}
               {{ F.table_cells(own_fields, attrs) }}
-              <td>{% if row.owner %}{{ row.owner | owner_badge }}{% endif %}</td>
-              <td>
+              <td>{{ sheet_ui.owner_cell(row.owner, f, locked, list_id='org-owners') }}</td>
+              <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ row.notes }}" title="{{ row.notes }}" placeholder="Add a note" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
+              <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <button type="button" class="row-icon-btn" title="Edit"
-                          data-org-edit="animal-dialog" data-org-payload='{{ {
-                            "id": row.id, "code": row.code, "count": row.count,
-                            "housing_id_fk": row.housing_id_fk, "line_id_fk": row.line_id_fk,
-                            "cohort_id_fk": row.cohort_id_fk, "sex": row.sex, "status": row.status,
-                            "birth_on": row.birth_on.isoformat() if row.birth_on else "",
-                            "death_on": row.death_on.isoformat() if row.death_on else "",
-                            "genotype": row.genotype, "owner": row.owner, "protocol": row.protocol,
-                            "notes": row.notes, "attrs": attrs } | tojson }}'>
-                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
-                  </button>
+                  <button type="button" class="row-icon-btn" title="{{ 'View' if locked else 'Edit' }}"
+                          data-org-edit="animal-dialog" data-org-payload="{{ org_animal_payload(row, module) | tojson | forceescape }}">{{ icon('eye' if locked else 'edit') }}</button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='animal', row_id=row.id) }}"
-                        onsubmit="return confirm('Delete this record?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+                        data-confirm="Delete {{ row.code or ('this ' ~ module.organism_noun) }}?">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete" {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="14">
-              No {{ module.organism_noun_plural }} yet. Use <strong>Add</strong> to create the first record.
-            </td></tr>
+            <tr><td class="dt-empty" colspan="18"><span class="dt-empty-msg">
+              No {{ module.organism_noun_plural }} yet. Use <strong>New {{ module.organism_noun }}</strong> to add the first one.
+            </span></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    {% for r in animal_rows %}
+      <form id="row-a-{{ r.o.id }}" method="post" action="{{ url_for('organisms.save_animal', key=module.key) }}" data-record-label="{{ r.o.code or module.organism_noun }}">
+        <input type="hidden" name="id" value="{{ r.o.id }}">
+      </form>
+    {% endfor %}
     <div class="dt-bottom-bar">
-      <span class="dt-bottom-count dt-count">{{ census.records }} record{{ '' if census.records == 1 else 's' }} · {{ census.animals }} {{ module.organism_noun_plural }}</span>
+      <span class="dt-bottom-count dt-count">{{ census.records }} alive record{{ '' if census.records == 1 else 's' }} · {{ census.animals }} {{ module.organism_noun_plural }}</span>
+      <div class="dt-bottom-spacer"></div>
+      <div class="dt-pagination">
+        <span class="dt-page-label">Page 1</span>
+        <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+        <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+        <select class="dt-page-size" aria-label="Rows per page"><option value="100" selected>100</option><option value="100000">All</option></select>
+      </div>
+    </div>
+
+    <div class="selbar" data-selection-bar hidden>
+      <span class="selbar-count" data-selection-count></span>
+      <form method="post" action="{{ url_for('organisms.bulk_animals', key=module.key) }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="status">
+        <select name="value" aria-label="Status">{{ choice_options(module.statuses, None, '–') }}</select>
+        <button type="submit" class="btn btn-sm">Set status</button>
+      </form>
+      {% if module.has('housing') %}
+        <form method="post" action="{{ url_for('organisms.bulk_animals', key=module.key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="housing_id_fk">
+          <select name="value" aria-label="{{ module.housing_noun|capitalize }}">{{ housing_options(None, 'No ' ~ module.housing_noun) }}</select>
+          <button type="submit" class="btn btn-sm">Move</button>
+        </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('organisms.bulk_animals', key=module.key) }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="owner">
+        <input name="value" list="org-owners" placeholder="owner" aria-label="Owner" class="w-[110px]">
+        <button type="submit" class="btn btn-sm">Set owner</button>
+      </form>
+      <form method="post" action="{{ url_for('organisms.bulk_animals', key=module.key) }}" class="selbar-group" data-selection-form
+            data-confirm="Delete {n} {{ module.organism_noun }} record(s)?">
+        <input type="hidden" name="action" value="delete">
+        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+      </form>
+      <div class="selbar-spacer"></div>
+      <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
     </div>
   </section>
 
   <dialog id="animal-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
       <h3>{{ module.organism_noun|capitalize }}</h3>
-      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_animal', key=module.key) }}"
           class="modal-body modal-grid" data-entity-form>
       <input type="hidden" name="id">
+      <input type="hidden" name="_full" value="1">
+      {{ locked_note() }}
       {% if module.tracks_individuals %}
         <label class="field-label">ID<input name="code" placeholder="auto"></label>
       {% endif %}
@@ -160,52 +254,30 @@
         <label class="field-label">Count<input type="number" name="count" min="1" value="1"></label>
       {% endif %}
       {% if module.has('housing') %}
-        <label class="field-label">{{ module.housing_noun|title }}
-          <select name="housing_id_fk">
-            <option value="">—</option>
-            {% for unit in housing_units %}<option value="{{ unit.id }}">{{ unit.code }}</option>{% endfor %}
-          </select>
-        </label>
+        <label class="field-label">{{ module.housing_noun|capitalize }}<select name="housing_id_fk">{{ housing_options() }}</select></label>
       {% endif %}
       {% if module.has('lines') %}
-        <label class="field-label">{{ module.line_noun|title }}
-          <select name="line_id_fk">
-            <option value="">—</option>
-            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>{% endfor %}
-          </select>
-        </label>
+        <label class="field-label">{{ module.line_noun|capitalize }}<select name="line_id_fk">{{ line_options() }}</select></label>
       {% endif %}
       {% if module.has('cohorts') %}
-        <label class="field-label">{{ module.cohort_noun|title }}
+        <label class="field-label">{{ module.cohort_noun|capitalize }}
           <select name="cohort_id_fk">
             <option value="">—</option>
             {% for cohort in cohorts %}<option value="{{ cohort.id }}">{{ cohort.code }}</option>{% endfor %}
           </select>
         </label>
       {% endif %}
-      <label class="field-label">Sex
-        <select name="sex">
-          <option value="">—</option>
-          {% for value in module.sexes %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
-        </select>
-      </label>
+      <label class="field-label">Sex<select name="sex">{{ choice_options(module.sexes, None) }}</select></label>
       <label class="field-label">Status
-        <select name="status">
-          <option value="">—</option>
-          {% for value in module.statuses %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
-        </select>
+        <select name="status" data-dead-values="{{ dead_values }}">{{ choice_options(module.statuses, None) }}</select>
+        {% if module.dead_statuses %}<span class="field-hint normal-case tracking-normal">{{ module.dead_statuses | join(', ') }} set the date removed.</span>{% endif %}
       </label>
       <label class="field-label">Born<input type="date" name="birth_on"></label>
       <label class="field-label">Died / removed<input type="date" name="death_on"></label>
       {% if module.has('genotyping') %}
         <label class="field-label">Genotype<input name="genotype" class="font-mono text-[12px]"></label>
       {% endif %}
-      <label class="field-label">Owner
-        <select name="owner">
-          <option value="">—</option>
-          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
-        </select>
-      </label>
+      <label class="field-label">Owner<select name="owner">{{ owner_options() }}</select></label>
       {% if module.has('protocol') %}
         <label class="field-label">Protocol<input name="protocol"></label>
       {% endif %}
@@ -221,6 +293,7 @@
    ===================================================================== #}
 {% if active_view == 'housing' %}
   {% set own_fields = fields.get('housing', []) %}
+  {% set new_payload = {'code': next_code, 'established_on': today, 'attrs': attr_defaults.get('housing', {})} %}
   <div data-layout-scope>
   {% if module.has('housing_grid') %}
     <div class="mb-3 flex flex-wrap items-center gap-2.5">
@@ -240,24 +313,28 @@
     </div>
   {% endif %}
   <div data-layout-panel="table">
-  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-housing">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-housing-v2" data-autosave-sheet
+           data-noun="{{ module.housing_noun }}" data-noun-plural="{{ module.housing_noun_plural }}"
+           data-selection-scope data-selection-noun="{{ module.housing_noun }}" data-selection-noun-plural="{{ module.housing_noun_plural }}">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
-        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-        <input type="text" class="dt-search" placeholder="Search {{ module.housing_noun_plural }}…" autocomplete="off">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search {{ module.housing_noun_plural }}…" autocomplete="off" aria-label="Search">
+      </div>
+      <div class="dt-chips" role="group" aria-label="Show">
+        <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="false">All <span class="dt-chip-count">{{ chip_counts.all }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="true">Active <span class="dt-chip-count">{{ chip_counts.active }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ chip_counts.mine }}</span></button>
       </div>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
-      <button type="button" class="dt-toolbar-btn"
-              onclick="document.getElementById('location-dialog').showModal()">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#grid"></use></svg> {{ module.container_noun|title }}s
+      {{ sheet_ui.tools() }}
+      <button type="button" class="dt-toolbar-btn" onclick="document.getElementById('location-dialog').showModal()">
+        {{ icon('grid') }} {{ module.container_noun|capitalize }}s
       </button>
-      <a class="dt-toolbar-btn" href="{{ url_for('labels.module_cards', module_key=module.key) }}">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> Labels
-      </a>
+      <a class="dt-toolbar-btn" href="{{ url_for('labels.module_cards', module_key=module.key) }}">{{ icon('print') }} Labels</a>
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
-              data-org-edit="housing-dialog" data-org-payload='{{ {'code': next_code, 'established_on': today} | tojson }}'>
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.housing_noun }}
+              data-org-edit="housing-dialog" data-org-payload="{{ new_payload | tojson | forceescape }}">
+        {{ icon('plus') }} New {{ module.housing_noun }}
       </button>
     </div>
 
@@ -265,69 +342,111 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 130px;"><span class="dt-col-head">{{ icon(housing_icon, 'dt-col-icon') }}{{ module.housing_noun|title }}</span></th>
-            <th style="width: 150px;"><span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}{{ module.container_noun|title }}</span></th>
-            {% if module.has('housing_grid') %}
-              <th style="width: 80px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position</span></th>
-            {% endif %}
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose</span></th>
-            {% if module.has('lines') %}
-              <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
-            {% endif %}
-            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Held</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Last serviced</span></th>
+            <th class="sheet-pin sheet-pin-start" style="width: 34px; min-width: 34px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ module.housing_noun_plural }}"></th>
+            {{ th('code', module.housing_noun|capitalize, housing_icon, '120px', 'title="The dot is green while the ' ~ module.housing_noun ~ ' is in use"') }}
+            {{ th('location', module.container_noun|capitalize, 'grid', '150px') }}
+            {% if module.has('housing_grid') %}{{ th('position', 'Position', 'position', '84px') }}{% endif %}
+            {{ th('purpose', 'Purpose', 'tag', '124px') }}
+            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}{% endif %}
+            {{ th('held', 'Held', 'count', '70px') }}
+            {{ th('last_serviced_on', 'Last serviced', 'calendar-clock', '132px') }}
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
-            <th style="width: 78px;"></th>
+            {{ th('owner', 'Owner', 'user', '96px') }}
+            <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+            <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          {% for unit in housing_units %}
+          {% for r in housing_rows %}
+            {% set unit = r.u %}
+            {% set f = 'row-h-' ~ unit.id %}
+            {% set locked = not r.editable %}
             {% set attrs = unit.attrs_dict %}
-            <tr data-id="{{ unit.id }}" class="{% if not unit.active %}opacity-55{% endif %}">
-              <td><span class="dt-row-name">{{ unit.code }}</span>
-                {% if unit.needs_attention %}<svg class="icon ml-1 size-3 text-warn-600" aria-hidden="true"><use href="/static/icons.svg#warning"></use></svg>{% endif %}
-              </td>
-              <td>{{ unit.location.name if unit.location else '' }}</td>
-              {% if module.has('housing_grid') %}
-                <td><span class="ident">{{ unit_positions.get(unit.id, '') }}</span></td>
-              {% endif %}
-              <td>{% if unit.purpose %}<span class="badge badge-quiet">{{ unit.purpose }}</span>{% endif %}</td>
-              {% if module.has('lines') %}
-                <td>{{ unit.line.code if unit.line else '' }}</td>
-              {% endif %}
-              <td class="font-medium">{{ occupancy.get(unit.id, 0) }}</td>
-              <td>{{ unit.last_serviced_on or '' }}</td>
-              {{ F.table_cells(own_fields, attrs) }}
-              <td>{% if unit.owner %}{{ unit.owner | owner_badge }}{% endif %}</td>
+            <tr data-id="{{ unit.id }}" data-code="{{ unit.code }}"
+                data-active="{{ 'true' if unit.active else 'false' }}" data-mine="{{ 'true' if r.mine else 'false' }}"
+                data-location="{{ unit.location.name if unit.location else '' }}"
+                data-line="{{ unit.line.code if unit.line else '' }}" data-held="{{ occupancy.get(unit.id, 0) }}"
+                class="{% if not unit.active %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+              <td class="sheet-pin sheet-pin-start"><input type="checkbox" data-select-row value="{{ unit.id }}" aria-label="Select {{ unit.code }}"></td>
               <td>
+                {{ sheet_ui.id_cell(unit.code, alive=unit.active, locked=locked, owner=unit.owner, noun=module.housing_noun,
+                                    alive_title='In use', dead_title='Retired') }}
+                {% if unit.needs_attention %}<span class="sr-only">needs attention</span>{% endif %}
+              </td>
+              <td><select name="location_id_fk" form="{{ f }}" data-autosave="1" aria-label="{{ module.container_noun|capitalize }}" {% if locked %}disabled{% endif %}>{{ location_options(unit.location_id_fk, '–') }}</select></td>
+              {% if module.has('housing_grid') %}
+                <td><input class="ident" name="position" form="{{ f }}" value="{{ unit_positions.get(unit.id, '') }}" placeholder="–" data-autosave="1" aria-label="Position" {% if locked %}disabled{% endif %}></td>
+              {% endif %}
+              <td><select class="status-pill" name="purpose" form="{{ f }}" data-status="{{ unit.purpose|lower }}" data-autosave="1" aria-label="Purpose" {% if locked %}disabled{% endif %}>{{ choice_options(module.housing_purposes, unit.purpose, '–') }}</select></td>
+              {% if module.has('lines') %}
+                <td><select name="line_id_fk" form="{{ f }}" data-autosave="1" aria-label="{{ module.line_noun|capitalize }}" {% if locked %}disabled{% endif %}>{{ line_options(unit.line_id_fk, '–') }}</select></td>
+              {% endif %}
+              <td class="sheet-num">{{ occupancy.get(unit.id, 0) }}</td>
+              <td><input type="date" name="last_serviced_on" form="{{ f }}" value="{{ unit.last_serviced_on or '' }}" data-empty="{{ '0' if unit.last_serviced_on else '1' }}" data-autosave="1" aria-label="Last serviced" {% if locked %}disabled{% endif %}></td>
+              {{ F.table_cells(own_fields, attrs) }}
+              <td>{{ sheet_ui.owner_cell(unit.owner, f, locked, list_id='org-owners') }}</td>
+              <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ unit.notes }}" title="{{ unit.notes }}" placeholder="Add a note" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
+              <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <button type="button" class="row-icon-btn" title="Edit"
-                          data-org-edit="housing-dialog" data-org-payload='{{ {
-                            "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
-                            "position": unit_positions.get(unit.id, ''), "purpose": unit.purpose,
-                            "line_id_fk": unit.line_id_fk, "owner": unit.owner,
-                            "protocol": unit.protocol, "card_id": unit.card_id,
-                            "established_on": unit.established_on.isoformat() if unit.established_on else "",
-                            "last_serviced_on": unit.last_serviced_on.isoformat() if unit.last_serviced_on else "",
-                            "retired": not unit.active, "needs_attention": unit.needs_attention,
-                            "notes": unit.notes, "attrs": attrs } | tojson }}'>
-                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
-                  </button>
+                  <button type="button" class="row-icon-btn" title="{{ 'View' if locked else 'Edit' }}"
+                          data-org-edit="housing-dialog" data-org-payload="{{ org_housing_payload(unit) | tojson | forceescape }}">{{ icon('eye' if locked else 'edit') }}</button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='housing', row_id=unit.id) }}"
-                        onsubmit="return confirm('Delete {{ unit.code }}? Records inside it go too.')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+                        data-confirm="Delete {{ unit.code }}? Anything in it stays, without a {{ module.housing_noun }}.">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete" {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="12">
-              No {{ module.housing_noun_plural }} yet. Add a {{ module.container_noun }} first if you want positions.
-            </td></tr>
+            <tr><td class="dt-empty" colspan="16"><span class="dt-empty-msg">
+              No {{ module.housing_noun_plural }} yet. Use <strong>New {{ module.housing_noun }}</strong>{% if module.has('housing_grid') %}; add a {{ module.container_noun }} first if you want positions{% endif %}.
+            </span></td></tr>
           {% endfor %}
         </tbody>
       </table>
+    </div>
+    {% for r in housing_rows %}
+      <form id="row-h-{{ r.u.id }}" method="post" action="{{ url_for('organisms.save_housing', key=module.key) }}" data-record-label="{{ r.u.code }}">
+        <input type="hidden" name="id" value="{{ r.u.id }}">
+        <input type="hidden" name="location_id_fk_was" value="{{ r.u.location_id_fk or '' }}">
+        <input type="hidden" name="position_was" value="{{ unit_positions.get(r.u.id, '') }}">
+      </form>
+    {% endfor %}
+    <div class="dt-bottom-bar">
+      <span class="dt-bottom-count dt-count">{{ chip_counts.active }} active {{ module.housing_noun if chip_counts.active == 1 else module.housing_noun_plural }}</span>
+      <div class="dt-bottom-spacer"></div>
+      <div class="dt-pagination">
+        <span class="dt-page-label">Page 1</span>
+        <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+        <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+        <select class="dt-page-size" aria-label="Rows per page"><option value="100" selected>100</option><option value="100000">All</option></select>
+      </div>
+    </div>
+
+    <div class="selbar" data-selection-bar hidden>
+      <span class="selbar-count" data-selection-count></span>
+      <form method="post" action="{{ url_for('organisms.bulk_housing', key=module.key) }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="purpose">
+        <select name="value" aria-label="Purpose">{{ choice_options(module.housing_purposes, None, '–') }}</select>
+        <button type="submit" class="btn btn-sm">Set purpose</button>
+      </form>
+      <form method="post" action="{{ url_for('organisms.bulk_housing', key=module.key) }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="owner">
+        <input name="value" list="org-owners" placeholder="owner" aria-label="Owner" class="w-[110px]">
+        <button type="submit" class="btn btn-sm">Set owner</button>
+      </form>
+      <form method="post" action="{{ url_for('organisms.bulk_housing', key=module.key) }}" class="selbar-group" data-selection-form>
+        <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="location_id_fk">
+        <select name="value" aria-label="{{ module.container_noun|capitalize }}">{{ location_options(None, 'No ' ~ module.container_noun) }}</select>
+        <button type="submit" class="btn btn-sm">Move</button>
+      </form>
+      <form method="post" action="{{ url_for('organisms.bulk_housing', key=module.key) }}" class="selbar-group" data-selection-form
+            data-confirm="Delete {n} {{ module.housing_noun }}(s)? Anything in them stays, without a {{ module.housing_noun }}.">
+        <input type="hidden" name="action" value="delete">
+        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+      </form>
+      <div class="selbar-spacer"></div>
+      <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
     </div>
   </section>
 
@@ -358,13 +477,15 @@
   <dialog id="housing-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
       <h3>{{ module.housing_noun|capitalize }}</h3>
-      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_housing', key=module.key) }}"
           class="modal-body modal-grid" data-entity-form>
       <input type="hidden" name="id">
-      <label class="field-label">{{ module.housing_noun|title }} ID<input name="code" placeholder="auto"></label>
-      <label class="field-label">{{ module.container_noun|title }}
+      <input type="hidden" name="_full" value="1">
+      {{ locked_note() }}
+      <label class="field-label">{{ module.housing_noun|capitalize }} ID<input name="code" placeholder="auto"></label>
+      <label class="field-label">{{ module.container_noun|capitalize }}
         <select name="location_id_fk">
           <option value="">—</option>
           {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }} ({{ loc.kind }})</option>{% endfor %}
@@ -375,26 +496,11 @@
           <span class="field-hint normal-case tracking-normal">Named the way the {{ module.container_noun }} names it.</span>
         </label>
       {% endif %}
-      <label class="field-label">Purpose
-        <select name="purpose">
-          <option value="">—</option>
-          {% for value in module.housing_purposes %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
-        </select>
-      </label>
+      <label class="field-label">Purpose<select name="purpose">{{ choice_options(module.housing_purposes, None) }}</select></label>
       {% if module.has('lines') %}
-        <label class="field-label">{{ module.line_noun|title }}
-          <select name="line_id_fk">
-            <option value="">—</option>
-            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>{% endfor %}
-          </select>
-        </label>
+        <label class="field-label">{{ module.line_noun|capitalize }}<select name="line_id_fk">{{ line_options() }}</select></label>
       {% endif %}
-      <label class="field-label">Owner
-        <select name="owner">
-          <option value="">—</option>
-          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
-        </select>
-      </label>
+      <label class="field-label">Owner<select name="owner">{{ owner_options() }}</select></label>
       {% if module.has('protocol') %}<label class="field-label">Protocol<input name="protocol"></label>{% endif %}
       <label class="field-label">Card ID<input name="card_id"></label>
       <label class="field-label">Set up on<input type="date" name="established_on"></label>
@@ -411,8 +517,8 @@
 
   <dialog id="location-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
-      <h3>{{ module.container_noun|title }}s &amp; locations</h3>
-      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+      <h3>{{ module.container_noun|capitalize }}s &amp; locations</h3>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
     </form>
     <div class="modal-body flex flex-col gap-3">
       {% if locations %}
@@ -426,10 +532,12 @@
                   <td>{{ loc.kind }}</td>
                   <td>{% if loc.rows %}{{ loc.rows }} × {{ loc.cols }}{% endif %}</td>
                   <td>
-                    <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='location', row_id=loc.id) }}"
-                          onsubmit="return confirm('Delete {{ loc.name }}?')">
-                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
-                    </form>
+                    {% if can_configure %}
+                      <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='location', row_id=loc.id) }}"
+                            data-confirm="Delete {{ loc.name }}? Anything in it stays, unplaced.">
+                        <button type="submit" class="row-icon-btn danger-button" title="Delete">{{ icon('trash') }}</button>
+                      </form>
+                    {% endif %}
                   </td>
                 </tr>
               {% endfor %}
@@ -437,28 +545,27 @@
           </table>
         </div>
       {% endif %}
-      <form method="post" action="{{ url_for('organisms.save_location', key=module.key) }}" class="modal-grid">
-        <input type="hidden" name="return_view" value="housing">
-        <label class="field-label">Name<input name="name" required placeholder="e.g. Incubator 25 °C"></label>
-        <label class="field-label">Kind
-          <select name="kind">
-            {% for kind in ['facility', 'room', 'system', 'rack', 'incubator', 'shelf', 'tray'] %}
-              <option value="{{ kind }}" {% if kind == module.container_noun %}selected{% endif %}>{{ kind }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="field-label">Parent
-          <select name="parent_id_fk">
-            <option value="">—</option>
-            {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }}</option>{% endfor %}
-          </select>
-        </label>
-        {% if module.has('housing_grid') %}
-          <label class="field-label">Rows<input type="number" name="rows" min="1" placeholder="8"></label>
-          <label class="field-label">Columns<input type="number" name="cols" min="1" placeholder="10"></label>
-        {% endif %}
-        <button type="submit">Add location</button>
-      </form>
+      {% if can_configure %}
+        <form method="post" action="{{ url_for('organisms.save_location', key=module.key) }}" class="modal-grid">
+          <input type="hidden" name="return_view" value="housing">
+          <label class="field-label">Name<input name="name" required placeholder="e.g. Incubator 25 °C"></label>
+          <label class="field-label">Kind
+            <select name="kind">
+              {% for kind in ['facility', 'room', 'system', 'rack', 'incubator', 'shelf', 'tray'] %}
+                <option value="{{ kind }}" {% if kind == module.container_noun %}selected{% endif %}>{{ kind }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field-label">Parent<select name="parent_id_fk">{{ location_options() }}</select></label>
+          {% if module.has('housing_grid') %}
+            <label class="field-label">Rows<input type="number" name="rows" min="1" placeholder="8"></label>
+            <label class="field-label">Columns<input type="number" name="cols" min="1" placeholder="10"></label>
+          {% endif %}
+          <button type="submit">Add location</button>
+        </form>
+      {% else %}
+        <p class="text-[12.5px] text-muted">Only an admin or whoever created this database can add or remove {{ module.container_noun }}s.</p>
+      {% endif %}
     </div>
   </dialog>
 {% endif %}
@@ -468,17 +575,22 @@
    ===================================================================== #}
 {% if active_view == 'lines' %}
   {% set own_fields = fields.get('line', []) %}
-  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-lines">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-lines-v2"
+           data-noun="{{ module.line_noun }}" data-noun-plural="{{ module.line_noun_plural }}">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
-        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-        <input type="text" class="dt-search" placeholder="Search {{ module.line_noun_plural }}…" autocomplete="off">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search {{ module.line_noun_plural }}…" autocomplete="off" aria-label="Search">
+      </div>
+      <div class="dt-chips" role="group" aria-label="Show">
+        <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="false">All <span class="dt-chip-count">{{ lines|length }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="true">In use <span class="dt-chip-count">{{ lines | rejectattr('retired') | list | length }}</span></button>
       </div>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn dt-btn-sort"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#sort"></use></svg> Sort</button>
+      {{ sheet_ui.tools() }}
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
-              data-org-edit="line-dialog" data-org-payload='{{ {'code': next_code} | tojson }}'>
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.line_noun }}
+              data-org-edit="line-dialog" data-org-payload="{{ {'code': next_code, 'attrs': attr_defaults.get('line', {})} | tojson | forceescape }}">
+        {{ icon('plus') }} New {{ module.line_noun }}
       </button>
     </div>
 
@@ -486,68 +598,69 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 140px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Code</span></th>
-            <th style="width: 190px;"><span class="dt-col-head">{{ icon('type', 'dt-col-icon') }}Name</span></th>
-            <th style="width: 220px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
+            {{ th('code', 'Code', 'barcode', '140px') }}
+            {{ th('name', 'Name', 'type', '190px') }}
+            {{ th('genotype', 'Genotype', 'dna', '220px') }}
             {{ F.table_headers(own_fields) }}
-            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Alive</span></th>
-            {% if module.has('preservation') %}
-              <th style="width: 110px;"><span class="dt-col-head">{{ icon('snowflake', 'dt-col-icon') }}Last frozen</span></th>
-            {% endif %}
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
-            <th style="width: 78px;"></th>
+            {{ th('alive', 'Alive', 'count', '80px') }}
+            {% if module.has('preservation') %}{{ th('frozen', 'Last frozen', 'snowflake', '120px') }}{% endif %}
+            {{ th('owner', 'Owner', 'user', '96px') }}
+            <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {% for line in lines %}
             {% set attrs = line.attrs_dict %}
-            <tr data-id="{{ line.id }}" class="{% if line.retired %}opacity-55{% endif %}">
-              <td><span class="dt-row-name">{{ line.code }}</span></td>
-              <td>{{ line.name }}</td>
-              <td><span class="ident">{{ line.genotype }}</span></td>
+            {% set locked = line.owner and line.owner != me and current_user.role != 'admin' %}
+            <tr data-id="{{ line.id }}" data-code="{{ line.code }}" data-name="{{ line.name }}" data-genotype="{{ line.genotype }}"
+                data-alive="{{ line_counts.get(line.id, 0) }}" data-frozen="{{ line.last_frozen_on or '' }}" data-owner="{{ line.owner }}"
+                data-active="{{ 'false' if line.retired else 'true' }}"
+                class="{% if line.retired %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+              <td>{{ sheet_ui.id_cell(line.code, alive=not line.retired, locked=locked, owner=line.owner, noun=module.line_noun, alive_title='In use', dead_title='Retired') }}</td>
+              <td><span class="sheet-cell-text">{{ line.name }}</span></td>
+              <td><span class="sheet-cell-text ident" title="{{ line.genotype }}">{{ line.genotype }}</span></td>
               {{ F.table_cells(own_fields, attrs) }}
-              <td class="font-medium">{{ line_counts.get(line.id, 0) }}</td>
-              {% if module.has('preservation') %}
-                <td>{{ line.last_frozen_on or '' }}</td>
-              {% endif %}
+              <td class="sheet-num">{{ line_counts.get(line.id, 0) }}</td>
+              {% if module.has('preservation') %}<td><span class="sheet-cell-text">{{ line.last_frozen_on or '' }}</span></td>{% endif %}
               <td>{% if line.owner %}{{ line.owner | owner_badge }}{% endif %}</td>
-              <td>
+              <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <button type="button" class="row-icon-btn" title="Edit"
-                          data-org-edit="line-dialog" data-org-payload='{{ {
-                            "id": line.id, "code": line.code, "name": line.name,
-                            "genotype": line.genotype, "owner": line.owner,
-                            "protocol": line.protocol, "source": line.source,
-                            "external_ref": line.external_ref,
-                            "parent_line_id_fk": line.parent_line_id_fk,
-                            "last_refreshed_on": line.last_refreshed_on.isoformat() if line.last_refreshed_on else "",
-                            "last_frozen_on": line.last_frozen_on.isoformat() if line.last_frozen_on else "",
-                            "retired": line.retired, "notes": line.notes, "attrs": attrs } | tojson }}'>
-                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
-                  </button>
+                  <button type="button" class="row-icon-btn" title="{{ 'View' if locked else 'Edit' }}"
+                          data-org-edit="line-dialog" data-org-payload="{{ {
+                            'id': line.id, 'code': line.code, 'name': line.name,
+                            'genotype': line.genotype, 'owner': line.owner,
+                            'protocol': line.protocol, 'source': line.source,
+                            'external_ref': line.external_ref,
+                            'parent_line_id_fk': line.parent_line_id_fk,
+                            'last_refreshed_on': line.last_refreshed_on.isoformat() if line.last_refreshed_on else '',
+                            'last_frozen_on': line.last_frozen_on.isoformat() if line.last_frozen_on else '',
+                            'retired': line.retired, 'notes': line.notes, 'attrs': attrs, 'locked': locked } | tojson | forceescape }}">{{ icon('eye' if locked else 'edit') }}</button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='line', row_id=line.id) }}"
-                        onsubmit="return confirm('Delete {{ line.code }}?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+                        data-confirm="Delete {{ line.code }}?">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete" {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="10">No {{ module.line_noun_plural }} yet.</td></tr>
+            <tr><td class="dt-empty" colspan="12"><span class="dt-empty-msg">No {{ module.line_noun_plural }} yet. Use <strong>New {{ module.line_noun }}</strong> to register one.</span></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    <div class="dt-bottom-bar"><span class="dt-bottom-count dt-count">{{ lines|length }} {{ module.line_noun if lines|length == 1 else module.line_noun_plural }}</span></div>
   </section>
 
   <dialog id="line-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
       <h3>{{ module.line_noun|capitalize }}</h3>
-      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_line', key=module.key) }}"
           class="modal-body modal-grid" data-entity-form>
       <input type="hidden" name="id">
+      <input type="hidden" name="_full" value="1">
+      {{ locked_note() }}
       <label class="field-label">Code<input name="code" placeholder="auto"></label>
       <label class="field-label">Name<input name="name"></label>
       <label class="field-label col-span-full">Genotype
@@ -563,12 +676,7 @@
           </select>
         </label>
       {% endif %}
-      <label class="field-label">Owner
-        <select name="owner">
-          <option value="">—</option>
-          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
-        </select>
-      </label>
+      <label class="field-label">Owner<select name="owner">{{ owner_options() }}</select></label>
       {% if module.has('protocol') %}<label class="field-label">Protocol<input name="protocol"></label>{% endif %}
       <label class="field-label">Last refreshed<input type="date" name="last_refreshed_on"></label>
       {% if module.has('preservation') %}
@@ -587,89 +695,101 @@
    ===================================================================== #}
 {% if active_view == 'crosses' %}
   {% set own_fields = fields.get('cross', []) %}
-  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-crosses">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-crosses-v2"
+           data-noun="{{ module.cross_noun }}" data-noun-plural="{{ module.cross_noun_plural }}">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
-        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-        <input type="text" class="dt-search" placeholder="Search {{ module.cross_noun }}es…" autocomplete="off">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search {{ module.cross_noun_plural }}…" autocomplete="off" aria-label="Search">
+      </div>
+      <div class="dt-chips" role="group" aria-label="Show">
+        <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">All <span class="dt-chip-count">{{ crosses|length }}</span></button>
+        <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false">Open <span class="dt-chip-count">{{ crosses | rejectattr('collected_on') | list | length }}</span></button>
       </div>
       <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
-              data-org-edit="cross-dialog" data-org-payload='{{ {'code': next_code, 'set_up_on': today, 'cross_type': 'pair'} | tojson }}'>
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.cross_noun }}
+              data-org-edit="cross-dialog" data-org-payload="{{ {'code': next_code, 'set_up_on': today, 'cross_type': 'pair', 'attrs': attr_defaults.get('cross', {})} | tojson | forceescape }}">
+        {{ icon('plus') }} New {{ module.cross_noun }}
       </button>
     </div>
     <div class="dt-scroll">
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 130px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Code</span></th>
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Type</span></th>
-            <th style="width: 170px;"><span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}Male / sire</span></th>
-            <th style="width: 170px;"><span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}Female / dam</span></th>
-            {% if module.has('housing') %}
-              <th style="width: 120px;"><span class="dt-col-head">{{ icon(housing_icon, 'dt-col-icon') }}{{ module.housing_noun|title }}</span></th>
-            {% endif %}
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Set up</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Collected</span></th>
+            {{ th('code', 'Code', 'barcode', '130px') }}
+            {{ th('type', 'Type', 'tag', '90px') }}
+            {{ th('sire', 'Male / sire', 'male', '170px') }}
+            {{ th('dam', 'Female / dam', 'female', '170px') }}
+            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '120px') }}{% endif %}
+            {{ th('set_up', 'Set up', 'calendar', '110px') }}
+            {{ th('collected', 'Collected', 'calendar', '110px') }}
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
-            <th style="width: 78px;"></th>
+            {{ th('owner', 'Owner', 'user', '96px') }}
+            <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {% for cross in crosses %}
             {% set attrs = cross.attrs_dict %}
-            <tr data-id="{{ cross.id }}" class="{% if cross.collected_on %}opacity-60{% endif %}">
-              <td><span class="dt-row-name">{{ cross.code }}</span></td>
+            {% set locked = cross.owner and cross.owner != me and current_user.role != 'admin' %}
+            {% set sire = cross.sire_label or (cross.sire_line.code if cross.sire_line else '') %}
+            {% set dam = cross.dam_label or (cross.dam_line.code if cross.dam_line else '') %}
+            <tr data-id="{{ cross.id }}" data-code="{{ cross.code }}" data-type="{{ cross.cross_type }}"
+                data-sire="{{ sire }}" data-dam="{{ dam }}" data-housing="{{ cross.housing.code if cross.housing else '' }}"
+                data-set_up="{{ cross.set_up_on or '' }}" data-collected="{{ cross.collected_on or '' }}" data-owner="{{ cross.owner }}"
+                data-active="{{ 'false' if cross.collected_on else 'true' }}"
+                class="{% if cross.collected_on %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+              <td>{{ sheet_ui.id_cell(cross.code, locked=locked, owner=cross.owner, noun=module.cross_noun) }}</td>
               <td><span class="badge badge-quiet">{{ cross.cross_type }}</span></td>
-              <td>{{ cross.sire_label or (cross.sire_line.code if cross.sire_line else '') }}</td>
-              <td>{{ cross.dam_label or (cross.dam_line.code if cross.dam_line else '') }}</td>
+              <td><span class="sheet-cell-text">{{ sire }}</span></td>
+              <td><span class="sheet-cell-text">{{ dam }}</span></td>
               {% if module.has('housing') %}
                 <td>{% if cross.housing %}<span class="ident">{{ cross.housing.code }}</span>{% endif %}</td>
               {% endif %}
-              <td>{{ cross.set_up_on or '' }}</td>
-              <td>{% if cross.collected_on %}{{ cross.collected_on }}{% else %}
+              <td><span class="sheet-cell-text">{{ cross.set_up_on or '' }}</span></td>
+              <td>{% if cross.collected_on %}<span class="sheet-cell-text">{{ cross.collected_on }}</span>{% else %}
                 <span class="dt-status" data-status="active">open</span>{% endif %}</td>
               {{ F.table_cells(own_fields, attrs) }}
               <td>{% if cross.owner %}{{ cross.owner | owner_badge }}{% endif %}</td>
-              <td>
+              <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <button type="button" class="row-icon-btn" title="Edit"
-                          data-org-edit="cross-dialog" data-org-payload='{{ {
-                            "id": cross.id, "code": cross.code, "cross_type": cross.cross_type,
-                            "housing_id_fk": cross.housing_id_fk,
-                            "sire_line_id_fk": cross.sire_line_id_fk, "dam_line_id_fk": cross.dam_line_id_fk,
-                            "sire_label": cross.sire_label, "dam_label": cross.dam_label,
-                            "set_up_on": cross.set_up_on.isoformat() if cross.set_up_on else "",
-                            "expected_on": cross.expected_on.isoformat() if cross.expected_on else "",
-                            "collected_on": cross.collected_on.isoformat() if cross.collected_on else "",
-                            "owner": cross.owner, "notes": cross.notes, "attrs": attrs } | tojson }}'>
-                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
-                  </button>
+                  <button type="button" class="row-icon-btn" title="{{ 'View' if locked else 'Edit' }}"
+                          data-org-edit="cross-dialog" data-org-payload="{{ {
+                            'id': cross.id, 'code': cross.code, 'cross_type': cross.cross_type,
+                            'housing_id_fk': cross.housing_id_fk,
+                            'sire_line_id_fk': cross.sire_line_id_fk, 'dam_line_id_fk': cross.dam_line_id_fk,
+                            'sire_label': cross.sire_label, 'dam_label': cross.dam_label,
+                            'set_up_on': cross.set_up_on.isoformat() if cross.set_up_on else '',
+                            'expected_on': cross.expected_on.isoformat() if cross.expected_on else '',
+                            'collected_on': cross.collected_on.isoformat() if cross.collected_on else '',
+                            'owner': cross.owner, 'notes': cross.notes, 'attrs': attrs, 'locked': locked } | tojson | forceescape }}">{{ icon('eye' if locked else 'edit') }}</button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='cross', row_id=cross.id) }}"
-                        onsubmit="return confirm('Delete {{ cross.code }}?')">
-                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+                        data-confirm="Delete {{ cross.code }}?">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete" {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="11">No {{ module.cross_noun }}es recorded yet.</td></tr>
+            <tr><td class="dt-empty" colspan="12"><span class="dt-empty-msg">No {{ module.cross_noun_plural }} recorded yet. Use <strong>New {{ module.cross_noun }}</strong> to set one up.</span></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    <div class="dt-bottom-bar"><span class="dt-bottom-count dt-count">{{ crosses|length }} {{ module.cross_noun if crosses|length == 1 else module.cross_noun_plural }}</span></div>
   </section>
 
   <dialog id="cross-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
       <h3>{{ module.cross_noun|capitalize }}</h3>
-      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_cross', key=module.key) }}"
           class="modal-body modal-grid" data-entity-form>
       <input type="hidden" name="id">
+      <input type="hidden" name="_full" value="1">
+      {{ locked_note() }}
       <label class="field-label">Code<input name="code" placeholder="auto"></label>
       <label class="field-label">Type
         <select name="cross_type">
@@ -682,38 +802,18 @@
         </span>
       </label>
       {% if module.has('lines') %}
-        <label class="field-label">Male {{ module.line_noun }}
-          <select name="sire_line_id_fk">
-            <option value="">—</option>
-            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}</option>{% endfor %}
-          </select>
-        </label>
-        <label class="field-label">Female {{ module.line_noun }}
-          <select name="dam_line_id_fk">
-            <option value="">—</option>
-            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}</option>{% endfor %}
-          </select>
-        </label>
+        <label class="field-label">Male {{ module.line_noun }}<select name="sire_line_id_fk">{{ line_options() }}</select></label>
+        <label class="field-label">Female {{ module.line_noun }}<select name="dam_line_id_fk">{{ line_options() }}</select></label>
       {% endif %}
       <label class="field-label">Male label<input name="sire_label" placeholder="animal or {{ module.housing_noun }} ID"></label>
       <label class="field-label">Female label<input name="dam_label" placeholder="animal or {{ module.housing_noun }} ID"></label>
       {% if module.has('housing') %}
-        <label class="field-label">{{ module.housing_noun|title }}
-          <select name="housing_id_fk">
-            <option value="">—</option>
-            {% for unit in housing_units %}<option value="{{ unit.id }}">{{ unit.code }}</option>{% endfor %}
-          </select>
-        </label>
+        <label class="field-label">{{ module.housing_noun|capitalize }}<select name="housing_id_fk">{{ housing_options() }}</select></label>
       {% endif %}
       <label class="field-label">Set up on<input type="date" name="set_up_on"></label>
       <label class="field-label">Expected<input type="date" name="expected_on"></label>
       <label class="field-label">Collected<input type="date" name="collected_on"></label>
-      <label class="field-label">Owner
-        <select name="owner">
-          <option value="">—</option>
-          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
-        </select>
-      </label>
+      <label class="field-label">Owner<select name="owner">{{ owner_options() }}</select></label>
       {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
       <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
       <button type="submit">Save</button>
@@ -726,98 +826,96 @@
    ===================================================================== #}
 {% if active_view == 'cohorts' %}
   {% set own_fields = fields.get('cohort', []) %}
-  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-cohorts">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-cohorts-v2"
+           data-noun="{{ module.cohort_noun }}" data-noun-plural="{{ module.cohort_noun_plural }}">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
-        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-        <input type="text" class="dt-search" placeholder="Search {{ module.cohort_noun_plural }}…" autocomplete="off">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search {{ module.cohort_noun_plural }}…" autocomplete="off" aria-label="Search">
       </div>
       <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
-              data-org-edit="cohort-dialog" data-org-payload='{{ {'code': next_code, 'birth_on': today} | tojson }}'>
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New {{ module.cohort_noun }}
+              data-org-edit="cohort-dialog" data-org-payload="{{ {'code': next_code, 'birth_on': today, 'attrs': attr_defaults.get('cohort', {})} | tojson | forceescape }}">
+        {{ icon('plus') }} New {{ module.cohort_noun }}
       </button>
     </div>
     <div class="dt-scroll">
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 140px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Code</span></th>
-            {% if module.has('lines') %}
-              <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
-            {% endif %}
-            <th style="width: 120px;"><span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born</span></th>
-            <th style="width: 70px;"><span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age</span></th>
-            {% if module.has('nursery') %}
-              <th style="width: 110px;"><span class="dt-col-head">{{ icon('layers', 'dt-col-icon') }}Stage</span></th>
-            {% endif %}
-            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Initial</span></th>
-            <th style="width: 80px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Now</span></th>
+            {{ th('code', 'Code', 'barcode', '140px') }}
+            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}{% endif %}
+            {{ th('born', 'Born', 'born', '120px') }}
+            {{ th('age', 'Age', 'age', '70px') }}
+            {% if module.has('nursery') %}{{ th('stage', 'Stage', 'layers', '110px') }}{% endif %}
+            {{ th('initial', 'Initial', 'count', '80px') }}
+            {{ th('now', 'Now', 'count', '80px') }}
             {{ F.table_headers(own_fields) }}
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
-            <th style="width: 78px;"></th>
+            {{ th('owner', 'Owner', 'user', '96px') }}
+            <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {% for cohort in cohorts %}
             {% set attrs = cohort.attrs_dict %}
-            <tr data-id="{{ cohort.id }}">
-              <td><span class="dt-row-name">{{ cohort.code }}</span></td>
-              {% if module.has('lines') %}<td>{{ cohort.line.code if cohort.line else '' }}</td>{% endif %}
-              <td>{{ cohort.birth_on or '' }}</td>
-              <td>{{ age_label(module_row, cohort.birth_on) }}</td>
+            {% set locked = cohort.owner and cohort.owner != me and current_user.role != 'admin' %}
+            <tr data-id="{{ cohort.id }}" data-code="{{ cohort.code }}" data-line="{{ cohort.line.code if cohort.line else '' }}"
+                data-born="{{ cohort.birth_on or '' }}" data-age="{{ (today_date - cohort.birth_on).days if cohort.birth_on else '' }}" data-stage="{{ cohort.stage }}"
+                data-initial="{{ cohort.count_initial }}" data-now="{{ cohort.count_current }}" data-owner="{{ cohort.owner }}"
+                class="{% if locked %}is-locked{% endif %}">
+              <td>{{ sheet_ui.id_cell(cohort.code, locked=locked, owner=cohort.owner, noun=module.cohort_noun) }}</td>
+              {% if module.has('lines') %}<td><span class="sheet-cell-text">{{ cohort.line.code if cohort.line else '' }}</span></td>{% endif %}
+              <td><span class="sheet-cell-text">{{ cohort.birth_on or '' }}</span></td>
+              <td class="sheet-num">{{ age_label(module_row, cohort.birth_on) }}</td>
               {% if module.has('nursery') %}
                 <td>{% if cohort.stage %}<span class="badge badge-quiet">{{ cohort.stage }}</span>{% endif %}</td>
               {% endif %}
-              <td>{{ cohort.count_initial }}</td>
-              <td class="font-medium">{{ cohort.count_current }}</td>
+              <td class="sheet-num">{{ cohort.count_initial }}</td>
+              <td class="sheet-num font-medium">{{ cohort.count_current }}</td>
               {{ F.table_cells(own_fields, attrs) }}
               <td>{% if cohort.owner %}{{ cohort.owner | owner_badge }}{% endif %}</td>
-              <td>
+              <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <button type="button" class="row-icon-btn" title="Edit"
-                          data-org-edit="cohort-dialog" data-org-payload='{{ {
-                            "id": cohort.id, "code": cohort.code, "line_id_fk": cohort.line_id_fk,
-                            "cross_id_fk": cohort.cross_id_fk,
-                            "birth_on": cohort.birth_on.isoformat() if cohort.birth_on else "",
-                            "stage": cohort.stage, "location_id_fk": cohort.location_id_fk,
-                            "count_initial": cohort.count_initial, "count_current": cohort.count_current,
-                            "owner": cohort.owner, "notes": cohort.notes, "attrs": attrs } | tojson }}'>
-                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
-                  </button>
+                  <button type="button" class="row-icon-btn" title="{{ 'View' if locked else 'Edit' }}"
+                          data-org-edit="cohort-dialog" data-org-payload="{{ {
+                            'id': cohort.id, 'code': cohort.code, 'line_id_fk': cohort.line_id_fk,
+                            'cross_id_fk': cohort.cross_id_fk,
+                            'birth_on': cohort.birth_on.isoformat() if cohort.birth_on else '',
+                            'stage': cohort.stage, 'location_id_fk': cohort.location_id_fk,
+                            'count_initial': cohort.count_initial, 'count_current': cohort.count_current,
+                            'owner': cohort.owner, 'notes': cohort.notes, 'attrs': attrs, 'locked': locked } | tojson | forceescape }}">{{ icon('eye' if locked else 'edit') }}</button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='cohort', row_id=cohort.id) }}"
-                        onsubmit="return confirm('Delete {{ cohort.code }}?')">
-                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+                        data-confirm="Delete {{ cohort.code }}?">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete" {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="11">
-              No {{ module.cohort_noun_plural }} yet. Birth date drives every derived date, so record it here.
-            </td></tr>
+            <tr><td class="dt-empty" colspan="12"><span class="dt-empty-msg">
+              No {{ module.cohort_noun_plural }} yet. Use <strong>New {{ module.cohort_noun }}</strong>: its birth date drives every derived date.
+            </span></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+    <div class="dt-bottom-bar"><span class="dt-bottom-count dt-count">{{ cohorts|length }} {{ module.cohort_noun if cohorts|length == 1 else module.cohort_noun_plural }}</span></div>
   </section>
 
   <dialog id="cohort-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
       <h3>{{ module.cohort_noun|capitalize }}</h3>
-      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_cohort', key=module.key) }}"
           class="modal-body modal-grid" data-entity-form>
       <input type="hidden" name="id">
+      <input type="hidden" name="_full" value="1">
+      {{ locked_note() }}
       <label class="field-label">Code<input name="code" placeholder="auto"></label>
       {% if module.has('lines') %}
-        <label class="field-label">{{ module.line_noun|title }}
-          <select name="line_id_fk">
-            <option value="">—</option>
-            {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}</option>{% endfor %}
-          </select>
-        </label>
+        <label class="field-label">{{ module.line_noun|capitalize }}<select name="line_id_fk">{{ line_options() }}</select></label>
       {% endif %}
       {% if module.has('crosses') %}
         <label class="field-label">From {{ module.cross_noun }}
@@ -830,22 +928,13 @@
       <label class="field-label">Born / fertilised<input type="date" name="birth_on"></label>
       {% if module.has('nursery') %}
         <label class="field-label">Stage
-          <select name="stage">
-            <option value="">—</option>
-            {% for stage in ['embryo', 'larva', 'nursery', 'juvenile', 'graduated', 'adult'] %}
-              <option value="{{ stage }}">{{ stage }}</option>
-            {% endfor %}
-          </select>
+          <select name="stage">{{ choice_options(['embryo', 'larva', 'nursery', 'juvenile', 'graduated', 'adult'], None) }}</select>
         </label>
+        <label class="field-label">{{ module.container_noun|capitalize }}<select name="location_id_fk">{{ location_options() }}</select></label>
       {% endif %}
       <label class="field-label">Initial count<input type="number" name="count_initial" min="0"></label>
       <label class="field-label">Current count<input type="number" name="count_current" min="0"></label>
-      <label class="field-label">Owner
-        <select name="owner">
-          <option value="">—</option>
-          {% for username in usernames %}<option value="{{ username }}">{{ username }}</option>{% endfor %}
-        </select>
-      </label>
+      <label class="field-label">Owner<select name="owner">{{ owner_options() }}</select></label>
       {% for field in own_fields %}{{ F.field_input(field, {}, lines, usernames) }}{% endfor %}
       <label class="field-label col-span-full">Notes<textarea name="notes" rows="2"></textarea></label>
       <button type="submit">Save</button>
@@ -859,7 +948,7 @@
 {% if active_view == 'schedule' %}
   <section class="card">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar-clock"></use></svg> What's due</h2>
+      <h2>{{ icon('calendar-clock') }} What's due</h2>
       <div class="flex items-center gap-1.5">
         {% for days in [7, 21, 60] %}
           <a class="btn btn-sm {% if horizon == days %}btn-primary{% endif %}"
@@ -886,14 +975,14 @@
             {% endif %}
             {% if item.assigned_to %}{{ item.assigned_to | owner_badge }}{% endif %}
             <form method="post" action="{{ url_for('organisms.complete_due', key=module.key, due_id=item.id) }}" class="shrink-0">
-              <button type="submit" class="btn btn-sm"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg> Done</button>
+              <button type="submit" class="btn btn-sm" {% if not item.editable %}disabled title="Only the owner or an admin can mark this done"{% endif %}>{{ icon('check') }} Done</button>
             </form>
           </div>
         {% endfor %}
       </div>
     {% else %}
       <div class="empty-state">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>
+        {{ icon('check') }}
         <p>Nothing due in the next {{ horizon }} days.</p>
       </div>
     {% endif %}
@@ -901,7 +990,7 @@
 
   <section class="card mt-3">
     <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#repeat"></use></svg> Rules generating this list</h2>
+      <h2>{{ icon('repeat') }} Rules generating this list</h2>
       <a class="card-head-link" href="{{ url_for('organisms.module', key=module.key, view='settings') }}">Edit rules</a>
     </header>
     {% if module.schedule_rules %}
@@ -915,7 +1004,7 @@
                 <td>{{ rule.applies_to }}</td>
                 <td><span class="ident">{{ rule.anchor }}</span></td>
                 <td>+{{ rule.offset_days }}d</td>
-                <td>{% if rule.recurring %}<svg class="icon size-3.5 text-ok-600" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% endif %}</td>
+                <td>{% if rule.recurring %}{{ icon('check', 'size-3.5 text-ok-600') }}{% endif %}</td>
                 <td>
                   {% if rule.temp_offsets %}
                     {% for temp, days in rule.temp_offsets.items() %}
@@ -929,7 +1018,7 @@
         </table>
       </div>
     {% else %}
-      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#repeat"></use></svg><p>No schedule rules defined.</p></div>
+      <div class="empty-state">{{ icon('repeat') }}<p>No schedule rules defined.</p></div>
     {% endif %}
   </section>
 {% endif %}
@@ -940,14 +1029,11 @@
 {% if active_view == 'environment' %}
   <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
     <section class="card self-start">
-      <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Log a reading</h2></header>
+      <header class="card-head"><h2>{{ icon('plus') }} Log a reading</h2></header>
       <form method="post" action="{{ url_for('organisms.save_reading', key=module.key) }}"
             class="flex flex-col gap-3 p-4">
-        <label class="field-label">{{ module.container_noun|title }}
-          <select name="location_id_fk" required>
-            <option value="">—</option>
-            {% for loc in locations %}<option value="{{ loc.id }}">{{ loc.name }}</option>{% endfor %}
-          </select>
+        <label class="field-label">{{ module.container_noun|capitalize }}
+          <select name="location_id_fk" required>{{ location_options() }}</select>
         </label>
         {% for metric in metrics %}
           <label class="field-label">{{ metric.label }}{% if metric.unit %} ({{ metric.unit }}){% endif %}
@@ -961,7 +1047,7 @@
 
     <section class="data-table-card">
       <header class="card-head">
-        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#droplet"></use></svg> Recent readings</h2>
+        <h2>{{ icon('droplet') }} Recent readings</h2>
         <span class="badge badge-quiet">{{ readings|length }}</span>
       </header>
       {% if readings %}
@@ -970,7 +1056,7 @@
             <thead>
               <tr>
                 <th style="width: 160px;">When</th>
-                <th style="width: 150px;">{{ module.container_noun|title }}</th>
+                <th style="width: 150px;">{{ module.container_noun|capitalize }}</th>
                 <th style="width: 140px;">Metric</th>
                 <th style="width: 110px;">Value</th>
                 <th style="width: 90px;">By</th>
@@ -996,7 +1082,7 @@
           </table>
         </div>
       {% else %}
-        <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#droplet"></use></svg><p>No readings logged yet.</p></div>
+        <div class="empty-state">{{ icon('droplet') }}<p>No readings logged yet.</p></div>
       {% endif %}
     </section>
   </div>
@@ -1006,35 +1092,38 @@
    PRESERVATION
    ===================================================================== #}
 {% if active_view == 'preservation' %}
-  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-lots">
+  <section class="data-table-card sheet" data-table-id="org-{{ module.key }}-lots-v2" data-noun="lot" data-noun-plural="lots">
     <div class="dt-toolbar">
       <div class="dt-toolbar-search">
-        <svg class="icon search-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-        <input type="text" class="dt-search" placeholder="Search frozen lots…" autocomplete="off">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search frozen lots…" autocomplete="off" aria-label="Search">
       </div>
       <div class="dt-toolbar-spacer"></div>
+      {{ sheet_ui.tools() }}
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
-              data-org-edit="lot-dialog" data-org-payload='{{ {'frozen_on': today} | tojson }}'>
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Freeze a lot
+              data-org-edit="lot-dialog" data-org-payload="{{ {'frozen_on': today} | tojson | forceescape }}">
+        {{ icon('plus') }} Freeze a lot
       </button>
     </div>
     <div class="dt-scroll">
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th style="width: 140px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Lot</span></th>
-            <th style="width: 150px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ module.line_noun|title }}</span></th>
-            <th style="width: 150px;"><span class="dt-col-head">{{ icon('flask-vial', 'dt-col-icon') }}Method</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('snowflake', 'dt-col-icon') }}Frozen</span></th>
-            <th style="width: 110px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Vials left</span></th>
-            <th style="width: 170px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Storage</span></th>
-            <th style="width: 150px;"><span class="dt-col-head">{{ icon('heart-pulse', 'dt-col-icon') }}Recovery</span></th>
-            <th style="width: 78px;"></th>
+            {{ th('code', 'Lot', 'barcode', '140px') }}
+            {{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}
+            {{ th('method', 'Method', 'flask-vial', '150px') }}
+            {{ th('frozen', 'Frozen', 'snowflake', '110px') }}
+            {{ th('left', 'Vials left', 'count', '110px') }}
+            {{ th('storage', 'Storage', 'box', '170px') }}
+            {{ th('recovery', 'Recovery', 'heart-pulse', '150px') }}
+            <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {% for lot in lots %}
-            <tr data-id="{{ lot.id }}">
+            <tr data-id="{{ lot.id }}" data-code="{{ lot.code }}" data-line="{{ lot.line.code if lot.line else '' }}" data-method="{{ lot.method }}"
+                data-frozen="{{ lot.frozen_on or '' }}" data-left="{{ lot.vials_remaining }}" data-storage="{{ lot.storage_text }}"
+                data-recovery="{{ '' if lot.recovery_ok is none else ('ok' if lot.recovery_ok else 'failed') }}">
               <td><span class="dt-row-name">{{ lot.code or ('#' ~ lot.id) }}</span></td>
               <td>{{ lot.line.code if lot.line else '' }}</td>
               <td>{{ lot.method }}</td>
@@ -1050,32 +1139,30 @@
                   <span class="badge badge-danger">failed</span>
                 {% endif %}
               </td>
-              <td>
+              <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
                   <button type="button" class="row-icon-btn" title="Edit"
-                          data-org-edit="lot-dialog" data-org-payload='{{ {
-                            "id": lot.id, "line_id_fk": lot.line_id_fk, "code": lot.code,
-                            "method": lot.method,
-                            "frozen_on": lot.frozen_on.isoformat() if lot.frozen_on else "",
-                            "vial_count": lot.vial_count, "vials_remaining": lot.vials_remaining,
-                            "storage_text": lot.storage_text, "position": lot.position,
-                            "recovery_tested_on": lot.recovery_tested_on.isoformat() if lot.recovery_tested_on else "",
-                            "recovery_ok": ("" if lot.recovery_ok is none else ("yes" if lot.recovery_ok else "no")),
-                            "notes": lot.notes } | tojson }}'>
-                    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#edit"></use></svg>
-                  </button>
+                          data-org-edit="lot-dialog" data-org-payload="{{ {
+                            'id': lot.id, 'line_id_fk': lot.line_id_fk, 'code': lot.code,
+                            'method': lot.method,
+                            'frozen_on': lot.frozen_on.isoformat() if lot.frozen_on else '',
+                            'vial_count': lot.vial_count, 'vials_remaining': lot.vials_remaining,
+                            'storage_text': lot.storage_text, 'position': lot.position,
+                            'recovery_tested_on': lot.recovery_tested_on.isoformat() if lot.recovery_tested_on else '',
+                            'recovery_ok': ('' if lot.recovery_ok is none else ('yes' if lot.recovery_ok else 'no')),
+                            'notes': lot.notes } | tojson | forceescape }}">{{ icon('edit') }}</button>
                   <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='lot', row_id=lot.id) }}"
-                        onsubmit="return confirm('Delete this lot?')">
-                    <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
+                        data-confirm="Delete lot {{ lot.code or ('#' ~ lot.id) }}?">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete">{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="8">
-              Nothing frozen yet. A lot records how many vials went in, where they are, and
-              whether a test thaw actually came back.
-            </td></tr>
+            <tr><td class="dt-empty" colspan="8"><span class="dt-empty-msg">
+              Nothing frozen yet. Use <strong>Freeze a lot</strong> to record how many vials went in, where they are, and
+              whether a test thaw came back.
+            </span></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -1085,16 +1172,13 @@
   <dialog id="lot-dialog" class="mouse-modal">
     <form method="dialog" class="modal-topbar">
       <h3>Frozen lot</h3>
-      <button type="submit" class="modal-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#close"></use></svg></button>
+      <button type="submit" class="modal-close" aria-label="Close">{{ icon('close') }}</button>
     </form>
     <form method="post" action="{{ url_for('organisms.save_lot', key=module.key) }}"
           class="modal-body modal-grid" data-entity-form>
       <input type="hidden" name="id">
-      <label class="field-label">{{ module.line_noun|title }}
-        <select name="line_id_fk" required>
-          <option value="">—</option>
-          {% for line in lines %}<option value="{{ line.id }}">{{ line.code }}{% if line.name %} · {{ line.name }}{% endif %}</option>{% endfor %}
-        </select>
+      <label class="field-label">{{ module.line_noun|capitalize }}
+        <select name="line_id_fk" required>{{ line_options() }}</select>
       </label>
       <label class="field-label">Lot code<input name="code" placeholder="optional"></label>
       <label class="field-label">Method
@@ -1104,7 +1188,9 @@
       </label>
       <label class="field-label">Frozen on<input type="date" name="frozen_on"></label>
       <label class="field-label">Vials frozen<input type="number" name="vial_count" min="0"></label>
-      <label class="field-label">Vials remaining<input type="number" name="vials_remaining" min="0"></label>
+      <label class="field-label">Vials remaining<input type="number" name="vials_remaining" min="0">
+        <span class="field-hint normal-case tracking-normal">No more than were frozen.</span>
+      </label>
       <label class="field-label">Storage<input name="storage_text" placeholder="e.g. Freezer B, LN2 tank 2"></label>
       <label class="field-label">Position<input name="position" placeholder="rack / box / slot"></label>
       <label class="field-label">Recovery tested<input type="date" name="recovery_tested_on"></label>
@@ -1126,11 +1212,16 @@
    ===================================================================== #}
 {% if active_view == 'settings' %}
   <div class="grid max-w-[1000px] grid-cols-1 gap-3">
+    {% if not can_configure %}
+      <p class="org-locked-note">{{ icon('lock') }} <span>Only an admin or {{ module_row.created_by or 'whoever created it' }} can change how this database is set up. You can still add and edit your own records.</span></p>
+    {% endif %}
 
     {# ---- Identity & vocabulary ---- #}
     <form method="post" action="{{ url_for('organisms.configure', key=module.key) }}" class="card">
+      <input type="hidden" name="_full" value="1">
+      <fieldset {% if not can_configure %}disabled{% endif %} class="contents">
       <header class="card-head">
-        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#type"></use></svg> Vocabulary &amp; behaviour</h2>
+        <h2>{{ icon('type') }} Vocabulary &amp; behaviour</h2>
         <span class="badge badge-quiet">{{ module.key }}</span>
       </header>
       <div class="p-4">
@@ -1152,6 +1243,7 @@
           <label class="field-label">Birth cohort<input name="cohort_noun" value="{{ module.cohort_noun }}"></label>
           <label class="field-label">Birth cohorts<input name="cohort_noun_plural" value="{{ module.cohort_noun_plural }}"></label>
           <label class="field-label">Breeding event<input name="cross_noun" value="{{ module.cross_noun }}"></label>
+          <label class="field-label">Breeding events<input name="cross_noun_plural" value="{{ module.cross_noun_plural }}"></label>
 
           <label class="field-label">Counted as
             <select name="identity_mode">
@@ -1168,7 +1260,7 @@
             </select>
           </label>
 
-          <label class="field-label sm:col-span-2 lg:col-span-3">{{ module.housing_noun|title }} purposes
+          <label class="field-label sm:col-span-2 lg:col-span-3">{{ module.housing_noun|capitalize }} purposes
             <input name="housing_purposes" value="{{ module.housing_purposes | join(', ') }}">
             <span class="field-hint normal-case tracking-normal">Comma-separated.</span>
           </label>
@@ -1177,6 +1269,13 @@
           </label>
           <label class="field-label">Sexes
             <input name="sexes" value="{{ module.sexes | join(', ') }}">
+          </label>
+          <label class="field-label sm:col-span-2 lg:col-span-3">Statuses that end a record
+            <input name="dead_statuses" value="{{ module.dead_statuses | join(', ') }}">
+            <span class="field-hint normal-case tracking-normal">
+              Choosing one of these sets the date died / removed to today (if empty) and stops the record counting as alive;
+              changing back to any other status clears it again.
+            </span>
           </label>
         </div>
 
@@ -1220,12 +1319,13 @@
       <footer class="flex justify-end border-t border-sand-100 bg-sand-50/60 px-4 py-3">
         <button type="submit" class="btn btn-primary">Save configuration</button>
       </footer>
+      </fieldset>
     </form>
 
     {# ---- Custom fields ---- #}
     <section class="card">
       <header class="card-head">
-        <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#columns"></use></svg> Fields</h2>
+        <h2>{{ icon('columns') }} Fields</h2>
         <span class="badge badge-quiet">
           {{ (fields.get('organism', []) + fields.get('housing', []) + fields.get('line', [])
               + fields.get('cohort', []) + fields.get('cross', []))|length }} defined
@@ -1245,24 +1345,27 @@
             <thead>
               <tr><th style="width:130px;">On</th><th>Label</th><th style="width:110px;">Key</th>
                   <th style="width:110px;">Type</th><th style="width:150px;">Choices</th>
-                  <th style="width:80px;">In table</th><th style="width:50px;"></th></tr>
+                  <th style="width:90px;">Default</th><th style="width:80px;">In table</th><th style="width:50px;"></th></tr>
             </thead>
             <tbody>
               {% for entity_label, field in all_fields %}
                 <tr>
                   <td><span class="badge badge-quiet">{{ entity_label }}</span></td>
-                  <td class="font-medium">{{ field.label }}
+                  <td class="font-medium">{{ field.label }}{% if field.required %} <span class="text-danger-600">*</span>{% endif %}
                     {% if field.help_text %}<span class="block text-[11px] text-muted">{{ field.help_text }}</span>{% endif %}
                   </td>
                   <td><span class="ident">{{ field.key }}</span></td>
                   <td>{{ field.field_type }}</td>
                   <td class="text-muted">{{ field.options_list | join(', ') }}</td>
-                  <td>{% if field.show_in_table %}<svg class="icon size-3.5 text-ok-600" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% endif %}</td>
+                  <td class="text-muted">{{ field.default_value }}</td>
+                  <td>{% if field.show_in_table %}{{ icon('check', 'size-3.5 text-ok-600') }}{% endif %}</td>
                   <td>
-                    <form method="post" action="{{ url_for('organisms.delete_field', key=module.key, field_id=field.id) }}"
-                          onsubmit="return confirm('Remove {{ field.label }}? Stored values stay in the database.')">
-                      <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
-                    </form>
+                    {% if can_configure %}
+                      <form method="post" action="{{ url_for('organisms.delete_field', key=module.key, field_id=field.id) }}"
+                            data-confirm="Remove {{ field.label }}? Stored values stay in the database.">
+                        <button type="submit" class="row-icon-btn danger-button" title="Remove">{{ icon('trash') }}</button>
+                      </form>
+                    {% endif %}
                   </td>
                 </tr>
               {% endfor %}
@@ -1270,39 +1373,43 @@
           </table>
         </div>
       {% else %}
-        <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#columns"></use></svg><p>No extra fields yet.</p></div>
+        <div class="empty-state">{{ icon('columns') }}<p>No extra fields yet.</p></div>
       {% endif %}
 
-      <form method="post" action="{{ url_for('organisms.add_field', key=module.key) }}"
-            class="modal-grid border-t border-sand-100 bg-sand-50/60 p-4">
-        <label class="field-label">Attach to
-          <select name="entity">
-            {% for value, label in field_entities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-          </select>
-        </label>
-        <label class="field-label">Label<input name="label" required placeholder="e.g. Balancers"></label>
-        <label class="field-label">Type
-          <select name="field_type">
-            {% for ft in field_types %}<option value="{{ ft.key }}">{{ ft.label }} — {{ ft.blurb }}</option>{% endfor %}
-          </select>
-        </label>
-        <label class="field-label">Choices
-          <input name="options" placeholder="one, two, three">
-          <span class="field-hint normal-case tracking-normal">Only for “Choice”.</span>
-        </label>
-        <label class="field-label">Default<input name="default_value"></label>
-        <label class="field-label">Hint<input name="help_text"></label>
-        <label class="inline-check"><input type="checkbox" name="show_in_table" value="1"> Show as a table column</label>
-        <label class="inline-check"><input type="checkbox" name="required" value="1"> Required</label>
-        <button type="submit">Add field</button>
-      </form>
+      {% if can_configure %}
+        <form method="post" action="{{ url_for('organisms.add_field', key=module.key) }}"
+              class="modal-grid border-t border-sand-100 bg-sand-50/60 p-4">
+          <label class="field-label">Attach to
+            <select name="entity">
+              {% for value, label in field_entities %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="field-label">Label<input name="label" required placeholder="e.g. Balancers"></label>
+          <label class="field-label">Type
+            <select name="field_type">
+              {% for ft in field_types %}<option value="{{ ft.key }}">{{ ft.label }} — {{ ft.blurb }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="field-label">Choices
+            <input name="options" placeholder="one, two, three">
+            <span class="field-hint normal-case tracking-normal">Only for “Choice”.</span>
+          </label>
+          <label class="field-label">Default<input name="default_value">
+            <span class="field-hint normal-case tracking-normal">Filled in on new records.</span>
+          </label>
+          <label class="field-label">Hint<input name="help_text"></label>
+          <label class="inline-check"><input type="checkbox" name="show_in_table" value="1"> Show as a table column</label>
+          <label class="inline-check"><input type="checkbox" name="required" value="1"> Required</label>
+          <button type="submit">Add field</button>
+        </form>
+      {% endif %}
     </section>
 
     {# ---- Schedule rules ---- #}
     {% if module.has('schedule') %}
       <section class="card">
         <header class="card-head">
-          <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar-clock"></use></svg> Schedule rules</h2>
+          <h2>{{ icon('calendar-clock') }} Schedule rules</h2>
           <span class="badge badge-quiet">{{ module.schedule_rules|length }}</span>
         </header>
 
@@ -1321,17 +1428,19 @@
                     <td>{{ rule.applies_to }}</td>
                     <td><span class="ident">{{ rule.anchor }}</span></td>
                     <td>+{{ rule.offset_days }}d</td>
-                    <td>{% if rule.recurring %}<svg class="icon size-3.5 text-ok-600" aria-hidden="true"><use href="/static/icons.svg#check"></use></svg>{% endif %}</td>
+                    <td>{% if rule.recurring %}{{ icon('check', 'size-3.5 text-ok-600') }}{% endif %}</td>
                     <td>
                       {% for temp, days in (rule.temp_offsets or {}).items() %}
                         <span class="badge badge-quiet">{{ temp }}→{{ days }}d</span>
                       {% endfor %}
                     </td>
                     <td>
-                      <form method="post" action="{{ url_for('organisms.delete_rule', key=module.key, rule_key=rule.key) }}"
-                            onsubmit="return confirm('Remove this rule?')">
-                        <button type="submit" class="row-icon-btn danger-button"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
-                      </form>
+                      {% if can_configure %}
+                        <form method="post" action="{{ url_for('organisms.delete_rule', key=module.key, rule_key=rule.key) }}"
+                              data-confirm="Remove the rule {{ rule.label }}?">
+                          <button type="submit" class="row-icon-btn danger-button" title="Remove">{{ icon('trash') }}</button>
+                        </form>
+                      {% endif %}
                     </td>
                   </tr>
                 {% endfor %}
@@ -1339,52 +1448,57 @@
             </table>
           </div>
         {% else %}
-          <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar-clock"></use></svg><p>No rules yet.</p></div>
+          <div class="empty-state">{{ icon('calendar-clock') }}<p>No rules yet.</p></div>
         {% endif %}
 
-        <form method="post" action="{{ url_for('organisms.save_rule', key=module.key) }}"
-              class="modal-grid border-t border-sand-100 bg-sand-50/60 p-4">
-          <label class="field-label">Label<input name="label" required placeholder="e.g. Flip to fresh food"></label>
-          <label class="field-label">Applies to
-            <select name="applies_to" id="rule-subject">
-              {% for subject in ['housing', 'cohort', 'line', 'organism'] %}
-                <option value="{{ subject }}">{{ subject }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label class="field-label">Counting from
-            <select name="anchor" id="rule-anchor">
-              {% for subject, anchors in schedule_anchors.items() %}
-                {% for value, label in anchors %}
-                  <option value="{{ value }}" data-subject="{{ subject }}">{{ label }}</option>
+        {% if can_configure %}
+          <form method="post" action="{{ url_for('organisms.save_rule', key=module.key) }}"
+                class="modal-grid border-t border-sand-100 bg-sand-50/60 p-4">
+            <label class="field-label">Label<input name="label" required placeholder="e.g. Flip to fresh food"></label>
+            <label class="field-label">Applies to
+              <select name="applies_to" id="rule-subject">
+                {% for subject in schedule_anchors.keys() %}
+                  <option value="{{ subject }}">{{ subject }}</option>
                 {% endfor %}
-              {% endfor %}
-            </select>
-          </label>
-          <label class="field-label">Days after<input type="number" name="offset_days" value="14" min="0" required></label>
-          <label class="field-label">Icon<input name="icon" value="calendar-clock"></label>
-          <label class="field-label">By temperature
-            <input name="temp_offsets" placeholder="18:28, 25:14">
-            <span class="field-hint normal-case tracking-normal">
-              Overrides the interval per °C — how one flip rule covers both incubators.
-            </span>
-          </label>
-          <label class="inline-check"><input type="checkbox" name="recurring" value="1"> Falls due again after completion</label>
-          <button type="submit">Add rule</button>
-        </form>
+              </select>
+            </label>
+            <label class="field-label">Counting from
+              <select name="anchor" id="rule-anchor">
+                {% for subject, anchors in schedule_anchors.items() %}
+                  {% for value, label in anchors %}
+                    <option value="{{ value }}" data-subject="{{ subject }}">{{ label }}</option>
+                  {% endfor %}
+                {% endfor %}
+              </select>
+              <span class="field-hint normal-case tracking-normal">
+                Completing a recurring item restarts “last …” dates at today; birth and set-up dates are never changed.
+              </span>
+            </label>
+            <label class="field-label">Days after<input type="number" name="offset_days" value="14" min="0" required></label>
+            <label class="field-label">Icon<input name="icon" value="calendar-clock"></label>
+            <label class="field-label">By temperature
+              <input name="temp_offsets" placeholder="18:28, 25:14">
+              <span class="field-hint normal-case tracking-normal">
+                Overrides the interval per °C — how one flip rule covers both incubators.
+              </span>
+            </label>
+            <label class="inline-check"><input type="checkbox" name="recurring" value="1"> Falls due again after completion</label>
+            <button type="submit">Add rule</button>
+          </form>
+        {% endif %}
       </section>
     {% endif %}
 
     {# ---- Danger zone ---- #}
-    {% if current_user.role == 'admin' %}
+    {% if can_configure %}
       <section class="card border-danger-200">
         <header class="card-head">
-          <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#warning"></use></svg> Delete this database</h2>
+          <h2>{{ icon('warning') }} Delete this database</h2>
         </header>
         <form method="post" action="{{ url_for('organisms.delete_module', key=module.key) }}"
               class="flex flex-wrap items-end gap-3 p-4">
           <p class="w-full text-[12.5px] leading-snug text-muted">
-            Removes the module and every record in it — {{ census.records }} {{ module.organism_noun_plural }},
+            Removes the module and every record in it — {{ census.all_records }} {{ module.organism_noun }} record{{ '' if census.all_records == 1 else 's' }},
             {{ census.housing }} {{ module.housing_noun_plural }}, {{ census.lines }} {{ module.line_noun_plural }}.
             This cannot be undone.
           </p>
@@ -1406,7 +1520,8 @@
   /* Fill a dialog's form from a row payload and open it.
    *
    * Inputs are matched by name, so the same helper drives every entity;
-   * `attrs` is the module's custom fields, which are named attr_<key>. */
+   * `attrs` is the module's custom fields, which are named attr_<key>.
+   * A payload with `locked` opens the dialog read-only. */
   function orgEdit(dialogId, payload) {
     const dialog = document.getElementById(dialogId);
     if (!dialog) return;
@@ -1414,15 +1529,24 @@
     if (!form) return;
 
     form.reset();
+    form.querySelectorAll('option[data-kept]').forEach((option) => option.remove());
     const set = (name, value) => {
       const element = form.elements[name];
       if (!element) return;
-      if (element.type === 'checkbox') element.checked = Boolean(value);
-      else element.value = (value === null || value === undefined) ? '' : value;
+      if (element.type === 'checkbox') { element.checked = Boolean(value) && value !== '0'; return; }
+      const text = (value === null || value === undefined) ? '' : String(value);
+      // A stored value no longer offered (a former member as owner, a status
+      // since removed from Configure) still shows as itself.
+      if (element.tagName === 'SELECT' && text && !Array.from(element.options).some((o) => o.value === text)) {
+        const kept = new Option(text, text);
+        kept.dataset.kept = '1';
+        element.add(kept);
+      }
+      element.value = text;
     };
 
     Object.entries(payload || {}).forEach(([key, value]) => {
-      if (key === 'attrs') return;
+      if (key === 'attrs' || key === 'locked') return;
       set(key, value);
     });
     Object.entries((payload && payload.attrs) || {}).forEach(([key, value]) => {
@@ -1435,26 +1559,51 @@
     const isNew = !(payload && payload.id);
     if (isNew && form.elements.owner && !(payload && payload.owner)) set('owner', CURRENT_USER);
 
+    const locked = Boolean(payload && payload.locked);
+    form.querySelectorAll('input:not([type=hidden]), select, textarea, button[type=submit]').forEach((el) => {
+      el.disabled = locked;
+    });
+    const note = form.querySelector('[data-locked-note]');
+    if (note) {
+      note.hidden = !locked;
+      const owner = payload && payload.owner;
+      note.querySelector('span').textContent = `Read only: ${owner ? owner + '’s' : 'someone else’s'} record. Ask them, or an admin, to change it.`;
+    }
+
     // "New vial" / "Edit vial" rather than a bare noun.
     const heading = dialog.querySelector('.modal-topbar h3');
     if (heading) {
       heading.dataset.base = heading.dataset.base || heading.textContent.trim();
       const base = heading.dataset.base;
-      heading.textContent = (isNew ? 'New ' : 'Edit ') + base.charAt(0).toLowerCase() + base.slice(1);
+      heading.textContent = (isNew ? 'New ' : (locked ? 'View ' : 'Edit ')) + base.charAt(0).toLowerCase() + base.slice(1);
     }
 
     dialog.showModal();
   }
 
   /* Buttons carry the dialog id and the row as data attributes. JSON is
-     never placed inside an onclick attribute: tojson leaves double quotes
-     unescaped, which silently broke every Add button. */
+     never placed inside an onclick attribute. */
   document.addEventListener('click', (event) => {
     const button = event.target.closest('[data-org-edit]');
     if (!button) return;
     let payload = {};
     try { payload = JSON.parse(button.dataset.orgPayload || '{}'); } catch (e) { console.error(e); }
     orgEdit(button.dataset.orgEdit, payload);
+  });
+
+  /* Status → date removed, as the mouse sheet does it: an ending status
+     fills today's date when empty; moving back out of one clears it. The
+     server applies the same rule; this keeps the row honest meanwhile. */
+  document.addEventListener('sheet:change', (event) => {
+    const input = event.detail && event.detail.input;
+    if (!input || input.name !== 'status' || input.dataset.deadValues === undefined) return;
+    const dead = input.dataset.deadValues.toLowerCase().split(',').map((v) => v.trim()).filter(Boolean);
+    const isDead = (v) => dead.includes(String(v || '').trim().toLowerCase());
+    const died = document.querySelector(`[form="${input.getAttribute('form')}"][name="death_on"]`);
+    if (!died) return;
+    if (isDead(input.value) && !died.value) died.value = new Date().toISOString().slice(0, 10);
+    else if (!isDead(input.value) && isDead(event.detail.previous)) died.value = '';
+    died.dataset.empty = died.value ? '0' : '1';
   });
 
   /* In the rule builder, only show anchors that belong to the chosen
@@ -1472,7 +1621,7 @@
         option.disabled = !match;
         if (match && !firstVisible) firstVisible = option;
       });
-      if (firstVisible && anchor.selectedOptions[0] && anchor.selectedOptions[0].hidden) {
+      if (firstVisible && (!anchor.selectedOptions[0] || anchor.selectedOptions[0].hidden)) {
         firstVisible.selected = true;
       }
     }
