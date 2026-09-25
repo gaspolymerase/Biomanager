@@ -10,7 +10,7 @@ from flask import Flask, Response, flash, g, get_flashed_messages, jsonify, redi
 from markupsafe import Markup, escape
 from werkzeug.datastructures import ImmutableMultiDict
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -140,17 +140,31 @@ with SessionLocal() as _db_session:
         security.announce_setup_code(app.logger)
 
 
-# When running as a frozen .app/.exe, uploads live in the user's data folder
-# (outside the read-only bundle). Flask's default /static/ handler only sees
-# files inside app/static/, so we add an explicit route that resolves
-# /static/uploads/<name> against the writable uploads dir. In dev, Flask's
-# static handler matches first so this is a no-op.
+# When running as a frozen .app/.exe, or with BIOMANAGER_UPLOADS_DIR set (a
+# server keeps uploads on its data volume), uploads live outside app/static/.
+# Flask's default /static/ handler only sees files inside app/static/, so an
+# explicit route resolves /static/uploads/<name> against the uploads dir; the
+# more specific rule wins over /static/<path>. security.guard_uploads keeps
+# both behind a login.
 from .paths import is_frozen, uploads_dir as _uploads_dir  # noqa: E402
 
-if is_frozen():
+if is_frozen() or os.environ.get("BIOMANAGER_UPLOADS_DIR", "").strip():
     @app.route("/static/uploads/<path:filename>")
     def _serve_uploads(filename):
         return send_from_directory(_uploads_dir(), filename)
+
+
+@app.route("/healthz")
+def healthz():
+    """For a load balancer or container health check: is the app up and
+    can it reach its database? Says nothing else, and needs no login."""
+    try:
+        with SessionLocal() as db_session:
+            db_session.execute(select(1))
+    except Exception:  # noqa: BLE001 — any failure means "not healthy"
+        app.logger.exception("health check could not reach the database")
+        return "database unavailable\n", 503, {"Content-Type": "text/plain"}
+    return "ok\n", 200, {"Content-Type": "text/plain", "Cache-Control": "no-store"}
 
 
 def login_required(view):
@@ -259,16 +273,34 @@ def handle_integrity_error(error: IntegrityError):
     the failed transaction has already been rolled back and closed.
     """
     detail = str(getattr(error, "orig", error))
-    # "UNIQUE constraint failed: organism_lines.module_id_fk, organism_lines.code":
-    # the last column is the one the person typed (the others scope it).
-    match = re.search(r"UNIQUE constraint failed: ([\w.]+(?:,\s*[\w.]+)*)", detail)
+    # SQLite: "UNIQUE constraint failed: organism_lines.module_id_fk, organism_lines.code"
+    # PostgreSQL: "duplicate key value ... DETAIL:  Key (module_id_fk, code)=(3, X) already exists."
+    # The last column is the one the person typed (the others scope it).
+    match = (re.search(r"UNIQUE constraint failed: ([\w.]+(?:,\s*[\w.]+)*)", detail)
+             or re.search(r"Key \(([\w\s,\"]+)\)=\(.*\) already exists", detail))
     if match:
-        column = match.group(1).split(",")[-1].strip().split(".")[-1]
+        column = match.group(1).split(",")[-1].strip().strip('"').split(".")[-1]
         field = column.replace("_id", " ID").replace("_", " ")
         message = f"That {field} is already used. Choose another."
     else:
         message = "That change conflicts with an existing record, so it was not saved."
     app.logger.info("integrity error on %s: %s", request.path, detail)
+    if request.headers.get("X-Autosave") == "1":
+        return jsonify({"ok": False, "error": message}), 409
+    flash(message, "error")
+    referrer = request.referrer or ""
+    return redirect(referrer if referrer.startswith(request.host_url) else url_for("home_dashboard"))
+
+
+@app.errorhandler(DataError)
+def handle_data_error(error: DataError):
+    """PostgreSQL enforces column sizes (SQLite ignores them), so a value
+    longer than its column is refused there. Say so rather than 500."""
+    detail = str(getattr(error, "orig", error))
+    size = re.search(r"character varying\((\d+)\)", detail)
+    message = (f"One of the values is longer than its field allows ({size.group(1)} characters), so nothing was saved."
+               if size else "One of the values is not valid for its field, so nothing was saved.")
+    app.logger.info("data error on %s: %s", request.path, detail)
     if request.headers.get("X-Autosave") == "1":
         return jsonify({"ok": False, "error": message}), 409
     flash(message, "error")

@@ -81,8 +81,14 @@ def uploads_dir() -> Path:
 
     When frozen we need a writable location *and* it must be served at
     /static/uploads/ — so the Flask app adds a separate static route for
-    this folder (see app.py)."""
-    if is_frozen():
+    this folder (see app.py).
+
+    BIOMANAGER_UPLOADS_DIR puts them anywhere, which is how a server keeps
+    them on the data volume, next to the database, rather than in the code."""
+    override = os.environ.get("BIOMANAGER_UPLOADS_DIR", "").strip()
+    if override:
+        target = Path(override).expanduser()
+    elif is_frozen():
         target = user_data_root() / "uploads"
     else:
         target = resource_root() / "app" / "static" / "uploads"

@@ -20,6 +20,8 @@ which requests to trust live here, in one place:
   so that an uploaded HTML or SVG file cannot run script as the app.
 - **Sign-in.** Failed attempts are rate-limited per address and per
   username, and passwords must be at least MIN_PASSWORD_LENGTH characters.
+- **Tokens at rest.** Google Calendar tokens are encrypted in the database
+  with a key derived from the signing key (EncryptedText in models.py).
 - **The first account.** The first person to register becomes admin, so on
   a server that needs the setup code the server prints at start-up; the
   desktop app, which only listens on this machine, does not ask for it.
@@ -118,6 +120,45 @@ def secret_key() -> str:
                 "or unset it to use the key kept in the data folder.")
         return key
     return _read_or_create(data_dir() / "secret_key", lambda: secrets.token_urlsafe(48))
+
+
+# ---------------------------------------------------------------- secrets at rest
+
+_ENCRYPTED_PREFIX = "enc:v1:"
+_fernet_cache: list = []
+
+
+def _fernet():
+    """A Fernet key derived from the signing key, so there is one secret to
+    keep (and back up) rather than two. Changing SECRET_KEY, or losing the
+    data folder's secret_key file, makes stored tokens unreadable: people
+    then reconnect Google Calendar, nothing else is lost."""
+    if not _fernet_cache:
+        from base64 import urlsafe_b64encode
+        from cryptography.fernet import Fernet
+
+        digest = sha256(b"biomanager tokens at rest\0" + secret_key().encode()).digest()
+        _fernet_cache.append(Fernet(urlsafe_b64encode(digest)))
+    return _fernet_cache[0]
+
+
+def encrypt_text(value: str | None) -> str | None:
+    if not value or value.startswith(_ENCRYPTED_PREFIX):
+        return value
+    return _ENCRYPTED_PREFIX + _fernet().encrypt(value.encode()).decode()
+
+
+def decrypt_text(value: str | None) -> str | None:
+    """Plain text stored before encryption existed is returned as it is."""
+    if not value or not value.startswith(_ENCRYPTED_PREFIX):
+        return value
+    from cryptography.fernet import InvalidToken
+
+    try:
+        return _fernet().decrypt(value[len(_ENCRYPTED_PREFIX):].encode()).decode()
+    except InvalidToken:
+        log.warning("A stored token was encrypted with a different SECRET_KEY; treating it as missing.")
+        return ""
 
 
 def session_stamp(user) -> str:

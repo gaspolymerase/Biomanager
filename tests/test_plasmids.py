@@ -560,7 +560,7 @@ class LegacyBoxMigrationTests(AppTestCase):
             cls.pids[tag] = pid
             execute("insert into plasmids (plasmid_id, name, backbone, insert_seq, resistance, owner, location, notes,"
                     " full_sequence, is_circular, features_json, sequence_format, storage_box, box_row, box_col,"
-                    " created_at, updated_by) values (?,?,'','','',?,'','','',1,'','',?,?,?,'2026-01-01','')",
+                    " created_at, updated_by) values (?,?,'','','',?,'','','',true,'','',?,?,?,'2026-01-01','')",
                     pid, uniq(tag), cls.member, box, r, c)
         execute("delete from app_settings where key=?", services.PLASMID_BOXES_FLAG)
         cls.result = services.migrate_plasmid_boxes()

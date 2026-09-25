@@ -1,0 +1,122 @@
+# BioManager for a lab server: Caddy (HTTPS) → gunicorn → PostgreSQL, plus a
+# backup service. See deploy/README.md.
+#
+#   cp .env.example .env   # then fill it in
+#   docker compose up -d --build
+#
+# Only Caddy publishes ports. The database is on an internal network with no
+# route out; nothing but the app and the backup service can reach it.
+name: biomanager
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: biomanager
+      POSTGRES_USER: biomanager
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U biomanager -d biomanager"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://biomanager:${POSTGRES_PASSWORD}@db:5432/biomanager
+      # Unset: a key is made on first start and kept on the appdata volume
+      # (which the backups include). Set it to manage the key yourself.
+      SECRET_KEY: ${SECRET_KEY:-}
+      BIOMANAGER_BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+      BIOMANAGER_HTTPS: "1"
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
+      BIOMANAGER_SMTP_HOST: ${BIOMANAGER_SMTP_HOST:-}
+      BIOMANAGER_SMTP_PORT: ${BIOMANAGER_SMTP_PORT:-587}
+      BIOMANAGER_SMTP_USER: ${BIOMANAGER_SMTP_USER:-}
+      BIOMANAGER_SMTP_PASSWORD: ${BIOMANAGER_SMTP_PASSWORD:-}
+    volumes:
+      - appdata:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend, edge]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      TLS: ${TLS:-internal}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+    networks: [edge]
+
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    environment: &backup_env
+      PGHOST: db
+      PGDATABASE: biomanager
+      PGUSER: biomanager
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-UTC}
+      BACKUP_TIME: ${BACKUP_TIME:-02:30}
+      KEEP_LOCAL: ${KEEP_LOCAL:-30}
+      RESTORE_TEST_WEEKDAY: ${RESTORE_TEST_WEEKDAY:-7}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      HEALTHCHECK_PING_URL: ${HEALTHCHECK_PING_URL:-}
+    volumes:
+      - appdata:/appdata:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      # The app creates the schema on its first start; a backup taken
+      # before that would be of an empty database.
+      app:
+        condition: service_healthy
+    networks: [backend, edge]
+
+  # Not started by `up`. Puts a backup back:
+  #   docker compose stop app
+  #   docker compose --profile restore run --rm restore /backups/db/<file>.dump /backups/files/<file>.tar.gz
+  #   docker compose start app
+  restore:
+    build: ./backup
+    profiles: [restore]
+    entrypoint: ["/usr/local/bin/restore.sh"]
+    environment: *backup_env
+    volumes:
+      - appdata:/appdata
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+networks:
+  backend:
+    internal: true
+  edge: {}
+
+volumes:
+  pgdata:
+  appdata:
+  caddy_data:
+  caddy_config:

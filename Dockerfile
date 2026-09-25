@@ -1,0 +1,39 @@
+# BioManager web app for a lab server. Built and run by deploy/compose.yaml;
+# see deploy/README.md. The compiled CSS/JS are committed, so no Node here.
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# pywebview is for the desktop app only and needs GUI libraries.
+COPY requirements.txt .
+RUN grep -v pywebview requirements.txt > /tmp/requirements.txt \
+ && pip install -r /tmp/requirements.txt \
+ && rm /tmp/requirements.txt
+
+COPY app app
+COPY migrations migrations
+COPY scripts scripts
+COPY alembic.ini wsgi.py gunicorn.conf.py ./
+
+# Everything the app writes lives on /data: the signing key, the setup code
+# and uploads. The code itself is read-only to the app's user.
+RUN useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin biomanager \
+ && mkdir -p /data/uploads && chown -R biomanager:biomanager /data
+USER biomanager
+
+ENV BIOMANAGER_DATA_DIR=/data \
+    BIOMANAGER_UPLOADS_DIR=/data/uploads \
+    BIOMANAGER_BIND=0.0.0.0:8000 \
+    BIOMANAGER_PROXY_HOPS=1
+VOLUME /data
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4).status == 200 else 1)"
+
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]

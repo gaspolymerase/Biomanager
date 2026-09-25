@@ -19,7 +19,7 @@ BioManager is a Python laboratory management starter app for biology workflows. 
 - Flask
 - SQLAlchemy
 - SQLite for local development
-- PostgreSQL-ready for shared server deployment
+- PostgreSQL for a shared lab server (the test suite runs on both in CI)
 - Tailwind CSS v4 for the interface (compiled, no CDN at runtime)
 
 ## Interface design
@@ -208,6 +208,10 @@ python scripts/dbtool.py relocate ~/BioManagerData  # move it somewhere local
 python scripts/dbtool.py restore <file>
 ```
 
+These are for a SQLite database on one machine. A server on PostgreSQL is
+backed up by the backup service in `deploy/` (`deploy/backup/backup.sh`
+runs without Docker too).
+
 `relocate` copies, verifies with an integrity check, and only then retires
 the original — then prints the `BIOMANAGER_DATA_DIR` to export. Backups use
 SQLite's backup API, so they are consistent even while the app is running.
@@ -387,6 +391,16 @@ area (`test_mice.py`, `test_plasmids.py`, `test_stocks.py`, …); shared
 set-up and factories are in `tests/base.py`. Run one module, class or test
 with `scripts/test.sh tests.test_mice` (or `tests.test_mice.SomeClass`).
 
+The same suite runs on PostgreSQL, against an empty database it is allowed
+to wipe (its schema is dropped first):
+
+```bash
+BIOMANAGER_TEST_DATABASE_URL=postgresql://localhost/biomanager_test scripts/test.sh
+```
+
+Tests of SQLite-only machinery (`app/integrity.py`) skip there, and the
+SQLite → PostgreSQL migration tests only run there. CI runs both.
+
 Every test makes its own uniquely named records and must not depend on
 another test having run. A test marked `@unittest.expectedFailure`
 documents a known bug; when the bug is fixed it shows up as an "unexpected
@@ -405,6 +419,15 @@ open dist/BioManager.app
 The script installs `pywebview` + `pyinstaller`, ensures the frontend bundle is built, and produces `dist/BioManager.app` (macOS) or `dist/BioManager/` (Windows/Linux). The app's SQLite database and uploads live in `~/Library/Application Support/Biomanager/` so rebuilds don't wipe your data. To skip the bundling step and just run a desktop window from source: `python desktop.py`.
 
 ## Shared Server Setup
+
+**The supported way is the Docker stack in [`deploy/`](deploy/README.md)**:
+Caddy for HTTPS, the app under gunicorn, PostgreSQL 16, and a backup service
+that dumps, checks, prunes, copies off-site with restic and test-restores
+every week. `deploy/README.md` is the runbook: first start, moving a lab's
+SQLite database over (`scripts/migrate-to-postgres.py`), backups, restoring
+and updating.
+
+The rest of this section is for running it without Docker.
 
 Running BioManager for a whole lab means other people can send it requests,
 so it runs differently from a laptop. What decides which requests to trust is
@@ -448,6 +471,7 @@ Settings (environment variables, all optional):
 | `BIOMANAGER_TRUSTED_ORIGINS` | — | other origins allowed to post, comma separated |
 | `BIOMANAGER_SESSION_DAYS` | `7` | idle days before a sign-in expires |
 | `BIOMANAGER_MAX_UPLOAD_MB` | `64` | largest upload accepted |
+| `BIOMANAGER_UPLOADS_DIR` | `app/static/uploads` | where uploads are kept; put it next to the database |
 | `WEB_CONCURRENCY` | 1 on SQLite, 3 on Postgres | gunicorn worker processes |
 
 `gunicorn.conf.py` loads the app once before forking (`preload_app`), so the
@@ -475,8 +499,10 @@ private network such as Tailscale.
   make a signed-in member's browser edit records. Sign out is a POST too.
 - **Uploads need a login**, get unguessable names, and are served so that an
   uploaded HTML or SVG file downloads rather than running in the app.
-- Google Calendar refresh tokens are still stored unencrypted in the
-  database: treat database backups as sensitive.
+- **Google Calendar tokens are encrypted in the database** with a key
+  derived from the signing key. Tokens saved before are encrypted at the
+  next start. Losing or changing the key only means reconnecting Google
+  Calendar, which is why backups include the data folder's `secret_key`.
 
 ## Notes
 

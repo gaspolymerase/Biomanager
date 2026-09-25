@@ -20,3 +20,9 @@ node_modules/
 # macOS
 .DS_Store
 .claude/worktrees/
+
+# Deployment secrets and data (deploy/README.md)
+deploy/.env
+deploy/backups/
+deploy/certs/*
+!deploy/certs/.gitkeep

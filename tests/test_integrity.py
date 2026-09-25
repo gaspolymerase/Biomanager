@@ -6,7 +6,7 @@ an *old* database (tables without AUTOINCREMENT, dangling references) needs
 an app started on a different file, so those tests run a short child
 Python process each (the engine is bound at import)."""
 from tests.base import *  # noqa: F401,F403
-from tests.base import AppTestCase, ROOT, batch_of, one, row, rows, uniq
+from tests.base import AppTestCase, ROOT, batch_of, one, only_sqlite, row, rows, uniq
 
 import json
 import os
@@ -31,6 +31,7 @@ def model_tables_with_ids():
     return [name for name, table in Base.metadata.tables.items() if table.autoincrement_column is not None]
 
 
+@only_sqlite  # PostgreSQL has these natively: sequences, enforced keys, rollback on return
 class FreshSchema(unittest.TestCase):
     def test_every_model_table_has_autoincrement_and_deferred_foreign_keys(self):
         stored = dict(rows("select name, sql from sqlite_master where type='table'"))
@@ -68,6 +69,7 @@ class IdsAreNeverReused(AppTestCase):
         again = self.make_mouse(self.a, self.admin, cage=uniq("C"))
         self.assertGreater(again, mouse)
 
+    @only_sqlite  # PostgreSQL has these natively: sequences, enforced keys, rollback on return
     def test_sqlite_sequence_is_at_least_the_highest_id(self):
         self.make_line(self.a)
         seq = dict(rows("select name, seq from sqlite_sequence"))
@@ -105,6 +107,7 @@ class ForeignKeysEnforced(AppTestCase):
     # transaction open; the views close their session without an explicit
     # rollback. app/db.py rolls back any open transaction when a connection
     # returns to the pool, so the next request never sees the refused change.
+    @only_sqlite  # PostgreSQL has these natively: sequences, enforced keys, rollback on return
     def test_a_failed_commit_does_not_leave_the_connection_in_a_transaction(self):
         engine.dispose()  # one pooled connection from here on, so the next checkout gets the same one
         tab_id = self._tab_with_page()
@@ -241,6 +244,7 @@ def strip_integrity(con, table: str) -> None:
     con.execute(f'alter table "{table}__old" rename to "{table}"')
 
 
+@only_sqlite  # PostgreSQL has these natively: sequences, enforced keys, rollback on return
 class MigratingAnOldDatabase(unittest.TestCase):
     """One old-style database, booted twice: once to migrate, once to show
     that a second start changes nothing."""
@@ -318,6 +322,7 @@ class MigratingAnOldDatabase(unittest.TestCase):
         self.assertTrue(self.second["enforced"])
 
 
+@only_sqlite  # PostgreSQL has these natively: sequences, enforced keys, rollback on return
 class DanglingReferencesInAnOldDatabase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
