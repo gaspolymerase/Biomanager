@@ -326,6 +326,9 @@ class StrainRecord(Base):
     strain_background: Mapped[str] = mapped_column(String(200), default="")
     supplier: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
+    # Who added the strain: they (or an admin) may rename or remove it.
+    # Strains from before this column have no creator and are admin-only.
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
