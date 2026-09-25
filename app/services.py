@@ -694,9 +694,27 @@ def sync_mouse_transgenes(mouse: MouseRecord, transgenes: list[str]) -> None:
     mouse.genotype = genotype_string_from_transgenes(padded)
 
 
+# Statuses that mean the mouse has died. Choosing one stamps today as the
+# date of death (if none is set); moving a mouse back out of one (a sac
+# entered by mistake, say) clears the date so the mouse is alive again.
+END_STATUSES = {"sac", "dead", "found dead", "died", "euthanized", "euthanised"}
+
+
+def is_end_status(status: str | None) -> bool:
+    return normalize_status(status or "") in END_STATUSES
+
+
+def apply_status_rules(mouse: MouseRecord, previous_status: str | None) -> None:
+    if is_end_status(mouse.status):
+        if mouse.date_of_death is None:
+            mouse.date_of_death = date.today()
+    elif is_end_status(previous_status):
+        mouse.date_of_death = None
+
+
 def mouse_is_active(mouse: MouseRecord) -> bool:
-    inactive_statuses = {"sac", "transfer"}
-    return mouse.date_of_death is None and normalize_status(mouse.status) not in inactive_statuses
+    inactive_statuses = END_STATUSES | {"transfer"}
+    return mouse.date_of_death is None and normalize_status(mouse.status or "") not in inactive_statuses
 
 
 def _cage_position(cage) -> str:
