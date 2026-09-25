@@ -139,6 +139,9 @@
                     <a class="menu-item" href="{{ url_for('admin_users') }}" role="menuitem">
                       {{ icon('users') }} Manage users
                     </a>
+                    <a class="menu-item" href="{{ url_for('admin_racks.index') }}" role="menuitem">
+                      {{ icon('box') }} Racks &amp; boxes
+                    </a>
                   {% endif %}
                   <div class="menu-rule"></div>
                   <a class="menu-item menu-item-danger" href="{{ url_for('logout') }}" role="menuitem">
