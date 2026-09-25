@@ -238,9 +238,12 @@ def handle_integrity_error(error: IntegrityError):
     the failed transaction has already been rolled back and closed.
     """
     detail = str(getattr(error, "orig", error))
-    match = re.search(r"UNIQUE constraint failed: \w+\.(\w+)", detail)
+    # "UNIQUE constraint failed: organism_lines.module_id_fk, organism_lines.code":
+    # the last column is the one the person typed (the others scope it).
+    match = re.search(r"UNIQUE constraint failed: ([\w.]+(?:,\s*[\w.]+)*)", detail)
     if match:
-        field = match.group(1).replace("_id", " ID").replace("_", " ")
+        column = match.group(1).split(",")[-1].strip().split(".")[-1]
+        field = column.replace("_id", " ID").replace("_", " ")
         message = f"That {field} is already used. Choose another."
     else:
         message = "That change conflicts with an existing record, so it was not saved."
@@ -1071,6 +1074,12 @@ def home_dashboard():
                                   "due": item["due"], "overdue": item["overdue"], "is_today": item["today"], "kind": item["kind"]})
     stock_due.sort(key=lambda i: i["due"])
 
+    # Schedule items from the configurable organism databases (wean, retire…).
+    from . import organism_service
+    with SessionLocal() as db_session:
+        organism_due = organism_service.home_due(db_session, horizon_days=2)
+        db_session.commit()
+
     hour = datetime.now().hour
     greeting = "Good morning" if hour < 12 else ("Good afternoon" if hour < 18 else "Good evening")
 
@@ -1078,6 +1087,8 @@ def home_dashboard():
         "home.html",
         stock_due=stock_due[:12],
         stock_due_total=len(stock_due),
+        organism_due=organism_due[:12],
+        organism_due_total=len(organism_due),
         greeting=greeting,
         today_str=today.strftime("%A, %b %d, %Y"),
         counts={
@@ -3730,6 +3741,10 @@ def global_search():
                                                      unit.rack.name if unit.rack else "", unit.owner])),
                 "url": url_for("stocks.module", key=mv.key),
             })
+
+        # Animals, housing units and lines in the configurable organism databases.
+        from . import organism_service
+        results.extend(organism_service.search(db_session, q, limit))
 
         # Notebook pages — owner-scoped.
         page_stmt = (

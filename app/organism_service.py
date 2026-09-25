@@ -37,7 +37,12 @@ from .organisms import (
     FIELD_TYPE_BY_KEY,
     PRESET_BY_KEY,
     PRESETS,
+    RESERVED_KEYS,
+    SERVICE_ANCHORS,
+    anchor_allowed,
+    default_dead_statuses,
     normalize_capabilities,
+    pluralise,
 )
 
 
@@ -124,6 +129,24 @@ class ModuleView:
     def cohort_noun_plural(self) -> str: return self.row.cohort_noun_plural
     @property
     def cross_noun(self) -> str: return self.row.cross_noun
+    @property
+    def cross_noun_plural(self) -> str:
+        return self.settings.get("cross_noun_plural") or pluralise(self.row.cross_noun)
+
+    # --- Statuses that end a record (see organisms.END_STATUS_WORDS) ------
+    @property
+    def dead_statuses(self) -> list[str]:
+        configured = self.settings.get("dead_statuses")
+        if isinstance(configured, list):
+            return [str(s) for s in configured]
+        return default_dead_statuses(self.statuses)
+
+    def is_dead_status(self, status: str | None) -> bool:
+        value = (status or "").strip().lower()
+        return bool(value) and value in {s.strip().lower() for s in self.dead_statuses}
+
+    def is_alive(self, organism) -> bool:
+        return organism.death_on is None and not self.is_dead_status(organism.status)
 
     def has(self, *keys: str) -> bool:
         """True when every named capability is enabled."""
@@ -177,13 +200,22 @@ def slugify(text: str) -> str:
     return slug or "organism"
 
 
+def _key_taken(session, key: str) -> bool:
+    if key in RESERVED_KEYS or get_module(session, key) is not None:
+        return True
+    # Fly and worm databases share the /organisms/<key> namespace through the
+    # redirect for modules that moved to the stock engine.
+    from .models import StockModule
+    return session.scalar(select(StockModule.id).where(StockModule.key == key)) is not None
+
+
 def unique_key(session, base: str) -> str:
     key = slugify(base)
-    if get_module(session, key) is None:
+    if not _key_taken(session, key):
         return key
     for n in range(2, 60):
         candidate = f"{key}_{n}"
-        if get_module(session, candidate) is None:
+        if not _key_taken(session, candidate):
             return candidate
     return f"{key}_{int(datetime.utcnow().timestamp())}"
 
@@ -217,7 +249,7 @@ def create_module(session, spec: dict, created_by: str = "") -> OrganismModule:
         key=spec.get("key") or unique_key(session, label),
         label=label,
         label_plural=(spec.get("label_plural") or label).strip(),
-        icon=spec.get("icon") or "circle-dashed",
+        icon=spec.get("icon") or "paw",
         blurb=spec.get("blurb") or "",
         organism_noun=spec.get("organism_noun") or "animal",
         organism_noun_plural=spec.get("organism_noun_plural") or "animals",
@@ -444,6 +476,51 @@ def read_attrs(form, field_rows: list[ModuleField], existing: dict | None = None
     return attrs
 
 
+def read_attrs_checked(form, field_rows: list[ModuleField], existing: dict | None = None,
+                       creating: bool = False, full: bool = False) -> tuple[dict, list[str]]:
+    """Like read_attrs, but for a save that should be refused when wrong.
+
+    * Only inputs present in the form are written, so an inline edit of one
+      cell (or a dialog that did not render a field) leaves the rest alone.
+      Checkboxes, which submit nothing when unticked, are only read from a
+      full form (`full`: the dialog, which renders every field).
+    * On a new record, a field the form did not send takes its default.
+    * Number fields must hold a number; required fields must not be empty
+      when the form carried them (or when creating).
+    """
+    attrs = dict(existing or {})
+    errors: list[str] = []
+    for row in field_rows:
+        name = f"attr_{row.key}"
+        if row.field_type == "checkbox":
+            if full or name in form:
+                attrs[row.key] = bool(form.get(name))
+            elif creating and row.default_value:
+                attrs[row.key] = row.default_value.strip().lower() in ("1", "yes", "true", "on", "y")
+            continue
+        if name in form:
+            raw = (form.get(name) or "").strip()
+        elif creating:
+            raw = (row.default_value or "").strip()
+        else:
+            continue
+        if row.field_type == "number":
+            if raw == "":
+                attrs[row.key] = None
+            else:
+                try:
+                    number = float(raw)
+                    attrs[row.key] = int(number) if number.is_integer() and "." not in raw else number
+                except ValueError:
+                    errors.append(f"{row.label} must be a number (got “{raw}”).")
+                    continue
+        else:
+            attrs[row.key] = raw
+        if row.required and raw == "":
+            errors.append(f"{row.label} is required.")
+    return attrs, errors
+
+
 def display_attr(row: ModuleField, attrs: dict):
     value = attrs.get(row.key)
     if row.field_type == "checkbox":
@@ -535,21 +612,23 @@ def recompute_due(session, module: OrganismModule) -> int:
 
     Open (not-yet-done) rows are rebuilt from the current anchors so that
     editing a birth date moves the due date with it. Completed rows are left
-    alone — they are the history of what was actually done.
+    alone — they are the history of what was actually done. An open row that
+    still applies keeps its id (and is updated in place), so a "Done" button
+    rendered before some other save still points at the same item.
     """
     mv = view(module)
-    if not mv.has("schedule") or not mv.schedule_rules:
-        return 0
-
-    session.query(OrgDue).filter(
-        OrgDue.module_id_fk == module.id, OrgDue.done_on.is_(None)
-    ).delete(synchronize_session=False)
-
-    created = 0
-    for rule in mv.schedule_rules:
+    open_rows = {
+        (row.rule_key, row.subject_kind, row.subject_id): row
+        for row in session.scalars(select(OrgDue).where(
+            OrgDue.module_id_fk == module.id, OrgDue.done_on.is_(None)))
+    }
+    wanted: dict[tuple, tuple] = {}
+    rules = mv.schedule_rules if mv.has("schedule") else []
+    for rule in rules:
         model = RULE_SUBJECTS.get(rule.get("applies_to"))
         anchor = rule.get("anchor")
-        if model is None or not anchor or not hasattr(model, anchor):
+        if (model is None or not anchor or not hasattr(model, anchor)
+                or not anchor_allowed(rule.get("applies_to"), anchor)):
             continue
 
         stmt = select(model).where(model.module_id_fk == module.id)
@@ -566,32 +645,40 @@ def recompute_due(session, module: OrganismModule) -> int:
             if start is None:
                 continue
             attrs = load_dict(getattr(subject, "attrs", "{}"))
-            due_on = start + timedelta(days=rule_offset(rule, attrs))
+            offset = timedelta(days=rule_offset(rule, attrs))
+            due_on = start + offset
 
-            # A recurring rule that has been done before starts counting from
-            # the last completion rather than the original anchor.
+            # A rule that has been done before: a one-off is finished; a
+            # recurring one counts from the last completion (or from a later
+            # "last serviced" date typed in since).
             last_done = session.scalar(
                 select(func.max(OrgDue.done_on)).where(
                     OrgDue.module_id_fk == module.id,
                     OrgDue.rule_key == rule["key"],
                     OrgDue.subject_kind == rule["applies_to"],
                     OrgDue.subject_id == subject.id,
+                    OrgDue.done_on.is_not(None),
                 )
             )
             if last_done is not None:
                 if not rule.get("recurring"):
                     continue
-                due_on = last_done + timedelta(days=rule_offset(rule, attrs))
+                base = max(start, last_done) if anchor in SERVICE_ANCHORS else last_done
+                due_on = base + offset
+            wanted[(rule["key"], rule["applies_to"], subject.id)] = (
+                due_on, getattr(subject, "owner", "") or "")
 
-            session.add(OrgDue(
-                module_id_fk=module.id,
-                subject_kind=rule["applies_to"],
-                subject_id=subject.id,
-                rule_key=rule["key"],
-                due_on=due_on,
-                assigned_to=getattr(subject, "owner", "") or "",
-            ))
+    created = 0
+    for key, (due_on, owner) in wanted.items():
+        row = open_rows.pop(key, None)
+        if row is None:
+            session.add(OrgDue(module_id_fk=module.id, rule_key=key[0], subject_kind=key[1],
+                               subject_id=key[2], due_on=due_on, assigned_to=owner))
             created += 1
+        else:
+            row.due_on, row.assigned_to = due_on, owner
+    for row in open_rows.values():
+        session.delete(row)
     return created
 
 
@@ -648,13 +735,17 @@ def complete_due(session, module: OrganismModule, due_id: int, user: str) -> Org
     row.done_on = date.today()
     row.done_by = user
 
-    # Roll the anchor forward so recurring maintenance restarts its clock.
+    # Roll a service anchor ("last flipped", "last refreshed") forward so
+    # recurring maintenance restarts its clock. Anchors that are facts about
+    # the subject — a birth date, the day a unit was set up — are never
+    # rewritten: recompute_due counts those rules from the last completion.
     rule = view(module).rule(row.rule_key) or {}
     model = RULE_SUBJECTS.get(row.subject_kind)
-    if rule.get("recurring") and model is not None:
+    anchor = rule.get("anchor")
+    if (rule.get("recurring") and model is not None and anchor in SERVICE_ANCHORS
+            and anchor_allowed(row.subject_kind, anchor)):
         subject = session.get(model, row.subject_id)
-        anchor = rule.get("anchor")
-        if subject is not None and anchor and hasattr(subject, anchor):
+        if subject is not None and hasattr(subject, anchor):
             setattr(subject, anchor, date.today())
 
     log_event(session, module, row.subject_kind, row.subject_id, row.rule_key,
@@ -685,6 +776,17 @@ def log_event(session, module: OrganismModule, subject_kind: str, subject_id: in
     return row
 
 
+def alive_clause(module: OrganismModule | ModuleView):
+    """SQL condition for 'this organism is alive': no date of death and no
+    status that ends a record."""
+    mv = module if isinstance(module, ModuleView) else view(module)
+    dead = [s.strip().lower() for s in mv.dead_statuses if s.strip()]
+    clause = Organism.death_on.is_(None)
+    if dead:
+        clause = clause & func.lower(func.coalesce(Organism.status, "")).notin_(dead)
+    return clause
+
+
 def census(session, module: OrganismModule) -> dict:
     """Live counts for the module header.
 
@@ -692,14 +794,17 @@ def census(session, module: OrganismModule) -> dict:
     individually tracked animal (count=1) and a group of forty flies.
     """
     mid = module.id
+    living = alive_clause(module)
     alive = select(func.coalesce(func.sum(Organism.count), 0)).where(
-        Organism.module_id_fk == mid, Organism.death_on.is_(None)
+        Organism.module_id_fk == mid, living
     )
     return {
         "animals": session.scalar(alive) or 0,
         "records": session.scalar(
-            select(func.count(Organism.id)).where(
-                Organism.module_id_fk == mid, Organism.death_on.is_(None))
+            select(func.count(Organism.id)).where(Organism.module_id_fk == mid, living)
+        ) or 0,
+        "all_records": session.scalar(
+            select(func.count(Organism.id)).where(Organism.module_id_fk == mid)
         ) or 0,
         "housing": session.scalar(
             select(func.count(OrgHousing.id)).where(
@@ -819,3 +924,114 @@ def metrics_from_text(raw: str) -> list[dict]:
             "unit": parts[2] if len(parts) > 2 else "",
         })
     return metrics
+
+
+# ---------------------------------------------------------------------------
+# Record rules shared by the dialog, the sheet and the batch bar
+# ---------------------------------------------------------------------------
+
+
+def apply_status_rules(mv: ModuleView, organism: Organism, previous_status: str | None,
+                       death_given: bool = False) -> None:
+    """A status that ends a record stamps today as the date of death when
+    none is set; moving back out of one clears the date (unless the same
+    save typed a date explicitly). See organisms.END_STATUS_WORDS."""
+    if mv.is_dead_status(organism.status):
+        if organism.death_on is None:
+            organism.death_on = date.today()
+    elif mv.is_dead_status(previous_status) and not death_given:
+        organism.death_on = None
+
+
+def line_references(session, line: OrgLine) -> dict[str, int]:
+    """What still points at a line, by kind, for refusing a delete."""
+    mid, lid = line.module_id_fk, line.id
+    counts = {
+        "animal record": session.scalar(select(func.count(Organism.id)).where(
+            Organism.module_id_fk == mid, Organism.line_id_fk == lid)) or 0,
+        "housing unit": session.scalar(select(func.count(OrgHousing.id)).where(
+            OrgHousing.module_id_fk == mid, OrgHousing.line_id_fk == lid)) or 0,
+        "cohort": session.scalar(select(func.count(OrgCohort.id)).where(
+            OrgCohort.module_id_fk == mid, OrgCohort.line_id_fk == lid)) or 0,
+        "cross": session.scalar(select(func.count(OrgCross.id)).where(
+            OrgCross.module_id_fk == mid,
+            (OrgCross.sire_line_id_fk == lid) | (OrgCross.dam_line_id_fk == lid))) or 0,
+        "frozen lot": session.scalar(select(func.count(OrgPreservationLot.id)).where(
+            OrgPreservationLot.module_id_fk == mid, OrgPreservationLot.line_id_fk == lid)) or 0,
+        "derived line": session.scalar(select(func.count(OrgLine.id)).where(
+            OrgLine.module_id_fk == mid, OrgLine.parent_line_id_fk == lid)) or 0,
+    }
+    return {k: v for k, v in counts.items() if v}
+
+
+def due_subject(session, row: OrgDue):
+    model = RULE_SUBJECTS.get(row.subject_kind)
+    return session.get(model, row.subject_id) if model is not None else None
+
+
+# ---------------------------------------------------------------------------
+# Search and the home page
+# ---------------------------------------------------------------------------
+
+
+def search(session, q: str, limit: int = 5) -> list[dict]:
+    """Animals, housing units and lines across every organism module, in the
+    shape the Cmd+K palette expects ({type, id, label, sublabel, url})."""
+    from flask import url_for
+
+    q = (q or "").strip()
+    if not q:
+        return []
+    like = f"%{q}%"
+    modules = {m.id: m for m in session.scalars(select(OrganismModule))}
+    out: list[dict] = []
+
+    def add(module, entity_view, label, sub, row_id):
+        out.append({
+            "type": "organism", "id": row_id, "label": label,
+            "sublabel": " · ".join(filter(None, [module.label] + sub)),
+            "url": url_for("organisms.module", key=module.key, view=entity_view),
+        })
+
+    for row in session.scalars(select(Organism).where(
+            Organism.code.ilike(like) | Organism.genotype.ilike(like) | Organism.notes.ilike(like)
+            | Organism.attrs.ilike(like)).order_by(Organism.id.desc()).limit(limit)):
+        module = modules.get(row.module_id_fk)
+        if module is not None:
+            add(module, "animals", row.code or f"{module.organism_noun} #{row.id}",
+                [row.status, row.genotype, row.owner], row.id)
+    for row in session.scalars(select(OrgHousing).where(
+            OrgHousing.code.ilike(like) | OrgHousing.card_id.ilike(like) | OrgHousing.notes.ilike(like)
+            | OrgHousing.attrs.ilike(like)).order_by(OrgHousing.id.desc()).limit(limit)):
+        module = modules.get(row.module_id_fk)
+        if module is not None:
+            add(module, "housing", f"{module.housing_noun.capitalize()} {row.code}",
+                [row.purpose, row.owner], row.id)
+    for row in session.scalars(select(OrgLine).where(
+            OrgLine.code.ilike(like) | OrgLine.name.ilike(like) | OrgLine.genotype.ilike(like)
+            | OrgLine.attrs.ilike(like)).order_by(OrgLine.id.desc()).limit(limit)):
+        module = modules.get(row.module_id_fk)
+        if module is not None:
+            add(module, "lines", f"{row.code}{' · ' + row.name if row.name else ''}",
+                [module.line_noun, row.genotype, row.owner], row.id)
+    return out
+
+
+def home_due(session, horizon_days: int = 2) -> list[dict]:
+    """Open schedule items due soon (or overdue) across every enabled
+    organism module, for the home page."""
+    items = []
+    for module in list_modules(session):
+        mv = view(module)
+        if not mv.has("schedule") or not mv.schedule_rules:
+            continue
+        recompute_due(session, module)
+        session.flush()
+        for item in due_items(session, module, horizon_days=horizon_days):
+            items.append({
+                "module": mv.label, "key": mv.key, "icon": item["icon"],
+                "title": f"{item['label']} · {item['subject_label']}",
+                "due": item["due_on"], "overdue": item["overdue"], "is_today": item["days"] == 0,
+            })
+    items.sort(key=lambda i: i["due"])
+    return items
