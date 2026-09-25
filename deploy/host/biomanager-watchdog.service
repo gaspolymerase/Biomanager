@@ -1,0 +1,7 @@
+[Unit]
+Description=BioManager health checks (deploy/host/watchdog.sh)
+After=docker.service tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/biomanager/Biomanager/deploy/host/watchdog.sh

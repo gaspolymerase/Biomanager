@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh BioManager's base images every Sunday
+
+[Timer]
+# After Sunday's 02:30 backup and restore test, before the 04:30 window in
+# which unattended-upgrades may reboot.
+OnCalendar=Sun *-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
