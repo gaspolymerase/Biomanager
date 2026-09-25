@@ -70,6 +70,10 @@ from .models import (
 from .services import (
     add_notification,
     breeder_mice,
+    is_breeder_purpose,
+    WEAN_OFFSET_DAYS,
+    CAGE_GENO_OFFSET_DAYS,
+    split_genotype,
     derive_auto_calendar_items,
     fetch_ics_subscription,
     fetch_google_calendar_items,
@@ -292,7 +296,7 @@ NAV_SECTIONS: list[dict] = [
     {
         "label": "Workspace",
         "links": [
-            {"key": "home", "label": "Home", "icon": "grid",
+            {"key": "home", "label": "Home", "icon": "home",
              "endpoint": "home_dashboard", "match": ("home_dashboard", "index")},
             {"key": "calendar", "label": "Calendar", "icon": "calendar",
              "endpoint": "calendar"},
@@ -317,7 +321,7 @@ NAV_SECTIONS: list[dict] = [
 ]
 
 NAV_FOOTER: list[dict] = [
-    {"key": "utilities", "label": "Utilities", "icon": "flask", "endpoint": "utilities"},
+    {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities"},
     {"key": "admin-colony", "label": "Colony overview", "short": "Overview",
      "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True},
     {"key": "batches", "label": "Batches", "icon": "layers", "endpoint": "batches_view"},
@@ -361,6 +365,8 @@ TAB_ICON_RULES: list[tuple[str, str]] = [
     ("/orders", "cart"),
     ("/utilities", "calculator"),
     ("/audit", "history"),
+    ("/batches", "layers"),
+    ("/admin/colony", "list"),
     ("/settings", "settings"),
     ("/admin/users", "users"),
     ("/organisms", "database"),
@@ -660,13 +666,16 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
     dob = parse_date(form.get("date_of_birth"))
     mouse.litter = get_or_create_litter(db_session, litter_code, dob) if litter_code else None
 
-    cage_input = form.get("cage_id", "").strip()
-    if cage_input:
-        mouse.cage = get_or_create_cage(db_session, cage_input)
-    elif form.get("auto_new_cage") == "1":
-        mouse.cage = get_or_create_cage(db_session, "new")
-    else:
-        mouse.cage = None
+    # A form that does not carry the cage (a cage card's mouse row, which
+    # only shows the mouse's own fields) leaves the mouse where it is.
+    if "cage_id" in form or form.get("auto_new_cage") == "1":
+        cage_input = form.get("cage_id", "").strip()
+        if cage_input:
+            mouse.cage = get_or_create_cage(db_session, cage_input)
+        elif form.get("auto_new_cage") == "1":
+            mouse.cage = get_or_create_cage(db_session, "new")
+        else:
+            mouse.cage = None
 
     if mouse.cage is not None:
         # Rack, position and location note belong to the cage; see form_changed.
@@ -685,7 +694,11 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
     status_normalized = mouse.status.lower()
     requested_owner = form.get("owner", "").strip()
     mouse.note = form.get("note", "").strip()
-    mouse.date_of_death = parse_date(form.get("date_of_death"))
+    # Absent (a cage card does not show it) or unchanged from its `_was`
+    # copy, the stored date stands; the status rules below still stamp or
+    # clear it when the status crosses into or out of an end status.
+    if form_changed(form, "date_of_death"):
+        mouse.date_of_death = parse_date(form.get("date_of_death"))
 
     lab_users = set(current_lab_usernames(db_session))
     apply_status_rules(mouse, previous_status)
@@ -822,10 +835,11 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
                     "owner": cage.owner,
                     "is_shared": access.is_shared_cage(cage),
                     "can_edit": access.can_edit_cage(cage),
-                    "can_breed": cage.purpose.lower() == "breeding",
+                    "can_breed": is_breeder_purpose(cage.purpose),
                     "default_father": next((str(mouse.mouse_id) for mouse in sorted(cage.mice, key=lambda item: item.mouse_id) if mouse.gender == "M"), ""),
                     "default_mother": next((str(mouse.mouse_id) for mouse in sorted(cage.mice, key=lambda item: item.mouse_id) if mouse.gender == "F"), ""),
-                    "mice": [mouse_display_row(mouse, g.user.username, g.user.role) for mouse in sorted(cage.mice, key=lambda item: item.mouse_id)],
+                    "mice": [dict(mouse_display_row(mouse, g.user.username, g.user.role), editable=can_edit_mouse(mouse))
+                             for mouse in sorted(cage.mice, key=lambda item: item.mouse_id)],
                 }
             )
         litter_rows = []
@@ -840,6 +854,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
                     "mother_info": litter.mother_info,
                     "total_pups": litter.total_pups,
                     "notes": litter.notes,
+                    "editable": access.can_edit_litter(litter),
                     "mice": [mouse_display_row(mouse, g.user.username, g.user.role) for mouse in sorted(litter.mice, key=lambda item: item.mouse_id)],
                 }
             )
@@ -885,6 +900,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
                     "description": exp.description,
                     "status": exp.status,
                     "owner": exp.owner_username,
+                    "editable": access.can_edit_experiment(exp),
                     "member_count": len(exp.memberships),
                     "start_date": exp.start_date.strftime("%b %d, %Y") if exp.start_date else "",
                     "end_date": exp.end_date.strftime("%b %d, %Y") if exp.end_date else "",
@@ -912,6 +928,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         "experiments_list": experiments_list,
         "open_experiments": open_experiments,
         "totals": totals,
+        "wean_offset_days": WEAN_OFFSET_DAYS,
+        "cage_geno_offset_days": CAGE_GENO_OFFSET_DAYS,
     }
 
 
@@ -939,9 +957,12 @@ def home_dashboard():
     with SessionLocal() as db_session:
         # ---- Counts ------------------------------------------------------
         total_mice = db_session.scalar(select(func.count(MouseRecord.id))) or 0
-        active_mice = db_session.scalar(
-            select(func.count(MouseRecord.id)).where(MouseRecord.date_of_death.is_(None))
-        ) or 0
+        # "Active" by the same rule as the mouse sheet's green dot: no date
+        # of death and not in an end status (sac, dead…) or transferred.
+        active_mice = sum(
+            1 for mouse in db_session.scalars(
+                select(MouseRecord).where(MouseRecord.date_of_death.is_(None))).all()
+            if mouse_is_active(mouse))
         my_mice = db_session.scalar(
             select(func.count(MouseRecord.id)).where(MouseRecord.owner == g.user.username)
         ) or 0
@@ -984,23 +1005,20 @@ def home_dashboard():
                 "cage_id": mouse.cage.cage_id if mouse.cage else "",
             })
 
-        # ---- Upcoming weanings (litters whose DOB+21d is in the next 7d
-        # or already past wean date) ---------------------------------------
-        wean_window_start = today - timedelta(days=14)  # already-overdue P21+
-        wean_window_end = today - timedelta(days=14)  # 21 - 7 = 14
-        # We want litters where DOB+21 is within ±7 days of today:
+        # ---- Upcoming weanings: litters whose weaning day (DOB + P21, the
+        # same WEAN_OFFSET_DAYS the cage cards use) is within ±7 days -------
         upcoming_litters = db_session.scalars(
             select(LitterRecord)
             .where(LitterRecord.date_of_birth.is_not(None))
-            .where(LitterRecord.date_of_birth >= today - timedelta(days=28))
-            .where(LitterRecord.date_of_birth <= today - timedelta(days=14))
+            .where(LitterRecord.date_of_birth >= today - timedelta(days=WEAN_OFFSET_DAYS + 7))
+            .where(LitterRecord.date_of_birth <= today - timedelta(days=WEAN_OFFSET_DAYS - 7))
             .order_by(LitterRecord.date_of_birth.asc())
             .limit(10)
         ).all()
         weanings = []
         for litter in upcoming_litters:
             dob = litter.date_of_birth
-            wean_date = dob + timedelta(days=21)
+            wean_date = dob + timedelta(days=WEAN_OFFSET_DAYS)
             days_to_wean = (wean_date - today).days
             weanings.append({
                 "litter_id": litter.litter_id,
@@ -1093,6 +1111,7 @@ def home_dashboard():
         orders_list=orders_list,
         events_list=events_list,
         restock=restock,
+        wean_offset_days=WEAN_OFFSET_DAYS,
     )
 
 
@@ -1468,13 +1487,20 @@ def mark_notifications_read():
         for row in rows:
             row.is_read = True
         db_session.commit()
-    return redirect(url_for("colony", view=request.form.get("view", "mice")))
+    view = request.form.get("view", "mice")
+    if view not in COLONY_VIEW_META:
+        view = "mice"
+    return redirect(url_for("colony", view=view, scope=access.resolve_scope(request.form.get("scope"))))
 
 
 @app.route("/colony")
 @login_required
 def colony():
     active_view = request.args.get("view", "mice")
+    if active_view not in COLONY_VIEW_META:
+        # An unknown or stale tab name lands on the mouse sheet rather than
+        # on whichever tab happens to be the template's fallback.
+        active_view = "mice"
     scope = access.resolve_scope(request.args.get("scope"))
     context = colony_context(active_view, scope)
     context["scope"] = scope
@@ -1487,6 +1513,21 @@ def colony():
 # Experiments: a cohort of mice under a shared treatment plan + timeline,
 # with longitudinal body-weight tracking per mouse.
 # ---------------------------------------------------------------------------
+
+
+EXPERIMENT_STATUSES = ("active", "paused", "done", "cancelled")
+
+
+def _experiment_refusal(exp):
+    """A response when the current user may not change `exp`, else None.
+    Background saves get JSON; form posts go back to the experiment."""
+    if access.can_edit_experiment(exp):
+        return None
+    message = access.denied_message("experiment", exp.owner_username)
+    if request.headers.get("X-Autosave") == "1":
+        return jsonify({"ok": False, "error": message}), 403
+    flash(message, "error")
+    return redirect(url_for("experiment_detail", experiment_id=exp.id))
 
 
 @app.route("/colony/experiments/create", methods=["POST"])
@@ -1510,17 +1551,28 @@ def create_experiment():
         db_session.add(exp)
         db_session.flush()
 
-        # Optional: seed members from a cage's active mice.
+        # Optional: seed members from a cage's living mice that you may edit.
         if cage_id_raw:
             cage = db_session.scalar(select(CageRecord).where(CageRecord.cage_id == cage_id_raw))
-            if cage is not None:
+            if cage is None:
+                flash(f"There is no cage {cage_id_raw}, so the experiment starts with no mice. "
+                      "Add a cage or single mice below.", "error")
+            else:
+                added = skipped = 0
                 for mouse in cage.mice:
-                    if mouse.date_of_death is None:
-                        db_session.add(ExperimentMouse(
-                            experiment_id_fk=exp.id,
-                            mouse_id_fk=mouse.id,
-                            treatment_group="",
-                        ))
+                    if not mouse_is_active(mouse):
+                        continue
+                    if not can_edit_mouse(mouse):
+                        skipped += 1
+                        continue
+                    db_session.add(ExperimentMouse(
+                        experiment_id_fk=exp.id,
+                        mouse_id_fk=mouse.id,
+                        treatment_group="",
+                    ))
+                    added += 1
+                if skipped:
+                    flash(f"Added {added} mice from cage {cage.cage_id}; {skipped} skipped — not yours to edit.", "error")
         db_session.commit()
         return redirect(url_for("experiment_detail", experiment_id=exp.id))
 
@@ -1553,6 +1605,7 @@ def experiment_detail(experiment_id: int):
                 "genotype": mouse.genotype,
                 "cage_id": mouse.cage.cage_id if mouse.cage else "",
                 "treatment_group": em.treatment_group,
+                "can_weigh": can_edit_mouse(mouse),
                 "weights": [
                     {"date": w.weigh_date.isoformat(), "grams": w.grams, "notes": w.notes}
                     for w in weights
@@ -1567,14 +1620,15 @@ def experiment_detail(experiment_id: int):
         all_cages = db_session.scalars(select(CageRecord).order_by(CageRecord.cage_id)).all()
         cages_data = [{"id": c.id, "cage_id": c.cage_id, "mouse_count": len(c.mice)} for c in all_cages]
 
-        # Available mice to add individually.
+        # Mice you could add individually: alive, yours to edit, not in yet.
         existing_ids = {m["mouse_row_id"] for m in members}
         candidate_mice = db_session.scalars(
             select(MouseRecord).where(MouseRecord.date_of_death.is_(None)).order_by(MouseRecord.mouse_id)
         ).all()
         candidate_mice_data = [
             {"id": m.id, "mouse_id": m.mouse_id, "label": f"#{m.mouse_id} · {m.gender or '?'} · {m.genotype or '(no geno)'}"}
-            for m in candidate_mice if m.id not in existing_ids
+            for m in candidate_mice
+            if m.id not in existing_ids and mouse_is_active(m) and can_edit_mouse(m)
         ]
 
         exp_data = {
@@ -1584,6 +1638,7 @@ def experiment_detail(experiment_id: int):
             "treatment_plan": exp.treatment_plan,
             "status": exp.status,
             "owner": exp.owner_username,
+            "editable": access.can_edit_experiment(exp),
             "start_date": exp.start_date.isoformat() if exp.start_date else "",
             "end_date": exp.end_date.isoformat() if exp.end_date else "",
         }
@@ -1594,31 +1649,46 @@ def experiment_detail(experiment_id: int):
         all_dates=all_dates,
         cages=cages_data,
         candidate_mice=candidate_mice_data,
+        statuses=EXPERIMENT_STATUSES,
     )
 
 
 @app.route("/colony/experiments/<int:experiment_id>/update", methods=["POST"])
 @login_required
 def update_experiment(experiment_id: int):
+    autosave = request.headers.get("X-Autosave") == "1"
     with SessionLocal() as db_session:
         exp = db_session.get(Experiment, experiment_id)
         if exp is None:
-            return jsonify({"ok": False}), 404
-        if "name" in request.form:
-            exp.name = (request.form.get("name") or "").strip() or exp.name
-        if "description" in request.form:
-            exp.description = request.form.get("description", exp.description)
-        if "treatment_plan" in request.form:
-            exp.treatment_plan = request.form.get("treatment_plan", exp.treatment_plan)
-        if "status" in request.form:
-            exp.status = request.form.get("status", exp.status).strip() or "active"
-        if "start_date" in request.form:
-            exp.start_date = parse_date(request.form.get("start_date"))
-        if "end_date" in request.form:
-            exp.end_date = parse_date(request.form.get("end_date"))
+            return jsonify({"ok": False, "error": "That experiment no longer exists."}), 404
+        refused = _experiment_refusal(exp)
+        if refused:
+            return refused
+        form = request.form
+        start = parse_date(form.get("start_date")) if "start_date" in form else exp.start_date
+        end = parse_date(form.get("end_date")) if "end_date" in form else exp.end_date
+        status = (form.get("status") or "").strip().lower() if "status" in form else exp.status
+        error = None
+        if start and end and end < start:
+            error = f"The end date ({end.isoformat()}) is before the start date ({start.isoformat()})."
+        elif status and status not in EXPERIMENT_STATUSES:
+            error = f"“{status}” is not an experiment status."
+        if error:
+            if autosave:
+                return jsonify({"ok": False, "error": error}), 409
+            flash(error, "error")
+            return redirect(url_for("experiment_detail", experiment_id=experiment_id))
+        if "name" in form:
+            exp.name = (form.get("name") or "").strip() or exp.name
+        if "description" in form:
+            exp.description = form.get("description", exp.description)
+        if "treatment_plan" in form:
+            exp.treatment_plan = form.get("treatment_plan", exp.treatment_plan)
+        exp.status = status or "active"
+        exp.start_date, exp.end_date = start, end
         exp.updated_at = datetime.utcnow()
         db_session.commit()
-    if request.headers.get("X-Autosave") == "1":
+    if autosave:
         return jsonify({"ok": True})
     return redirect(url_for("experiment_detail", experiment_id=experiment_id))
 
@@ -1629,13 +1699,18 @@ def delete_experiment(experiment_id: int):
     with SessionLocal() as db_session:
         exp = db_session.get(Experiment, experiment_id)
         if exp is not None:
+            refused = _experiment_refusal(exp)
+            if refused:
+                return refused
             log_delete(
                 db_session, "experiments", exp.id,
                 record_label=f"Experiment: {exp.name}",
                 details=f"members={len(exp.memberships)}",
             )
+            name = exp.name
             db_session.delete(exp)
             db_session.commit()
+            flash(f"Deleted experiment {name}. Its mice are unchanged.", "success")
     return redirect(url_for("colony", view="experiments"))
 
 
@@ -1645,22 +1720,39 @@ def experiment_add_cage(experiment_id: int):
     cage_id_raw = (request.form.get("cage_id") or "").strip()
     with SessionLocal() as db_session:
         exp = db_session.get(Experiment, experiment_id)
-        if exp is None or not cage_id_raw:
+        if exp is None:
             return redirect(url_for("colony", view="experiments"))
+        refused = _experiment_refusal(exp)
+        if refused:
+            return refused
+        if not cage_id_raw:
+            flash("Enter a cage to add its mice.", "error")
+            return redirect(url_for("experiment_detail", experiment_id=experiment_id))
         cage = db_session.scalar(select(CageRecord).where(CageRecord.cage_id == cage_id_raw))
         if cage is None:
             flash(f"Cage '{cage_id_raw}' not found.", "error")
             return redirect(url_for("experiment_detail", experiment_id=experiment_id))
         existing = {em.mouse_id_fk for em in exp.memberships}
+        added = skipped = 0
         for mouse in cage.mice:
-            if mouse.id in existing or mouse.date_of_death is not None:
+            if mouse.id in existing or not mouse_is_active(mouse):
+                continue
+            if not can_edit_mouse(mouse):
+                skipped += 1
                 continue
             db_session.add(ExperimentMouse(
                 experiment_id_fk=exp.id,
                 mouse_id_fk=mouse.id,
                 treatment_group="",
             ))
+            added += 1
         db_session.commit()
+    if added or skipped:
+        flash(f"Added {added} {'mouse' if added == 1 else 'mice'} from cage {cage_id_raw}."
+              + (f" {skipped} skipped — not yours to edit." if skipped else ""),
+              "success" if added else "error")
+    else:
+        flash(f"Cage {cage_id_raw} has no living mice that are not already in the experiment.", "info")
     return redirect(url_for("experiment_detail", experiment_id=experiment_id))
 
 
@@ -1669,13 +1761,20 @@ def experiment_add_cage(experiment_id: int):
 def experiment_add_mouse(experiment_id: int):
     mouse_row_id = request.form.get("mouse_row_id", type=int)
     treatment_group = (request.form.get("treatment_group") or "").strip()
-    if not mouse_row_id:
-        return redirect(url_for("experiment_detail", experiment_id=experiment_id))
     with SessionLocal() as db_session:
         exp = db_session.get(Experiment, experiment_id)
-        mouse = db_session.get(MouseRecord, mouse_row_id)
-        if exp is None or mouse is None:
+        if exp is None:
             return redirect(url_for("colony", view="experiments"))
+        refused = _experiment_refusal(exp)
+        if refused:
+            return refused
+        mouse = db_session.get(MouseRecord, mouse_row_id) if mouse_row_id else None
+        if mouse is None:
+            flash("Pick a mouse to add.", "error")
+            return redirect(url_for("experiment_detail", experiment_id=experiment_id))
+        if not can_edit_mouse(mouse):
+            flash(access.reason_denied(mouse), "error")
+            return redirect(url_for("experiment_detail", experiment_id=experiment_id))
         if not any(em.mouse_id_fk == mouse.id for em in exp.memberships):
             db_session.add(ExperimentMouse(
                 experiment_id_fk=exp.id,
@@ -1692,10 +1791,15 @@ def experiment_member_update(experiment_id: int, membership_id: int):
     with SessionLocal() as db_session:
         em = db_session.get(ExperimentMouse, membership_id)
         if em is None or em.experiment_id_fk != experiment_id:
-            return jsonify({"ok": False}), 404
-        em.treatment_group = (request.form.get("treatment_group") or em.treatment_group).strip()
+            return jsonify({"ok": False, "error": "That mouse is no longer in the experiment."}), 404
+        if not access.can_edit_experiment(em.experiment):
+            return jsonify({"ok": False, "error": access.denied_message(
+                "experiment", em.experiment.owner_username)}), 403
+        # Present but blank clears the group; absent leaves it alone.
+        if "treatment_group" in request.form:
+            em.treatment_group = (request.form.get("treatment_group") or "").strip()
         if "note" in request.form:
-            em.note = request.form.get("note", em.note).strip()
+            em.note = (request.form.get("note") or "").strip()
         db_session.commit()
         return jsonify({"ok": True})
 
@@ -1706,6 +1810,9 @@ def experiment_member_remove(experiment_id: int, membership_id: int):
     with SessionLocal() as db_session:
         em = db_session.get(ExperimentMouse, membership_id)
         if em is not None and em.experiment_id_fk == experiment_id:
+            refused = _experiment_refusal(em.experiment)
+            if refused:
+                return refused
             db_session.delete(em)
             db_session.commit()
     return redirect(url_for("experiment_detail", experiment_id=experiment_id))
@@ -1956,11 +2063,20 @@ def _report(changed: int, skipped: int, what: str) -> None:
 BULK_FIELDS = {
     "owner": "Owner",
     "status": "Status",
-    "genotype": "Genotype",
+    "genotype": "Transgenes",
     "cage_id": "Cage",
     "note": "Note",
     "date_of_death": "Date of death",
 }
+
+
+def new_owned_cage(db_session, **fields) -> CageRecord:
+    """A fresh cage with the next free ID, owned by whoever made it."""
+    cage = CageRecord(cage_id=next_cage_id(db_session),
+                      owner=g.user.username if g.user else "", **fields)
+    db_session.add(cage)
+    db_session.flush()
+    return cage
 
 
 @app.route("/colony/mice/bulk-update", methods=["POST"])
@@ -1969,36 +2085,57 @@ def bulk_update_mice():
     """Set one field to one value across the selection."""
     field = (request.form.get("field") or "").strip()
     value = (request.form.get("value") or "").strip()
+    back = request.referrer or url_for("colony", view="mice")
     if field not in BULK_FIELDS:
         flash("Pick a field to set.", "error")
-        return redirect(request.referrer or url_for("colony", view="mice"))
+        return redirect(back)
 
     changed = skipped = 0
-    with SessionLocal() as db_session, audit.batch(
-            db_session, "update",
-            f"set {BULK_FIELDS[field].lower()} = {value or '(blank)'}", "mice") as batch_row:
-        for mouse in _selected_mice(db_session, request.form):
-            if not can_edit_mouse(mouse):
-                skipped += 1
-                continue
-            if field == "cage_id":
-                # Reuse the normal cage plumbing so "new" still allocates
-                # and the cage's derived dates stay correct.
-                mouse.cage = get_or_create_cage(db_session, value) if value else None
-            elif field == "date_of_death":
-                mouse.date_of_death = parse_date(value)
-            elif field == "status":
-                previous_status = mouse.status
-                mouse.status = value
-                apply_status_rules(mouse, previous_status)
-            else:
-                setattr(mouse, field, value)
-            stamp_updated(mouse)
-            changed += 1
-        batch_row.record_count = changed
+    with SessionLocal() as db_session:
+        if field == "owner" and value not in current_lab_usernames(db_session):
+            flash(f"“{value or '(blank)'}” is not a lab member, so no owner was changed. "
+                  "Pick a username from the list.", "error")
+            return redirect(back)
+        if field == "date_of_death" and value and parse_date(value) is None:
+            flash(f"“{value}” is not a date (use YYYY-MM-DD).", "error")
+            return redirect(back)
+        # "new" is one new cage for the whole selection — the mice were
+        # picked together to be housed together — made only when at least
+        # one selected mouse may move.
+        target_cage = None
+        with audit.batch(db_session, "update",
+                         f"set {BULK_FIELDS[field].lower()} = {value or '(blank)'}", "mice") as batch_row:
+            for mouse in _selected_mice(db_session, request.form):
+                if not can_edit_mouse(mouse):
+                    skipped += 1
+                    continue
+                if field == "cage_id":
+                    if value and target_cage is None:
+                        # Made inside the batch, so undo removes it too.
+                        target_cage = (new_owned_cage(db_session) if value.lower() == "new"
+                                       else get_or_create_cage(db_session, value))
+                    # The column, not the relationship: the audit listener
+                    # records column changes, and undo needs this one.
+                    mouse.cage_id_fk = target_cage.id if target_cage else None
+                elif field == "genotype":
+                    # The sheet shows transgene columns, so "genotype" fills
+                    # them ("Ai14; Cre" -> transgene 1 and 2) and keeps the
+                    # combined genotype string in step.
+                    sync_mouse_transgenes(mouse, split_genotype(value)[:4])
+                elif field == "date_of_death":
+                    mouse.date_of_death = parse_date(value)
+                elif field == "status":
+                    previous_status = mouse.status
+                    mouse.status = value
+                    apply_status_rules(mouse, previous_status)
+                else:
+                    setattr(mouse, field, value)
+                stamp_updated(mouse)
+                changed += 1
+            batch_row.record_count = changed
         db_session.commit()
     _report(changed, skipped, f"Set {BULK_FIELDS[field].lower()}")
-    return redirect(request.referrer or url_for("colony", view="mice"))
+    return redirect(back)
 
 
 @app.route("/colony/mice/bulk-experiment", methods=["POST"])
@@ -2072,10 +2209,10 @@ def bulk_add_to_experiment():
 # Columns the preview grid understands, in display order.
 BATCH_COLUMNS = [
     ("gender", "Sex", 70),
-    ("transgene_1", "TG1", 120),
-    ("transgene_2", "TG2", 120),
-    ("transgene_3", "TG3", 120),
-    ("transgene_4", "TG4", 120),
+    ("transgene_1", "Transgene 1", 130),
+    ("transgene_2", "Transgene 2", 130),
+    ("transgene_3", "Transgene 3", 130),
+    ("transgene_4", "Transgene 4", 130),
     ("genotype", "Genotype", 150),
     ("cage_id", "Cage", 90),
     ("cage_location", "Location", 110),
@@ -2259,7 +2396,7 @@ def batch_mice_create():
         # row still splits them however you like.
         shared_new_cage = None
         if any((row.get("cage_id") or "").strip().lower() == "new" for row in rows):
-            shared_new_cage = get_or_create_cage(db_session, "new").cage_id
+            shared_new_cage = new_owned_cage(db_session).cage_id
 
         for row, mouse_id in zip(rows, ids):
             if shared_new_cage and (row.get("cage_id") or "").strip().lower() == "new":
@@ -2295,7 +2432,9 @@ def batch_mice_create():
 @login_required
 def export_mice():
     export_format = request.args.get("format", "csv")
-    context = colony_context("mice")
+    # The page passes the scope it is showing, so the file holds the mice
+    # you were looking at rather than always your own.
+    context = colony_context("mice", access.resolve_scope(request.args.get("scope")))
     if export_format == "pdf":
         return render_template("print_mice.html", mouse_rows=context["mouse_rows"], printed_on=date.today().isoformat())
     payload, filename, mimetype = export_mouse_rows(context["mouse_rows"], export_format)
@@ -2309,9 +2448,20 @@ def export_mice():
 @app.route("/colony/cages/create", methods=["POST"])
 @login_required
 def create_cage():
+    """Create a cage. A blank ID takes the next free one; an ID that is
+    already a cage is refused — creating never edits an existing cage (a
+    stale form would otherwise overwrite it)."""
+    requested = request.form.get("cage_id", "").strip()
     with SessionLocal() as db_session:
-        # A blank ID means "next free one" (get_or_create_cage allocates it).
-        cage = get_or_create_cage(db_session, request.form.get("cage_id", "").strip())
+        if requested and requested.lower() != "new":
+            if db_session.scalar(select(CageRecord.id).where(CageRecord.cage_id == requested)):
+                flash(f"Cage {requested} already exists; nothing was changed. "
+                      "Leave the ID blank to take the next free one.", "error")
+                return autosave_response("cages")
+            cage = CageRecord(cage_id=requested, owner=g.user.username)
+            db_session.add(cage)
+        else:
+            cage = new_owned_cage(db_session)
         cage.cage_location = request.form.get("cage_location", "").strip()
         cage.purpose = request.form.get("purpose", "").strip()
         cage.notes = request.form.get("notes", "").strip()
@@ -2320,13 +2470,13 @@ def create_cage():
         cage.genotype_summary = request.form.get("genotype_summary", "").strip()
         cage.location_detail = request.form.get("location_detail", "").strip()
         cage.room = request.form.get("room", "").strip()
-        if not cage.owner and g.user:
-            cage.owner = g.user.username
         if "rack_id" in request.form:
             error = apply_cage_position(db_session, cage, request.form.get("rack_id"), request.form.get("position"))
             if error:
                 flash(f"Cage {cage.cage_id} was created but not placed: {error}", "error")
         db_session.commit()
+        if request.headers.get("X-Autosave") != "1":
+            flash(f"Created cage {cage.cage_id}.", "success")
     return autosave_response("cages")
 
 
@@ -2411,9 +2561,12 @@ def cage_position_label(cage) -> str:
 def save_mouse_rack():
     with SessionLocal() as db_session:
         rack_id = request.form.get("id", "").strip()
-        rack = db_session.get(MouseRack, int(rack_id)) if rack_id.isdigit() else MouseRack(name="")
+        rack = db_session.get(MouseRack, int(rack_id)) if rack_id.isdigit() else MouseRack(name="", created_by=g.user.username)
         if rack is None:
             flash("That rack no longer exists.", "error")
+            return redirect(url_for("colony", view="cages"))
+        if rack.id is not None and not access.can_edit_rack(rack):
+            flash(f"Only whoever added rack {rack.name}, or an admin, can change it.", "error")
             return redirect(url_for("colony", view="cages"))
         error = _mouse_rack_from_form(db_session, rack, request.form)
         if error:
@@ -2432,6 +2585,9 @@ def delete_mouse_rack(rack_id: int):
     """Delete a rack. Its cages are kept, just unplaced."""
     with SessionLocal() as db_session:
         rack = db_session.get(MouseRack, rack_id)
+        if rack is not None and not access.can_edit_rack(rack):
+            flash(f"Only whoever added rack {rack.name}, or an admin, can delete it.", "error")
+            return redirect(url_for("colony", view="cages"))
         if rack is not None:
             name = rack.name
             for cage in db_session.scalars(select(CageRecord).where(CageRecord.rack_id_fk == rack.id)):
@@ -2515,8 +2671,10 @@ def mouse_rack_payload(db_session, cages) -> dict:
     return {
         "racks": [{"id": r.id, "name": r.name, "rows": r.rows, "cols": r.cols,
                    "naming": rack_naming_payload(r),
+                   "can_edit": access.can_edit_rack(r),
                    "edit": {"data-record-payload": json.dumps({
-                       "id": r.id, "_label": r.name, "name": r.name, "rows": r.rows,
+                       "id": r.id, "_label": r.name, "_locked": not access.can_edit_rack(r),
+                       "name": r.name, "rows": r.rows,
                        "cols": r.cols, "room": r.room,
                        **{f"naming_{k}": v for k, v in rack_naming_payload(r).items()}})}} for r in racks],
         "items": items,
@@ -2569,14 +2727,19 @@ def add_mouse_from_cage(cage_row_id: int):
             return blocked
         requested_mouse_id = request.form.get("mouse_id", "").strip()
         if not requested_mouse_id.isdigit():
-            flash("Enter an existing numeric Mouse_ID.", "error")
+            flash("Enter the number of an existing mouse.", "error")
             return redirect(url_for("colony", view="cages"))
         mouse = db_session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == int(requested_mouse_id)))
         if mouse is None:
-            flash(f"Mouse_ID {requested_mouse_id} was not found.", "error")
+            flash(f"Mouse {requested_mouse_id} was not found.", "error")
             return redirect(url_for("colony", view="cages"))
-        mouse.cage = cage
+        # Moving a mouse changes the mouse, not just the cage.
+        if not can_edit_mouse(mouse):
+            flash(f"Mouse {mouse.mouse_id} was not moved. " + access.reason_denied(mouse), "error")
+            return redirect(url_for("colony", view="cages"))
+        mouse.cage_id_fk = cage.id  # the column, so the audit log records the move
         db_session.commit()
+        flash(f"Moved mouse {mouse.mouse_id} into cage {cage.cage_id}.", "success")
     return redirect(url_for("colony", view="cages"))
 
 
@@ -2604,10 +2767,16 @@ def cage_genotyping(cage_row_id: int):
         blocked = deny(cage, "cages")
         if blocked:
             return blocked
-        total_pups = int(request.form.get("total_pups", "0") or "0")
+        raw_pups = (request.form.get("total_pups") or "").strip()
+        if not raw_pups.isdigit() or not 1 <= int(raw_pups) <= 40:
+            flash(f"Pups must be a whole number from 1 to 40, not “{raw_pups or '(blank)'}”. No litter was created.", "error")
+            return redirect(url_for("colony", view="cages"))
+        total_pups = int(raw_pups)
         father_info = request.form.get("father_info", "").strip()
         mother_info = request.form.get("mother_info", "").strip()
-        litter = get_or_create_litter(db_session, generate_litter_id(db_session, cage), cage.date_give_birth or date.today())
+        litter = LitterRecord(litter_id=generate_litter_id(db_session, cage),
+                              date_of_birth=cage.date_give_birth or date.today())
+        db_session.add(litter)
         litter.father_info = father_info
         litter.mother_info = mother_info
         litter.total_pups = total_pups
@@ -2624,6 +2793,7 @@ def cage_genotyping(cage_row_id: int):
             db_session.add(mouse)
             db_session.flush()
         db_session.commit()
+        flash(f"Created litter {litter.litter_id} with {total_pups} pups in cage {cage.cage_id}.", "success")
     return redirect(url_for("colony", view="cages"))
 
 
@@ -2647,11 +2817,15 @@ def cage_wean_distribute(cage_row_id: int):
     """Wean the source cage and distribute its pups to new or existing cages.
 
     Form arrays (one entry per UI row):
-      mouse_ids[]   : comma-separated Mouse_IDs to move
+      mouse_ids[]   : comma-separated mouse IDs to move
       gender[]      : M / F / Unknown — applied to those mice
-      cage_id[]     : existing Cage_ID; if filled, mice go there (card_id ignored)
+      cage_id[]     : existing cage ID; if filled, mice go there (card_id ignored)
       card_id[]     : if cage_id[] empty, a fresh cage is created with this card label
     Empty rows are skipped. Mice not listed stay in the source cage.
+
+    Only mice that are in the source cage and that you may edit move; new
+    cages are yours, and an existing destination must be a cage you may
+    edit. Everything else is reported, not silently done.
     """
     mouse_ids_field = request.form.getlist("mouse_ids[]")
     genders_field = request.form.getlist("gender[]")
@@ -2660,7 +2834,7 @@ def cage_wean_distribute(cage_row_id: int):
     rows = list(zip(mouse_ids_field, genders_field, cage_ids_field, card_ids_field))
 
     moved_count = 0
-    skipped_ids: list[str] = []
+    problems: list[str] = []
     source_cage_label = ""
 
     with SessionLocal() as db_session:
@@ -2677,14 +2851,24 @@ def cage_wean_distribute(cage_row_id: int):
             mouse_ids_str = (mouse_ids_str or "").strip()
             if not mouse_ids_str:
                 continue
-            mouse_id_list: list[int] = []
+            movers: list[MouseRecord] = []
             for token in mouse_ids_str.replace(";", ",").split(","):
                 token = token.strip()
-                if token.isdigit():
-                    mouse_id_list.append(int(token))
-                elif token:
-                    skipped_ids.append(token)
-            if not mouse_id_list:
+                if not token:
+                    continue
+                if not token.isdigit():
+                    problems.append(f"“{token}” is not a mouse number")
+                    continue
+                mouse = db_session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == int(token)))
+                if mouse is None:
+                    problems.append(f"mouse {token} does not exist")
+                elif mouse.cage_id_fk != source_cage.id:
+                    problems.append(f"mouse {token} is not in cage {source_cage_label}")
+                elif not can_edit_mouse(mouse):
+                    problems.append(f"mouse {token} is {mouse.owner or 'someone else'}’s")
+                else:
+                    movers.append(mouse)
+            if not movers:
                 continue
 
             cage_id_input = (cage_id_input or "").strip()
@@ -2694,20 +2878,18 @@ def cage_wean_distribute(cage_row_id: int):
             if cage_id_input:
                 target_cage = db_session.scalar(select(CageRecord).where(CageRecord.cage_id == cage_id_input))
                 if target_cage is None:
-                    target_cage = CageRecord(cage_id=cage_id_input)
+                    target_cage = CageRecord(cage_id=cage_id_input, owner=g.user.username, card_id=card_id_input)
                     db_session.add(target_cage)
                     db_session.flush()
-            else:
-                target_cage = CageRecord(cage_id=next_cage_id(db_session), card_id=card_id_input)
-                db_session.add(target_cage)
-                db_session.flush()
-
-            for mouse_id_value in mouse_id_list:
-                mouse = db_session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == mouse_id_value))
-                if mouse is None:
-                    skipped_ids.append(str(mouse_id_value))
+                elif not can_edit_cage(target_cage):
+                    problems.append(f"cage {cage_id_input} is {target_cage.owner or 'someone else'}’s, "
+                                    f"so {', '.join(str(m.mouse_id) for m in movers)} stayed")
                     continue
-                mouse.cage = target_cage
+            else:
+                target_cage = new_owned_cage(db_session, card_id=card_id_input)
+
+            for mouse in movers:
+                mouse.cage_id_fk = target_cage.id  # the column, so the audit log records the move
                 if gender_value:
                     mouse.gender = gender_value
                 moved_count += 1
@@ -2719,20 +2901,39 @@ def cage_wean_distribute(cage_row_id: int):
         flash(f"Distributed {moved_count} mice and weaned cage {source_cage_label}.", "success")
     else:
         flash(f"Cage {source_cage_label} weaned (no mice were moved).", "success")
-    if skipped_ids:
-        flash(f"Skipped IDs (not numeric or not found): {', '.join(skipped_ids)}.", "error")
+    if problems:
+        flash("Not moved: " + "; ".join(problems) + ".", "error")
     return redirect(url_for("colony", view="cages"))
+
+
+def _litter_refusal(litter, view: str = "litters"):
+    if access.can_edit_litter(litter):
+        return None
+    owners = sorted({m.owner for m in litter.mice if m.owner and not can_edit_mouse(m)})
+    flash(f"Litter {litter.litter_id} has mice owned by {', '.join(owners) or 'someone else'}, "
+          "so only they or an admin can change it.", "error")
+    return autosave_response(view)
 
 
 @app.route("/colony/litters/create", methods=["POST"])
 @login_required
 def create_litter():
+    """Create a litter. A blank ID takes the next free number; an ID that is
+    already a litter is refused rather than overwriting that litter."""
+    requested = (request.form.get("litter_id") or "").strip()
     with SessionLocal() as db_session:
-        litter = get_or_create_litter(db_session, request.form["litter_id"].strip(), parse_date(request.form.get("date_of_birth")))
+        if requested and db_session.scalar(select(LitterRecord.id).where(LitterRecord.litter_id == requested)):
+            flash(f"Litter {requested} already exists; nothing was changed. "
+                  "Leave the ID blank to take the next free one.", "error")
+            return redirect(url_for("colony", view="litters", scope=request.form.get("scope") or None))
+        litter = LitterRecord(litter_id=requested or next_litter_id(db_session),
+                              date_of_birth=parse_date(request.form.get("date_of_birth")))
         litter.cohort_name = request.form.get("cohort_name", "").strip()
         litter.notes = request.form.get("notes", "").strip()
+        db_session.add(litter)
         db_session.commit()
-    return redirect(url_for("colony", view="litters"))
+        flash(f"Created litter {litter.litter_id}.", "success")
+    return redirect(url_for("colony", view="litters", scope=request.form.get("scope") or None))
 
 
 @app.route("/colony/litters/<int:litter_row_id>/update", methods=["POST"])
@@ -2742,9 +2943,21 @@ def update_litter(litter_row_id: int):
         litter = db_session.get(LitterRecord, litter_row_id)
         if litter is None:
             return autosave_response("litters")
-        litter.date_of_birth = parse_date(request.form.get("date_of_birth"))
-        litter.cohort_name = request.form.get("cohort_name", "").strip()
-        litter.notes = request.form.get("notes", "").strip()
+        refused = _litter_refusal(litter)
+        if refused:
+            return refused
+        form = request.form
+        if "date_of_birth" in form:
+            litter.date_of_birth = parse_date(form.get("date_of_birth"))
+        for field in ("cohort_name", "notes", "father_info", "mother_info"):
+            if field in form:
+                setattr(litter, field, (form.get(field) or "").strip())
+        if "total_pups" in form:
+            raw = (form.get("total_pups") or "").strip()
+            if raw and not raw.isdigit():
+                flash(f"Pups must be a whole number, not “{raw}”.", "error")
+                return autosave_response("litters")
+            litter.total_pups = int(raw or 0)
         db_session.commit()
     return autosave_response("litters")
 
@@ -2756,51 +2969,51 @@ def add_existing_mouse_to_litter(litter_row_id: int):
         litter = db_session.get(LitterRecord, litter_row_id)
         if litter is None:
             return redirect(url_for("colony", view="litters"))
+        refused = _litter_refusal(litter)
+        if refused:
+            return refused
         requested_mouse_id = request.form.get("mouse_id", "").strip()
         if not requested_mouse_id.isdigit():
-            flash("Enter an existing numeric Mouse_ID.", "error")
+            flash("Enter the number of an existing mouse.", "error")
             return redirect(url_for("colony", view="litters"))
         mouse = db_session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == int(requested_mouse_id)))
         if mouse is None:
-            flash(f"Mouse_ID {requested_mouse_id} was not found.", "error")
+            flash(f"Mouse {requested_mouse_id} was not found.", "error")
             return redirect(url_for("colony", view="litters"))
-        mouse.litter = litter
-        db_session.commit()
-    return redirect(url_for("colony", view="litters"))
-
-
-@app.route("/colony/litters/<int:litter_row_id>/add-mouse", methods=["POST"])
-@login_required
-def add_mouse_from_litter(litter_row_id: int):
-    with SessionLocal() as db_session:
-        litter = db_session.get(LitterRecord, litter_row_id)
-        if litter is None:
+        # Joining a litter changes the mouse's date of birth.
+        if not can_edit_mouse(mouse):
+            flash(f"Mouse {mouse.mouse_id} was not added. " + access.reason_denied(mouse), "error")
             return redirect(url_for("colony", view="litters"))
-        mouse = MouseRecord(mouse_id=next_mouse_id(db_session), owner=request.form.get("owner", g.user.username))
-        populate_mouse_from_form(db_session, mouse, request.form, preserve_owner_on_transfer=False)
-        mouse.litter = litter
-        db_session.add(mouse)
+        mouse.litter_id_fk = litter.id  # the column, so the audit log records it
         db_session.commit()
+        flash(f"Mouse {mouse.mouse_id} is now in litter {litter.litter_id}.", "success")
     return redirect(url_for("colony", view="litters"))
 
 
 @app.route("/colony/strains/create", methods=["POST"])
 @login_required
 def create_strain():
+    strain_name = (request.form.get("strain_name") or "").strip()
     with SessionLocal() as db_session:
-        strain_name = request.form["strain_name"].strip()
-        existing = db_session.scalar(select(StrainRecord).where(StrainRecord.strain_name == strain_name))
-        if existing is None and strain_name:
-            db_session.add(
-                StrainRecord(
-                    strain_number=request.form.get("strain_number", "").strip(),
-                    strain_name=strain_name,
-                    strain_background=request.form.get("strain_background", "").strip(),
-                    supplier=request.form.get("supplier", "").strip(),
-                    description=request.form.get("description", "").strip(),
-                )
+        if not strain_name:
+            flash("A strain needs a name.", "error")
+            return redirect(url_for("colony", view="strains"))
+        existing = db_session.scalar(select(StrainRecord).where(
+            func.lower(StrainRecord.strain_name) == strain_name.lower()))
+        if existing is not None:
+            flash(f"There is already a strain called {existing.strain_name}.", "error")
+            return redirect(url_for("colony", view="strains"))
+        db_session.add(
+            StrainRecord(
+                strain_number=request.form.get("strain_number", "").strip(),
+                strain_name=strain_name,
+                strain_background=request.form.get("strain_background", "").strip(),
+                supplier=request.form.get("supplier", "").strip(),
+                description=request.form.get("description", "").strip(),
             )
-            db_session.commit()
+        )
+        db_session.commit()
+        flash(f"Added strain {strain_name}.", "success")
     return redirect(url_for("colony", view="strains"))
 
 
@@ -2810,37 +3023,62 @@ def update_strain(strain_row_id: int):
     with SessionLocal() as db_session:
         strain = db_session.get(StrainRecord, strain_row_id)
         if strain is None:
+            flash("That strain no longer exists.", "error")
             return autosave_response("strains")
-        new_name = request.form.get("strain_name", "").strip()
-        if new_name and new_name != strain.strain_name:
-            conflict = db_session.scalar(
-                select(StrainRecord).where(StrainRecord.strain_name == new_name, StrainRecord.id != strain.id)
-            )
-            if conflict is None:
-                strain.strain_name = new_name
-        strain.strain_number = request.form.get("strain_number", "").strip()
-        strain.strain_background = request.form.get("strain_background", "").strip()
-        strain.supplier = request.form.get("supplier", "").strip()
-        strain.description = request.form.get("description", "").strip()
+        new_name = request.form.get("strain_name", strain.strain_name).strip()
+        if not new_name:
+            flash("A strain needs a name.", "error")
+            return autosave_response("strains")
+        if new_name != strain.strain_name:
+            conflict = db_session.scalar(select(StrainRecord).where(
+                func.lower(StrainRecord.strain_name) == new_name.lower(), StrainRecord.id != strain.id))
+            if conflict is not None:
+                flash(f"There is already a strain called {conflict.strain_name}; this one was not renamed.", "error")
+                return autosave_response("strains")
+            strain.strain_name = new_name
+        for field in ("strain_number", "strain_background", "supplier", "description"):
+            if field in request.form:
+                setattr(strain, field, request.form.get(field, "").strip())
         db_session.commit()
     return autosave_response("strains")
+
+
+@app.route("/colony/strains/<int:strain_row_id>/delete", methods=["POST"])
+@login_required
+def delete_strain(strain_row_id: int):
+    """Remove a strain from the reference list. Mice keep their transgene
+    text; the strain only stops being offered as a suggestion."""
+    with SessionLocal() as db_session:
+        strain = db_session.get(StrainRecord, strain_row_id)
+        if strain is not None:
+            name = strain.strain_name
+            db_session.delete(strain)
+            db_session.commit()
+            flash(f"Removed strain {name}. Mice that carry it are unchanged.", "success")
+    return redirect(url_for("colony", view="strains"))
 
 
 @app.route("/colony/options/create", methods=["POST"])
 @login_required
 def create_option():
-    field_name = request.form["field_name"].strip()
-    option_value = request.form["option_value"].strip()
+    field_name = (request.form.get("field_name") or "").strip()
+    option_value = (request.form.get("option_value") or "").strip()
     with SessionLocal() as db_session:
+        if not field_name or not option_value:
+            flash("Pick a column and type a value.", "error")
+            return redirect(url_for("colony", view="settings"))
         existing = db_session.scalar(
             select(DropdownOption).where(
                 DropdownOption.field_name == field_name,
-                DropdownOption.option_value == option_value,
+                func.lower(DropdownOption.option_value) == option_value.lower(),
             )
         )
-        if existing is None and field_name and option_value:
-            db_session.add(DropdownOption(field_name=field_name, option_value=option_value))
-            db_session.commit()
+        if existing is not None:
+            flash(f"“{existing.option_value}” is already a {field_name} preset.", "error")
+            return redirect(url_for("colony", view="settings"))
+        db_session.add(DropdownOption(field_name=field_name, option_value=option_value))
+        db_session.commit()
+        flash(f"Saved “{option_value}” as a {field_name} preset.", "success")
     return redirect(url_for("colony", view="settings"))
 
 
@@ -2850,18 +3088,24 @@ def update_option(option_id: int):
     new_value = request.form.get("option_value", "").strip()
     with SessionLocal() as db_session:
         option = db_session.get(DropdownOption, option_id)
-        if option is None or not new_value:
+        if option is None:
+            flash("That preset no longer exists.", "error")
+            return autosave_response("settings")
+        if not new_value:
+            flash("A preset cannot be blank; delete it instead.", "error")
             return autosave_response("settings")
         duplicate = db_session.scalar(
             select(DropdownOption).where(
                 DropdownOption.field_name == option.field_name,
-                DropdownOption.option_value == new_value,
+                func.lower(DropdownOption.option_value) == new_value.lower(),
                 DropdownOption.id != option.id,
             )
         )
-        if duplicate is None:
-            option.option_value = new_value
-            db_session.commit()
+        if duplicate is not None:
+            flash(f"“{duplicate.option_value}” is already a {option.field_name} preset.", "error")
+            return autosave_response("settings")
+        option.option_value = new_value
+        db_session.commit()
     return autosave_response("settings")
 
 
@@ -2871,8 +3115,10 @@ def delete_option(option_id: int):
     with SessionLocal() as db_session:
         option = db_session.get(DropdownOption, option_id)
         if option is not None:
+            label = f"the {option.field_name} preset “{option.option_value}”"
             db_session.delete(option)
             db_session.commit()
+            flash(f"Removed {label}.", "success")
     return redirect(url_for("colony", view="settings"))
 
 
@@ -3637,8 +3883,8 @@ def notebook_create_page_quick():
 def global_search():
     """Cross-section search used by the Cmd+K palette.
 
-    Returns up to 5 matches per section: mice, plasmids, orders, samples,
-    notebook pages. Each result has { type, id, label, sublabel, url }.
+    Returns up to 5 matches per section: mice, cages, litters, experiments,
+    strains, plasmids, inventory items, vials, notebook pages. Each result has { type, id, label, sublabel, url }.
     Empty `q` returns nothing — the palette only fires on non-empty input.
     """
     q = (request.args.get("q") or "").strip()
@@ -3662,7 +3908,59 @@ def global_search():
                 "id": m.mouse_id,
                 "label": f"Mouse #{m.mouse_id}",
                 "sublabel": f"{m.gender or '?'} · {m.genotype or '(no genotype)'} · {m.owner or 'no owner'}",
-                "url": url_for("colony", view="mice") + f"#mouse-{m.id}",
+                # Everyone's scope, so the mouse is on the sheet whoever
+                # owns it; the sheet puts ?q= in its search box.
+                "url": url_for("colony", view="mice", scope="all", q=m.mouse_id),
+            })
+
+        # The rest of the colony: cages, litters, experiments, strains.
+        cage_stmt = select(CageRecord).where(
+            CageRecord.cage_id.ilike(like) | CageRecord.purpose.ilike(like)
+            | CageRecord.genotype_summary.ilike(like) | CageRecord.card_id.ilike(like)
+            | CageRecord.notes.ilike(like) | CageRecord.room.ilike(like))
+        for cage in db_session.scalars(cage_stmt.order_by(CageRecord.cage_id).limit(limit)).all():
+            live = sum(1 for mouse in cage.mice if mouse_is_active(mouse))
+            results.append({
+                "type": "cage",
+                "id": cage.id,
+                "label": f"Cage {cage.cage_id}",
+                "sublabel": " · ".join(filter(None, [cage.purpose, f"{live} live", cage.owner])),
+                "url": url_for("colony", view="cages", scope="all", q=cage.cage_id),
+            })
+        litter_stmt = select(LitterRecord).where(
+            LitterRecord.litter_id.ilike(like) | LitterRecord.cohort_name.ilike(like)
+            | LitterRecord.notes.ilike(like))
+        for litter in db_session.scalars(litter_stmt.order_by(LitterRecord.litter_id).limit(limit)).all():
+            results.append({
+                "type": "litter",
+                "id": litter.id,
+                "label": f"Litter {litter.litter_id}",
+                "sublabel": " · ".join(filter(None, [
+                    f"born {litter.date_of_birth.isoformat()}" if litter.date_of_birth else "",
+                    litter.cohort_name, f"{len(litter.mice)} mice"])),
+                "url": url_for("colony", view="litters", q=litter.litter_id),
+            })
+        exp_stmt = select(Experiment).where(
+            Experiment.name.ilike(like) | Experiment.description.ilike(like)
+            | Experiment.treatment_plan.ilike(like))
+        for exp in db_session.scalars(exp_stmt.order_by(Experiment.created_at.desc()).limit(limit)).all():
+            results.append({
+                "type": "experiment",
+                "id": exp.id,
+                "label": exp.name,
+                "sublabel": " · ".join(filter(None, [exp.status, f"{len(exp.memberships)} mice", exp.owner_username])),
+                "url": url_for("experiment_detail", experiment_id=exp.id),
+            })
+        strain_stmt = select(StrainRecord).where(
+            StrainRecord.strain_name.ilike(like) | StrainRecord.strain_number.ilike(like)
+            | StrainRecord.strain_background.ilike(like) | StrainRecord.description.ilike(like))
+        for strain in db_session.scalars(strain_stmt.order_by(StrainRecord.strain_name).limit(limit)).all():
+            results.append({
+                "type": "strain",
+                "id": strain.id,
+                "label": strain.strain_name,
+                "sublabel": " · ".join(filter(None, [strain.strain_number, strain.strain_background, strain.supplier])),
+                "url": url_for("colony", view="strains", q=strain.strain_name),
             })
 
         plasmid_stmt = select(PlasmidRecord)
@@ -4001,7 +4299,8 @@ def undo_batch(batch_id: int):
     with SessionLocal() as db_session:
         row = db_session.get(BatchRecord, batch_id)
         if row is None:
-            abort(404)
+            flash("That batch no longer exists.", "error")
+            return redirect(url_for("batches_view"))
         if not (row.actor == g.user.username or access.is_admin()):
             flash("Only whoever ran a batch, or an admin, can undo it.", "error")
             return redirect(url_for("batches_view"))

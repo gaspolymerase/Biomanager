@@ -240,6 +240,8 @@ def ensure_schema_updates() -> None:
         alter_statements.append("ALTER TABLE mouse_racks ADD COLUMN naming TEXT DEFAULT '{}'")
     if "fish_racks" in table_columns and "naming" not in table_columns["fish_racks"]:
         alter_statements.append("ALTER TABLE fish_racks ADD COLUMN naming TEXT DEFAULT '{}'")
+    if "mouse_racks" in table_columns and "created_by" not in table_columns["mouse_racks"]:
+        alter_statements.append("ALTER TABLE mouse_racks ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
     if "mouse_cages" in table_columns:
         for column, ddl in (("rack_id_fk", "INTEGER REFERENCES mouse_racks(id)"),
                             ("rack_row", "INTEGER"), ("rack_col", "INTEGER")):
@@ -586,35 +588,36 @@ def reserve_mouse_ids(session, count: int) -> list[int]:
     return [highest + offset for offset in range(1, count + 1)]
 
 
+def _cage_number(code: str | None) -> int:
+    """The number a cage ID stands for: "12" -> 12, "2A" -> 2, "B-12" -> 12.
+    Only the first run of digits counts, so "B12-3" is 12, not 123."""
+    match = re.search(r"\d+", code or "")
+    return int(match.group()) if match else 0
+
+
 def reserve_cage_ids(session, count: int) -> list[str]:
-    """The cage-ID equivalent of reserve_mouse_ids()."""
+    """`count` unused cage IDs above the highest numbered cage.
+
+    Computed from every cage, not the most recently created one: a cage
+    typed by hand with a low number ("2A") must not send the next "new"
+    cage back into the existing cage 3."""
     if count <= 0:
         return []
+    # See next_mouse_id: pending rows are invisible without a flush.
     session.flush()
-    highest = 0
-    for cage in session.scalars(select(CageRecord)).all():
-        digits = "".join(c for c in (cage.cage_id or "") if c.isdigit())
-        if digits:
-            highest = max(highest, int(digits))
-    return [str(highest + offset) for offset in range(1, count + 1)]
+    codes = set(session.scalars(select(CageRecord.cage_id)).all())
+    highest = max((_cage_number(code) for code in codes), default=0)
+    ids: list[str] = []
+    candidate = highest
+    while len(ids) < count:
+        candidate += 1
+        if str(candidate) not in codes:
+            ids.append(str(candidate))
+    return ids
 
 
 def next_cage_id(session) -> str:
-    # See next_mouse_id: pending rows are invisible without a flush.
-    session.flush()
-    cages = session.scalars(select(CageRecord).order_by(CageRecord.created_at.desc(), CageRecord.id.desc())).all()
-    best_value = 0
-    for cage in cages:
-        digits = "".join(character for character in cage.cage_id if character.isdigit())
-        if digits:
-            best_value = max(best_value, int(digits))
-            break
-    if best_value == 0:
-        for cage in cages:
-            digits = "".join(character for character in cage.cage_id if character.isdigit())
-            if digits:
-                best_value = max(best_value, int(digits))
-    return str(best_value + 1 if best_value else 1)
+    return reserve_cage_ids(session, 1)[0]
 
 
 def get_or_create_litter(session, litter_code: str, dob: date | None = None) -> LitterRecord:
@@ -743,7 +746,7 @@ def mouse_display_row(mouse: MouseRecord, current_username: str | None = None, c
     transgenes = [mouse.transgene_1, mouse.transgene_2, mouse.transgene_3, mouse.transgene_4]
     genotype_parts = [value for value in transgenes if value] or split_genotype(mouse.genotype)
     can_edit_breeder = current_role == "admin" or mouse.owner == current_username
-    cage_is_breeder = mouse.cage is not None and normalize_status(mouse.cage.purpose) == "breeder"
+    cage_is_breeder = mouse.cage is not None and is_breeder_purpose(mouse.cage.purpose)
     return {
         "id": mouse.id,
         "mouse_id": mouse.mouse_id,
@@ -774,16 +777,34 @@ def mouse_display_row(mouse: MouseRecord, current_username: str | None = None, c
     }
 
 
+# Cage purposes that make a cage a breeding cage: the Breeders tab lists
+# them, cage cards offer birth / genotyping / weaning on them, and they are
+# shared lab resources (app/access.py SHARED_PURPOSES includes both). Labs
+# write it either way, so both spellings mean the same thing.
+BREEDER_PURPOSES = {"breeder", "breeding"}
+
+
+def is_breeder_purpose(purpose: str | None) -> bool:
+    return (purpose or "").strip().lower() in BREEDER_PURPOSES
+
+
 def cage_is_active(cage: CageRecord) -> bool:
     return cage.active_override or any(mouse_is_active(mouse) for mouse in cage.mice)
+
+
+# Weaning at P21 is the standard; the home dashboard, cage cards and the
+# calendar all read this one constant. Cage cards also suggest tail-clip
+# genotyping at P7.
+WEAN_OFFSET_DAYS = 21
+CAGE_GENO_OFFSET_DAYS = 7
 
 
 def cage_derived_dates(cage: CageRecord) -> dict[str, str]:
     if cage.date_give_birth is None:
         return {"genotyping_date": "", "weaning_date": ""}
     return {
-        "genotyping_date": (cage.date_give_birth + timedelta(days=7)).isoformat(),
-        "weaning_date": (cage.date_give_birth + timedelta(weeks=4)).isoformat(),
+        "genotyping_date": (cage.date_give_birth + timedelta(days=CAGE_GENO_OFFSET_DAYS)).isoformat(),
+        "weaning_date": (cage.date_give_birth + timedelta(days=WEAN_OFFSET_DAYS)).isoformat(),
     }
 
 
@@ -845,7 +866,7 @@ def breeder_summary(session) -> list[dict[str, object]]:
     for mouse in session.scalars(select(MouseRecord)).all():
         if not mouse_is_active(mouse):
             continue
-        if mouse.cage is None or (mouse.cage.purpose or "").strip().lower() != "breeder":
+        if mouse.cage is None or not is_breeder_purpose(mouse.cage.purpose):
             continue
         dob = mouse.litter.date_of_birth if mouse.litter else None
         if dob is None:
@@ -894,7 +915,7 @@ def breeder_summary(session) -> list[dict[str, object]]:
 
 def breeder_mice(session, current_username: str | None, current_role: str | None) -> list[dict[str, object]]:
     cages = session.scalars(
-        select(CageRecord).where(func.lower(func.trim(CageRecord.purpose)) == "breeder").order_by(CageRecord.cage_id)
+        select(CageRecord).where(func.lower(func.trim(CageRecord.purpose)).in_(BREEDER_PURPOSES)).order_by(CageRecord.cage_id)
     ).all()
     grouped: list[dict[str, object]] = []
     for cage in cages:
@@ -1029,7 +1050,8 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
 # - weaning at P21 (3 weeks)
 # - genotyping ~a week after weaning (P28)
 # - "old mouse" sac-threshold reminder at 30 weeks
-WEAN_OFFSET_DAYS = 21
+# WEAN_OFFSET_DAYS is defined with the cage dates above (one weaning rule
+# for the home dashboard, cage cards and the calendar).
 GENO_OFFSET_DAYS = 28
 SAC_THRESHOLD_WEEKS = 30
 

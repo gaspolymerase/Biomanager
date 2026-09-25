@@ -83,6 +83,47 @@ def can_edit_mouse(mouse, user=None) -> bool:
     return can_edit(mouse, user, shared=is_shared_cage(getattr(mouse, "cage", None)))
 
 
+def can_edit_experiment(experiment, user=None) -> bool:
+    """An experiment belongs to whoever created it (owner_username); only
+    they, or an admin, may rename it, change its members or delete it."""
+    if experiment is None:
+        return False
+    if is_admin(user):
+        return True
+    owner = (getattr(experiment, "owner_username", "") or "").strip()
+    return not owner or owner == username(user)
+
+
+def can_edit_litter(litter, user=None) -> bool:
+    """A litter has no owner of its own: its date of birth is the age of
+    every mouse in it. So it is editable by someone who may edit all of
+    its mice (an empty litter by anyone)."""
+    if litter is None:
+        return False
+    if is_admin(user):
+        return True
+    return all(can_edit_mouse(mouse, user) for mouse in (getattr(litter, "mice", None) or []))
+
+
+def can_edit_rack(rack, user=None) -> bool:
+    """Resizing, renaming or deleting a rack moves every cage in it, so it
+    is for whoever created the rack, or an admin. Racks that predate the
+    creator column have no creator and stay open to everyone, like any
+    unowned record."""
+    if rack is None:
+        return False
+    if is_admin(user):
+        return True
+    creator = (getattr(rack, "created_by", "") or "").strip()
+    return not creator or creator == username(user)
+
+
+def denied_message(what: str, owner: str = "") -> str:
+    """The refusal for records that are not owned through `.owner`."""
+    who = f"{owner}’s" if owner else "someone else’s"
+    return f"That {what} is {who}. Ask them, or an admin, to make the change."
+
+
 def reason_denied(record, user=None, noun: str | None = None) -> str:
     """A message worth showing someone, rather than a bare 403. `noun`
     names the kind of record ("reagent", "cage"…); "record" otherwise."""
