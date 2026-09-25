@@ -4,6 +4,7 @@
 {% block page_heading %}{{ line.name }}{% endblock %}
 {% block page_subtitle %}Zebrafish line{% if line.zfin_name %} · {{ line.zfin_name }}{% endif %}{% if line.background %} · {{ line.background }}{% endif %}{% endblock %}
 {% block page_actions %}
+  {% if line.owner %}<span class="flex items-center gap-1.5 text-[12px] text-muted">Owner {{ line.owner | owner_badge }}</span>{% endif %}
   <a class="btn" href="{{ url_for('zebrafish', view='lines') }}">{{ icon('chevron-left') }} All lines</a>
 {% endblock %}
 
@@ -34,8 +35,12 @@
 
     <section class="card overflow-hidden">
       <header class="card-head border-b border-sand-100 px-4 py-3"><h2>{{ icon('edit') }} Details</h2></header>
+      {% if not editable %}<p class="org-locked-note mx-4 mt-4">{{ icon('lock') }} {{ denied }}</p>{% endif %}
+      <datalist id="line-owners">{% for u in usernames %}<option value="{{ u }}"></option>{% endfor %}</datalist>
       <form method="post" action="{{ url_for('zebrafish_update_line', line_id=line.id) }}" class="modal-grid p-4">
+        <fieldset class="contents" {% if not editable %}disabled{% endif %}>
         <label>Name <input name="name" value="{{ line.name }}"></label>
+        <label>Owner <input name="owner" value="{{ line.owner }}" list="line-owners" placeholder="nobody"></label>
         <label>ZFIN name <input name="zfin_name" value="{{ line.zfin_name }}"></label>
         <label>Background <input name="background" value="{{ line.background }}"></label>
         <label>Allele <input name="allele" value="{{ line.allele }}"></label>
@@ -49,7 +54,8 @@
         <label class="col-span-full">Transgenes <input name="transgene_summary" value="{{ line.transgene_summary }}"></label>
         <label class="col-span-full">Founder notes <textarea name="founder_info" rows="3">{{ line.founder_info }}</textarea></label>
         <label class="col-span-full">Notes <textarea name="notes" rows="3">{{ line.notes }}</textarea></label>
-        <button type="submit">Save</button>
+        {% if editable %}<button type="submit">Save</button>{% endif %}
+        </fieldset>
       </form>
     </section>
   </div>
