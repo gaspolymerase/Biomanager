@@ -184,3 +184,17 @@
 
   window.BiomanagerShell = { toast, toggleRail, setRail, setDrawer };
 })();
+
+/* Confirm before a destructive submit: <form data-confirm="Delete V12?">.
+   The text lives in an attribute (escaped by Jinja), never inside an
+   onsubmit string, where a name containing a quote could break out and
+   run as script. Selection-bar forms handle their own ({n}) prompt. */
+document.addEventListener('submit', (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || form.hasAttribute('data-selection-form')) return;
+  const text = form.getAttribute('data-confirm');
+  if (text && !window.confirm(text)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
