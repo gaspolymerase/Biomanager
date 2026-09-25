@@ -1,11 +1,25 @@
 {% extends "base.html" %}
+{% import "_sheet.html" as sheet_ui with context %}
 
 {% block page_title %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
 {% block page_heading %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
 {% block page_subtitle %}Reference a plasmid in the notebook with <code class="ident">@plasmid 123</code>{% endblock %}
-{% block page_shell_class %}shell-page-wide{% endblock %}
+{% block page_shell_class %}shell-page-wide workbench{% endblock %}
+
+{% block page_nav %}
+  <div class="mb-3 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+    <span class="badge">{{ counts.all }} {{ 'plasmid' if counts.all == 1 else 'plasmids' }}</span>
+    <span class="badge">{{ counts.sequence }} with a sequence</span>
+    <span class="badge">{{ counts.stored }} in a box</span>
+    <span class="ml-1.5">
+      {% if current_user.role == 'admin' %}Admin — you can edit anything.
+      {% else %}Plasmids owned by other people are read-only.{% endif %}
+    </span>
+  </div>
+{% endblock %}
 
 {% block content %}
+{{ sheet_ui.owners_list(usernames) }}
 <datalist id="plasmid-resistance">
   <option value="Amp"></option><option value="Kan"></option><option value="Cam"></option>
   <option value="Spec"></option><option value="Hyg"></option><option value="Puro"></option>
@@ -14,7 +28,11 @@
   {% for b in boxes %}<option value="{{ b }}"></option>{% endfor %}
 </datalist>
 
-<section class="data-table-card sheet" data-table-id="plasmids-v2" data-noun="plasmid" id="plasmids-section">
+{% set new_payload = {"owner": current_user.username, "plasmid_id": next_plasmid_id} %}
+
+<section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v3" data-noun="plasmid" id="plasmids-section"
+         data-autosave-sheet data-export-name="plasmids"
+         data-selection-scope data-selection-noun="plasmid" data-selection-noun-plural="plasmids">
   <div class="dt-toolbar">
     <div class="dt-chips plasmid-view-switcher" role="tablist" aria-label="View">
       <button type="button" class="dt-chip plasmid-view-btn is-active" data-view="table" title="Table" aria-label="Table view">{{ icon('table') }}</button>
@@ -23,14 +41,19 @@
     </div>
     <div class="dt-toolbar-search">
       {{ icon('search', 'search-icon') }}
-      <input type="text" class="dt-search" placeholder="Search name, backbone, insert…" autocomplete="off" aria-label="Search plasmids">
+      <input type="text" class="dt-search" placeholder="Search name, backbone, insert, owner…" autocomplete="off" aria-label="Search plasmids">
+    </div>
+    <div class="dt-chips" role="group" aria-label="Show">
+      <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">All <span class="dt-chip-count">{{ counts.all }}</span></button>
+      <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ counts.mine }}</span></button>
+      <button type="button" class="dt-chip" data-dt-filter="seq:true" aria-pressed="false">Has sequence <span class="dt-chip-count">{{ counts.sequence }}</span></button>
+      <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false">In a box <span class="dt-chip-count">{{ counts.stored }}</span></button>
     </div>
     <div class="dt-toolbar-spacer"></div>
-    <span class="sheet-save" data-save-status aria-live="polite"></span>
-    <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
-    <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+    {{ sheet_ui.tools() }}
     <button type="button" class="dt-toolbar-btn" onclick="openCsvImport('plasmid')" title="Load plasmids from a CSV file">{{ icon('import') }} Import</button>
-    <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]" onclick="document.getElementById('plasmid-new-modal').showModal()">
+    <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+            data-record-edit="plasmid-dialog" data-record-payload='{{ new_payload | tojson }}'>
       {{ icon('plus') }} New plasmid
     </button>
   </div>
@@ -40,63 +63,111 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;"><input type="checkbox" class="dt-select-all" aria-label="Select all"></th>
-            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="pid" style="width: 76px; min-width: 76px;">
-              <span class="dt-col-head">{{ icon('plasmid', 'dt-col-icon') }}PID<span class="dt-sort-indicator"></span></span>
+            <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
+              <input type="checkbox" data-select-all aria-label="Select all visible plasmids">
             </th>
-            <th class="dt-sortable" data-sort-key="name" style="width: 260px;">
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="pid" style="width: 84px; min-width: 84px;"
+                title="Plasmid number. The dot is green while the plasmid has a place in a box.">
+              <span class="dt-col-head">{{ icon('plasmid', 'dt-col-icon') }}Plasmid<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="name" style="width: 240px;">
               <span class="dt-col-head">{{ icon('type', 'dt-col-icon') }}Name<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="backbone" style="width: 160px;">
-              <span class="dt-col-head">{{ icon('plasmid', 'dt-col-icon') }}Backbone<span class="dt-sort-indicator"></span></span>
+            <th class="dt-sortable" data-sort-key="backbone" style="width: 150px;" title="The vector the insert is cloned into">
+              <span class="dt-col-head">{{ icon('layers', 'dt-col-icon') }}Backbone<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="insert_seq" style="width: 180px;">
+            <th class="dt-sortable" data-sort-key="insert_seq" style="width: 170px;">
               <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Insert<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="resistance" style="width: 120px;">
+            <th class="dt-sortable" data-sort-key="resistance" style="width: 112px;">
               <span class="dt-col-head">{{ icon('resistance', 'dt-col-icon') }}Resistance<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="owner" style="width: 110px;">
+            <th class="dt-sortable" data-sort-key="owner" style="width: 88px;">
               <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="location" style="width: 170px;">
+            <th class="dt-sortable" data-sort-key="storage_box" style="width: 140px;" title="The freezer box it is kept in">
+              <span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Box<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="position" style="width: 80px;" title="Cell in the box: row letter and column number, e.g. B4">
+              <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="location" style="width: 150px;" title="Where the box or tube is: freezer, shelf…">
               <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="length" style="width: 116px;" title="Sequence length and topology; edit it on the plasmid's page">
+              <span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Sequence<span class="dt-sort-indicator"></span></span>
             </th>
             <th class="dt-sortable" data-sort-key="notes" style="min-width: 220px;">
               <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
+            <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
-          {% for p in plasmids %}
+          {% for r in rows %}
+            {% set p = r.p %}
             {% set f = 'plasmid-' ~ p.id %}
-            <tr data-id="{{ p.id }}" data-pid="{{ p.plasmid_id }}">
-              <td class="sheet-pin sheet-pin-0"><input type="checkbox" class="dt-row-check" aria-label="Select plasmid {{ p.plasmid_id }}"></td>
-              <td class="sheet-pin sheet-pin-1"><a href="{{ url_for('plasmid_detail', row_id=p.id) }}" class="sheet-link ident" title="Open plasmid #{{ p.plasmid_id }}">#{{ p.plasmid_id }}</a></td>
-              <td><input form="{{ f }}" name="name" value="{{ p.name }}" title="{{ p.name }}" data-autosave="1" aria-label="Name"></td>
-              <td><input form="{{ f }}" name="backbone" value="{{ p.backbone }}" data-autosave="1" aria-label="Backbone"></td>
-              <td><input form="{{ f }}" name="insert_seq" value="{{ p.insert_seq }}" title="{{ p.insert_seq }}" data-autosave="1" aria-label="Insert"></td>
-              <td><input form="{{ f }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1" aria-label="Resistance"></td>
-              <td><input form="{{ f }}" name="owner" value="{{ p.owner }}" data-autosave="1" aria-label="Owner"></td>
-              <td><input form="{{ f }}" name="location" value="{{ p.location }}" title="{{ p.location }}" data-autosave="1" aria-label="Location"></td>
-              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ p.notes }}" title="{{ p.notes }}" data-autosave="1" aria-label="Notes"></td>
+            {% set locked = not r.editable %}
+            <tr data-id="{{ p.id }}" data-pid="{{ p.plasmid_id }}" data-length="{{ r.length }}"
+                data-mine="{{ 'true' if r.mine else 'false' }}" data-seq="{{ 'true' if r.length else 'false' }}"
+                data-active="{{ 'true' if r.stored else 'false' }}"
+                class="{% if locked %}is-locked{% endif %}">
+              <td class="sheet-pin sheet-pin-0">
+                <input type="checkbox" data-select-row value="{{ p.id }}" aria-label="Select plasmid {{ p.plasmid_id }}">
+              </td>
+              <td class="sheet-pin sheet-pin-1">
+                <a href="{{ url_for('plasmid_detail', row_id=p.id) }}" class="sheet-link" title="Open the page of plasmid #{{ p.plasmid_id }} (sequence map)">
+                  {{ sheet_ui.id_cell('#' ~ p.plasmid_id, alive=r.stored, locked=locked, owner=p.owner, noun='plasmid',
+                                      alive_title='In a box', dead_title='Not stored') }}
+                </a>
+              </td>
+              <td><input class="font-medium" form="{{ f }}" name="name" value="{{ p.name }}" title="{{ p.name }}" data-autosave="1" aria-label="Name" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" name="backbone" value="{{ p.backbone }}" data-autosave="1" aria-label="Backbone" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" name="insert_seq" value="{{ p.insert_seq }}" title="{{ p.insert_seq }}" data-autosave="1" aria-label="Insert" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1" aria-label="Resistance" {% if locked %}disabled{% endif %}></td>
+              <td>{{ sheet_ui.owner_cell(p.owner, f, locked) }}</td>
+              <td><input form="{{ f }}" name="storage_box" value="{{ p.storage_box or '' }}" list="plasmid-existing-boxes" placeholder="–"
+                         data-autosave="1" data-dead-values="" aria-label="Box" {% if locked %}disabled{% endif %}></td>
+              <td><input class="ident" form="{{ f }}" name="position" value="{{ r.position }}" placeholder="–"
+                         data-autosave="1" data-dead-values="" aria-label="Position in the box" {% if locked %}disabled{% endif %}></td>
+              <td><input form="{{ f }}" name="location" value="{{ p.location }}" title="{{ p.location }}" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
+              <td class="sheet-num">
+                {% if r.length %}{{ '{:,}'.format(r.length) }}<span class="sheet-unit">bp</span><span class="sheet-unit">{{ 'circ' if p.is_circular else 'lin' }}</span>
+                {% else %}<span class="sheet-empty">–</span>{% endif %}
+              </td>
+              <td><input class="note-cell" form="{{ f }}" name="notes" value="{{ p.notes }}" title="{{ p.notes }}" placeholder="Add a note"
+                         data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
-                  <form method="post" action="{{ url_for('delete_plasmid', row_id=p.id) }}" onsubmit="return confirm('Delete plasmid #{{ p.plasmid_id }}?')">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete plasmid #{{ p.plasmid_id }}">{{ icon('trash') }}</button>
+                  <button type="button" class="row-icon-btn" title="Open plasmid #{{ p.plasmid_id }}" data-record-edit="plasmid-dialog"
+                          data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
+                  <form method="post" action="{{ url_for('duplicate_plasmid', row_id=p.id) }}">
+                    <button type="submit" class="row-icon-btn" title="Duplicate plasmid #{{ p.plasmid_id }} (sequence included)">{{ icon('copy') }}</button>
+                  </form>
+                  <form method="post" action="{{ url_for('delete_plasmid', row_id=p.id) }}"
+                        onsubmit="return confirm('Delete plasmid #{{ p.plasmid_id }}? You can undo it from Batch history.')">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete plasmid #{{ p.plasmid_id }}"
+                            {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="10">No plasmids yet. Use <strong>New plasmid</strong>, or <strong>Import</strong> a CSV.</td></tr>
+            <tr><td class="dt-empty" colspan="13">No plasmids yet. Use <strong>New plasmid</strong>, or <strong>Import</strong> a CSV.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% for p in plasmids %}
-      <form id="plasmid-{{ p.id }}" method="post" action="{{ url_for('update_plasmid', row_id=p.id) }}" data-record-label="plasmid #{{ p.plasmid_id }}"></form>
+    {# One form per row; each cell joins it through form="…". The _was
+       fields are what the row showed for the box and position: the box
+       grid can move a plasmid while its row is on screen, and the server
+       only moves it when these differ (app/formutil.py). #}
+    {% for r in rows %}
+      <form id="plasmid-{{ r.p.id }}" method="post" action="{{ url_for('update_plasmid', row_id=r.p.id) }}"
+            data-record-label="plasmid #{{ r.p.plasmid_id }}">
+        <input type="hidden" name="storage_box_was" value="{{ r.p.storage_box or '' }}">
+        <input type="hidden" name="position_was" value="{{ r.position }}">
+      </form>
     {% endfor %}
   </div>{# /plasmid-view-table #}
 
@@ -109,20 +180,22 @@
           <option value="__new__">New box…</option>
         </select>
       </label>
-      <label class="field-label">Rows <input id="plasmid-box-rows" type="number" min="1" max="20" value="9"></label>
-      <label class="field-label">Columns <input id="plasmid-box-cols" type="number" min="1" max="20" value="9"></label>
+      <label class="field-label">Rows <input id="plasmid-box-rows" type="number" min="1" max="{{ box_max }}" value="9"></label>
+      <label class="field-label">Columns <input id="plasmid-box-cols" type="number" min="1" max="{{ box_max }}" value="9"></label>
+      <span class="plasmid-box-status sheet-save" id="plasmid-box-status" aria-live="polite"></span>
     </div>
     <div class="plasmid-box-shell">
-      <div class="plasmid-box-grid" id="plasmid-box-grid" data-active-box="{{ active_box }}"></div>
+      <div class="plasmid-box-grid" id="plasmid-box-grid" data-active-box="{{ active_box }}" data-box-max="{{ box_max }}"></div>
       <aside class="plasmid-box-tray" id="plasmid-box-tray">
         <h4>Unplaced</h4>
-        <p class="text-[12px] text-muted">Drag a plasmid into a cell, or back here to take it out of the box.</p>
+        <p class="text-[12px] text-muted">Drag a plasmid into a cell (onto another to swap them), or back here to take it out of its cell.</p>
         <div class="plasmid-box-tray-items" id="plasmid-box-tray-items"></div>
       </aside>
     </div>
     <script id="plasmid-box-data" type="application/json">
       [
-        {% for p in plasmids %}
+        {% for r in rows %}
+          {% set p = r.p %}
           {
             "id": {{ p.id }},
             "plasmid_id": {{ p.plasmid_id }},
@@ -130,6 +203,7 @@
             "backbone": {{ (p.backbone or '')|tojson }},
             "resistance": {{ (p.resistance or '')|tojson }},
             "owner": {{ (p.owner or '')|tojson }},
+            "editable": {{ 'true' if r.editable else 'false' }},
             "storage_box": {{ (p.storage_box or '')|tojson }},
             "box_row": {{ p.box_row if p.box_row is not none else -1 }},
             "box_col": {{ p.box_col if p.box_col is not none else -1 }},
@@ -141,9 +215,10 @@
   </div>
 
   <div class="plasmid-view plasmid-view-list" data-view="list">
-    {% if plasmids %}
+    {% if rows %}
       <ul class="plasmid-list">
-        {% for p in plasmids %}
+        {% for r in rows %}
+          {% set p = r.p %}
           <li class="plasmid-list-row" data-search="{{ ((p.name or '') + ' ' + (p.backbone or '') + ' ' + (p.resistance or '') + ' ' + (p.owner or ''))|lower }}">
             <a href="{{ url_for('plasmid_detail', row_id=p.id) }}">
               <span class="plasmid-list-id">#{{ p.plasmid_id }}</span>
@@ -151,9 +226,10 @@
               <span class="plasmid-list-meta">
                 {% if p.backbone %}<span>{{ p.backbone }}</span>{% endif %}
                 {% if p.resistance %}<span class="badge badge-brand">{{ p.resistance }}</span>{% endif %}
-                {% if p.location %}<span>{{ p.location }}</span>{% endif %}
-                {% if p.full_sequence %}<span class="tabular-nums">{{ p.full_sequence|length }} bp</span>{% endif %}
+                {% if r.stored %}<span>{{ p.storage_box }} · {{ r.position }}</span>{% elif p.location %}<span>{{ p.location }}</span>{% endif %}
+                {% if r.length %}<span class="tabular-nums">{{ r.length }} bp</span>{% endif %}
                 {% if p.owner %}{{ p.owner | owner_badge }}{% endif %}
+                {% if not r.editable %}<span class="sheet-lock" title="{{ p.owner }}’s plasmid: read only">{{ icon('lock') }}</span>{% endif %}
               </span>
             </a>
           </li>
@@ -165,7 +241,10 @@
   </div>
 
   <div class="dt-bottom-bar">
-    <span class="dt-bottom-count dt-count">{{ plasmids|length }} {{ 'plasmid' if plasmids|length == 1 else 'plasmids' }}</span>
+    <span class="dt-bottom-count dt-count">{{ rows|length }} {{ 'plasmid' if rows|length == 1 else 'plasmids' }}</span>
+    <button type="button" class="dt-bottom-action" data-record-edit="plasmid-dialog" data-record-payload='{{ new_payload | tojson }}'>
+      {{ icon('plus') }} New plasmid
+    </button>
     <div class="dt-bottom-spacer"></div>
     <div class="dt-pagination">
       <span class="dt-page-label">Page 1</span>
@@ -177,39 +256,73 @@
       </select>
     </div>
   </div>
+
+  {# Batch actions on the ticked plasmids. Each is one batch in Batch
+     history, so it can be undone; plasmids you may not edit are skipped. #}
+  <div class="selbar" data-selection-bar hidden>
+    <span class="selbar-count" data-selection-count></span>
+    <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
+      <input type="hidden" name="action" value="owner">
+      <input name="value" list="sheet-owners" placeholder="owner" aria-label="New owner">
+      <button type="submit" class="btn btn-sm">Set owner</button>
+    </form>
+    <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
+      <input type="hidden" name="action" value="resistance">
+      <input name="value" list="plasmid-resistance" placeholder="resistance" aria-label="New resistance">
+      <button type="submit" class="btn btn-sm">Set resistance</button>
+    </form>
+    <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form
+          title="Places them in the first free cells; leave the box blank to take them out of their boxes">
+      <input type="hidden" name="action" value="move">
+      <input name="value" list="plasmid-existing-boxes" placeholder="box" aria-label="Box to move to">
+      <button type="submit" class="btn btn-sm">{{ icon('box') }} Move to box</button>
+    </form>
+    <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form
+          data-confirm="Delete {n} plasmid(s)? You can undo it from Batch history.">
+      <input type="hidden" name="action" value="delete">
+      <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+    </form>
+    <div class="selbar-spacer"></div>
+    <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+  </div>
 </section>
 
-<dialog id="plasmid-new-modal" class="record-dialog" aria-labelledby="plasmid-new-title">
-  <form method="post" enctype="multipart/form-data" id="plasmid-new-form">
+{# New and Open share one dialog (static/record-dialog.js). The sequence
+   upload is for new plasmids; an existing one changes its sequence on its
+   own page, where the map shows what you are replacing. #}
+<dialog id="plasmid-dialog" class="record-dialog" aria-labelledby="plasmid-dialog-title">
+  <form method="post" enctype="multipart/form-data" id="plasmid-dialog-form" data-record-form
+        data-create-action="{{ url_for('plasmids') }}"
+        data-update-action="{{ url_for('update_plasmid', row_id=0) }}"
+        data-new-title="New plasmid" data-edit-title="Plasmid {label}"
+        data-new-submit="Create plasmid" data-edit-submit="Save">
     <header class="record-dialog-head">
       <div>
-        <h3 id="plasmid-new-title">New plasmid</h3>
-        <p class="record-dialog-sub">It will be plasmid #{{ next_plasmid_id }}.</p>
+        <h3 id="plasmid-dialog-title" data-record-title>New plasmid</h3>
+        <p class="record-dialog-sub" data-plasmid-sub>It will be plasmid #{{ next_plasmid_id }}, or the next free number if that is taken when you save.</p>
       </div>
       <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
+      <input type="hidden" name="id">
       <input type="hidden" name="plasmid_id" value="{{ next_plasmid_id }}">
-      <label class="record-wide">Name <input name="name" required placeholder="e.g. pCMV-mCherry-NLS"></label>
+      <input type="hidden" name="storage_box_was">
+      <input type="hidden" name="position_was">
+      <label class="record-wide">Name <input name="name" required placeholder="e.g. pCMV-mCherry-NLS" autocomplete="off"></label>
       <fieldset class="record-group">
         <legend>Construct</legend>
         <label>Backbone <input name="backbone" placeholder="e.g. pcDNA3.1"></label>
         <label>Insert <input name="insert_seq" placeholder="What is cloned in"></label>
         <label>Resistance <input name="resistance" list="plasmid-resistance"></label>
-        <label>Owner <input name="owner" value="{{ current_user.username if current_user else '' }}"></label>
+        <label>Owner <input name="owner" list="sheet-owners"></label>
       </fieldset>
       <fieldset class="record-group">
         <legend>Storage</legend>
-        <label class="record-wide">Location <input name="location" placeholder="e.g. −80 freezer, shelf 2"></label>
         <label>Box <input name="storage_box" list="plasmid-existing-boxes" placeholder="e.g. Plasmid box A"></label>
-        <label>Row / column
-          <span class="flex gap-2">
-            <input name="box_row" type="number" min="0" max="19" placeholder="row" aria-label="Box row">
-            <input name="box_col" type="number" min="0" max="19" placeholder="col" aria-label="Box column">
-          </span>
-        </label>
+        <label>Position <input name="position" class="font-mono" placeholder="e.g. B4" pattern="\s*[A-Ta-t]\s*-?\s*\d{1,2}\s*" title="Row letter and column number, like B4"></label>
+        <label class="record-wide">Location <input name="location" placeholder="e.g. −80 freezer, shelf 2"></label>
       </fieldset>
-      <fieldset class="record-group">
+      <fieldset class="record-group" data-new-only>
         <legend>Sequence (optional)</legend>
         <div id="plasmid-new-dropzone" class="dropzone record-wide">
           <input type="file" id="plasmid-new-file" name="sequence_file" accept=".dna,.fasta,.fa,.gb,.gbk,.txt" hidden>
@@ -222,53 +335,63 @@
         </div>
         <details class="record-wide dropzone-paste">
           <summary>Paste sequence text instead</summary>
-          <textarea name="sequence_text" rows="5" placeholder="LOCUS … (GenBank), >name … (FASTA), or raw ATGC"></textarea>
+          <textarea name="sequence_text" rows="5" placeholder="LOCUS … (GenBank), >name … (FASTA), or bases only (IUPAC letters)"></textarea>
         </details>
       </fieldset>
-      <label class="record-wide">Notes <input name="notes" placeholder="Source, reference…"></label>
+      <label class="record-wide">Notes <textarea name="notes" rows="3" placeholder="Source, reference…"></textarea></label>
     </div>
     <footer class="record-dialog-foot">
+      <span class="record-dialog-hint" data-plasmid-hint></span>
       <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
-      <button type="submit" class="btn btn-primary">Create plasmid</button>
+      <button type="submit" class="btn btn-primary" data-record-submit>Create plasmid</button>
     </footer>
   </form>
 </dialog>
+{% endblock %}
 
+{% block body_end %}
 <script>
-  /* Autosave with the same toolbar indicator as the other sheets. */
+  /* The record dialog: New shows the sequence upload; Open shows who owns a
+     read-only plasmid, and links to its page. */
   (function () {
-    const status = document.querySelector('[data-save-status]');
-    let clear = null;
-    const say = (state, text) => {
-      if (!status) return;
-      clearTimeout(clear);
-      status.dataset.state = state;
-      status.textContent = text;
-      if (state === 'saved') clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
-    };
-    const timers = new Map();
-    async function save(form) {
-      say('saving', 'Saving…');
-      try {
-        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
-        say('saved', 'All changes saved');
-      } catch (error) {
-        say('error', `Couldn’t save ${form.dataset.recordLabel || 'this change'}: ${error.message}`);
+    const dialog = document.getElementById('plasmid-dialog');
+    if (!dialog) return;
+    const sub = dialog.querySelector('[data-plasmid-sub]');
+    const hint = dialog.querySelector('[data-plasmid-hint]');
+    const newSub = sub ? sub.textContent : '';
+    dialog.addEventListener('record-dialog:open', (event) => {
+      const { data, isNew } = event.detail || {};
+      dialog.querySelectorAll('[data-new-only]').forEach((el) => { el.hidden = !isNew; });
+      if (sub) {
+        sub.innerHTML = '';
+        if (isNew) {
+          sub.textContent = newSub;
+        } else {
+          const link = document.createElement('a');
+          link.href = `/plasmids/${data.id}`;
+          link.textContent = 'Open its page (sequence map)';
+          sub.appendChild(link);
+        }
       }
-    }
-    document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
-      const queue = (delay) => {
-        const form = input.form || document.getElementById(input.getAttribute('form'));
-        if (!form) return;
-        clearTimeout(timers.get(form.id));
-        timers.set(form.id, setTimeout(() => save(form), delay));
-      };
-      input.addEventListener('input', () => queue(400));
-      input.addEventListener('change', () => queue(0));
+      if (hint) hint.textContent = (!isNew && data._locked) ? `${data.owner || 'Someone else'}’s plasmid: read only` : '';
     });
   })();
+
+  /* After an inline save, the row's Open button carries what was saved. */
+  document.addEventListener('sheet:saved', (event) => {
+    const { form, body } = event.detail || {};
+    const values = body && body.row && body.row.values;
+    const tr = form && document.querySelector(`tr[data-id="${form.id.replace('plasmid-', '')}"]`);
+    if (!values || !tr) return;
+    const open = tr.querySelector('[data-record-edit]');
+    if (open) {
+      try {
+        const payload = JSON.parse(open.dataset.recordPayload || '{}');
+        Object.assign(payload, values, { storage_box_was: values.storage_box, position_was: values.position });
+        open.dataset.recordPayload = JSON.stringify(payload);
+      } catch (_) {}
+    }
+  });
 
   // View mode switcher (Table / Box / List). Persisted to localStorage.
   (function () {
@@ -282,13 +405,14 @@
     function applyView(name) {
       btns.forEach((b) => b.classList.toggle('is-active', b.dataset.view === name));
       panels.forEach((p) => p.classList.toggle('is-active', p.dataset.view === name));
+      section.dataset.view = name;
       try { localStorage.setItem(VIEW_KEY, name); } catch (_) {}
     }
 
     btns.forEach((b) => b.addEventListener('click', () => applyView(b.dataset.view)));
     let saved = '';
     try { saved = localStorage.getItem(VIEW_KEY) || ''; } catch (_) {}
-    if (saved && ['table', 'cards', 'list'].includes(saved)) applyView(saved);
+    applyView(['table', 'cards', 'list'].includes(saved) ? saved : 'table');
 
     // Search also filters the list view.
     if (searchInput) {
@@ -315,19 +439,30 @@
     const rowsInput = document.getElementById('plasmid-box-rows');
     const colsInput = document.getElementById('plasmid-box-cols');
     const dataNode = document.getElementById('plasmid-box-data');
+    const status = document.getElementById('plasmid-box-status');
     if (!grid || !tray || !select || !dataNode) return;
 
+    const MAX = parseInt(grid.dataset.boxMax, 10) || 20;
+    const LETTERS = 'ABCDEFGHIJKLMNOPQRST';
     let plasmids;
     try { plasmids = JSON.parse(dataNode.textContent); } catch (_) { plasmids = []; }
     let activeBox = grid.dataset.activeBox || '';
     const sizeKey = (box) => `plasmids:box-size:${box || ''}`;
+
+    function say(state, text) {
+      if (!status) return;
+      clearTimeout(status._clear);
+      status.dataset.state = state;
+      status.textContent = text;
+      if (state === 'saved') status._clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
+    }
 
     function loadSize(box) {
       try {
         const raw = localStorage.getItem(sizeKey(box));
         if (raw) {
           const obj = JSON.parse(raw);
-          if (obj && obj.rows && obj.cols) return obj;
+          if (obj && obj.rows && obj.cols) return { rows: Math.min(MAX, obj.rows), cols: Math.min(MAX, obj.cols) };
         }
       } catch (_) {}
       return { rows: 9, cols: 9 };
@@ -338,11 +473,12 @@
 
     function tubeEl(p) {
       const el = document.createElement('div');
-      el.className = 'plasmid-tube';
-      el.draggable = true;
+      el.className = 'plasmid-tube' + (p.editable ? '' : ' is-locked');
+      el.draggable = !!p.editable;
       el.dataset.rowId = String(p.id);
       el.dataset.search = p.search || '';
-      el.title = `#${p.plasmid_id} · ${p.name || 'Unnamed'}\n${p.backbone || ''} ${p.resistance ? ' · ' + p.resistance : ''}\nClick to open`;
+      el.title = `#${p.plasmid_id} · ${p.name || 'Unnamed'}\n${p.backbone || ''} ${p.resistance ? ' · ' + p.resistance : ''}\n`
+        + (p.editable ? 'Click to open, drag to move' : `${p.owner || 'Someone else'}’s plasmid: read only`);
       el.innerHTML = `
         <a class="plasmid-tube-link" href="/plasmids/${p.id}" draggable="false">
           <span class="plasmid-tube-id">#${p.plasmid_id}</span>
@@ -350,12 +486,14 @@
           ${p.resistance ? `<span class="plasmid-tube-resist">${escapeHtml(p.resistance)}</span>` : ''}
         </a>
       `;
-      el.addEventListener('dragstart', (event) => {
-        event.dataTransfer.setData('text/plain', String(p.id));
-        event.dataTransfer.effectAllowed = 'move';
-        el.classList.add('is-dragging');
-      });
-      el.addEventListener('dragend', () => { el.classList.remove('is-dragging'); });
+      if (p.editable) {
+        el.addEventListener('dragstart', (event) => {
+          event.dataTransfer.setData('text/plain', String(p.id));
+          event.dataTransfer.effectAllowed = 'move';
+          el.classList.add('is-dragging');
+        });
+        el.addEventListener('dragend', () => { el.classList.remove('is-dragging'); });
+      }
       return el;
     }
 
@@ -379,17 +517,17 @@
         grid.appendChild(h);
       }
       // Row labels + cells.
-      const letters = 'ABCDEFGHIJKLMNOPQRSTUV';
       for (let r = 0; r < rows; r++) {
         const lab = document.createElement('div');
         lab.className = 'plasmid-box-row-label';
-        lab.textContent = letters[r] || (r + 1);
+        lab.textContent = LETTERS[r] || (r + 1);
         grid.appendChild(lab);
         for (let c = 0; c < cols; c++) {
           const cell = document.createElement('div');
           cell.className = 'plasmid-box-cell';
           cell.dataset.row = r;
           cell.dataset.col = c;
+          cell.title = `${LETTERS[r]}${c + 1}`;
           wireDrop(cell);
           grid.appendChild(cell);
         }
@@ -413,7 +551,6 @@
           tray.appendChild(tubeEl(p));
         }
       });
-      wireTrayDrop();
       if (tray.children.length === 0) {
         tray.innerHTML = '<div class="plasmid-box-tray-empty">All plasmids in this box are placed.</div>';
       }
@@ -430,24 +567,41 @@
         cell.classList.remove('is-drop-target');
         const rowId = event.dataTransfer.getData('text/plain');
         if (!rowId) return;
+        if (!activeBox) { say('error', 'Pick or create a box first.'); return; }
         await moveTo(rowId, activeBox, parseInt(cell.dataset.row, 10), parseInt(cell.dataset.col, 10));
       });
     }
 
-    function wireTrayDrop() {
-      tray.addEventListener('dragover', (event) => {
-        event.preventDefault();
-        tray.classList.add('is-drop-target');
-      });
-      tray.addEventListener('dragleave', () => tray.classList.remove('is-drop-target'));
-      tray.addEventListener('drop', async (event) => {
-        event.preventDefault();
-        tray.classList.remove('is-drop-target');
-        const rowId = event.dataTransfer.getData('text/plain');
-        if (!rowId) return;
-        // Move to the active box but unplaced (no row/col).
-        await moveTo(rowId, activeBox, null, null);
-      });
+    // Wired once: the tray element survives every render.
+    tray.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      tray.classList.add('is-drop-target');
+    });
+    tray.addEventListener('dragleave', () => tray.classList.remove('is-drop-target'));
+    tray.addEventListener('drop', async (event) => {
+      event.preventDefault();
+      tray.classList.remove('is-drop-target');
+      const rowId = event.dataTransfer.getData('text/plain');
+      if (!rowId) return;
+      // Move to the active box but unplaced (no row/col).
+      await moveTo(rowId, activeBox, null, null);
+    });
+
+    /* The sheet row of a moved plasmid shows its new box and position, and
+       its _was guards follow, so a later edit on that row does not post the
+       old place back. */
+    function syncRow(m) {
+      const form = document.getElementById(`plasmid-${m.id}`);
+      if (!form) return;
+      const set = (name, v) => {
+        document.querySelectorAll(`[form="plasmid-${m.id}"][name="${name}"]`).forEach((el) => { el.value = v || ''; });
+        const was = form.querySelector(`[name="${name}_was"]`);
+        if (was) was.value = v || '';
+      };
+      set('storage_box', m.storage_box);
+      set('position', m.position);
+      const tr = document.querySelector(`tr[data-id="${m.id}"]`);
+      if (tr && window.BioSheet) window.BioSheet.refreshDot(tr, m.stored);
     }
 
     async function moveTo(rowId, box, r, c) {
@@ -455,15 +609,23 @@
       fd.append('storage_box', box || '');
       if (r !== null && r !== undefined) fd.append('box_row', String(r));
       if (c !== null && c !== undefined) fd.append('box_col', String(c));
-      const resp = await fetch(`/plasmids/${rowId}/move`, { method: 'POST', body: fd });
-      if (!resp.ok) return;
-      // Update local data then re-render.
-      const p = plasmids.find((x) => String(x.id) === String(rowId));
-      if (p) {
-        p.storage_box = box || '';
-        p.box_row = (r === null || r === undefined) ? -1 : r;
-        p.box_col = (c === null || c === undefined) ? -1 : c;
+      say('saving', 'Moving…');
+      let body = {};
+      try {
+        const resp = await fetch(`/plasmids/${rowId}/move`, { method: 'POST', body: fd });
+        body = await resp.json().catch(() => ({}));
+        if (!resp.ok || body.ok === false) throw new Error(body.error || `The server answered ${resp.status}.`);
+      } catch (error) {
+        say('error', `Couldn’t move it: ${error.message}`);
+        return;
       }
+      // Update local data (the plasmid, and one it swapped with), then re-render.
+      (body.moved || []).forEach((m) => {
+        const p = plasmids.find((x) => String(x.id) === String(m.id));
+        if (p) Object.assign(p, { storage_box: m.storage_box, box_row: m.box_row, box_col: m.box_col });
+        syncRow(m);
+      });
+      say('saved', 'Moved');
       render();
     }
 
@@ -497,8 +659,8 @@
 
     [rowsInput, colsInput].forEach((inp) => {
       if (inp) inp.addEventListener('change', () => {
-        const r = Math.max(1, Math.min(20, parseInt(rowsInput.value, 10) || 9));
-        const c = Math.max(1, Math.min(20, parseInt(colsInput.value, 10) || 9));
+        const r = Math.max(1, Math.min(MAX, parseInt(rowsInput.value, 10) || 9));
+        const c = Math.max(1, Math.min(MAX, parseInt(colsInput.value, 10) || 9));
         saveSize(activeBox, r, c);
         render();
       });
@@ -511,9 +673,9 @@
     render();
   })();
 
-  // ---- "New plasmid" modal: drop-zone wiring -----------------------------
+  // ---- New plasmid dialog: drop-zone wiring ------------------------------
   (function () {
-    const modal = document.getElementById('plasmid-new-modal');
+    const modal = document.getElementById('plasmid-dialog');
     const dz = document.getElementById('plasmid-new-dropzone');
     const fileInput = document.getElementById('plasmid-new-file');
     const fileLabel = document.getElementById('plasmid-new-filename');
@@ -553,8 +715,9 @@
       showFile(f);
     });
 
-    // Reset the filename display when modal closes.
+    // Reset the filename display when the dialog closes or reopens.
     modal.addEventListener('close', () => { fileLabel.textContent = ''; });
+    modal.addEventListener('record-dialog:open', () => { fileLabel.textContent = ''; });
   })();
 </script>
 {% endblock %}
