@@ -1,0 +1,44 @@
+{# Shared sheet parts: the mouse sheet's look for every database.
+
+   {% import "_sheet.html" as sheet_ui with context %}   (context: icon())
+
+   id_cell     the pinned ID: availability dot, the ID, a lock when read-only
+   owner_cell  owner badge + editable name with the lab's usernames
+   owners_list the <datalist> owner_cell points at (once per page)
+   tools       save indicator, Sort, Columns, Export, Print (toolbar right)
+
+   Behaviour for editable cells lives in static/sheet.js; see there for the
+   data-* hooks (autosave, live availability dot). #}
+
+{% macro id_cell(code, alive=None, locked=False, owner='', noun='record',
+                 alive_title='Available', dead_title='Not available') %}
+  <span class="sheet-id">
+    {% if alive is not none %}
+      <span class="life-dot{% if alive %} is-alive{% endif %}"
+            data-alive-title="{{ alive_title }}" data-dead-title="{{ dead_title }}"
+            title="{{ alive_title if alive else dead_title }}"></span>
+    {% endif %}
+    <span class="ident">{{ code }}</span>
+    {% if locked %}<span class="sheet-lock" title="{{ owner or 'Someone else' }}’s {{ noun }}: read only">{{ icon('lock') }}</span>{% endif %}
+  </span>
+{% endmacro %}
+
+{% macro owner_cell(value, form_id, locked=False, list_id='sheet-owners', name='owner', label='Owner') %}
+  <div class="owner-cell-wrap{% if value %} has-badge{% endif %}">
+    {% if value %}{{ value | owner_badge }}{% endif %}
+    <input name="{{ name }}" form="{{ form_id }}" value="{{ value or '' }}" list="{{ list_id }}"
+           data-autosave="1" aria-label="{{ label }}" {% if locked %}disabled{% endif %}>
+  </div>
+{% endmacro %}
+
+{% macro owners_list(usernames, id='sheet-owners') %}
+  <datalist id="{{ id }}">{% for u in usernames %}<option value="{{ u }}"></option>{% endfor %}</datalist>
+{% endmacro %}
+
+{% macro tools(export=True, print=True) %}
+  <span class="sheet-save" data-save-status aria-live="polite"></span>
+  <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
+  <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+  {% if export %}<button type="button" class="dt-toolbar-btn dt-btn-export" title="Download the rows shown as CSV">{{ icon('download') }} Export</button>{% endif %}
+  {% if print %}<button type="button" class="dt-toolbar-btn dt-btn-print" title="Print the rows shown">{{ icon('print') }} Print</button>{% endif %}
+{% endmacro %}

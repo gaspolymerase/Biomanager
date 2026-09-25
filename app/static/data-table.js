@@ -103,6 +103,7 @@
       this._wireSortButton();
       this._wireChips();
       this._wireResize();
+      this._wireExport();
       this._applyHidden();
       this._applyResizedWidths();
       this.render();
@@ -478,6 +479,80 @@
       row.firstChild.firstChild.textContent = this.query
         ? `Nothing matches “${this.search.value.trim()}”.`
         : `No ${this.nounPlural} match this filter.`;
+    }
+
+    // -------- export & print ---------------------------------------------
+    /* What a cell shows: an editable cell's value (a select's chosen
+       label), otherwise its text. */
+    _cellText(td) {
+      const field = td.querySelector('select, textarea, input:not([type=checkbox]):not([type=hidden]):not([type=radio])');
+      if (field) {
+        if (field.tagName === 'SELECT') return field.selectedOptions[0] ? field.selectedOptions[0].textContent.trim() : '';
+        return String(field.value || '').trim();
+      }
+      return (td.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    /* Columns worth exporting: visible, and not the tick-box or actions
+       column. */
+    _exportColumns() {
+      const headers = Array.from(this.table.tHead.rows[0].cells);
+      return headers.map((th, idx) => ({ th, idx })).filter(({ th, idx }) => {
+        if (this.hidden.has(idx)) return false;
+        if (th.querySelector('input[type=checkbox]')) return false;
+        const label = (th.textContent || '').replace(/\s+/g, ' ').trim();
+        return label && label !== 'Actions';
+      }).map(({ th, idx }) => ({ idx, label: (th.textContent || '').replace(/\s+/g, ' ').trim() }));
+    }
+
+    /* Toolbar buttons .dt-btn-export (CSV of every row the filters and
+       search let through, not just this page) and .dt-btn-print. */
+    _wireExport() {
+      const exportBtn = this.card.querySelector('.dt-btn-export');
+      if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+          const columns = this._exportColumns();
+          const quote = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+          const lines = [columns.map((c) => quote(c.label)).join(',')];
+          this.filtered.forEach((tr) => {
+            lines.push(columns.map((c) => quote(tr.cells[c.idx] ? this._cellText(tr.cells[c.idx]) : '')).join(','));
+          });
+          const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+          const link = document.createElement('a');
+          const stamp = new Date().toISOString().slice(0, 10);
+          link.href = URL.createObjectURL(blob);
+          link.download = `${this.card.dataset.exportName || this.id}-${stamp}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        });
+      }
+      const printBtn = this.card.querySelector('.dt-btn-print');
+      if (printBtn) {
+        printBtn.addEventListener('click', () => {
+          // Print every filtered row, then put the page back.
+          const size = this.pageSize;
+          const before = size ? size.value : null;
+          if (size) {
+            if (!Array.from(size.options).some((o) => o.value === '100000')) size.add(new Option('All', '100000'));
+            size.value = '100000';
+          }
+          this.page = 0;
+          this.render();
+          document.body.classList.add('is-printing-sheet');
+          this.card.classList.add('is-print-target');
+          const restore = () => {
+            document.body.classList.remove('is-printing-sheet');
+            this.card.classList.remove('is-print-target');
+            if (size && before !== null) size.value = before;
+            this.render();
+            window.removeEventListener('afterprint', restore);
+          };
+          window.addEventListener('afterprint', restore);
+          window.print();
+        });
+      }
     }
 
     // -------- render -----------------------------------------------------
