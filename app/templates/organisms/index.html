@@ -2,7 +2,7 @@
 
 {% block page_title %}Databases{% endblock %}
 {% block page_heading %}Databases{% endblock %}
-{% block page_subtitle %}Every database in the lab. Rename any of them, and add as many organism databases or inventories as you need.{% endblock %}
+{% block page_subtitle %}Every database in the lab. Open one, rename or configure it, or add as many organism databases or inventories as you need.{% endblock %}
 
 {% block page_actions %}
   <a class="btn btn-primary" href="{{ url_for('organisms.new_module') }}">
@@ -19,12 +19,18 @@
         <h2>{{ icon(b.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ b.url }}">{{ b.label }}</a></h2>
         <span class="badge badge-quiet">{{ b.count }} {{ b.noun }}</span>
       </header>
-      <form method="post" action="{{ url_for('organisms.rename_builtin', key=b.key) }}" class="flex items-end gap-2 p-4">
-        <label class="field-label grow">Name
-          <input name="label" value="{{ b.label }}" placeholder="{{ b.default }}" aria-label="Name of {{ b.default }}">
-        </label>
-        <button type="submit" class="btn btn-sm">Rename</button>
-      </form>
+      <div class="flex flex-col gap-3 p-4">
+        <p class="text-[12.5px] leading-snug text-muted">The lab's built-in {{ b.default|lower }} page{% if b.label != b.default %}, shown here as {{ b.label }}{% endif %}.</p>
+      </div>
+      <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
+        <a class="btn btn-sm" href="{{ b.url }}">Open</a>
+        {% if is_admin %}
+          <form method="post" action="{{ url_for('organisms.rename_builtin', key=b.key) }}" class="db-rename">
+            <input name="label" value="{{ b.label }}" placeholder="{{ b.default }}" aria-label="Name of {{ b.default }}">
+            <button type="submit" class="btn btn-sm btn-ghost">{{ icon('edit') }} Rename</button>
+          </form>
+        {% endif %}
+      </footer>
     </article>
   {% endfor %}
 </section>
@@ -103,9 +109,9 @@
                href="{{ url_for('organisms.module', key=m.key) }}">{{ m.label }}</a>
           </h2>
           {% if not card.module.row.enabled %}
-            <span class="badge badge-quiet">disabled</span>
+            <span class="badge badge-quiet">hidden</span>
           {% else %}
-            <span class="badge badge-quiet">{{ m.identity_mode }}</span>
+            <span class="badge badge-quiet">{{ card.census.animals }} {{ m.organism_noun if card.census.animals == 1 else m.organism_noun_plural }}</span>
           {% endif %}
         </header>
 
@@ -149,7 +155,7 @@
         <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
           <a class="btn btn-sm" href="{{ url_for('organisms.module', key=m.key) }}">Open</a>
           <a class="btn btn-sm btn-ghost" href="{{ url_for('organisms.module', key=m.key, view='settings') }}">
-            <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#settings"></use></svg> Rename / configure
+            {{ icon('settings') }} {{ 'Rename / configure' if card.can_configure else 'Setup' }}
           </a>
         </footer>
       </article>

@@ -2640,6 +2640,25 @@
 }
 
 /* ===========================================================================
+   ORGANISM ENGINE (configurable animal databases, app/templates/organisms)
+   =========================================================================== */
+@layer components {
+  /* A read-only dialog or Configure page says why. */
+  .org-locked-note {
+    @apply m-0 flex items-center gap-2 rounded-lg border border-sand-200 bg-sand-50 px-3 py-2 text-[12.5px] text-muted;
+  }
+  .org-locked-note svg { @apply size-3.5 shrink-0 text-sand-400; }
+  .org-locked-note[hidden] { display: none; }
+  /* Ending statuses share the danger tone of "sac" on the mouse sheet. */
+  .status-pill:is([data-status="euthanized"], [data-status="found dead"], [data-status="dead"],
+                  [data-status="removed"], [data-status="discarded"], [data-status="lost"]) { @apply bg-danger-50 text-danger-700; }
+  .status-pill:is([data-status="alive"], [data-status="growing"]) { @apply bg-ok-50 text-ok-700; }
+  /* Built-in database cards: rename inline in the footer. */
+  .db-rename { @apply ml-auto flex items-center gap-1.5; }
+  .db-rename input { @apply h-7 w-[150px] text-[12px]; }
+}
+
+/* ===========================================================================
    OVERRIDES OF THIRD-PARTY STYLESHEETS
    These must stay outside @layer: TOAST UI's and the notebook editor's CSS
    are unlayered, and an unlayered rule beats any layered one whatever its

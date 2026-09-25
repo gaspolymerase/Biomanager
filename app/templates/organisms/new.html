@@ -72,7 +72,7 @@
     {% for preset in presets %}
       <a class="card flex flex-col gap-2 p-4 no-underline transition-all hover:border-brand-300 hover:shadow-sm
                 {% if preset_key == preset.key %}border-brand-400 ring-2 ring-brand-500/15{% endif %}"
-         href="{{ url_for('organisms.new_module', preset=preset.key) }}">
+         href="{{ url_for('organisms.new_module', preset=preset.key) }}" data-preset-link>
         <span class="flex items-center gap-2">
           {{ icon(preset.icon, "size-[17px] text-brand-600") }}
           <span class="text-[14px] font-semibold text-ink">{{ preset.label }}</span>
@@ -109,14 +109,16 @@
 
       <div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         <label class="field-label">Database name
-          <input name="label" value="{{ prefill.get('label', '') }}" required
-                 placeholder="e.g. Drosophila" autofocus>
+          <input name="label" value="{{ prefill.get('label', '') }}" required data-typed
+                 data-prefill="{{ prefill.get('label', '') }}"
+                 placeholder="e.g. Xenopus colony, Mouse room B" autofocus>
         </label>
         <label class="field-label">Plural
-          <input name="label_plural" value="{{ prefill.get('label_plural', '') }}">
+          <input name="label_plural" value="{{ prefill.get('label_plural', '') }}" data-typed
+                 data-prefill="{{ prefill.get('label_plural', '') }}">
         </label>
         <label class="field-label">Icon
-          <input name="icon" value="{{ prefill.get('icon', 'circle-dashed') }}"
+          <input name="icon" value="{{ prefill.get('icon', 'paw') }}"
                  placeholder="icon name">
           <span class="field-hint normal-case tracking-normal">
             A name from the app's icon set — e.g. <code class="ident">mouse</code>,
@@ -127,7 +129,8 @@
         </label>
 
         <label class="field-label sm:col-span-2 lg:col-span-3">Description
-          <input name="blurb" value="{{ prefill.get('blurb', '') }}"
+          <input name="blurb" value="{{ prefill.get('blurb', '') }}" data-typed
+                 data-prefill="{{ prefill.get('blurb', '') }}"
                  placeholder="One line about what this database holds">
         </label>
 
@@ -160,6 +163,9 @@
         </label>
         <label class="field-label">Breeding event
           <input name="cross_noun" value="{{ prefill.get('cross_noun', '') }}" placeholder="cross, mating">
+        </label>
+        <label class="field-label">Breeding events
+          <input name="cross_noun_plural" value="{{ (prefill.get('settings') or {}).get('cross_noun_plural', '') }}" placeholder="crosses, matings">
         </label>
         <label class="field-label">Age shown in
           <select name="age_unit">
@@ -276,6 +282,29 @@
       box.addEventListener('change', refresh);
     });
     refresh();
+  })();
+
+  /* Picking a preset reloads the page with that preset's nouns and
+     capabilities. Whatever was already typed in the name, plural and
+     description goes along, so switching presets never loses it. */
+  (function () {
+    document.querySelectorAll('[data-preset-link]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        const url = new URL(link.href, window.location.href);
+        let carried = false;
+        document.querySelectorAll('input[data-typed]').forEach((input) => {
+          const value = input.value.trim();
+          if (value && value !== (input.dataset.prefill || '')) {
+            url.searchParams.set(input.name, value);
+            carried = true;
+          }
+        });
+        if (carried) {
+          event.preventDefault();
+          window.location.href = url.toString();
+        }
+      });
+    });
   })();
 </script>
 {% endblock %}
