@@ -111,17 +111,17 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 96px; min-width: 96px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Tank</span></th>
-            <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Rack</span></th>
-            <th style="width: 64px;" title="Row in the rack"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Row</span></th>
-            <th style="width: 64px;" title="Column in the rack"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Col</span></th>
-            <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Purpose</span></th>
-            <th style="width: 190px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Line</span></th>
-            <th style="width: 64px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Fish</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Owner</span></th>
-            <th style="width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Card</span></th>
-            <th style="min-width: 220px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Notes</span></th>
-            <th style="width: 104px;" title="Flag the tank for genotyping"><span class="dt-col-head"><span class="dt-col-type" data-icon="check"></span>Genotype</span></th>
+            <th class="sheet-pin sheet-pin-start" style="width: 96px; min-width: 96px;"><span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank</span></th>
+            <th style="width: 130px;"><span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack</span></th>
+            <th style="width: 84px;" title="Position in the rack, named by the rack's scheme">
+              <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position</span></th>
+            <th style="width: 120px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose</span></th>
+            <th style="width: 190px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
+            <th style="width: 64px;"><span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Fish</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
+            <th style="width: 110px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Card</span></th>
+            <th style="min-width: 220px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+            <th style="width: 104px;" title="Flag the tank for genotyping"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 72px; min-width: 72px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -137,8 +137,7 @@
                   {% for r in racks %}<option value="{{ r.id }}" {% if t.rack_id_fk == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
                 </select>
               </td>
-              <td><input form="{{ f }}" name="row" type="number" min="0" value="{{ t.row if t.row is not none else '' }}" data-autosave="1" aria-label="Row"></td>
-              <td><input form="{{ f }}" name="col" type="number" min="0" value="{{ t.col if t.col is not none else '' }}" data-autosave="1" aria-label="Column"></td>
+              <td><input class="ident" form="{{ f }}" name="position" value="{{ tr.position }}" placeholder="–" data-autosave="1" aria-label="Position in the rack"></td>
               <td>
                 <select class="status-pill" form="{{ f }}" name="purpose" data-status="{{ t.purpose }}" data-autosave="1" aria-label="Purpose">
                   {% for p in tank_purpose_options %}<option value="{{ p }}" {% if t.purpose == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
@@ -170,7 +169,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td class="dt-empty" colspan="12">No tanks yet. Use <strong>New tank</strong>.</td></tr>
+            <tr><td class="dt-empty" colspan="11">No tanks yet. Use <strong>New tank</strong>.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -259,8 +258,7 @@
         <select name="rack_id_fk"><option value="">Not placed</option>{% for r in racks %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
       </label>
       <label>Card <input name="card_id"></label>
-      <label>Row <input name="row" type="number" min="0" max="19"></label>
-      <label>Column <input name="col" type="number" min="0" max="19"></label>
+      <label class="col-span-full">Position <input name="position" class="font-mono" placeholder="e.g. C3"></label>
     </fieldset>
     <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
   {{ dialog_close('Create tank') }}
@@ -280,10 +278,10 @@
       <table class="dt sheet-table">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 110px; min-width: 110px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Tank</span></th>
-            <th style="width: 200px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Line</span></th>
-            <th style="width: 130px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Purpose</span></th>
-            <th style="min-width: 240px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Notes</span></th>
+            <th class="sheet-pin sheet-pin-start" style="width: 110px; min-width: 110px;"><span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank</span></th>
+            <th style="width: 200px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
+            <th style="width: 130px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose</span></th>
+            <th style="min-width: 240px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 72px; min-width: 72px;"><span class="sr-only">Card</span></th>
           </tr>
         </thead>
@@ -318,15 +316,15 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 104px; min-width: 104px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Tank</span></th>
-            <th style="width: 180px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Line</span></th>
-            <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Individual</span></th>
-            <th style="width: 76px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Count</span></th>
-            <th style="width: 104px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Sex</span></th>
-            <th style="width: 118px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="status"></span>Status</span></th>
-            <th style="width: 140px;" title="Date of fertilisation"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Fertilised</span></th>
-            <th style="width: 200px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Genotype</span></th>
-            <th style="min-width: 200px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Notes</span></th>
+            <th class="sheet-pin sheet-pin-start" style="width: 104px; min-width: 104px;"><span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank</span></th>
+            <th style="width: 180px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
+            <th style="width: 120px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Individual</span></th>
+            <th style="width: 76px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Count</span></th>
+            <th style="width: 104px;"><span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}Sex</span></th>
+            <th style="width: 118px;"><span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status</span></th>
+            <th style="width: 140px;" title="Date of fertilisation"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Fertilised</span></th>
+            <th style="width: 200px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype</span></th>
+            <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -432,19 +430,19 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 130px; min-width: 130px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Clutch</span></th>
-            <th style="width: 140px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Fertilised</span></th>
-            <th style="width: 76px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Age</span></th>
-            <th style="width: 180px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Line</span></th>
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Male</span></th>
-            <th style="width: 90px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>Female</span></th>
-            <th style="width: 88px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Embryos</span></th>
-            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Larvae</span></th>
-            <th style="width: 80px;"><span class="dt-col-head"><span class="dt-col-type is-number"></span>Adults</span></th>
-            <th style="width: 112px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Tank-up</span></th>
-            <th style="width: 112px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Fin clip</span></th>
-            <th style="width: 112px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="date"></span>Adult</span></th>
-            <th style="min-width: 200px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Notes</span></th>
+            <th class="sheet-pin sheet-pin-start" style="width: 130px; min-width: 130px;"><span class="dt-col-head">{{ icon('egg', 'dt-col-icon') }}Clutch</span></th>
+            <th style="width: 140px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Fertilised</span></th>
+            <th style="width: 76px;"><span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age</span></th>
+            <th style="width: 180px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}Male</span></th>
+            <th style="width: 90px;"><span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}Female</span></th>
+            <th style="width: 88px;"><span class="dt-col-head">{{ icon('egg', 'dt-col-icon') }}Embryos</span></th>
+            <th style="width: 80px;"><span class="dt-col-head">{{ icon('seedling', 'dt-col-icon') }}Larvae</span></th>
+            <th style="width: 80px;"><span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Adults</span></th>
+            <th style="width: 112px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Tank-up</span></th>
+            <th style="width: 112px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Fin clip</span></th>
+            <th style="width: 112px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Adult</span></th>
+            <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -527,13 +525,13 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 190px; min-width: 190px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Line</span></th>
-            <th style="width: 210px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>ZFIN name</span></th>
-            <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Background</span></th>
-            <th style="width: 220px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Transgenes</span></th>
-            <th style="width: 150px;"><span class="dt-col-head"><span class="dt-col-type is-text"></span>Allele</span></th>
-            <th style="width: 120px;"><span class="dt-col-head"><span class="dt-col-type is-id"></span>IACUC #</span></th>
-            <th style="width: 180px;"><span class="dt-col-head"><span class="dt-col-type" data-icon="list"></span>Parent line</span></th>
+            <th class="sheet-pin sheet-pin-start" style="width: 190px; min-width: 190px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Line</span></th>
+            <th style="width: 210px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}ZFIN name</span></th>
+            <th style="width: 120px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Background</span></th>
+            <th style="width: 220px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Transgenes</span></th>
+            <th style="width: 150px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Allele</span></th>
+            <th style="width: 120px;"><span class="dt-col-head">{{ icon('protocol', 'dt-col-icon') }}IACUC #</span></th>
+            <th style="width: 180px;"><span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Parent line</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>

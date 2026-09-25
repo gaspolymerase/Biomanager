@@ -93,7 +93,7 @@
 {% macro table_headers(fields) %}
   {% for field in fields if field.show_in_table %}
     <th style="width: 130px;">
-      <span class="dt-col-head"><span class="dt-col-type is-text"></span>{{ field.label }}</span>
+      <span class="dt-col-head">{{ icon(field_icon(field), 'dt-col-icon') }}{{ field.label }}</span>
     </th>
   {% endfor %}
 {% endmacro %}

@@ -25,8 +25,28 @@
 (function () {
   'use strict';
 
-  const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const rowLabel = (r) => LETTERS[r - 1] || String(r);
+  /* Position names — mirrors app/positions.py, so the grid, the sheet and
+     the dialogs all call a cell the same thing under each rack's scheme. */
+  const DEFAULT_NAMING = { mode: 'grid', rows: 'letters', cols: 'numbers', order: 'row_col', separator: '', start: 1 };
+  function naming(raw) {
+    const s = Object.assign({}, DEFAULT_NAMING, raw || {});
+    s.start = parseInt(s.start, 10) === 0 ? 0 : 1;
+    if (s.mode === 'grid' && s.rows === s.cols && !s.separator) s.separator = '-';
+    return s;
+  }
+  function letters(n) {
+    let out = '';
+    while (n > 0) { const rem = (n - 1) % 26; out = String.fromCharCode(65 + rem) + out; n = Math.floor((n - 1) / 26); }
+    return out;
+  }
+  const axisLabel = (n, style, start) => (style === 'letters' ? letters(n) : String(n - 1 + start));
+  function cellLabel(row, col, raw, cols) {
+    const s = naming(raw);
+    if (s.mode === 'sequential') return String((row - 1) * cols + col - 1 + s.start);
+    const r = axisLabel(row, s.rows, s.start);
+    const c = axisLabel(col, s.cols, s.start);
+    return s.order === 'row_col' ? `${r}${s.separator}${c}` : `${c}${s.separator}${r}`;
+  }
   const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -126,9 +146,9 @@
       return el;
     }
 
-    function positionText(rack, row, col) {
-      return `${rack.name}-${rowLabel(row)}${col}`;
-    }
+    // The position alone ("D7"); the rack is a separate field.
+    const positionText = (rack, row, col) => cellLabel(row, col, rack.naming, rack.cols);
+    const whereText = (rack, row, col) => `${rack.name} · ${positionText(rack, row, col)}`;
 
     function render() {
       const rack = rackById(active);
@@ -143,30 +163,41 @@
       } else {
         const occupied = items.filter((item) => placedIn(rack, item)).length;
         if (meta) meta.textContent = `${rack.rows} × ${rack.cols} · ${occupied} of ${rack.rows * rack.cols} filled`;
-        grid.style.gridTemplateColumns = `24px repeat(${rack.cols}, minmax(84px, 1fr))`;
+        const scheme = naming(rack.naming);
+        const sequential = scheme.mode === 'sequential';
+        grid.style.gridTemplateColumns = `28px repeat(${rack.cols}, minmax(84px, 1fr))`;
         grid.appendChild(Object.assign(document.createElement('div'), { className: 'rack-corner' }));
         for (let c = 1; c <= rack.cols; c += 1) {
-          grid.appendChild(Object.assign(document.createElement('div'), { className: 'rack-col-label', textContent: c }));
+          grid.appendChild(Object.assign(document.createElement('div'), {
+            className: 'rack-col-label', textContent: sequential ? '' : axisLabel(c, scheme.cols, scheme.start) }));
         }
         for (let r = 1; r <= rack.rows; r += 1) {
-          grid.appendChild(Object.assign(document.createElement('div'), { className: 'rack-row-label', textContent: rowLabel(r) }));
+          grid.appendChild(Object.assign(document.createElement('div'), {
+            className: 'rack-row-label', textContent: sequential ? '' : axisLabel(r, scheme.rows, scheme.start) }));
           for (let c = 1; c <= rack.cols; c += 1) {
             const cell = document.createElement('div');
             cell.className = 'rack-cell';
             cell.dataset.row = r;
             cell.dataset.col = c;
-            cell.title = positionText(rack, r, c);
+            cell.title = whereText(rack, r, c);
             const here = items.find((item) => item.rack === rack.id && item.row === r && item.col === c);
             if (here) {
               cell.appendChild(tile(here));
-            } else if (create) {
-              const add = document.createElement('button');
-              add.type = 'button';
-              add.className = 'rack-cell-add';
-              add.setAttribute('aria-label', `New at ${positionText(rack, r, c)}`);
-              add.innerHTML = '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg>';
-              add.addEventListener('click', () => createAt(rack, r, c));
-              cell.appendChild(add);
+            } else {
+              // An empty cell shows its own name, so what the sheet calls D7
+              // is visibly the D7 here.
+              const name = `<span class="rack-cell-name">${escapeHtml(positionText(rack, r, c))}</span>`;
+              if (create) {
+                const add = document.createElement('button');
+                add.type = 'button';
+                add.className = 'rack-cell-add';
+                add.setAttribute('aria-label', `New at ${whereText(rack, r, c)}`);
+                add.innerHTML = name + '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg>';
+                add.addEventListener('click', () => createAt(rack, r, c));
+                cell.appendChild(add);
+              } else {
+                cell.insertAdjacentHTML('beforeend', name);
+              }
             }
             wireDrop(cell, () => moveTo(cell._dragId, rack, r, c));
             grid.appendChild(cell);
@@ -227,7 +258,15 @@
         if (occupant) Object.assign(occupant, previous);
         syncEditPayload(item);
         if (occupant) syncEditPayload(occupant);
-        say('saved', rack ? `Moved ${item.label} to ${positionText(rack, r, c)}` : `Unplaced ${item.label}`);
+        // Let the page update anything else showing these records.
+        [item, occupant].filter(Boolean).forEach((moved) => {
+          const where = moved.rack ? rackById(moved.rack) : null;
+          document.dispatchEvent(new CustomEvent('rack-grid:moved', { detail: {
+            view: root.dataset.rackView, id: moved.id, rackId: moved.rack,
+            position: where && moved.row ? positionText(where, moved.row, moved.col) : '',
+          } }));
+        });
+        say('saved', rack ? `Moved ${item.label} to ${whereText(rack, r, c)}` : `Unplaced ${item.label}`);
         render();
       } catch (error) {
         say('error', `Couldn’t move ${item.label}: ${error.message}`);
@@ -305,7 +344,29 @@
     if (!isNew) form.action = form.dataset.rackDelete.replace('/0/', `/${data.id}/`);
   }, true);
 
+  /* Rack dialog: show what the chosen scheme names the first, a middle and
+     the last position, and hide the row/column options in sequential mode. */
+  function setupNamingPreview(fieldset) {
+    const form = fieldset.closest('form');
+    const read = (name) => (form.elements[name] ? form.elements[name].value : undefined);
+    const update = () => {
+      const rows = Math.max(1, parseInt(read('rows'), 10) || 8);
+      const cols = Math.max(1, parseInt(read('cols'), 10) || 10);
+      const s = { mode: read('naming_mode'), rows: read('naming_rows'), cols: read('naming_cols'),
+                  order: read('naming_order'), separator: read('naming_separator'), start: read('naming_start') };
+      const mid = [Math.min(4, rows), Math.min(7, cols)];
+      fieldset.querySelector('[data-naming-example]').textContent =
+        [cellLabel(1, 1, s, cols), cellLabel(mid[0], mid[1], s, cols), cellLabel(rows, cols, s, cols)].join(' · ');
+      fieldset.querySelectorAll('[data-naming-grid]').forEach((el) => { el.hidden = s.mode === 'sequential'; });
+    };
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    form.closest('dialog').addEventListener('record-dialog:open', () => setTimeout(update, 0));
+    update();
+  }
+
   function init() {
+    document.querySelectorAll('[data-rack-naming]').forEach(setupNamingPreview);
     document.querySelectorAll('[data-view-switch]').forEach(setupSwitch);
     document.querySelectorAll('[data-rack-view]').forEach(setup);
   }
