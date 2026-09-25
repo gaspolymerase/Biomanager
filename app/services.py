@@ -154,6 +154,8 @@ def ensure_schema_updates() -> None:
             alter_statements.append(f"ALTER TABLE {table} ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
     if "strains" in table_columns and "strain_number" not in table_columns["strains"]:
         alter_statements.append("ALTER TABLE strains ADD COLUMN strain_number VARCHAR(80) DEFAULT ''")
+    if "strains" in table_columns and "created_by" not in table_columns["strains"]:
+        alter_statements.append("ALTER TABLE strains ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
     if "litters" in table_columns:
         if "father_info" not in table_columns["litters"]:
             alter_statements.extend(

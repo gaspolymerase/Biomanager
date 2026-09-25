@@ -4,6 +4,21 @@
 
 {% set view_meta = colony_view_meta.get(active_view, {}) %}
 
+{# What the mouse dialog opens with: the Mice sheet's rows and the cage
+   sheet's sub-rows pass the same payload. #}
+{% macro mouse_payload(row, locked) -%}
+{{ {
+  "id": row.id, "mouse_id": row.mouse_id, "locked": locked,
+  "gender": row.gender, "transgene_1": row.transgene_1, "transgene_2": row.transgene_2,
+  "transgene_3": row.transgene_3, "transgene_4": row.transgene_4,
+  "cage_id": row.cage_id, "cage_rack": row.cage_rack_id or "", "cage_position": row.cage_position,
+  "cage_location": row.cage_location, "owner": row.owner,
+  "cage_rack_was": row.cage_rack_id or "", "cage_position_was": row.cage_position,
+  "cage_location_was": row.cage_location,
+  "litter_id": row.litter_id, "date_of_birth": row.date_of_birth, "status": row.status,
+  "date_of_death": row.date_of_death, "note": row.note } | tojson }}
+{%- endmacro %}
+
 {% block page_title %}{{ db_labels.get('colony', 'Mouse colony') }} · {{ view_meta.get('label', active_view|title) }}{% endblock %}
 {% block page_heading %}{{ db_labels.get('colony', 'Mouse colony') }}{% endblock %}
 {% block page_subtitle %}{{ view_meta.get('blurb', '') }}{% endblock %}
@@ -274,16 +289,7 @@
                   <td class="sheet-pin sheet-pin-end">
                     <div class="sheet-actions">
                       <button type="button" class="row-icon-btn" title="Open mouse {{ row.mouse_id }}"
-                              data-mouse-edit data-mouse-payload='{{ {
-                                "id": row.id, "mouse_id": row.mouse_id, "locked": locked,
-                                "gender": row.gender, "transgene_1": row.transgene_1, "transgene_2": row.transgene_2,
-                                "transgene_3": row.transgene_3, "transgene_4": row.transgene_4,
-                                "cage_id": row.cage_id, "cage_rack": row.cage_rack_id or "", "cage_position": row.cage_position,
-                                "cage_location": row.cage_location, "owner": row.owner,
-                                "cage_rack_was": row.cage_rack_id or "", "cage_position_was": row.cage_position,
-                                "cage_location_was": row.cage_location,
-                                "litter_id": row.litter_id, "date_of_birth": row.date_of_birth, "status": row.status,
-                                "date_of_death": row.date_of_death, "note": row.note } | tojson }}'>
+                              data-mouse-edit data-mouse-payload='{{ mouse_payload(row, locked) }}'>
                         {{ icon('edit') }}
                       </button>
                       <form method="post" action="{{ url_for('duplicate_mouse', mouse_row_id=row.id) }}">
@@ -387,72 +393,11 @@
         </div>
       </section>
 
-      {# New / open mouse. The same dialog shows every field at full width,
-         which is where a long note or a four-transgene genotype is easiest
-         to read and edit. #}
-      <dialog id="mouse-edit-dialog" class="record-dialog" aria-labelledby="mouse-edit-title">
-        <form method="post" data-mouse-form
-              data-create-action="{{ url_for('create_mouse') }}"
-              data-update-action="{{ url_for('update_mouse', mouse_row_id=0) }}">
-          <header class="record-dialog-head">
-            <div>
-              <h3 id="mouse-edit-title" data-mouse-title>New mouse</h3>
-              <p class="record-dialog-sub" data-mouse-sub>The next free ID ({{ next_mouse_id_value }}) is assigned when you save.</p>
-            </div>
-            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
-          </header>
-          <div class="record-dialog-body">
-            <input type="hidden" name="confirm_cohort_dob_change" value="0">
-            <input type="hidden" name="cage_rack_was">
-            <input type="hidden" name="cage_position_was">
-            <input type="hidden" name="cage_location_was">
-            <fieldset class="record-group">
-              <legend>Identity</legend>
-              <label>Sex
-                <select name="gender">
-                  <option value="">Not set</option>
-                  {% for g_value in sheet.gender_choices %}<option value="{{ g_value }}">{{ g_value }}</option>{% endfor %}
-                </select>
-              </label>
-              <label>Status
-                <select name="status">
-                  <option value="">No status</option>
-                  {% for s_value in sheet.status_choices %}<option value="{{ s_value }}">{{ s_value }}</option>{% endfor %}
-                </select>
-              </label>
-              <label>Owner <input name="owner" list="owner-name-options"></label>
-            </fieldset>
-            <fieldset class="record-group">
-              <legend>Genotype</legend>
-              {% for n in range(1, 5) %}
-                <label>Transgene {{ n }} <input name="transgene_{{ n }}" list="strain-name-options"></label>
-              {% endfor %}
-            </fieldset>
-            <fieldset class="record-group">
-              <legend>Housing and dates</legend>
-              <label>Cage <input name="cage_id" placeholder="number, or “new”"></label>
-              <label>Rack
-                <select name="cage_rack"><option value="">Not in a rack</option>{% for rack in sheet.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
-              </label>
-              <label>Position <input name="cage_position" class="font-mono" placeholder="e.g. D7"></label>
-              <label>Location note <input name="cage_location" list="options-cage_location" placeholder="room, shelf…"></label>
-              <label>Litter <input name="litter_id"></label>
-              <label>Born <input type="date" name="date_of_birth"></label>
-              <label>Died <input type="date" name="date_of_death"></label>
-            </fieldset>
-            <label class="record-wide">Note <textarea name="note" rows="3"></textarea></label>
-          </div>
-          <footer class="record-dialog-foot">
-            <span class="record-dialog-hint" data-mouse-hint></span>
-            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
-            <button type="submit" class="btn btn-primary" data-mouse-submit>Create mouse</button>
-          </footer>
-        </form>
-      </dialog>
     {% elif active_view == "cages" %}
+      {% set cs = cage_sheet %}
       <div data-layout-scope>
         <div class="mb-3 flex flex-wrap items-center gap-2.5">
-          {{ view_switch('mouse-cages', 'Cage cards', 'Rack grid') }}
+          {{ view_switch('mouse-cages', 'Table', 'Rack grid') }}
           <div class="rack-chips" role="group" aria-label="Rack settings">
             <span class="rack-chips-label">Racks</span>
             {% for rack in cage_racks.racks %}
@@ -468,7 +413,7 @@
           </div>
         </div>
         <p class="-mt-1.5 mb-3 text-[12px] text-muted">
-          Set a cage’s <strong>Rack</strong> and <strong>Position</strong> on its card, in the mouse sheet, or by dragging on the rack grid.
+          Set a cage’s <strong>Rack</strong> and <strong>Position</strong> here, in the mouse sheet, or by dragging on the rack grid.
           Each rack names its positions its own way (A1, 1-1, 37…); change it under the rack’s button above.
         </p>
 
@@ -482,166 +427,384 @@
         </div>
 
         <div data-layout-panel="table">
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Cage cards</h2>
-            <p>Mice grouped by cage. Cage details and mouse cells save as you type; cages you cannot edit are read only.</p>
-          </div>
-        </div>
-        <div class="table-toolbar cage-toolbar">
-          <div class="dt-toolbar-search">
-            {{ icon('search', 'search-icon') }}
-            <input type="text" id="cage-search" placeholder="Search cage, mouse, genotype, owner…"
-                   autocomplete="off" aria-label="Search cages">
-          </div>
-          <div class="dt-chips" role="group" aria-label="Show cages">
-            <button type="button" class="dt-chip" data-cage-filter="" aria-pressed="true">All</button>
-            <button type="button" class="dt-chip" data-cage-filter="breeder" aria-pressed="false">Breeders</button>
-            <button type="button" class="dt-chip" data-cage-filter="experiment" aria-pressed="false">Experiments</button>
-          </div>
-          <div class="dt-toolbar-spacer"></div>
-          <span class="sheet-save" data-save-status aria-live="polite"></span>
-          <a class="btn" href="{{ url_for('labels.cage_cards', scope=scope) }}">{{ icon('print') }} Print cage cards</a>
-          <button type="button" class="btn btn-primary" data-record-edit="cage-dialog"
-                  data-record-payload='{{ {"purpose": "Experiments"} | tojson }}'>
-            {{ icon('plus') }} New cage
-          </button>
-        </div>
-
-        <div class="cage-stack">
-          {% for cage in cage_rows %}
-            {% set locked = not cage.can_edit %}
-            {% set search_blob = [cage.cage_id, cage.purpose, cage.owner, cage.cage_location, cage.room, cage.card_id, cage.genotype_summary, cage.notes]
-                                 + cage.mice|map(attribute='mouse_id')|map('string')|list
-                                 + cage.mice|map(attribute='genotype')|list %}
-            <article class="cage-card cage-purpose-{{ cage.purpose|lower }}{% if locked %} is-locked{% endif %}"
-                     data-purpose="{{ cage.purpose|lower }}" data-cage-row-id="{{ cage.id }}"
-                     data-cage-search="{{ search_blob|select|join(' ')|lower }}">
-              <div class="cage-card-title">
-                <span class="cage-card-name">{{ icon('cage') }} Cage <span class="ident">{{ cage.cage_id }}</span></span>
-                {% if cage.is_shared %}<span class="badge badge-brand">Shared</span>{% endif %}
-                {% if cage.owner %}{{ cage.owner | owner_with_badge }}{% else %}<span class="text-[11.5px] text-muted">No owner</span>{% endif %}
-                <span class="text-[11.5px] text-muted">
-                  {{ cage.mice|selectattr('active')|list|length }} alive{% if cage.mice|length %} of {{ cage.mice|length }}{% endif %}
-                </span>
-                {% if locked %}
-                  <span class="cage-card-lock" title="{{ cage.owner or 'Someone else' }}’s cage: read only">{{ icon('lock') }} Read only</span>
-                {% endif %}
+          {{ sheet_ui.owners_list(usernames) }}
+          {# The cage sheet: one row per cage, laid out like the mouse sheet.
+             Cells save as you type (static/sheet.js); the chevron opens a
+             sub-row with the cage's mice and its breeding actions. #}
+          <section class="data-table-card sheet cage-sheet" data-table-id="cages-v1"
+                   data-noun="cage" data-noun-plural="cages" data-export-name="cages"
+                   data-autosave-sheet data-selection-scope="cages"
+                   data-selection-noun="cage" data-selection-noun-plural="cages">
+            <div class="dt-toolbar">
+              <div class="dt-toolbar-search">
+                {{ icon('search', 'search-icon') }}
+                <input type="text" class="dt-search" placeholder="Search cage, mouse, genotype, owner…"
+                       autocomplete="off" aria-label="Search cages">
               </div>
-              <form method="post" action="{{ url_for('update_cage', cage_row_id=cage.id) }}" class="cage-form autosave-form"
-                    data-record-label="cage {{ cage.cage_id }}">
-                <div class="cage-header-grid">
-                  <label><span>Rack</span>
-                    <select name="rack_id" data-autosave="1" data-cage-rack {% if locked %}disabled{% endif %}>
-                      <option value="">–</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}"{% if rack.id == cage.rack_id %} selected{% endif %}>{{ rack.name }}</option>{% endfor %}
-                    </select>
-                  </label>
-                  <label><span>Position</span><input name="position" value="{{ cage.position }}" placeholder="e.g. D7" data-autosave="1" data-cage-position {% if locked %}disabled{% endif %}></label>
-                  <input type="hidden" name="rack_id_was" value="{{ cage.rack_id or '' }}">
-                  <input type="hidden" name="position_was" value="{{ cage.position }}">
-                  <label><span>Location note</span><input name="cage_location" value="{{ cage.cage_location }}" list="options-cage_location" data-autosave="1" {% if locked %}disabled{% endif %}></label>
-                  <label><span>Purpose</span><input name="purpose" value="{{ cage.purpose }}" list="options-purpose" data-autosave="1" data-cage-purpose-input="1" {% if locked %}disabled{% endif %}></label>
-                  <label><span>Active</span><input value="{{ 'Yes' if cage.active else 'No' }}" readonly></label>
-                  <label><span>Notes</span><input name="notes" value="{{ cage.notes }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
-                  <label><span>Litter born</span><input type="date" name="date_give_birth" value="{{ cage.date_give_birth }}" data-autosave="1" data-cage-dob-input="1" {% if locked %}disabled{% endif %}></label>
-                  <label><span>Genotype by</span><input value="{{ cage.genotyping_date }}" data-genotyping-date-output="1" readonly title="Litter born + {{ cage_geno_offset_days }} days"></label>
-                  <label><span>Wean by</span><input value="{{ cage.weaning_date }}" data-weaning-date-output="1" readonly title="Litter born + {{ wean_offset_days }} days (P{{ wean_offset_days }})"></label>
-                  <label><span>Card</span><input name="card_id" value="{{ cage.card_id }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
-                  <label><span>Genotype</span><input name="genotype_summary" value="{{ cage.genotype_summary }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
-                  <label><span>Location detail</span><input name="location_detail" value="{{ cage.location_detail }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
-                  <label><span>Room</span><input name="room" value="{{ cage.room }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
-                </div>
-              </form>
+              <div class="dt-chips" role="group" aria-label="Show">
+                <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">
+                  All <span class="dt-chip-count">{{ cage_rows|length }}</span>
+                </button>
+                <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false"
+                        title="Cages with living mice">
+                  Active <span class="dt-chip-count">{{ cs.active_count }}</span>
+                </button>
+                <button type="button" class="dt-chip" data-dt-filter="breeding:1" aria-pressed="false"
+                        title="Purpose breeder or breeding">
+                  Breeding <span class="dt-chip-count">{{ cs.breeding_count }}</span>
+                </button>
+                <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">
+                  Mine <span class="dt-chip-count">{{ cs.mine_count }}</span>
+                </button>
+              </div>
+              <div class="dt-toolbar-spacer"></div>
+              {{ sheet_ui.tools() }}
+              <a class="dt-toolbar-btn" href="{{ url_for('labels.cage_cards', scope=scope) }}"
+                 title="Printable cards for the cages in this scope">{{ icon('qrcode') }} Cage cards</a>
+              <button type="button" class="btn btn-primary" data-record-edit="cage-dialog"
+                      data-record-payload='{{ {"purpose": "Experiments", "count": 1} | tojson }}'>
+                {{ icon('plus') }} New cage
+              </button>
+            </div>
 
-              {% if not locked %}
-                <div class="card-tools">
-                  <button type="button" class="btn btn-sm" data-add-existing-mouse
-                          data-action="{{ url_for('add_mouse_from_cage', cage_row_id=cage.id) }}" data-target-label="{{ cage.cage_id }}">
-                    {{ icon('plus') }} Add existing mouse
-                  </button>
-                  <span class="breeding-actions {% if not cage.can_breed %}hidden-row{% endif %}">
-                    <form method="post" action="{{ url_for('cage_give_birth', cage_row_id=cage.id) }}"
-                          data-confirm="Record a litter born today in cage {{ cage.cage_id }}?">
-                      <button type="submit" class="btn btn-sm">{{ icon('baby') }} Litter born today</button>
-                    </form>
-                    <button type="button" class="btn btn-sm" data-genotyping
-                            data-action="{{ url_for('cage_genotyping', cage_row_id=cage.id) }}"
-                            data-father="{{ cage.default_father }}" data-mother="{{ cage.default_mother }}">
-                      {{ icon('dna') }} Genotyping
-                    </button>
-                    <button type="button" class="btn btn-sm" data-wean
-                            data-distribute-action="{{ url_for('cage_wean_distribute', cage_row_id=cage.id) }}"
-                            data-wean-action="{{ url_for('cage_wean', cage_row_id=cage.id) }}"
-                            data-target-label="{{ cage.cage_id }}">
-                      {{ icon('litter') }} Wean
-                    </button>
-                  </span>
-                </div>
-              {% endif %}
-
-              <div class="table-wrap">
-                <table class="dense-table fit-table nested-table colony-subtable">
-                  <thead>
-                    <tr>
-                      <th>Mouse</th>
-                      <th>Alive</th>
-                      <th>Sex</th>
-                      <th>Age</th>
-                      <th>Status</th>
-                      <th>Transgene 1</th>
-                      <th>Transgene 2</th>
-                      <th>Transgene 3</th>
-                      <th>Transgene 4</th>
-                      <th>Owner</th>
-                      <th>Litter</th>
-                      <th>Note</th>
+            <div class="dt-scroll">
+              <table class="dt sheet-table" data-resizable="1">
+                <thead>
+                  <tr>
+                    <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
+                      <input type="checkbox" data-select-all aria-label="Select all visible cages">
+                    </th>
+                    <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="cage_id" style="width: 84px; min-width: 84px;"
+                        title="Cage ID. The dot is green while the cage holds living mice.">
+                      <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}Cage<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="rack_name" style="width: 104px;">
+                      <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="position" style="width: 84px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
+                      <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="purpose" style="width: 128px;" title="Breeder and breeding cages are shared: anyone in the lab can edit them">
+                      <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="owner" style="width: 76px;">
+                      <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="is_shared" style="width: 104px;" title="A shared cage is editable by the whole lab">
+                      <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Shared<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="mice" style="width: 104px;" title="Living mice, by sex">
+                      <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mice<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="genotype_summary" style="width: 180px;"
+                        title="The cage's genotype summary; when empty, what its living mice carry is shown in grey">
+                      <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Strain / genotype<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="date_give_birth" style="width: 150px;" title="When the cage's litter was born; its pups' litter, if any">
+                      <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Litter born<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="wean_due" style="width: 104px;" title="Litter born + {{ wean_offset_days }} days (P{{ wean_offset_days }})">
+                      <span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Wean due<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="cage_location" style="width: 128px;" title="Free-text location note (room, shelf…)"
+                        {% if not cs.location_notes_used %}data-default-hidden="1"{% endif %}>
+                      <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location note<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="notes" style="min-width: 200px;">
+                      <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Note<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="sheet-pin sheet-pin-end" style="width: 104px; min-width: 104px;"><span class="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for cage in cage_rows %}
+                    {% set f = 'cage-update-' ~ cage.id %}
+                    {% set locked = not cage.can_edit %}
+                    <tr id="cage-{{ cage.id }}" data-id="{{ cage.id }}" data-cage-row-id="{{ cage.id }}" data-cage_id="{{ cage.cage_id }}"
+                        data-active="{{ 'true' if cage.active else 'false' }}"
+                        data-breeding="{{ cage.breeding }}" data-mine="{{ 'true' if cage.mine else 'false' }}"
+                        data-rack_name="{{ cage.rack_name }}" data-mice="{{ cage.live_count }}"
+                        data-wean_due="{{ cage.wean_due }}"
+                        data-mouse-ids="{{ cage.mice|map(attribute='mouse_id')|join(' ') }}"
+                        data-genotypes="{{ cage.genotype_auto }}"
+                        class="{% if not cage.active %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+                      <td class="sheet-pin sheet-pin-0">
+                        <input type="checkbox" data-select-row value="{{ cage.id }}" aria-label="Select cage {{ cage.cage_id }}">
+                      </td>
+                      <td class="sheet-pin sheet-pin-1">
+                        {{ sheet_ui.id_cell(cage.cage_id, alive=cage.active, locked=locked, owner=cage.owner, noun='cage',
+                                            alive_title='Holds living mice', dead_title='No living mice') }}
+                        {# What decides the dot until the server answers (static/sheet.js). #}
+                        <input type="hidden" data-alive-values="1" value="{{ '1' if cage.active else '0' }}" data-cage-alive>
+                      </td>
+                      <td>
+                        <select name="rack_id" form="{{ f }}" data-autosave="1" aria-label="Rack" {% if locked %}disabled{% endif %}>
+                          <option value="">–</option>
+                          {% for rack in cage_racks.racks %}
+                            <option value="{{ rack.id }}" {% if rack.id == cage.rack_id %}selected{% endif %}>{{ rack.name }}</option>
+                          {% endfor %}
+                        </select>
+                      </td>
+                      <td><input class="ident" name="position" form="{{ f }}" value="{{ cage.position }}" placeholder="–"
+                                 data-autosave="1" aria-label="Position in the rack" {% if locked %}disabled{% endif %}></td>
+                      <td>
+                        <select class="status-pill" name="purpose" form="{{ f }}" data-status="{{ cage.purpose|lower }}"
+                                data-autosave="1" aria-label="Purpose" {% if locked %}disabled{% endif %}>
+                          <option value="" {% if not cage.purpose %}selected{% endif %}>–</option>
+                          {% for p_value in cs.purpose_choices %}
+                            <option value="{{ p_value }}" {% if p_value == cage.purpose %}selected{% endif %}>{{ p_value }}</option>
+                          {% endfor %}
+                        </select>
+                      </td>
+                      <td>{{ sheet_ui.owner_cell(cage.owner, f, locked) }}</td>
+                      <td>
+                        {% set implied = cage.shared_implied == '1' %}
+                        <select class="scope-pill" name="is_shared" form="{{ f }}" data-autosave="1" aria-label="Shared"
+                                data-scope="{{ 'lab' if cage.shared else 'mine' }}" data-shared-implied="{{ cage.shared_implied }}"
+                                {% if implied %}title="{{ cage.purpose }} cages are always shared"{% endif %}
+                                {% if locked or implied %}disabled{% endif %}>
+                          <option value="0" {% if not cage.shared %}selected{% endif %}>Personal</option>
+                          <option value="1" {% if cage.shared %}selected{% endif %}>Shared</option>
+                        </select>
+                      </td>
+                      <td class="sheet-num cage-mice-count" title="{{ cage.live_count }} living of {{ cage.total_count }}">
+                        {% if cage.live_count %}<strong>{{ cage.live_count }}</strong> <span class="cage-sexes">{{ cage.sex_label }}</span>
+                        {% elif cage.total_count %}<span class="sheet-empty">0 of {{ cage.total_count }}</span>
+                        {% else %}<span class="sheet-empty">empty</span>{% endif %}
+                      </td>
+                      <td><input name="genotype_summary" form="{{ f }}" value="{{ cage.genotype_summary }}"
+                                 placeholder="{{ cage.genotype_auto or '–' }}" title="{{ cage.genotype_summary or cage.genotype_auto }}"
+                                 list="strain-name-options" data-autosave="1" aria-label="Strain or genotype"
+                                 {% if locked %}disabled{% endif %}></td>
+                      <td>
+                        <div class="cage-born-cell">
+                          <input type="date" name="date_give_birth" form="{{ f }}" value="{{ cage.date_give_birth }}"
+                                 data-empty="{{ '0' if cage.date_give_birth else '1' }}" data-autosave="1" data-cage-born
+                                 aria-label="Litter born" {% if locked %}disabled{% endif %}>
+                          {% if cage.pup_litter %}
+                            <a class="cage-pups" href="{{ url_for('colony', view='litters', q=cage.pup_litter) }}"
+                               title="Pups of litter {{ cage.pup_litter }}, born {{ cage.pup_dob }}">{{ icon('litter') }}{{ cage.pup_litter }}</a>
+                          {% endif %}
+                        </div>
+                      </td>
+                      <td class="tabular-nums"><span class="cage-wean" data-cage-wean data-state="{{ cage.wean_state }}">{{ cage.wean_due or '–' }}</span></td>
+                      <td><input name="cage_location" form="{{ f }}" value="{{ cage.cage_location }}" title="{{ cage.cage_location }}"
+                                 list="options-cage_location" data-autosave="1" aria-label="Location note" {% if locked %}disabled{% endif %}></td>
+                      <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ cage.notes }}" title="{{ cage.notes }}" placeholder="Add a note"
+                                 data-autosave="1" aria-label="Note" {% if locked %}disabled{% endif %}></td>
+                      <td class="sheet-pin sheet-pin-end">
+                        <div class="sheet-actions">
+                          <button type="button" class="row-icon-btn cage-expand" data-cage-expand="{{ cage.id }}" aria-expanded="false"
+                                  aria-controls="cage-detail-{{ cage.id }}" title="Show the mice in cage {{ cage.cage_id }}">
+                            {{ icon('chevron-down') }}<span class="cage-expand-count">{{ cage.total_count }}</span>
+                          </button>
+                          <button type="button" class="row-icon-btn" title="Open cage {{ cage.cage_id }}"
+                                  data-record-edit="cage-dialog" data-record-payload='{{ cage.payload | tojson }}'>{{ icon('edit') }}</button>
+                          <a class="row-icon-btn" href="{{ url_for('labels.cage_cards', ids=cage.id) }}" target="_blank"
+                             title="Print the card for cage {{ cage.cage_id }}">{{ icon('print') }}</a>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {% for mouse in cage.mice %}
-                      {% set f = 'cage-mouse-update-' ~ mouse.id %}
-                      {% set mlocked = not mouse.editable %}
-                      <tr class="{% if not mouse.active %}is-inactive{% endif %}{% if mlocked %} is-locked{% endif %}">
-                        <td>
-                          <span class="ident">{{ mouse.mouse_id }}</span>
-                          {% if mlocked %}<span class="sheet-lock" title="{{ mouse.owner or 'Someone else' }}’s mouse: read only">{{ icon('lock') }}</span>{% endif %}
-                        </td>
-                        <td>{{ 'Yes' if mouse.active else 'No' }}</td>
-                        <td><input form="{{ f }}" name="gender" value="{{ mouse.gender }}" list="options-gender" data-autosave="1" aria-label="Sex" {% if mlocked %}disabled{% endif %}></td>
-                        <td>{% if mouse.age_weeks is not none %}{{ mouse.age_weeks }}w / {{ mouse.age_days }}d{% endif %}</td>
-                        <td><input form="{{ f }}" name="status" value="{{ mouse.status }}" list="options-status" data-autosave="1" aria-label="Status" {% if mlocked %}disabled{% endif %}></td>
-                        {% for n in range(1, 5) %}
-                          <td><input form="{{ f }}" name="transgene_{{ n }}" value="{{ mouse['transgene_' ~ n] }}" list="strain-name-options" data-autosave="1" aria-label="Transgene {{ n }}" {% if mlocked %}disabled{% endif %}></td>
-                        {% endfor %}
-                        <td class="owner-cell-wrap{% if mouse.owner %} has-badge{% endif %}">
-                          {% if mouse.owner %}{{ mouse.owner | owner_badge }}{% endif %}
-                          <input form="{{ f }}" name="owner" value="{{ mouse.owner }}" list="owner-name-options" data-autosave="1" aria-label="Owner" {% if mlocked %}disabled{% endif %}>
-                        </td>
-                        <td><input form="{{ f }}" name="litter_id" value="{{ mouse.litter_id }}" data-autosave="1" aria-label="Litter" {% if mlocked %}disabled{% endif %}></td>
-                        <td><input class="note-cell" form="{{ f }}" name="note" value="{{ mouse.note }}" title="{{ mouse.note }}" data-autosave="1" aria-label="Note" {% if mlocked %}disabled{% endif %}></td>
-                      </tr>
-                    {% else %}
-                      <tr><td colspan="12">No mice in this cage yet.</td></tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-              {# One form per mouse, carrying only the fields this card shows:
-                 the cage, its location note, birth and death dates are left
-                 alone by a card edit, so a stale card cannot put back an old
-                 value changed elsewhere (on the sheet or the Litters tab). #}
+                    {# The cage's mice and its per-cage actions. It travels with
+                       its row when the sheet sorts or pages (data-detail-for). #}
+                    <tr class="cage-detail" id="cage-detail-{{ cage.id }}" data-detail-for="{{ cage.id }}" hidden>
+                      <td colspan="14">
+                        <article class="cage-detail-body{% if locked %} is-locked{% endif %}" aria-label="Cage {{ cage.cage_id }}">
+                          <div class="cage-detail-tools">
+                            <span class="cage-detail-title">{{ icon('cage') }} Cage <span class="ident">{{ cage.cage_id }}</span>
+                              <span class="text-muted">· {{ cage.live_count }} alive{% if cage.total_count %} of {{ cage.total_count }}{% endif %}
+                              {%- if cage.genotyping_date %} · genotype by {{ cage.genotyping_date }}{% endif %}</span></span>
+                            {% if locked %}
+                              <span class="cage-detail-lock">{{ icon('lock') }} Read only: {{ cage.owner or 'someone else' }}’s cage</span>
+                            {% else %}
+                              <button type="button" class="btn btn-sm" data-add-existing-mouse
+                                      data-action="{{ url_for('add_mouse_from_cage', cage_row_id=cage.id) }}" data-target-label="{{ cage.cage_id }}">
+                                {{ icon('plus') }} Add existing mouse
+                              </button>
+                              <span class="breeding-actions {% if not cage.can_breed %}hidden-row{% endif %}" data-breeding-actions>
+                                <form method="post" action="{{ url_for('cage_give_birth', cage_row_id=cage.id) }}"
+                                      data-confirm="Record a litter born today in cage {{ cage.cage_id }}?">
+                                  <button type="submit" class="btn btn-sm">{{ icon('baby') }} Litter born today</button>
+                                </form>
+                                <button type="button" class="btn btn-sm" data-genotyping
+                                        data-action="{{ url_for('cage_genotyping', cage_row_id=cage.id) }}"
+                                        data-father="{{ cage.default_father }}" data-mother="{{ cage.default_mother }}">
+                                  {{ icon('dna') }} Genotyping
+                                </button>
+                                <button type="button" class="btn btn-sm" data-wean
+                                        data-distribute-action="{{ url_for('cage_wean_distribute', cage_row_id=cage.id) }}"
+                                        data-wean-action="{{ url_for('cage_wean', cage_row_id=cage.id) }}"
+                                        data-target-label="{{ cage.cage_id }}">
+                                  {{ icon('litter') }} Wean
+                                </button>
+                              </span>
+                            {% endif %}
+                            <span class="cage-detail-spacer"></span>
+                            {% if cage.mice %}
+                              <a class="btn btn-sm btn-ghost" href="{{ url_for('colony', view='mice', scope='all', q=cage.cage_id) }}">{{ icon('table') }} In the mouse sheet</a>
+                            {% endif %}
+                          </div>
+                          {% if cage.mice %}
+                            <table class="cage-mice-table">
+                              <thead>
+                                <tr>
+                                  <th>Mouse</th><th>Sex</th><th>Age</th><th>Status</th>
+                                  {% for n in range(1, 5) %}{% if n <= 2 or mouse_sheet.tg_used[n - 1] %}<th>Transgene {{ n }}</th>{% endif %}{% endfor %}
+                                  <th>Owner</th><th>Litter</th><th>Note</th><th><span class="sr-only">Open</span></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for mouse in cage.mice %}
+                                  {% set mf = 'cage-mouse-update-' ~ mouse.id %}
+                                  {% set mlocked = not mouse.editable %}
+                                  <tr class="{% if not mouse.active %}is-inactive{% endif %}{% if mlocked %} is-locked{% endif %}">
+                                    <td>{{ sheet_ui.id_cell(mouse.mouse_id, alive=mouse.active, locked=mlocked, owner=mouse.owner, noun='mouse',
+                                                            alive_title='Alive', dead_title='Not alive') }}</td>
+                                    <td>
+                                      <select class="sex-pill" name="gender" form="{{ mf }}" data-sex="{{ mouse.gender }}" data-autosave="1"
+                                              aria-label="Sex of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}>
+                                        <option value="" {% if not mouse.gender %}selected{% endif %}>–</option>
+                                        {% for g_value in mouse_sheet.gender_choices %}
+                                          <option value="{{ g_value }}" {% if g_value == mouse.gender %}selected{% endif %}>{{ 'U' if g_value == 'Unknown' else g_value }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </td>
+                                    <td class="sheet-num">{% if mouse.age_weeks is not none %}{{ mouse.age_weeks }}<span class="sheet-unit">w</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</td>
+                                    <td>
+                                      <select class="status-pill" name="status" form="{{ mf }}" data-status="{{ mouse.status|lower }}"
+                                              data-dead-values="{{ (end_statuses + ['transfer'])|join(',') }}"
+                                              data-autosave="1" aria-label="Status of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}>
+                                        <option value="" {% if not mouse.status %}selected{% endif %}>–</option>
+                                        {% for s_value in mouse_sheet.status_choices %}
+                                          <option value="{{ s_value }}" {% if s_value == mouse.status %}selected{% endif %}>{{ s_value }}</option>
+                                        {% endfor %}
+                                      </select>
+                                    </td>
+                                    {% for n in range(1, 5) %}
+                                      {% if n <= 2 or mouse_sheet.tg_used[n - 1] %}
+                                        <td><input name="transgene_{{ n }}" form="{{ mf }}" value="{{ mouse['transgene_' ~ n] }}" list="strain-name-options"
+                                                   data-autosave="1" aria-label="Transgene {{ n }} of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}></td>
+                                      {% else %}
+                                        {# Kept in the form so a save does not clear it. #}
+                                      {% endif %}
+                                    {% endfor %}
+                                    <td>{{ sheet_ui.owner_cell(mouse.owner, mf, mlocked) }}</td>
+                                    <td><input class="ident" name="litter_id" form="{{ mf }}" value="{{ mouse.litter_id }}" placeholder="–"
+                                               data-autosave="1" aria-label="Litter of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}></td>
+                                    <td><input class="note-cell" name="note" form="{{ mf }}" value="{{ mouse.note }}" title="{{ mouse.note }}" placeholder="Add a note"
+                                               data-autosave="1" aria-label="Note on mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}></td>
+                                    <td>
+                                      <button type="button" class="row-icon-btn" title="Open mouse {{ mouse.mouse_id }}"
+                                              data-mouse-edit data-mouse-payload='{{ mouse_payload(mouse, mlocked) }}'>{{ icon('edit') }}</button>
+                                    </td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          {% else %}
+                            <p class="cage-detail-empty">No mice in this cage yet.{% if not locked %} Use <strong>Add existing mouse</strong>, or type {{ cage.cage_id }} as a mouse’s cage.{% endif %}</p>
+                          {% endif %}
+                        </article>
+                      </td>
+                    </tr>
+                  {% else %}
+                    <tr><td class="dt-empty" colspan="14">No cages here yet. Use <strong>New cage</strong>, or type a new cage number on a mouse.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            {# One form per cage and per mouse, outside the table; cells join
+               them through form="…". The _was copies are what the row showed:
+               rack, position, location note and owner also change from the
+               mouse sheet, the rack grid and the dialog, and a stale row must
+               not write its old value back over them (app/formutil.py). A
+               mouse form carries only the fields its sub-row shows, so it
+               never moves the mouse or touches its dates. #}
+            {% for cage in cage_rows %}
+              <form id="cage-update-{{ cage.id }}" method="post" action="{{ url_for('update_cage', cage_row_id=cage.id) }}"
+                    data-record-label="cage {{ cage.cage_id }}">
+                <input type="hidden" name="rack_id_was" value="{{ cage.rack_id }}">
+                <input type="hidden" name="position_was" value="{{ cage.position }}">
+                <input type="hidden" name="cage_location_was" value="{{ cage.cage_location }}">
+                <input type="hidden" name="owner_was" value="{{ cage.owner }}">
+              </form>
               {% for mouse in cage.mice %}
                 <form id="cage-mouse-update-{{ mouse.id }}" method="post" action="{{ url_for('update_mouse', mouse_row_id=mouse.id) }}"
-                      data-mouse-label="{{ mouse.mouse_id }}"></form>
+                      data-record-label="mouse {{ mouse.mouse_id }}">
+                  {% for n in range(3, 5) %}{% if not mouse_sheet.tg_used[n - 1] %}
+                    <input type="hidden" name="transgene_{{ n }}" value="{{ mouse['transgene_' ~ n] }}">
+                  {% endif %}{% endfor %}
+                </form>
               {% endfor %}
-            </article>
-          {% else %}
-            <p>No cages here yet. Use <strong>New cage</strong>, or type a new cage number on a mouse.</p>
-          {% endfor %}
-          {% if cage_rows %}<p class="dt-empty" data-cage-nomatch hidden>No cages match.</p>{% endif %}
-        </div>
-      </section>
+            {% endfor %}
+
+            <div class="dt-bottom-bar">
+              <span class="dt-bottom-count dt-count">{{ cage_rows|length }} {{ 'cage' if cage_rows|length == 1 else 'cages' }}</span>
+              <button type="button" class="dt-bottom-action" data-record-edit="cage-dialog"
+                      data-record-payload='{{ {"purpose": "Experiments", "count": 1} | tojson }}'>
+                {{ icon('plus') }} New cage
+              </button>
+              <div class="dt-bottom-spacer"></div>
+              <div class="dt-pagination">
+                <span class="dt-page-label">Page 1</span>
+                <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+                <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+                <select class="dt-page-size" aria-label="Rows per page">
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="250">250</option>
+                  <option value="100000">All</option>
+                </select>
+                <span>per page</span>
+              </div>
+            </div>
+
+            {# Batch actions on the ticked cages (static/selection-bar.js). #}
+            <div class="selbar" data-selection-bar hidden>
+              <span class="selbar-count" data-selection-count></span>
+              <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
+                <input type="hidden" name="action" value="purpose">
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <select name="value" aria-label="Purpose">
+                  {% for p_value in cs.purpose_choices %}<option value="{{ p_value }}">{{ p_value }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm">Set purpose</button>
+              </form>
+              <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
+                <input type="hidden" name="action" value="owner">
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <input name="value" placeholder="owner" list="sheet-owners" aria-label="Owner" required>
+                <button type="submit" class="btn btn-sm">Set owner</button>
+              </form>
+              <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
+                <input type="hidden" name="action" value="rack">
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <select name="value" aria-label="Rack">
+                  <option value="">No rack (unplace)</option>
+                  {% for rack in cage_racks.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm" title="Into the rack without a position; drag on the rack grid to place">Move</button>
+              </form>
+              <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
+                <input type="hidden" name="action" value="shared">
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <select name="value" aria-label="Sharing">
+                  <option value="1">Mark shared</option>
+                  <option value="0">Mark not shared</option>
+                </select>
+                <button type="submit" class="btn btn-sm">Set</button>
+              </form>
+              <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form
+                    data-confirm="Retire {n} cage(s)? Each is taken out of its rack and its purpose set to Retired. Cages that still hold living mice are kept. Undo from Batch history.">
+                <input type="hidden" name="action" value="retire">
+                <input type="hidden" name="scope" value="{{ scope }}">
+                <button type="submit" class="btn btn-sm btn-danger">{{ icon('archive') }} Retire</button>
+              </form>
+              <div class="selbar-spacer"></div>
+              <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -659,7 +822,7 @@
           <header class="record-dialog-head">
             <div>
               <h3 id="cage-dialog-title" data-record-title>New cage</h3>
-              <p class="record-dialog-sub">A new cage gets the next free ID ({{ next_cage_id_value }}).</p>
+              <p class="record-dialog-sub" data-new-only>A new cage gets the next free ID ({{ next_cage_id_value }}); several get consecutive IDs.</p>
             </div>
             <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
           </header>
@@ -676,6 +839,10 @@
             </fieldset>
             <fieldset class="record-group">
               <legend>Cage</legend>
+              <label data-new-only>How many
+                <input type="number" name="count" min="1" max="20" value="1"
+                       title="Several new cages get consecutive IDs, and consecutive free positions from the one given">
+              </label>
               <label>Purpose <input name="purpose" list="options-purpose"></label>
               <label>Card ID <input name="card_id"></label>
               <label>Genotype summary <input name="genotype_summary"></label>
@@ -1008,6 +1175,12 @@
     {% elif active_view == "strains" %}
       {# The strain reference list, as a sheet. Transgene cells on the
          mouse sheet suggest these names. #}
+      {% if current_user.role != 'admin' %}
+        <p class="mb-3 text-[12px] text-muted">
+          {{ icon('info') }} Anyone can add a strain. Renaming or removing one is for whoever added it, or an admin;
+          the others are read only here but can still be picked on every mouse.
+        </p>
+      {% endif %}
       <section class="data-table-card sheet" data-table-id="strains-v2"
                data-noun="strain" data-noun-plural="strains" data-export-name="strains">
         <div class="dt-toolbar">
@@ -1048,18 +1221,27 @@
             <tbody>
               {% for strain in strain_rows %}
                 {% set f = 'strain-update-' ~ strain.id %}
-                <tr data-id="{{ strain.id }}">
-                  <td class="sheet-pin sheet-pin-0"><input name="strain_name" form="{{ f }}" value="{{ strain.strain_name }}" data-autosave="1" aria-label="Strain name" required></td>
-                  <td><input class="ident" name="strain_number" form="{{ f }}" value="{{ strain.strain_number }}" data-autosave="1" aria-label="Number"></td>
-                  <td><input name="strain_background" form="{{ f }}" value="{{ strain.strain_background }}" data-autosave="1" aria-label="Background"></td>
-                  <td><input name="supplier" form="{{ f }}" value="{{ strain.supplier }}" data-autosave="1" aria-label="Supplier"></td>
-                  <td><input class="note-cell" name="description" form="{{ f }}" value="{{ strain.description }}" title="{{ strain.description }}" data-autosave="1" aria-label="Description"></td>
+                {% set locked = not strain.editable %}
+                {% set lock_title = ('Added by ' ~ strain.created_by if strain.created_by else 'Added before creators were recorded') ~ ': only they or an admin can change it' %}
+                <tr data-id="{{ strain.id }}" data-created_by="{{ strain.created_by }}" class="{% if locked %}is-locked{% endif %}">
+                  <td class="sheet-pin sheet-pin-0">
+                    <div class="strain-name-cell">
+                      <input name="strain_name" form="{{ f }}" value="{{ strain.strain_name }}" data-autosave="1" aria-label="Strain name" required {% if locked %}disabled{% endif %}>
+                      {% if locked %}<span class="sheet-lock" title="{{ lock_title }}">{{ icon('lock') }}</span>{% endif %}
+                    </div>
+                  </td>
+                  <td><input class="ident" name="strain_number" form="{{ f }}" value="{{ strain.strain_number }}" data-autosave="1" aria-label="Number" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="strain_background" form="{{ f }}" value="{{ strain.strain_background }}" data-autosave="1" aria-label="Background" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="supplier" form="{{ f }}" value="{{ strain.supplier }}" data-autosave="1" aria-label="Supplier" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="note-cell" name="description" form="{{ f }}" value="{{ strain.description }}" title="{{ strain.description }}" data-autosave="1" aria-label="Description" {% if locked %}disabled{% endif %}></td>
                   <td class="sheet-pin sheet-pin-end">
                     <div class="sheet-actions">
-                      <form method="post" action="{{ url_for('delete_strain', strain_row_id=strain.id) }}"
-                            data-confirm="Remove strain {{ strain.strain_name }} from the list? Mice that carry it keep their transgene text.">
-                        <button type="submit" class="row-icon-btn danger-button" title="Remove strain {{ strain.strain_name }}">{{ icon('trash') }}</button>
-                      </form>
+                      {% if not locked %}
+                        <form method="post" action="{{ url_for('delete_strain', strain_row_id=strain.id) }}"
+                              data-confirm="Remove strain {{ strain.strain_name }} from the list? Mice that carry it keep their transgene text.">
+                          <button type="submit" class="row-icon-btn danger-button" title="Remove strain {{ strain.strain_name }}">{{ icon('trash') }}</button>
+                        </form>
+                      {% endif %}
                     </div>
                   </td>
                 </tr>
@@ -1121,7 +1303,10 @@
         <article class="panel">
           <h2>Saved presets</h2>
           <p>Each column can have reusable preset values. Selecting a column filters the panel on the right to that column only.</p>
-          <form method="post" action="{{ url_for('create_option') }}" class="option-form">
+          {% if not can_edit_presets %}
+            <p class="preset-readonly-note">{{ icon('lock') }} Only an admin can add, rename or remove presets. You can still pick them everywhere.</p>
+          {% endif %}
+          <form method="post" action="{{ url_for('create_option') }}" class="option-form"{% if not can_edit_presets %} data-presets-locked{% endif %}>
             <label>
               <span>Column</span>
               <select name="field_name" id="preset-column-select">
@@ -1130,16 +1315,18 @@
                 {% endfor %}
               </select>
             </label>
-            <label>
-              <span>Preset value</span>
-              <input name="option_value" required>
-            </label>
-            <button type="submit">Save preset</button>
+            {% if can_edit_presets %}
+              <label>
+                <span>Preset value</span>
+                <input name="option_value" required>
+              </label>
+              <button type="submit">Save preset</button>
+            {% endif %}
           </form>
         </article>
         <article class="panel">
           <h2>Current presets <span id="preset-selected-label" class="muted-inline" style="font-weight:normal;"></span></h2>
-          <p>Edit a value inline to rename a preset, or remove it with the delete button.</p>
+          <p>{% if can_edit_presets %}Edit a value inline to rename a preset, or remove it with the delete button.{% else %}The values offered in each column’s dropdown.{% endif %}</p>
           {% for field_name, options in dropdown_records.items() %}
             <div class="preset-block" data-field-name="{{ field_name }}">
               <strong>{{ field_name }}</strong>
@@ -1148,12 +1335,15 @@
                   {% for option in options %}
                     <div class="preset-row">
                       <form method="post" action="{{ url_for('update_option', option_id=option.id) }}" class="preset-edit-form">
-                        <input name="option_value" value="{{ option.option_value }}" data-autosave="1" aria-label="Edit preset">
+                        <input name="option_value" value="{{ option.option_value }}" data-autosave="1" aria-label="Edit preset"
+                               {% if not can_edit_presets %}disabled title="Only an admin can rename presets"{% endif %}>
                       </form>
-                      <form method="post" action="{{ url_for('delete_option', option_id=option.id) }}"
-                            data-confirm="Remove the {{ field_name }} preset “{{ option.option_value }}”?">
-                        <button type="submit" class="danger-button preset-delete">Delete</button>
-                      </form>
+                      {% if can_edit_presets %}
+                        <form method="post" action="{{ url_for('delete_option', option_id=option.id) }}"
+                              data-confirm="Remove the {{ field_name }} preset “{{ option.option_value }}”?">
+                          <button type="submit" class="danger-button preset-delete">Delete</button>
+                        </form>
+                      {% endif %}
                     </div>
                   {% endfor %}
                 </div>
@@ -1183,6 +1373,70 @@
           applyFilter();
         })();
       </script>
+    {% endif %}
+    {% if active_view in ("mice", "cages") %}
+      {# New / open mouse. The same dialog shows every field at full width,
+         which is where a long note or a four-transgene genotype is easiest
+         to read and edit. #}
+      <dialog id="mouse-edit-dialog" class="record-dialog" aria-labelledby="mouse-edit-title">
+        <form method="post" data-mouse-form
+              data-create-action="{{ url_for('create_mouse') }}"
+              data-update-action="{{ url_for('update_mouse', mouse_row_id=0) }}">
+          <header class="record-dialog-head">
+            <div>
+              <h3 id="mouse-edit-title" data-mouse-title>New mouse</h3>
+              <p class="record-dialog-sub" data-mouse-sub>The next free ID ({{ next_mouse_id_value }}) is assigned when you save.</p>
+            </div>
+            <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+          </header>
+          <div class="record-dialog-body">
+            <input type="hidden" name="confirm_cohort_dob_change" value="0">
+            <input type="hidden" name="cage_rack_was">
+            <input type="hidden" name="cage_position_was">
+            <input type="hidden" name="cage_location_was">
+            <fieldset class="record-group">
+              <legend>Identity</legend>
+              <label>Sex
+                <select name="gender">
+                  <option value="">Not set</option>
+                  {% for g_value in mouse_sheet.gender_choices %}<option value="{{ g_value }}">{{ g_value }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Status
+                <select name="status">
+                  <option value="">No status</option>
+                  {% for s_value in mouse_sheet.status_choices %}<option value="{{ s_value }}">{{ s_value }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Owner <input name="owner" list="owner-name-options"></label>
+            </fieldset>
+            <fieldset class="record-group">
+              <legend>Genotype</legend>
+              {% for n in range(1, 5) %}
+                <label>Transgene {{ n }} <input name="transgene_{{ n }}" list="strain-name-options"></label>
+              {% endfor %}
+            </fieldset>
+            <fieldset class="record-group">
+              <legend>Housing and dates</legend>
+              <label>Cage <input name="cage_id" placeholder="number, or “new”"></label>
+              <label>Rack
+                <select name="cage_rack"><option value="">Not in a rack</option>{% for rack in mouse_sheet.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
+              </label>
+              <label>Position <input name="cage_position" class="font-mono" placeholder="e.g. D7"></label>
+              <label>Location note <input name="cage_location" list="options-cage_location" placeholder="room, shelf…"></label>
+              <label>Litter <input name="litter_id"></label>
+              <label>Born <input type="date" name="date_of_birth"></label>
+              <label>Died <input type="date" name="date_of_death"></label>
+            </fieldset>
+            <label class="record-wide">Note <textarea name="note" rows="3"></textarea></label>
+          </div>
+          <footer class="record-dialog-foot">
+            <span class="record-dialog-hint" data-mouse-hint></span>
+            <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-mouse-submit>Create mouse</button>
+          </footer>
+        </form>
+      </dialog>
     {% endif %}
   </div>
 
@@ -1335,39 +1589,6 @@ function printMouseTable() {
   window.open({{ url_for("export_mice", format="pdf", scope=scope) | tojson }}, '_blank');
 }
 
-/* Cage cards: search box and purpose chips. "Breeders" means breeder or
-   breeding — one rule with the Breeders tab (services.is_breeder_purpose). */
-const BREEDER_PURPOSES = new Set(['breeder', 'breeding']);
-function purposeGroup(value) {
-  const v = (value || '').trim().toLowerCase();
-  if (BREEDER_PURPOSES.has(v)) return 'breeder';
-  if (v === 'exp' || v === 'experiment' || v === 'experiments') return 'experiment';
-  return v;
-}
-function filterCages() {
-  const search = document.getElementById('cage-search');
-  if (!search) return;
-  const query = search.value.trim().toLowerCase();
-  const chip = document.querySelector('[data-cage-filter][aria-pressed="true"]');
-  const purpose = chip ? chip.dataset.cageFilter : '';
-  let shown = 0;
-  document.querySelectorAll('.cage-card[data-cage-row-id]').forEach((card) => {
-    const text = (card.dataset.cageSearch || '') + ' ' + Array.from(card.querySelectorAll('input')).map((el) => el.value).join(' ').toLowerCase();
-    const visible = (!purpose || purposeGroup(card.dataset.purpose) === purpose) && (!query || text.includes(query));
-    card.hidden = !visible;
-    if (visible) shown += 1;
-  });
-  const none = document.querySelector('[data-cage-nomatch]');
-  if (none) none.hidden = shown > 0;
-}
-document.querySelectorAll('[data-cage-filter]').forEach((chip) => {
-  chip.addEventListener('click', () => {
-    document.querySelectorAll('[data-cage-filter]').forEach((c) => c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'));
-    filterCages();
-  });
-});
-document.getElementById('cage-search')?.addEventListener('input', filterCages);
-
 /* Experiment cards: status chips. */
 document.querySelectorAll('[data-experiment-filter]').forEach((chip) => {
   chip.addEventListener('click', () => {
@@ -1388,7 +1609,7 @@ document.querySelectorAll('[data-experiment-filter]').forEach((chip) => {
 document.addEventListener('DOMContentLoaded', () => {
   const q = new URLSearchParams(window.location.search).get('q');
   if (!q) return;
-  const box = document.getElementById('cage-search') || document.getElementById('breeder-search')
+  const box = document.getElementById('breeder-search')
     || document.querySelector('.data-table-card .dt-search');
   if (!box) return;
   box.value = q;
@@ -1587,24 +1808,18 @@ function syncCage(state, sourceForm) {
       } catch (_) { /* leave it */ }
     }
   });
-  // A cage card (Cages tab) remembers what it now shows.
-  if (sourceForm && sourceForm.querySelector('[name="rack_id_was"]')) {
-    setValue(sourceForm.querySelector('[name="rack_id_was"]'), state.rack_id);
-    setValue(sourceForm.querySelector('[name="position_was"]'), state.position);
-    setValue(sourceForm.querySelector('[name="position"]'), state.position);
-  }
 }
 
-/* A cage dragged on the rack grid: its card on the same page follows, so a
-   later edit on the card does not post the old position back. */
+/* A cage dragged on the rack grid: its row on the cage sheet follows, so a
+   later edit on the row does not post the old position back. */
 document.addEventListener('rack-grid:moved', (event) => {
   const { id, rackId, position } = event.detail || {};
-  const card = document.querySelector(`.cage-card[data-cage-row-id="${id}"]`);
-  if (!card) return;
-  setValue(card.querySelector('select[name="rack_id"]'), rackId || '');
-  setValue(card.querySelector('input[name="position"]'), position || '');
-  setValue(card.querySelector('[name="rack_id_was"]'), rackId || '');
-  setValue(card.querySelector('[name="position_was"]'), position || '');
+  const form = document.getElementById(`cage-update-${id}`);
+  if (!form) return;
+  setValue(document.querySelector(`[form="${form.id}"][name="rack_id"]`), rackId || '');
+  setValue(document.querySelector(`[form="${form.id}"][name="position"]`), position || '');
+  setValue(form.querySelector('[name="rack_id_was"]'), rackId || '');
+  setValue(form.querySelector('[name="position_was"]'), position || '');
 });
 
 async function saveFormInBackground(form) {
@@ -1641,6 +1856,7 @@ async function saveFormInBackground(form) {
 }
 
 document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
+  if (input.closest('[data-autosave-sheet]')) return;  // static/sheet.js saves these
   if (input.name === 'date_of_birth') { wireDobInput(input); return; }
   input.addEventListener('input', () => { input.dataset.dirty = '1'; autosaveInput(input); });
   input.addEventListener('change', () => {
@@ -1734,75 +1950,120 @@ document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
 })();
 
 
-function normalizePurposeClass(value) {
-  const normalized = (value || '').trim().toLowerCase();
-  if (normalized === 'breeder') return 'cage-purpose-breeder';
-  if (normalized === 'breeding') return 'cage-purpose-breeding';
-  if (normalized === 'exp' || normalized === 'experiment' || normalized === 'experiments') return 'cage-purpose-exp';
-  return '';
-}
-
-function normalizePurposeValue(value) {
-  const normalized = (value || '').trim().toLowerCase();
-  if (normalized === 'experiments') return 'experiment';
-  return normalized;
-}
-
+/* The cage sheet. static/sheet.js saves the cells; this keeps the parts it
+   does not know about in step: the sub-row of mice, the wean-due date,
+   the shared cell of breeder cages, the chips' data, and the dialog. */
 function formatDateForInput(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
-
-function updateCageDerivedDates(input) {
-  const card = input.closest('.cage-card');
-  if (!card) return;
-  const genotypingOutput = card.querySelector('[data-genotyping-date-output="1"]');
-  const weaningOutput = card.querySelector('[data-weaning-date-output="1"]');
-  if (!input.value) {
-    if (genotypingOutput) genotypingOutput.value = '';
-    if (weaningOutput) weaningOutput.value = '';
-    return;
-  }
-
-  const dob = new Date(`${input.value}T00:00:00`);
-  // Same offsets as the server (services.WEAN_OFFSET_DAYS: weaning at P21).
-  const genotypingDate = new Date(dob);
-  genotypingDate.setDate(genotypingDate.getDate() + {{ cage_geno_offset_days | int }});
-  const weaningDate = new Date(dob);
+/* Same P21 rule as the server (services.WEAN_OFFSET_DAYS). */
+function weanDue(born) {
+  if (!born) return { due: '', state: '' };
+  const weaningDate = new Date(`${born}T00:00:00`);
   weaningDate.setDate(weaningDate.getDate() + {{ wean_offset_days | int }});
-
-  if (genotypingOutput) genotypingOutput.value = formatDateForInput(genotypingDate);
-  if (weaningOutput) weaningOutput.value = formatDateForInput(weaningDate);
+  const today = new Date(`${localToday()}T00:00:00`);
+  const left = Math.round((weaningDate - today) / 86400000);
+  return { due: formatDateForInput(weaningDate), state: left < 0 ? 'overdue' : (left <= 3 ? 'soon' : '') };
 }
-
-document.querySelectorAll('[data-cage-purpose-input="1"]').forEach((input) => {
-  const updateCard = () => {
-    const card = input.closest('.cage-card');
-    if (!card) return;
-    card.classList.remove('cage-purpose-breeder', 'cage-purpose-breeding', 'cage-purpose-exp', 'cage-purpose-experiment');
-    const nextClass = normalizePurposeClass(input.value);
-    if (nextClass) {
-      card.classList.add(nextClass);
-    }
-    const normalizedPurpose = normalizePurposeValue(input.value);
-    card.dataset.purpose = normalizedPurpose;
-    const breedingActions = card.querySelector('.breeding-actions');
-    if (breedingActions) {
-      breedingActions.classList.toggle('hidden-row', !BREEDER_PURPOSES.has(normalizedPurpose));
-    }
+(function () {
+  const sheet = document.querySelector('.cage-sheet');
+  if (!sheet) return;
+  const BREEDING = new Set(['breeder', 'breeding']);
+  const cageRow = (form) => document.getElementById(`cage-${form.id.replace('cage-update-', '')}`);
+  const showWean = (row, due, state) => {
+    const cell = row && row.querySelector('[data-cage-wean]');
+    if (!cell) return;
+    cell.textContent = due || '–';
+    cell.dataset.state = state || '';
+    row.dataset.wean_due = due || '';
   };
-  input.addEventListener('input', () => {
-    updateCard();
-  });
-  input.addEventListener('change', updateCard);
-});
 
-document.querySelectorAll('[data-cage-dob-input="1"]').forEach((input) => {
-  input.addEventListener('input', () => updateCageDerivedDates(input));
-  input.addEventListener('change', () => updateCageDerivedDates(input));
-});
+  // Expand a cage: its mice and per-cage actions in a sub-row.
+  sheet.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-cage-expand]');
+    if (!button) return;
+    const detail = document.getElementById(`cage-detail-${button.dataset.cageExpand}`);
+    if (!detail) return;
+    detail.hidden = !detail.hidden;
+    button.setAttribute('aria-expanded', detail.hidden ? 'false' : 'true');
+    button.closest('tr').classList.toggle('is-expanded', !detail.hidden);
+  });
+
+  // Wean due follows the litter-born date as soon as it changes.
+  sheet.addEventListener('sheet:change', (event) => {
+    const { input, form } = event.detail || {};
+    if (!input || !form || !form.id.startsWith('cage-update-')) return;
+    if (input.name === 'date_give_birth' && input.value) {
+      const { due, state } = weanDue(input.value);
+      showWean(cageRow(form), due, state);
+    }
+  });
+
+  sheet.addEventListener('sheet:saved', (event) => {
+    const { form, body } = event.detail || {};
+    if (!form) return;
+    const values = (body && body.row && body.row.values) || {};
+    if (form.id.startsWith('cage-mouse-update-')) {
+      // A mouse's status decides whether its cage still holds living mice.
+      const detail = document.querySelector(`[form="${form.id}"]`)?.closest('tr.cage-detail');
+      const row = detail && document.getElementById(`cage-${detail.dataset.detailFor}`);
+      if (row) {
+        const alive = Boolean(detail.querySelector('.life-dot.is-alive'));
+        const flag = row.querySelector('[data-cage-alive]');
+        if (flag) flag.value = alive ? '1' : '0';
+        window.BioSheet.refreshDot(row, alive);
+      }
+      return;
+    }
+    if (!form.id.startsWith('cage-update-')) return;
+    const row = cageRow(form);
+    if (!row) return;
+    const active = body && body.row ? body.row.active : undefined;
+    const flag = row.querySelector('[data-cage-alive]');
+    if (flag && typeof active === 'boolean') flag.value = active ? '1' : '0';
+    showWean(row, values.wean_due, values.wean_state);
+    row.dataset.breeding = values.breeding || '0';
+    const rack = row.querySelector('select[name="rack_id"]');
+    row.dataset.rack_name = rack && rack.value ? rack.selectedOptions[0].textContent.trim() : '';
+    // Breeder (and stock) cages are shared whatever the flag says.
+    const shared = row.querySelector('select[name="is_shared"]');
+    if (shared && !shared.closest('tr').classList.contains('is-locked')) {
+      const implied = values.shared_implied === '1';
+      shared.disabled = implied;
+      shared.title = implied ? `${values.purpose} cages are always shared` : '';
+      if (implied) shared.value = '1';
+      else if ('is_shared' in values) shared.value = values.is_shared;
+      shared.dataset.scope = shared.value === '1' ? 'lab' : 'mine';
+    }
+    const genotype = row.querySelector('input[name="genotype_summary"]');
+    if (genotype) genotype.title = genotype.value || genotype.placeholder;
+    const detail = document.getElementById(`cage-detail-${row.dataset.id}`);
+    const breeding = detail && detail.querySelector('[data-breeding-actions]');
+    if (breeding) breeding.classList.toggle('hidden-row', !BREEDING.has(String(values.purpose || '').trim().toLowerCase()));
+    // The dialog opens with what the row now shows.
+    const open = row.querySelector('[data-record-edit="cage-dialog"]');
+    if (open) {
+      try {
+        const payload = JSON.parse(open.dataset.recordPayload || '{}');
+        ['rack_id', 'position', 'purpose', 'cage_location', 'genotype_summary', 'notes', 'date_give_birth']
+          .forEach((key) => { if (key in values) payload[key] = values[key]; });
+        open.dataset.recordPayload = JSON.stringify(payload);
+      } catch (_) { /* leave it */ }
+    }
+  });
+
+  // "How many" is for new cages only.
+  const dialog = document.getElementById('cage-dialog');
+  dialog?.addEventListener('record-dialog:open', (event) => {
+    const isNew = Boolean(event.detail && event.detail.isNew);
+    dialog.querySelectorAll('[data-new-only]').forEach((el) => { el.hidden = !isNew; });
+    const count = dialog.querySelector('input[name="count"]');
+    if (count) { count.disabled = !isNew; if (isNew && !count.value) count.value = '1'; }
+  });
+})();
 
 // Keep the note input's `title` attribute in sync with its current value so
 // hovering always shows the latest text — without this, the tooltip would be
@@ -1901,16 +2162,5 @@ document.querySelectorAll('input[list]').forEach((input) => {
   });
 });
 
-function applySexColor(input) {
-  const v = (input.value || '').trim().toUpperCase();
-  input.classList.toggle('sex-f', v === 'F');
-  input.classList.toggle('sex-m', v === 'M');
-}
-document.querySelectorAll('input[name="gender"]').forEach((input) => {
-  applySexColor(input);
-  input.addEventListener('input', () => applySexColor(input));
-  input.addEventListener('change', () => applySexColor(input));
-  input.addEventListener('blur', () => applySexColor(input));
-});
 </script>
 {% endblock %}

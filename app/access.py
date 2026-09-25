@@ -118,6 +118,25 @@ def can_edit_rack(rack, user=None) -> bool:
     return bool(creator) and creator == username(user)
 
 
+def can_edit_strain(strain, user=None) -> bool:
+    """Renaming or removing a strain changes the list everyone picks from,
+    so it is for whoever added it, or an admin. Strains that predate the
+    creator column are admin-only. Anyone may add a strain (and so becomes
+    its creator); picking an existing one is open to all."""
+    if strain is None:
+        return False
+    if is_admin(user):
+        return True
+    creator = (getattr(strain, "created_by", "") or "").strip()
+    return bool(creator) and creator == username(user)
+
+
+def can_edit_presets(user=None) -> bool:
+    """The colony's saved dropdown values are the lab's vocabulary: only an
+    admin adds, renames or removes them. Everyone picks from them."""
+    return is_admin(user)
+
+
 def denied_message(what: str, owner: str = "") -> str:
     """The refusal for records that are not owned through `.owner`."""
     who = f"{owner}’s" if owner else "someone else’s"
