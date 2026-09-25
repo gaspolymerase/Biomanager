@@ -1,18 +1,23 @@
 {% extends "base.html" %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
+{% import "_sheet.html" as sheet_ui with context %}
 
 {% set m = module %}
 {% set key = m.key %}
+{% set alive_title = 'Open' if m.kind == 'orders' else 'Available' %}
+{% set dead_title = 'Closed' if m.kind == 'orders' else 'Not available' %}
 
 {% block page_title %}{{ m.label }}{% endblock %}
 {% block page_heading %}{{ m.label }}{% endblock %}
 {% block page_subtitle %}{{ m.blurb }}{% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('inventory.configure', key=key) }}">{{ icon('sliders') }} Configure</a>
+  {% if can_configure %}
+    <a class="btn" href="{{ url_for('inventory.configure', key=key) }}">{{ icon('sliders') }} Configure</a>
+  {% endif %}
 {% endblock %}
 
-{% macro field_cell(field, value, form_id, locked, src_label='') %}
+{% macro field_cell(field, value, form_id, locked, src_label='', links={}) %}
   {% set name = 'attr_' ~ field.key %}
   {% if field.type == 'select' %}
     <select name="{{ name }}" form="{{ form_id }}" data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
@@ -25,7 +30,8 @@
            data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
   {% elif field.type == 'source' %}
     {% set src = value if value is mapping else {} %}
-    <span class="sheet-cell-text">{% if src.kind or src.ref %}<span class="source-chip">{% if src.kind %}<span class="source-chip-kind">{{ src_label or src.kind.split(':')[-1]|replace('_', ' ')|title }}</span>{% endif %}<span class="ident">{{ src.ref or '—' }}</span></span>{% else %}<span class="sheet-empty">–</span>{% endif %}</span>
+    {% set mouse_row = links.get(src.ref|string) if src.kind in ['mouse', 'colony'] else none %}
+    <span class="sheet-cell-text">{% if src.kind or src.ref %}<span class="source-chip">{% if src.kind %}<span class="source-chip-kind">{{ src_label or src.kind.split(':')[-1]|replace('_', ' ')|title }}</span>{% endif %}{% if mouse_row %}<a class="ident source-chip-link" href="{{ url_for('colony', view='mice', scope='all') }}#mouse-{{ mouse_row }}" title="Open mouse {{ src.ref }} in the colony">{{ src.ref }}</a>{% else %}<span class="ident" {% if src.kind in ['mouse', 'colony'] and src.ref %}title="No mouse {{ src.ref }} in the colony"{% endif %}>{{ src.ref or '—' }}</span>{% endif %}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</span>
   {% elif field.type == 'url' and value %}
     <a class="sheet-link font-normal" href="{{ value }}" target="_blank" rel="noopener">{{ value|replace('https://', '')|truncate(28) }}</a>
   {% else %}
@@ -48,8 +54,12 @@
       <div class="rack-chips" role="group" aria-label="Boxes">
         <span class="rack-chips-label">Boxes</span>
         {% for rack in racks %}
-          <button type="button" class="btn btn-sm" data-record-edit="inv-rack-dialog"
-                  data-record-payload="{{ grid.racks[loop.index0].edit['data-record-payload'] }}">{{ icon('sliders') }} {{ rack.name }}</button>
+          {% if rack.id in manageable_racks %}
+            <button type="button" class="btn btn-sm" data-record-edit="inv-rack-dialog"
+                    data-record-payload="{{ grid.racks[loop.index0].edit['data-record-payload'] }}">{{ icon('sliders') }} {{ rack.name }}</button>
+          {% else %}
+            <span class="btn btn-sm is-static" title="Only {{ rack.created_by }} or an admin can change this {{ rack.kind }}">{{ icon('lock') }} {{ rack.name }}</span>
+          {% endif %}
         {% endfor %}
         <button type="button" class="btn btn-sm" data-record-edit="inv-rack-dialog"
                 data-record-payload='{{ {"rows": 9, "cols": 9, "kind": "box", "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"} | tojson }}'>
@@ -61,7 +71,7 @@
 {% endblock %}
 
 {% block content %}
-<datalist id="inv-owner-options">{% for u in usernames %}<option value="{{ u }}"></option>{% endfor %}</datalist>
+{{ sheet_ui.owners_list(usernames, 'inv-owner-options') }}
 {% for source in sources %}
   <datalist id="inv-src-{{ loop.index0 }}">{% for ref in source.refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
 {% endfor %}
@@ -71,8 +81,12 @@
 <div data-layout-scope>
   {# =============================== TABLE =============================== #}
   <div data-layout-panel="table">
-    <section class="data-table-card sheet" data-table-id="inv-{{ key }}-{{ col_sig }}"
-             data-noun="{{ m.item_noun }}" data-noun-plural="{{ m.item_noun_plural }}">
+    {# Same card, toolbar and bottom bar as the mouse sheet: cells save as
+       you type (static/sheet.js), ticked rows get the selection bar, the
+       dot is green while an item is usable (or, for orders, open). #}
+    <section class="data-table-card sheet" data-table-id="inv-{{ key }}-{{ col_sig }}" data-autosave-sheet
+             data-noun="{{ m.item_noun }}" data-noun-plural="{{ m.item_noun_plural }}" data-export-name="{{ key }}"
+             data-selection-scope data-selection-noun="{{ m.item_noun }}" data-selection-noun-plural="{{ m.item_noun_plural }}">
       <div class="dt-toolbar">
         <div class="dt-toolbar-search">
           {{ icon('search', 'search-icon') }}
@@ -87,16 +101,18 @@
           {% if m.has('board') %}
             <button type="button" class="dt-chip" data-dt-filter="open:true" aria-pressed="false">Open <span class="dt-chip-count">{{ counts.open }}</span></button>
           {% endif %}
+          {% if m.has('expiry') and counts.soon %}
+            <button type="button" class="dt-chip" data-dt-filter="expiring:true" aria-pressed="false" title="Expires within 30 days">Expiring soon <span class="dt-chip-count">{{ counts.soon }}</span></button>
+          {% endif %}
           {% if m.has('expiry') and counts.expired %}
             <button type="button" class="dt-chip" data-dt-filter="expired:true" aria-pressed="false">Expired <span class="dt-chip-count">{{ counts.expired }}</span></button>
           {% endif %}
         </div>
         <div class="dt-toolbar-spacer"></div>
-        <span class="sheet-save" data-save-status aria-live="polite"></span>
-        <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
-        <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+        {{ sheet_ui.tools() }}
         {% if m.kind == 'orders' %}
-          <button type="button" class="dt-toolbar-btn" onclick="window.csvImportModule = '{{ key }}'; openCsvImport('order')">{{ icon('import') }} Import</button>
+          <button type="button" class="dt-toolbar-btn" data-csv-module="{{ key }}"
+                  onclick="window.csvImportModule = this.dataset.csvModule; openCsvImport('order')">{{ icon('import') }} Import</button>
         {% endif %}
         <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                 data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
@@ -108,7 +124,11 @@
         <table class="dt sheet-table" data-resizable="1">
           <thead>
             <tr>
-              <th class="dt-sortable sheet-pin sheet-pin-start" data-sort-key="number" style="width: 64px; min-width: 64px;">
+              <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
+                <input type="checkbox" data-select-all aria-label="Select all visible {{ m.item_noun_plural }}">
+              </th>
+              <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="number" style="width: 76px; min-width: 76px;"
+                  {% if m.statuses %}title="The dot is green while the {{ m.item_noun }} is {{ 'open' if m.kind == 'orders' else 'usable' }} ({{ m.available_statuses | join(', ') }})."{% endif %}>
                 <span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}#<span class="dt-sort-indicator"></span></span>
               </th>
               <th class="dt-sortable" data-sort-key="name" style="width: 210px;">
@@ -132,7 +152,7 @@
                   <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Belongs to<span class="dt-sort-indicator"></span></span>
                 </th>
               {% endif %}
-              <th class="dt-sortable" data-sort-key="owner" style="width: 80px;">
+              <th class="dt-sortable" data-sort-key="owner" style="width: 110px;">
                 <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}{{ 'Requested by' if m.kind == 'orders' else 'Owner' }}<span class="dt-sort-indicator"></span></span>
               </th>
               {% if m.has('supplier') %}
@@ -165,17 +185,23 @@
               {% set i = r.item %}
               {% set f = 'inv-' ~ i.id %}
               {% set locked = not r.editable %}
+              {% set fixed = locked or not r.manageable %}
               <tr data-id="{{ i.id }}" data-number="{{ i.number }}"
                   data-mine="{{ 'true' if r.mine else 'false' }}" data-shared="{{ 'true' if i.is_shared else 'false' }}"
                   data-open="{{ 'true' if i.status in m.open_statuses else 'false' }}"
+                  data-active="{{ 'false' if r.available == false else 'true' }}"
                   data-expired="{{ 'true' if r.expiry == 'expired' else 'false' }}"
-                  class="{% if locked %}is-locked{% endif %}{% if i.status in ['discarded', 'cancelled', 'used up'] %} is-inactive{% endif %}">
-                <td class="sheet-pin sheet-pin-start">
-                  <span class="sheet-id"><span class="ident">{{ i.number }}</span>
-                    {% if locked %}<span class="sheet-lock" title="{{ i.owner }}’s {{ m.item_noun }}: read only">{{ icon('lock') }}</span>{% endif %}
-                  </span>
+                  data-expiring="{{ 'true' if r.expiry == 'soon' else 'false' }}"
+                  class="{% if locked %}is-locked{% endif %}{% if r.available == false %} is-inactive{% endif %}">
+                <td class="sheet-pin sheet-pin-0">
+                  <input type="checkbox" data-select-row value="{{ i.id }}" aria-label="Select {{ m.item_noun }} #{{ i.number }}">
                 </td>
-                <td><input class="font-medium" name="name" form="{{ f }}" value="{{ i.name }}" title="{{ i.name }}" data-autosave="1" aria-label="{{ m.name_label }}" {% if locked %}disabled{% endif %}></td>
+                <td class="sheet-pin sheet-pin-1">
+                  {{ sheet_ui.id_cell(i.number, alive=r.available, locked=locked, owner=i.owner, noun=m.item_noun,
+                                      alive_title=alive_title,
+                                      dead_title=((i.status|capitalize) ~ ' since ' ~ r.ended_on) if r.ended_on else dead_title) }}
+                </td>
+                <td><input class="font-medium" name="name" form="{{ f }}" value="{{ i.name }}" title="{{ i.name }}" data-autosave="1" aria-label="{{ m.name_label }}" {% if m.kind == 'orders' %}required{% endif %} {% if locked %}disabled{% endif %}></td>
                 <td>
                   {% if m.categories %}
                     <select name="category" form="{{ f }}" data-autosave="1" aria-label="{{ m.category_label }}" {% if locked %}disabled{% endif %}>
@@ -189,29 +215,26 @@
                 </td>
                 {% if m.statuses %}
                   <td>
-                    <select class="status-pill" name="status" form="{{ f }}" data-status="{{ i.status }}" data-autosave="1" aria-label="Status" {% if locked %}disabled{% endif %}>
+                    <select class="status-pill" name="status" form="{{ f }}" data-status="{{ i.status|lower }}" data-autosave="1" aria-label="Status"
+                            data-alive-values="{{ m.available_statuses | join(',') }}" {% if locked %}disabled{% endif %}>
                       {% for s in m.statuses %}<option value="{{ s }}" {% if s == i.status %}selected{% endif %}>{{ s }}</option>{% endfor %}
-                      {% if i.status and i.status not in m.statuses %}<option value="{{ i.status }}" selected>{{ i.status }}</option>{% endif %}
+                      {% if i.status not in m.statuses %}<option value="{{ i.status }}" selected>{{ i.status or '–' }}</option>{% endif %}
                     </select>
                   </td>
                 {% endif %}
                 {% for fd in m.table_fields %}
-                  <td>{{ field_cell(fd, r.attrs.get(fd.key, ''), f, locked, r.source_labels.get(fd.key, '')) }}</td>
+                  <td>{{ field_cell(fd, r.attrs.get(fd.key, ''), f, locked, r.source_labels.get(fd.key, ''), mouse_links) }}</td>
                 {% endfor %}
                 {% if m.has('sharing') %}
                   <td>
-                    <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ 'lab' if i.is_shared else 'mine' }}" data-autosave="1" aria-label="Belongs to" {% if locked %}disabled{% endif %}>
+                    <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ 'lab' if i.is_shared else 'mine' }}" data-autosave="1" aria-label="Belongs to"
+                            {% if fixed %}disabled {% if not locked %}title="Only {{ i.owner or 'its owner' }} or an admin can make it personal"{% endif %}{% endif %}>
                       <option value="0" {% if not i.is_shared %}selected{% endif %}>Personal</option>
                       <option value="1" {% if i.is_shared %}selected{% endif %}>Lab common</option>
                     </select>
                   </td>
                 {% endif %}
-                <td>
-                  <div class="owner-cell-wrap{% if i.owner %} has-badge{% endif %}">
-                    {% if i.owner %}{{ i.owner | owner_badge }}{% endif %}
-                    <input name="owner" form="{{ f }}" value="{{ i.owner }}" list="inv-owner-options" data-autosave="1" aria-label="Owner" {% if locked %}disabled{% endif %}>
-                  </div>
-                </td>
+                <td>{{ sheet_ui.owner_cell(i.owner, f, fixed, list_id='inv-owner-options', label='Requested by' if m.kind == 'orders' else 'Owner') }}</td>
                 {% if m.has('supplier') %}
                   <td><input name="vendor" form="{{ f }}" value="{{ i.vendor }}" data-autosave="1" aria-label="Vendor" {% if locked %}disabled{% endif %}></td>
                   <td><input class="ident" name="catalog_number" form="{{ f }}" value="{{ i.catalog_number }}" data-autosave="1" aria-label="Catalog number" {% if locked %}disabled{% endif %}></td>
@@ -243,20 +266,22 @@
                 <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ i.notes }}" title="{{ i.notes }}" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
                 <td class="sheet-pin sheet-pin-end">
                   <div class="sheet-actions">
-                    {% if m.kind == 'orders' and i.status == 'received' and reagents_module and not r.attrs.get('stocked_as') %}
-                      <form method="post" action="{{ url_for('inventory.order_to_reagents', key=key, item_id=i.id) }}">
+                    {% if m.kind == 'orders' and reagents_module and not r.attrs.get('stocked_as') and not locked %}
+                      {# Shown once the order is received (also after a board drag); gone once stocked. #}
+                      <form method="post" action="{{ url_for('inventory.order_to_reagents', key=key, item_id=i.id) }}" data-to-stock
+                            {% if i.status|lower != 'received' %}hidden{% endif %}>
                         <input type="hidden" name="target" value="{{ reagents_module.key }}">
                         <button type="submit" class="row-icon-btn" title="Add to {{ reagents_module.label }}">{{ icon('flask') }}</button>
                       </form>
                     {% endif %}
-                    <button type="button" class="row-icon-btn" title="Open" data-record-edit="item-dialog"
+                    <button type="button" class="row-icon-btn" title="Open" data-record-edit="item-dialog" data-open-item
                             data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
                     <form method="post" action="{{ url_for('inventory.duplicate_item', key=key, item_id=i.id) }}">
-                      <button type="submit" class="row-icon-btn" title="Duplicate">{{ icon('copy') }}</button>
+                      <button type="submit" class="row-icon-btn" title="Duplicate as a new {{ m.item_noun }} of yours">{{ icon('copy') }}</button>
                     </form>
                     <form method="post" action="{{ url_for('inventory.delete_item', key=key, item_id=i.id) }}"
-                          onsubmit="return confirm('Delete {{ m.item_noun }} #{{ i.number }}?')">
-                      <button type="submit" class="row-icon-btn danger-button" title="Delete" {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
+                          data-confirm="Delete {{ m.item_noun }} #{{ i.number }}{% if i.name %} ({{ i.name }}){% endif %}?" onsubmit="return confirm(this.dataset.confirm)">
+                      <button type="submit" class="row-icon-btn danger-button" {% if not r.manageable %}disabled title="Only {{ i.owner or 'its owner' }} or an admin can delete it"{% else %}title="Delete"{% endif %}>{{ icon('trash') }}</button>
                     </form>
                   </div>
                 </td>
@@ -267,15 +292,24 @@
           </tbody>
         </table>
       </div>
+      {# One form per row; cells join it through form="…". The "_was"
+         copies are what the row showed: the server only takes a status,
+         received date or box that differs, so a row gone stale after a
+         board drag or grid move cannot undo it (app/formutil.py). #}
       {% for r in rows %}
         <form id="inv-{{ r.item.id }}" method="post" action="{{ url_for('inventory.update_item', key=key, item_id=r.item.id) }}"
               data-record-label="{{ m.item_noun }} #{{ r.item.number }}">
+          <input type="hidden" name="status_was" value="{{ r.item.status }}">
+          <input type="hidden" name="received_on_was" value="{{ r.item.received_on or '' }}">
           <input type="hidden" name="rack_id_was" value="{{ r.item.rack_id_fk or '' }}">
           <input type="hidden" name="position_was" value="{{ r.position }}">
         </form>
       {% endfor %}
       <div class="dt-bottom-bar">
         <span class="dt-bottom-count dt-count">{{ rows|length }} {{ m.item_noun if rows|length == 1 else m.item_noun_plural }}</span>
+        <button type="button" class="dt-bottom-action" data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
+          {{ icon('plus') }} New {{ m.item_noun }}
+        </button>
         <div class="dt-bottom-spacer"></div>
         <div class="dt-pagination">
           <span class="dt-page-label">Page 1</span>
@@ -283,6 +317,50 @@
           <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
           <select class="dt-page-size" aria-label="Rows per page"><option value="100" selected>100</option><option value="100000">All</option></select>
         </div>
+      </div>
+
+      {# Batch actions on the ticked rows: one batch each, undoable from
+         Batch history. Rows you may not change are skipped and counted. #}
+      <div class="selbar" data-selection-bar hidden>
+        <span class="selbar-count" data-selection-count></span>
+        {% if m.statuses %}
+          <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form>
+            <input type="hidden" name="action" value="status">
+            <select name="value" aria-label="Status">{% for s in m.statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select>
+            <button type="submit" class="btn btn-sm">Set status</button>
+          </form>
+        {% endif %}
+        {% if m.has('storage') %}
+          <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form>
+            <input type="hidden" name="action" value="rack">
+            <select name="value" aria-label="Box">
+              {% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}
+              <option value="">Unplace</option>
+            </select>
+            <button type="submit" class="btn btn-sm">Move</button>
+          </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form
+              title="Only for {{ m.item_noun_plural }} you own (admins: any)">
+          <input type="hidden" name="action" value="owner">
+          <input name="value" list="inv-owner-options" placeholder="{{ 'requested by' if m.kind == 'orders' else 'owner' }}" value="{{ current_user.username }}" aria-label="New owner">
+          <button type="submit" class="btn btn-sm">Set owner</button>
+        </form>
+        {% if m.has('sharing') %}
+          <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form
+                title="Only for {{ m.item_noun_plural }} you own (admins: any)">
+            <input type="hidden" name="action" value="shared">
+            <select name="value" aria-label="Belongs to"><option value="1">Lab common</option><option value="0">Personal</option></select>
+            <button type="submit" class="btn btn-sm">Set</button>
+          </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form
+              data-confirm="Delete {n} {{ m.item_noun_plural }}? Batch history can undo it.">
+          <input type="hidden" name="action" value="delete">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+        <div class="selbar-spacer"></div>
+        <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
       </div>
     </section>
   </div>
@@ -313,7 +391,7 @@
             <div class="board-cards" data-board-drop>
               {% for r in col_rows %}
                 {% set i = r.item %}
-                <article class="board-card" draggable="true" data-id="{{ i.id }}" data-record-edit="item-dialog"
+                <article class="board-card" draggable="{{ 'true' if r.editable else 'false' }}" data-id="{{ i.id }}" data-record-edit="item-dialog"
                          data-record-payload="{{ r.payload | tojson | forceescape }}">
                   <div class="board-card-top"><span class="ident text-muted">#{{ i.number }}</span>{% if i.owner %}{{ i.owner | owner_badge }}{% endif %}</div>
                   <div class="board-card-name">{{ i.name or '(unnamed)' }}</div>
@@ -353,12 +431,13 @@
           {% else %}<input name="category">{% endif %}
         </label>
         {% if m.statuses %}
-          <label>Status <select name="status">{% for s in m.statuses %}<option value="{{ s }}">{{ s|capitalize }}</option>{% endfor %}</select></label>
+          <label>Status <select name="status" data-dialog-status>{% for s in m.statuses %}<option value="{{ s }}">{{ s|capitalize }}</option>{% endfor %}</select></label>
         {% endif %}
-        <label>{{ 'Requested by' if m.kind == 'orders' else 'Owner' }} <input name="owner" list="inv-owner-options"></label>
+        <label>{{ 'Requested by' if m.kind == 'orders' else 'Owner' }} <input name="owner" list="inv-owner-options" data-dialog-owner
+               {% if not is_admin %}title="Only an admin can add a {{ m.item_noun }} for someone else"{% endif %}></label>
         {% if m.has('sharing') %}
           <label>Belongs to
-            <select name="is_shared"><option value="0">Personal: only me (and admins) can edit</option><option value="1">Lab common: anyone can use and edit</option></select>
+            <select name="is_shared" data-dialog-shared><option value="0">Personal: only me (and admins) can edit</option><option value="1">Lab common: anyone can use and edit</option></select>
           </label>
         {% endif %}
       </fieldset>
@@ -431,116 +510,181 @@
 {% endblock %}
 
 {% block body_end %}
+<script type="application/json" id="inv-page-data">{{ {"isAdmin": is_admin, "me": current_user.username} | tojson }}</script>
 <script>
-  /* Inline autosave, with the toolbar indicator used by every sheet. */
+  /* Keep everything that shows an item in step after a save, a board drag
+     or a grid move: the row's cells and its "_was" copies, the dot, the
+     Open button's and the board card's payloads, the board column. The
+     autosave itself is static/sheet.js. */
   (function () {
-    const status = document.querySelector('[data-save-status]');
-    let clear = null;
-    const say = (state, text) => {
-      if (!status) return;
-      clearTimeout(clear);
-      status.dataset.state = state;
-      status.textContent = text;
-      if (state === 'saved') clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
-    };
-    const timers = new Map();
-    async function save(form) {
-      say('saving', 'Saving…');
-      try {
-        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
-        // The row now shows what was saved; remember it for the next save.
-        if ('position' in body) {
-          const was = (n) => form.querySelector(`[name="${n}_was"]`);
-          if (was('rack_id')) was('rack_id').value = body.rack_id;
-          if (was('position')) was('position').value = body.position;
-          const pos = document.querySelector(`[form="${form.id}"][name="position"]`);
-          if (pos) pos.value = body.position;
+    const page = JSON.parse(document.getElementById('inv-page-data').textContent);
+    const board = document.querySelector('[data-board]');
+
+    function recount() {
+      if (!board) return;
+      board.querySelectorAll('.board-col').forEach((col) => {
+        col.querySelector('[data-board-count]').textContent = col.querySelectorAll('.board-card').length;
+      });
+    }
+
+    function setPayload(id, payload) {
+      const json = JSON.stringify(payload);
+      document.querySelectorAll(`tr[data-id="${id}"] [data-open-item], .board-card[data-id="${id}"]`)
+        .forEach((el) => { el.dataset.recordPayload = json; });
+    }
+
+    function editPayload(id, change) {
+      const open = document.querySelector(`tr[data-id="${id}"] [data-open-item]`)
+        || document.querySelector(`.board-card[data-id="${id}"]`);
+      if (!open) return;
+      let payload;
+      try { payload = JSON.parse(open.dataset.recordPayload || '{}'); } catch (_) { return; }
+      setPayload(id, Object.assign(payload, change));
+    }
+
+    /* The server's view of a row: cells, "_was" copies, pills, dot, lock. */
+    function applyRow(id, answer) {
+      const form = document.getElementById(`inv-${id}`);
+      const row = answer.row || {};
+      Object.entries(row.values || {}).forEach(([name, value]) => {
+        const v = value == null ? '' : String(value);
+        if (form) {
+          const was = form.querySelector(`[name="${name}_was"]`);
+          if (was) was.value = v;
         }
-        say('saved', 'All changes saved');
-      } catch (error) {
-        say('error', `Couldn’t save ${form.dataset.recordLabel || 'this change'}: ${error.message}`);
+        document.querySelectorAll(`[form="inv-${id}"][name="${name}"]`).forEach((el) => {
+          if (el !== document.activeElement) el.value = v;
+          el.dataset.previous = el.value;
+          if (el.type === 'date') el.dataset.empty = el.value ? '0' : '1';
+          if (el.classList.contains('status-pill')) el.dataset.status = el.value.toLowerCase();
+          if (el.classList.contains('scope-pill')) el.dataset.scope = el.value === '1' ? 'lab' : 'mine';
+        });
+      });
+      const tr = document.querySelector(`tr[data-id="${id}"]`);
+      if (tr && 'active' in row && window.BioSheet) window.BioSheet.refreshDot(tr, row.active);
+      if (tr && row.values) {
+        const toStock = tr.querySelector('[data-to-stock]');
+        if (toStock && answer.payload) {
+          toStock.hidden = String(row.values.status || '').toLowerCase() !== 'received' || answer.payload._locked;
+        }
+        if ('is_shared' in row.values) tr.dataset.shared = row.values.is_shared === '1' ? 'true' : 'false';
+        if ('owner' in row.values) tr.dataset.mine = row.values.owner === page.me ? 'true' : 'false';
+      }
+      if (answer.payload) {
+        setPayload(id, answer.payload);
+        if (answer.payload._locked && tr) {
+          tr.classList.add('is-locked');
+          document.querySelectorAll(`[form="inv-${id}"]`).forEach((el) => { el.disabled = true; });
+        }
+      }
+      // A status changed in the sheet moves the card on the board too.
+      const card = board && board.querySelector(`.board-card[data-id="${id}"]`);
+      const status = row.values && row.values.status;
+      if (card && status !== undefined && card.closest('.board-col').dataset.status !== status) {
+        const col = Array.from(board.querySelectorAll('.board-col')).find((c) => c.dataset.status === status);
+        if (col) { col.querySelector('[data-board-drop]').prepend(card); recount(); }
       }
     }
-    document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
-      const queue = (delay) => {
-        const form = document.getElementById(input.getAttribute('form'));
-        if (!form) return;
-        clearTimeout(timers.get(form.id));
-        timers.set(form.id, setTimeout(() => save(form), delay));
-      };
-      input.addEventListener('input', () => queue(450));
-      input.addEventListener('change', () => {
-        if (input.classList.contains('status-pill')) input.dataset.status = input.value;
-        if (input.classList.contains('scope-pill')) input.dataset.scope = input.value === '1' ? 'lab' : 'mine';
-        if (input.type === 'date') input.dataset.empty = input.value ? '0' : '1';
-        queue(0);
-      });
+    window.InventoryPage = { applyRow };
+
+    document.addEventListener('sheet:saved', (event) => {
+      const { form, body } = event.detail || {};
+      if (!form || !body) return;
+      applyRow(form.id.replace('inv-', ''), body);
     });
 
-    // A box move on the grid updates the row, so it does not post the old box back.
+    // A grid move changes the box and position of the item (and of the one
+    // it swapped with); the row must not post the old ones back.
     document.addEventListener('rack-grid:moved', (event) => {
       const { id, rackId, position } = event.detail || {};
-      const form = document.getElementById(`inv-${id}`);
-      if (!form) return;
-      const set = (sel, v) => { const el = document.querySelector(sel); if (el) el.value = v || ''; };
-      set(`[form="inv-${id}"][name="rack_id"]`, rackId);
-      set(`[form="inv-${id}"][name="position"]`, position);
-      form.querySelector('[name="rack_id_was"]').value = rackId || '';
-      form.querySelector('[name="position_was"]').value = position || '';
+      applyRow(id, { row: { values: { rack_id: rackId || '', position: position || '' } } });
+      editPayload(id, { rack_id: rackId || '', position: position || '' });
     });
+
+    /* Board: drag a card to another status; click to open it. */
+    if (board) {
+      let dragged = null;
+      board.querySelectorAll('.board-card').forEach((card) => {
+        card.addEventListener('dragstart', (e) => { dragged = card; card.classList.add('is-dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', card.dataset.id); });
+        card.addEventListener('dragend', () => { card.classList.remove('is-dragging'); dragged = null; });
+      });
+      board.querySelectorAll('.board-col').forEach((col) => {
+        const drop = col.querySelector('[data-board-drop]');
+        col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('is-drop-target'); });
+        col.addEventListener('dragleave', () => col.classList.remove('is-drop-target'));
+        col.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          col.classList.remove('is-drop-target');
+          if (!dragged || dragged.closest('.board-col') === col) return;
+          const card = dragged;
+          const from = card.parentElement;
+          drop.prepend(card);
+          recount();
+          const body = new FormData();
+          body.append('status', col.dataset.status);
+          const response = await fetch(board.dataset.statusUrl.replace('/0/', `/${card.dataset.id}/`), { method: 'POST', body, headers: { 'X-Autosave': '1' } });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || result.ok === false) {
+            from.prepend(card);
+            recount();
+            alert(result.error || 'Could not move it.');
+            return;
+          }
+          applyRow(card.dataset.id, result);
+        });
+      });
+    }
   })();
 
-  /* Source picker in the dialog: suggest IDs from the chosen colony. */
+  /* Item dialog: suggest source IDs from the chosen colony; keep an old
+     status the list no longer has; owner and sharing only for those who
+     may change them. */
   (function () {
+    const page = JSON.parse(document.getElementById('inv-page-data').textContent);
     const dialog = document.getElementById('item-dialog');
     const kind = dialog.querySelector('[data-source-kind]');
     const ref = dialog.querySelector('[data-source-ref]');
-    if (!kind || !ref) return;
     const sync = () => {
       const list = kind.selectedOptions[0] && kind.selectedOptions[0].dataset.list;
       if (list) ref.setAttribute('list', list); else ref.removeAttribute('list');
     };
-    kind.addEventListener('change', sync);
-    dialog.addEventListener('record-dialog:open', sync);
+    if (kind && ref) kind.addEventListener('change', sync);
+    dialog.addEventListener('record-dialog:open', (event) => {
+      const { data, isNew } = event.detail || {};
+      if (kind && ref) sync();
+      const status = dialog.querySelector('[data-dialog-status]');
+      if (status) {
+        status.querySelectorAll('[data-extra]').forEach((o) => o.remove());
+        if (data.status && !Array.from(status.options).some((o) => o.value === data.status)) {
+          const extra = new Option(data.status, data.status, true, true);
+          extra.dataset.extra = '1';
+          status.add(extra);
+        }
+      }
+      const fixed = !data._locked && data._manage === false;
+      const owner = dialog.querySelector('[data-dialog-owner]');
+      const shared = dialog.querySelector('[data-dialog-shared]');
+      if (owner) {
+        owner.readOnly = isNew && !page.isAdmin;
+        if (fixed) owner.disabled = true;
+      }
+      if (shared && fixed) shared.disabled = true;
+    });
   })();
 
-  /* Board: drag a card to another status; click to open it. */
-  (function () {
-    const board = document.querySelector('[data-board]');
-    if (!board) return;
-    let dragged = null;
-    board.querySelectorAll('.board-card').forEach((card) => {
-      card.addEventListener('dragstart', (e) => { dragged = card; card.classList.add('is-dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', card.dataset.id); });
-      card.addEventListener('dragend', () => { card.classList.remove('is-dragging'); dragged = null; });
-    });
-    const recount = () => board.querySelectorAll('.board-col').forEach((col) => {
-      col.querySelector('[data-board-count]').textContent = col.querySelectorAll('.board-card').length;
-    });
-    board.querySelectorAll('.board-col').forEach((col) => {
-      const drop = col.querySelector('[data-board-drop]');
-      col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('is-drop-target'); });
-      col.addEventListener('dragleave', () => col.classList.remove('is-drop-target'));
-      col.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        col.classList.remove('is-drop-target');
-        if (!dragged || dragged.closest('.board-col') === col) return;
-        const card = dragged;
-        const from = card.parentElement;
-        drop.prepend(card);
-        recount();
-        const body = new FormData();
-        body.append('status', col.dataset.status);
-        const response = await fetch(board.dataset.statusUrl.replace('/0/', `/${card.dataset.id}/`), { method: 'POST', body, headers: { 'X-Autosave': '1' } });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok || result.ok === false) {
-          from.prepend(card);
-          recount();
-          alert(result.error || 'Could not move it.');
-        }
-      });
-    });
-  })();
+  /* ?q=… (from global search or the home page) searches the sheet on load. */
+  window.addEventListener('load', () => {
+    const q = new URLSearchParams(window.location.search).get('q');
+    if (!q) return;
+    const tableTab = document.querySelector('[data-view-switch] [data-layout="table"]');
+    if (tableTab) tableTab.click();
+    const all = document.querySelector('.data-table-card .dt-chip[data-dt-filter=""]');
+    if (all && all.getAttribute('aria-pressed') !== 'true') all.click();
+    const search = document.querySelector('.data-table-card .dt-search');
+    if (search) {
+      search.value = q;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
 </script>
 {% endblock %}

@@ -3,7 +3,17 @@
 One page per inventory with three layouts: a sheet (edit in place), a box
 grid for anything stored in freezer boxes or on shelves, and a status board
 for workflows such as orders. Each inventory can be renamed and reshaped in
-Configure, and a lab can keep as many as it needs."""
+Configure, and a lab can keep as many as it needs.
+
+Who may do what (see access.py for the general rule):
+  * a personal item: its owner or an admin;
+  * a lab-common item: anyone may edit it, but only its owner or an admin
+    may delete it, change its owner or make it personal again;
+  * a new item belongs to whoever creates it; only an admin may create one
+    for someone else;
+  * Configure and deleting an inventory: an admin or whoever created it;
+  * editing or deleting a box: an admin or whoever created it.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +26,7 @@ from flask import (
 )
 from sqlalchemy import select
 
-from . import access, positions
+from . import access, audit, positions
 from . import inventory as presets
 from . import inventory_service as svc
 from .db import SessionLocal
@@ -32,12 +42,32 @@ def require_login():
         return redirect(url_for("login", next=request.path))
 
 
+class Refused(Exception):
+    """A save that must not happen at all: nothing is written."""
+
+    def __init__(self, message: str, status: int = 409):
+        super().__init__(message)
+        self.status = status
+
+
 def _date(raw) -> date | None:
-    raw = (raw or "").strip()
-    try:
-        return date.fromisoformat(raw) if raw else None
-    except ValueError:
+    """A date from YYYY-MM-DD; blank is None; anything else is refused
+    rather than silently clearing what was stored."""
+    raw = str(raw or "").strip()
+    if not raw:
         return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        raise Refused(f"“{raw}” is not a date. Use YYYY-MM-DD.") from None
+
+
+def _int(raw, default: int, low: int, high: int) -> int:
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, value))
 
 
 def _module_or_404(session, key: str) -> InventoryModule:
@@ -63,6 +93,37 @@ def _done(key: str, message: str = "", error: str = ""):
         flash(message, "success")
     referrer = request.referrer or ""
     return redirect(referrer if referrer.startswith(request.host_url) else url_for("inventory.module", key=key))
+
+
+# ---------------------------------------------------------------------------
+# Permissions
+# ---------------------------------------------------------------------------
+
+
+def _can_edit(item: InventoryItem) -> bool:
+    return access.can_edit(item, shared=item.is_shared)
+
+
+def _can_manage(item: InventoryItem) -> bool:
+    """Delete it, change its owner, move it between personal and lab
+    common: the owner or an admin (anyone, for an unowned item)."""
+    return access.is_admin() or access.owns(item) or access.is_unowned(item)
+
+
+def _manage_denied(mv, item: InventoryItem, what: str) -> str:
+    if not _can_edit(item):
+        return access.reason_denied(item, noun=mv.item_noun)
+    return (f"Anyone can edit a lab-common {mv.item_noun}, but only {item.owner or 'its owner'} "
+            f"or an admin can {what}.")
+
+
+def _can_configure(module: InventoryModule) -> bool:
+    return access.is_admin() or (module.created_by or "") == access.username()
+
+
+def _can_manage_rack(rack: InventoryRack) -> bool:
+    creator = (rack.created_by or "").strip()
+    return access.is_admin() or not creator or creator == access.username()
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +165,7 @@ def _item_payload(mv, item: InventoryItem) -> dict:
     attrs = item.attrs_dict
     payload = {
         "id": item.id, "_label": item.name or f"#{item.number}",
-        "_locked": not access.can_edit(item, shared=item.is_shared),
+        "_locked": not _can_edit(item), "_manage": _can_manage(item),
         "name": item.name, "category": item.category, "status": item.status, "owner": item.owner,
         "is_shared": "1" if item.is_shared else "0", "quantity": item.quantity, "unit": item.unit,
         "vendor": item.vendor, "catalog_number": item.catalog_number, "lot": item.lot,
@@ -125,13 +186,32 @@ def _item_payload(mv, item: InventoryItem) -> dict:
     return payload
 
 
+# Cells the server may change behind the user's back (a status that stamps
+# a received date, a grid move, a refused owner change); an answer to a
+# save carries their stored values so the row and its "_was" copies match.
+ROW_VALUES = ("status", "owner", "is_shared", "rack_id", "position", "received_on", "expires_on")
+
+
+def _row_json(mv, item: InventoryItem) -> dict:
+    """What sheet.js and the page need after a save: the availability dot,
+    the cells above, and a fresh payload for the Open dialog."""
+    payload = _item_payload(mv, item)
+    row = {"values": {k: payload[k] for k in ROW_VALUES}}
+    active = svc.is_available(mv, item.status)
+    if active is not None:
+        row["active"] = active
+    return {"ok": True, "row": row, "payload": payload, "id": item.id,
+            "position": payload["position"], "rack_id": payload["rack_id"]}
+
+
 def _grid_payload(mv, racks, items) -> dict:
     return {
         "racks": [{"id": r.id, "name": r.name, "rows": r.rows, "cols": r.cols,
                    "naming": positions.scheme(r.naming),
-                   "edit": {"data-record-payload": json.dumps({
+                   **({"edit": {"data-record-payload": json.dumps({
                        "id": r.id, "_label": r.name, "name": r.name, "rows": r.rows, "cols": r.cols,
                        "kind": r.kind, **{f"naming_{k}": v for k, v in positions.scheme(r.naming).items()}})}}
+                      if _can_manage_rack(r) else {})}
                   for r in racks],
         "items": [{
             "id": i.id, "label": i.name or f"#{i.number}",
@@ -151,6 +231,28 @@ def _grid_payload(mv, racks, items) -> dict:
     }
 
 
+MOUSE_SOURCE_KINDS = ("mouse", "colony")
+
+
+def _mouse_links(session, rows_attrs: list[dict], fields: list[dict]) -> dict[str, int]:
+    """{mouse ID typed as a source: that mouse's row id}, for linking the
+    source chip to the colony."""
+    from .models import MouseRecord
+
+    refs = set()
+    for attrs in rows_attrs:
+        for f in fields:
+            src = attrs.get(f["key"])
+            if f["type"] == "source" and isinstance(src, dict) and src.get("kind") in MOUSE_SOURCE_KINDS:
+                ref = str(src.get("ref") or "").strip()
+                if ref.isdigit():
+                    refs.add(int(ref))
+    if not refs:
+        return {}
+    return {str(mid): rid for mid, rid in session.execute(
+        select(MouseRecord.mouse_id, MouseRecord.id).where(MouseRecord.mouse_id.in_(refs)))}
+
+
 @bp.route("/<key>")
 def module(key: str):
     from .services import current_lab_usernames, sample_sources, sample_source_label
@@ -163,35 +265,46 @@ def module(key: str):
         racks = list(session.scalars(select(InventoryRack).where(InventoryRack.module_id_fk == row.id)
                                      .order_by(InventoryRack.name)))
         me = g.user.username
-        sources = sample_sources(session) if any(f["type"] == "source" for f in mv.fields) else []
+        source_fields = [f for f in mv.fields if f["type"] == "source"]
+        sources = sample_sources(session) if source_fields else []
+        mouse_links = _mouse_links(session, [i.attrs_dict for i in items], source_fields) if source_fields else {}
         rows = []
         for item in items:
             attrs = item.attrs_dict
             rows.append({
                 "item": item, "attrs": attrs,
-                "editable": access.can_edit(item, shared=item.is_shared),
+                "editable": _can_edit(item),
+                "manageable": _can_manage(item),
                 "mine": item.owner == me,
                 "position": svc.rack_label(item),
                 "expiry": svc.expiry_state(item),
+                "available": svc.is_available(mv, item.status),
+                "ended_on": attrs.get(svc.ENDED_ATTR, ""),
                 "source_labels": {f["key"]: sample_source_label((attrs.get(f["key"]) or {}).get("kind", ""), sources)
-                                  for f in mv.fields if f["type"] == "source" and isinstance(attrs.get(f["key"]), dict)},
+                                  for f in source_fields if isinstance(attrs.get(f["key"]), dict)},
                 "payload": _item_payload(mv, item),
             })
         # Saved column widths / hidden columns are by position, so a
         # reconfigured sheet starts fresh instead of hiding the wrong ones.
-        layout = json.dumps([mv.settings["features"], [f["key"] for f in mv.table_fields], bool(mv.statuses)])
+        layout = json.dumps([mv.settings["features"], [f["key"] for f in mv.table_fields], bool(mv.statuses), 2])
+        stock_targets = ([m for m in svc.list_modules(session) if m.kind in ("reagents", "antibodies")]
+                         if row.kind == "orders" else [])
         context = {
             "module": mv, "rows": rows, "racks": racks, "col_sig": format(zlib.crc32(layout.encode()), "x"),
+            "manageable_racks": {r.id for r in racks if _can_manage_rack(r)},
             "grid": _grid_payload(mv, racks, items) if mv.has("storage") else None,
-            "usernames": current_lab_usernames(session), "sources": sources,
+            "usernames": current_lab_usernames(session), "sources": sources, "mouse_links": mouse_links,
             "next_number": svc.next_number(session, row.id),
-            "reagents_module": svc.first_of_kind(session, "reagents") if row.kind == "orders" else None,
+            "reagents_module": stock_targets[0] if stock_targets else None,
+            "can_configure": _can_configure(row), "is_admin": access.is_admin(),
+            "terminal_statuses": sorted(svc.TERMINAL_STATUSES),
             "counts": {
                 "all": len(items),
                 "mine": sum(1 for i in items if i.owner == me),
                 "lab": sum(1 for i in items if i.is_shared),
                 "open": sum(1 for i in items if i.status in mv.open_statuses),
-                "expired": sum(1 for i in items if svc.expiry_state(i) == "expired"),
+                "expired": sum(1 for r in rows if r["expiry"] == "expired"),
+                "soon": sum(1 for r in rows if r["expiry"] == "soon"),
             },
         }
     return render_template("inventory/module.html", **context)
@@ -202,43 +315,91 @@ def module(key: str):
 # ---------------------------------------------------------------------------
 
 
-def _item_from_form(session, mv, item: InventoryItem, form) -> str | None:
-    """Copy the submitted fields onto `item` (only fields the form sent)."""
-    def text(name, attr=None, limit=200):
-        if name in form:
-            setattr(item, attr or name, (form.get(name) or "").strip()[:limit])
+def _mouse_exists(session, ref: str) -> bool:
+    from .models import MouseRecord
 
-    text("name")
-    if "name" in form and not item.name and mv.row.kind == "orders":
-        return "An order needs an item name."
+    return ref.isdigit() and session.scalar(
+        select(MouseRecord.id).where(MouseRecord.mouse_id == int(ref))) is not None
+
+
+def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = False) -> tuple[str | None, list[str]]:
+    """Copy the submitted fields onto `item` (only fields the form sent).
+
+    Raises Refused when the save must not happen (a blank order name, a
+    date that is not a date, an unknown status, a change the user may not
+    make); the caller rolls back. Returns (a position problem, notes):
+    a position that cannot be taken leaves the rest saved."""
+    notes: list[str] = []
+    manage = creating or _can_manage(item)
+    me = access.username()
+
+    def text(name, limit=200):
+        if name in form:
+            setattr(item, name, (form.get(name) or "").strip()[:limit])
+
+    if "name" in form:
+        name = (form.get("name") or "").strip()[:200]
+        if not name and mv.row.kind == "orders":
+            raise Refused("An order needs an item name.")
+        item.name = name
     text("category", limit=80)
-    text("status", limit=40)
-    text("owner", limit=80)
+
+    if "owner" in form:
+        owner = (form.get("owner") or "").strip()[:80]
+        if creating and not access.is_admin() and owner != me:
+            if owner:
+                notes.append(f"Only an admin can add a {mv.item_noun} for someone else, so this one is yours.")
+            owner = me
+        if owner != (item.owner or ""):
+            if not manage:
+                raise Refused(_manage_denied(mv, item, "change who it belongs to"), 403)
+            item.owner = owner
     if "is_shared" in form:
-        item.is_shared = form.get("is_shared") in ("1", "true", "on")
+        shared = form.get("is_shared") in ("1", "true", "on")
+        if shared != bool(item.is_shared):
+            if not manage:
+                raise Refused(_manage_denied(mv, item, "make it personal"), 403)
+            item.is_shared = shared
+
     for name, limit in (("quantity", 60), ("unit", 30), ("vendor", 120), ("catalog_number", 120),
                         ("lot", 120), ("location_note", 200)):
         text(name, limit=limit)
     for name in ("received_on", "expires_on"):
-        if name in form:
+        if name in form and form_changed(form, name):
             setattr(item, name, _date(form.get(name)))
     if "notes" in form:
         item.notes = (form.get("notes") or "").strip()
 
     attrs = item.attrs_dict
+    before = json.dumps(attrs, sort_keys=True)
     for field in mv.fields:
         k = field["key"]
         if field["type"] == "source":
             if f"attr_{k}_kind" in form or f"attr_{k}_ref" in form:
-                attrs[k] = {"kind": (form.get(f"attr_{k}_kind") or "").strip(),
-                            "ref": (form.get(f"attr_{k}_ref") or "").strip()}
+                value = {"kind": (form.get(f"attr_{k}_kind") or "").strip(),
+                         "ref": (form.get(f"attr_{k}_ref") or "").strip()}
+                old = attrs.get(k) if isinstance(attrs.get(k), dict) else {}
+                if (value["kind"] in MOUSE_SOURCE_KINDS and value["ref"] and value != old
+                        and not _mouse_exists(session, value["ref"])):
+                    notes.append(f"There is no mouse {value['ref']} in the colony; the source was saved as typed.")
+                attrs[k] = value
         elif f"attr_{k}" in form:
-            attrs[k] = (form.get(f"attr_{k}") or "").strip()
-    item.attrs = json.dumps(attrs)
+            value = (form.get(f"attr_{k}") or "").strip()
+            if field["type"] == "date" and value:
+                value = _date(value).isoformat()
+            attrs[k] = value
+    if json.dumps(attrs, sort_keys=True) != before:
+        item.attrs = json.dumps(attrs)
+
+    # Status last: it may fill the received date or stamp a used-up date.
+    if "status" in form and (creating or form_changed(form, "status")):
+        problem = svc.apply_status(mv, item, form.get("status"))
+        if problem:
+            raise Refused(problem)
 
     if mv.has("storage") and "rack_id" in form and form_changed(form, "rack_id", "position"):
-        return svc.apply_position(session, item, form.get("rack_id"), form.get("position"))
-    return None
+        return svc.apply_position(session, item, form.get("rack_id"), form.get("position")), notes
+    return None, notes
 
 
 @bp.route("/<key>/items/save", methods=["POST"])
@@ -248,23 +409,27 @@ def save_item(key: str):
         row = _module_or_404(session, key)
         mv = svc.view(row)
         item_id = request.form.get("id", "").strip()
-        if item_id.isdigit():
+        creating = not item_id.isdigit()
+        if not creating:
             item = session.get(InventoryItem, int(item_id))
             if item is None or item.module_id_fk != row.id:
                 abort(404)
-            if not access.can_edit(item, shared=item.is_shared):
-                return _done(key, error=access.reason_denied(item))
+            if not _can_edit(item):
+                return _done(key, error=access.reason_denied(item, noun=mv.item_noun))
         else:
             item = InventoryItem(module_id_fk=row.id, number=svc.next_number(session, row.id),
                                  owner=g.user.username, status=mv.statuses[0] if mv.statuses else "")
             session.add(item)
-        error = _item_from_form(session, mv, item, request.form)
-        if error and not item.id and "name" in error:
+        try:
+            error, notes = _item_from_form(session, mv, item, request.form, creating=creating)
+        except Refused as refused:
             session.rollback()
-            return _done(key, error=error)
+            return _done(key, error=str(refused))
         item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
         session.commit()
         label = item.name or f"#{item.number}"
+        for note in notes:
+            flash(note, "warning")
         if error:
             return _done(key, error=f"Saved {label}, but: {error}")
         return _done(key, message=f"Saved {label}.")
@@ -272,31 +437,40 @@ def save_item(key: str):
 
 @bp.route("/<key>/items/<int:item_id>/update", methods=["POST"])
 def update_item(key: str, item_id: int):
-    """Inline edit from the sheet; answers JSON."""
+    """Inline edit from the sheet; answers JSON (see _row_json)."""
     with SessionLocal() as session:
         row = _module_or_404(session, key)
+        mv = svc.view(row)
         item = session.get(InventoryItem, item_id)
         if item is None or item.module_id_fk != row.id:
             return jsonify({"ok": False, "error": "That record no longer exists."}), 404
-        if not access.can_edit(item, shared=item.is_shared):
-            return jsonify({"ok": False, "error": access.reason_denied(item)}), 403
-        error = _item_from_form(session, svc.view(row), item, request.form)
+        if not _can_edit(item):
+            return jsonify({"ok": False, "error": access.reason_denied(item, noun=mv.item_noun)}), 403
+        try:
+            error, notes = _item_from_form(session, mv, item, request.form)
+        except Refused as refused:
+            session.rollback()
+            return jsonify({"ok": False, "error": str(refused)}), refused.status
         if error:
             session.rollback()
             return jsonify({"ok": False, "error": error}), 409
         item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
         session.commit()
-        return jsonify({"ok": True, "position": svc.rack_label(item), "rack_id": item.rack_id_fk or ""})
+        answer = _row_json(mv, item)
+        if notes:
+            answer["notes"] = notes
+        return jsonify(answer)
 
 
 @bp.route("/<key>/items/<int:item_id>/delete", methods=["POST"])
 def delete_item(key: str, item_id: int):
     with SessionLocal() as session:
         row = _module_or_404(session, key)
+        mv = svc.view(row)
         item = session.get(InventoryItem, item_id)
         if item is not None and item.module_id_fk == row.id:
-            if not access.can_edit(item, shared=item.is_shared):
-                return _done(key, error=access.reason_denied(item))
+            if not _can_manage(item):
+                return _done(key, error=_manage_denied(mv, item, "delete it"))
             label = item.name or f"#{item.number}"
             session.delete(item)
             session.commit()
@@ -304,19 +478,26 @@ def delete_item(key: str, item_id: int):
     return _done(key)
 
 
+# attrs that describe one physical item, not what it is: a copy starts
+# without them.
+NOT_COPIED_ATTRS = ("stocked_as", svc.ENDED_ATTR)
+
+
 @bp.route("/<key>/items/<int:item_id>/duplicate", methods=["POST"])
 def duplicate_item(key: str, item_id: int):
-    """A copy for the next aliquot or re-order: same details, no position."""
+    """A copy for the next aliquot or re-order: same details, no position,
+    owned by whoever made the copy."""
     with SessionLocal() as session:
         row = _module_or_404(session, key)
         item = session.get(InventoryItem, item_id)
         if item is None or item.module_id_fk != row.id:
             abort(404)
+        attrs = {k: v for k, v in item.attrs_dict.items() if k not in NOT_COPIED_ATTRS}
         copy = InventoryItem(
             module_id_fk=row.id, number=svc.next_number(session, row.id), name=item.name,
             category=item.category, status=(svc.view(row).statuses or [""])[0], owner=g.user.username,
             is_shared=item.is_shared, quantity=item.quantity, unit=item.unit, vendor=item.vendor,
-            catalog_number=item.catalog_number, lot="", attrs=item.attrs, notes=item.notes)
+            catalog_number=item.catalog_number, lot="", attrs=json.dumps(attrs), notes=item.notes)
         session.add(copy)
         session.commit()
         return _done(key, message=f"Duplicated {item.name or '#' + str(item.number)} as #{copy.number}.")
@@ -324,19 +505,22 @@ def duplicate_item(key: str, item_id: int):
 
 @bp.route("/<key>/items/<int:item_id>/place", methods=["POST"])
 def place_item(key: str, item_id: int):
-    """Move on the box grid; an occupied cell swaps; no rack unplaces."""
+    """Move on the box grid; no rack unplaces. Dropping on an occupied cell
+    swaps the two, but only when the moved item has a cell to give back:
+    an unplaced item cannot push another out of its place."""
     with SessionLocal() as session:
         row = _module_or_404(session, key)
+        mv = svc.view(row)
         item = session.get(InventoryItem, item_id)
         if item is None or item.module_id_fk != row.id:
             return jsonify({"ok": False, "error": "That record no longer exists."}), 404
-        if not access.can_edit(item, shared=item.is_shared):
-            return jsonify({"ok": False, "error": access.reason_denied(item)}), 403
+        if not _can_edit(item):
+            return jsonify({"ok": False, "error": access.reason_denied(item, noun=mv.item_noun)}), 403
         rack_id = request.form.get("rack_id", "").strip()
         if not rack_id:
             item.rack_id_fk = item.rack_row = item.rack_col = None
             session.commit()
-            return jsonify({"ok": True})
+            return jsonify(_row_json(mv, item))
         rack = session.get(InventoryRack, int(rack_id)) if rack_id.isdigit() else None
         try:
             r, c = int(request.form.get("row", "")), int(request.form.get("col", ""))
@@ -348,62 +532,164 @@ def place_item(key: str, item_id: int):
             InventoryItem.rack_id_fk == rack.id, InventoryItem.rack_row == r,
             InventoryItem.rack_col == c, InventoryItem.id != item.id))
         if holder is not None:
-            if not access.can_edit(holder, shared=holder.is_shared):
-                return jsonify({"ok": False, "error": f"That cell holds {holder.name}, which you may not move."}), 403
+            holder_label = holder.name or f"#{holder.number}"
+            if item.rack_id_fk is None or item.rack_row is None or item.rack_col is None:
+                return jsonify({"ok": False, "error": f"That cell holds {holder_label}. Drop it on an empty cell, "
+                                                      f"or move {holder_label} out first."}), 409
+            if not _can_edit(holder):
+                return jsonify({"ok": False, "error": f"That cell holds {holder_label}, which you may not move."}), 403
             holder.rack_id_fk, holder.rack_row, holder.rack_col = item.rack_id_fk, item.rack_row, item.rack_col
         item.rack_id_fk, item.rack_row, item.rack_col = rack.id, r, c
         session.commit()
-    return jsonify({"ok": True})
+        return jsonify(_row_json(mv, item))
 
 
 @bp.route("/<key>/items/<int:item_id>/status", methods=["POST"])
 def set_status(key: str, item_id: int):
-    """Board drag and the sheet's status pill; answers JSON."""
-    status = (request.form.get("status") or "").strip()
+    """Board drag; answers JSON like an inline save."""
     with SessionLocal() as session:
         row = _module_or_404(session, key)
         mv = svc.view(row)
         item = session.get(InventoryItem, item_id)
         if item is None or item.module_id_fk != row.id:
             return jsonify({"ok": False, "error": "That record no longer exists."}), 404
-        if not access.can_edit(item, shared=item.is_shared):
-            return jsonify({"ok": False, "error": access.reason_denied(item)}), 403
-        if mv.statuses and status not in mv.statuses:
-            return jsonify({"ok": False, "error": f"Unknown status “{status}”."}), 400
-        item.status = status
-        if mv.has("received") and status == "received" and not item.received_on:
-            item.received_on = date.today()
+        if not _can_edit(item):
+            return jsonify({"ok": False, "error": access.reason_denied(item, noun=mv.item_noun)}), 403
+        problem = svc.apply_status(mv, item, request.form.get("status"))
+        if problem:
+            session.rollback()
+            return jsonify({"ok": False, "error": problem}), 400
         item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
         session.commit()
-    return jsonify({"ok": True})
+        return jsonify(_row_json(mv, item))
+
+
+STOCK_KINDS = ("reagents", "antibodies")
 
 
 @bp.route("/<key>/items/<int:item_id>/to-reagents", methods=["POST"])
 def order_to_reagents(key: str, item_id: int):
-    """A received order becomes a reagent (or antibody) in stock, with its
-    vendor, catalogue number and quantity carried over."""
+    """A received order becomes a reagent (or antibody) in stock, once, with
+    its vendor, catalogue number and quantity carried over."""
     target_key = request.form.get("target", "")
     with SessionLocal() as session:
         row = _module_or_404(session, key)
+        mv = svc.view(row)
         order = session.get(InventoryItem, item_id)
+        if order is None or order.module_id_fk != row.id or row.kind != "orders":
+            return _done(key, error="That order no longer exists.")
+        if not _can_edit(order):
+            return _done(key, error=access.reason_denied(order, noun="order"))
+        if (order.status or "").lower() != "received":
+            return _done(key, error=f"Mark {order.name or 'the order'} received before adding it to stock.")
+        stocked = order.attrs_dict.get("stocked_as")
+        if stocked:
+            return _done(key, error=f"{order.name or 'That order'} is already in stock ({stocked.replace(':', ' #')}).")
         target = svc.get_module(session, target_key) if target_key else svc.first_of_kind(session, "reagents")
-        if order is None or order.module_id_fk != row.id or target is None:
-            return _done(key, error="There is no reagents inventory to add it to.")
+        if target is None or target.kind not in STOCK_KINDS:
+            return _done(key, error="Pick a reagents or antibodies inventory to add it to.")
         tv = svc.view(target)
-        stock = InventoryItem(
-            module_id_fk=target.id, number=svc.next_number(session, target.id), name=order.name,
-            status=tv.statuses[0] if tv.statuses else "", owner=g.user.username,
-            is_shared=request.form.get("shared") == "1", quantity=order.quantity, unit=order.unit,
-            vendor=order.vendor, catalog_number=order.catalog_number,
-            received_on=order.received_on or date.today(),
-            notes=f"From order #{order.number}" + (f". {order.notes}" if order.notes else ""))
-        session.add(stock)
-        attrs = order.attrs_dict
-        attrs["stocked_as"] = f"{target.key}:{stock.number}"
-        order.attrs = json.dumps(attrs)
+        with audit.batch(session, "mixed", f"order #{order.number} to {target.label}", "inventory_items"):
+            stock = InventoryItem(
+                module_id_fk=target.id, number=svc.next_number(session, target.id), name=order.name,
+                status=tv.statuses[0] if tv.statuses else "", owner=g.user.username,
+                is_shared=request.form.get("shared") == "1", quantity=order.quantity, unit=order.unit,
+                vendor=order.vendor, catalog_number=order.catalog_number,
+                received_on=order.received_on or date.today(),
+                notes=f"From {mv.item_noun} #{order.number}" + (f". {order.notes}" if order.notes else ""))
+            session.add(stock)
+            attrs = order.attrs_dict
+            attrs["stocked_as"] = f"{target.key}:{stock.number}"
+            order.attrs = json.dumps(attrs)
         session.commit()
         flash(f"Added {stock.name} to {target.label} as #{stock.number}.", "success")
         return redirect(url_for("inventory.module", key=target.key))
+
+
+# ---------------------------------------------------------------------------
+# Batch actions on ticked rows
+# ---------------------------------------------------------------------------
+
+
+BULK_ACTIONS = {
+    # action: (who may, past tense for the message)
+    "status": ("edit", "Set the status of"),
+    "rack": ("edit", "Moved"),
+    "owner": ("manage", "Changed the owner of"),
+    "shared": ("manage", "Changed who can edit"),
+    "delete": ("manage", "Deleted"),
+}
+
+
+@bp.route("/<key>/items/bulk", methods=["POST"])
+def bulk(key: str):
+    """Set status, move to a box, set owner, personal / lab common, delete.
+    One batch, so it can be undone; rows the user may not change are
+    skipped and counted."""
+    action = request.form.get("action", "")
+    value = (request.form.get("value") or "").strip()
+    ids = [int(i) for i in request.form.getlist("selected_ids") if i.isdigit()]
+    with SessionLocal() as session:
+        row = _module_or_404(session, key)
+        mv = svc.view(row)
+        if action not in BULK_ACTIONS:
+            return _done(key, error="Pick what to do with them.")
+        items = list(session.scalars(select(InventoryItem).where(
+            InventoryItem.module_id_fk == row.id, InventoryItem.id.in_(ids)).order_by(InventoryItem.number)))
+        if not items:
+            return _done(key, error=f"No {mv.item_noun_plural} selected.")
+        rack = None
+        if action == "status" and mv.statuses and svc.match_status(mv, value) is None:
+            return _done(key, error=f"“{value}” is not a status here.")
+        if action == "owner" and not value:
+            return _done(key, error="Type whose they should be.")
+        if action == "rack" and value:
+            rack = session.get(InventoryRack, int(value)) if value.isdigit() else None
+            if rack is None or rack.module_id_fk != row.id:
+                return _done(key, error="That box is not part of this inventory.")
+        need, verb = BULK_ACTIONS[action]
+        done = skipped = 0
+        notes: list[str] = []
+        with audit.batch(session, "delete" if action == "delete" else "update",
+                         f"{action} ×{len(items)} {mv.item_noun_plural}", "inventory_items"):
+            for item in items:
+                allowed = _can_edit(item) if need == "edit" else _can_manage(item)
+                if not allowed:
+                    skipped += 1
+                    continue
+                if action == "delete":
+                    session.delete(item)
+                    done += 1
+                    continue
+                if action == "status":
+                    svc.apply_status(mv, item, value)
+                elif action == "owner":
+                    item.owner = value[:80]
+                elif action == "shared":
+                    item.is_shared = value == "1"
+                elif action == "rack":
+                    if rack is None:
+                        item.rack_id_fk = item.rack_row = item.rack_col = None
+                    elif item.rack_id_fk != rack.id:
+                        cell = svc.free_cell(session, rack)
+                        item.rack_id_fk = rack.id
+                        item.rack_row, item.rack_col = cell if cell else (None, None)
+                        if cell is None:
+                            notes.append(f"{rack.name} is full: {item.name or '#' + str(item.number)} is in it without a position.")
+                        session.flush()  # the next item sees this cell as taken
+                item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
+                done += 1
+        noun = mv.item_noun if done == 1 else mv.item_noun_plural
+        session.commit()
+    message = f"{verb} {done} {noun}."
+    if skipped:
+        message += (f" {skipped} left alone: only their owner or an admin can do that."
+                    if need == "manage" else f" {skipped} belong to someone else and were left alone.")
+    for note in notes[:5]:
+        flash(note, "info")
+    if not done:
+        return _done(key, error=message)
+    return _done(key, message=message)
 
 
 # ---------------------------------------------------------------------------
@@ -413,20 +699,37 @@ def order_to_reagents(key: str, item_id: int):
 
 @bp.route("/<key>/racks/save", methods=["POST"])
 def save_rack(key: str):
+    form = request.form
     with SessionLocal() as session:
         row = _module_or_404(session, key)
-        rack_id = request.form.get("id", "").strip()
+        mv = svc.view(row)
+        rack_id = form.get("id", "").strip()
         rack = session.get(InventoryRack, int(rack_id)) if rack_id.isdigit() else None
         if rack is not None and rack.module_id_fk != row.id:
             abort(404)
+        if rack is not None and not _can_manage_rack(rack):
+            flash(f"Only {rack.created_by} or an admin can change {rack.name}.", "error")
+            return redirect(url_for("inventory.module", key=key))
+        rows = _int(form.get("rows"), rack.rows if rack else 9, 1, 26)
+        cols = _int(form.get("cols"), rack.cols if rack else 9, 1, 40)
+        if rack is not None and (rows < rack.rows or cols < rack.cols):
+            outside = session.scalars(select(InventoryItem).where(
+                InventoryItem.rack_id_fk == rack.id,
+                (InventoryItem.rack_row > rows) | (InventoryItem.rack_col > cols))).all()
+            if outside:
+                n = len(outside)
+                flash(f"{rack.name} cannot shrink to {rows} × {cols}: {n} "
+                      f"{mv.item_noun if n == 1 else mv.item_noun_plural} sit outside that "
+                      f"({', '.join(i.name or '#' + str(i.number) for i in outside[:4])}{'…' if n > 4 else ''}). "
+                      f"Move them first.", "error")
+                return redirect(url_for("inventory.module", key=key))
         if rack is None:
-            rack = InventoryRack(module_id_fk=row.id)
+            rack = InventoryRack(module_id_fk=row.id, created_by=g.user.username)
             session.add(rack)
-        rack.name = (request.form.get("name") or "").strip() or "Box"
-        rack.kind = (request.form.get("kind") or "box").strip()[:40]
-        rack.rows = max(1, min(26, int(request.form.get("rows") or 9)))
-        rack.cols = max(1, min(40, int(request.form.get("cols") or 9)))
-        rack.naming = json.dumps(positions.scheme_from_form(request.form))
+        rack.name = (form.get("name") or "").strip()[:120] or "Box"
+        rack.kind = (form.get("kind") or "box").strip()[:40]
+        rack.rows, rack.cols = rows, cols
+        rack.naming = json.dumps(positions.scheme_from_form(form))
         session.commit()
         flash(f"Saved {rack.name}.", "success")
     return redirect(url_for("inventory.module", key=key))
@@ -438,10 +741,15 @@ def delete_rack(key: str, rack_id: int):
         row = _module_or_404(session, key)
         rack = session.get(InventoryRack, rack_id)
         if rack is not None and rack.module_id_fk == row.id:
-            for item in session.scalars(select(InventoryItem).where(InventoryItem.rack_id_fk == rack.id)):
-                item.rack_id_fk = item.rack_row = item.rack_col = None
-            name = rack.name
-            session.delete(rack)
+            if not _can_manage_rack(rack):
+                flash(f"Only {rack.created_by} or an admin can delete {rack.name}.", "error")
+                return redirect(url_for("inventory.module", key=key))
+            with audit.batch(session, "mixed", f"delete box {rack.name}", "inventory_racks"):
+                for item in session.scalars(select(InventoryItem).where(InventoryItem.rack_id_fk == rack.id)):
+                    item.rack_id_fk = item.rack_row = item.rack_col = None
+                session.flush()
+                name = rack.name
+                session.delete(rack)
             session.commit()
             flash(f"Deleted {name}. What was in it is now unplaced.", "success")
     return redirect(url_for("inventory.module", key=key))
@@ -457,17 +765,48 @@ ICON_CHOICES = ["vial", "vials", "flask", "flask-vial", "antibody", "cart", "box
                 "list", "tag", "archive", "file"]
 
 
+def _fields_from_form(form) -> list[dict]:
+    """The Columns table; every column gets a key of its own, even two new
+    ones with the same name."""
+    from .organism_service import slugify
+
+    fields, used = [], set()
+    for i in range(_int(form.get("field_count"), 0, 0, 200)):
+        flabel = (form.get(f"field_{i}_label") or "").strip()
+        if not flabel or form.get(f"field_{i}_remove"):
+            continue
+        base = (form.get(f"field_{i}_key") or "").strip()
+        if not base:
+            slug = slugify(flabel)
+            base = slug if slug != "organism" or flabel.lower() == "organism" else f"field_{i}"
+        key, n = base, 2
+        while key in used:
+            key, n = f"{base}_{n}", n + 1
+        used.add(key)
+        fields.append({
+            "key": key, "label": flabel, "type": form.get(f"field_{i}_type") or "text",
+            "options": [o.strip() for o in (form.get(f"field_{i}_options") or "").split(",") if o.strip()],
+            "icon": form.get(f"field_{i}_icon") or "",
+            "width": _int(form.get(f"field_{i}_width"), 130, 60, 400),
+            "in_table": form.get(f"field_{i}_in_table") == "1",
+        })
+    return fields
+
+
 @bp.route("/<key>/configure", methods=["GET", "POST"])
 def configure(key: str):
     with SessionLocal() as session:
         row = _module_or_404(session, key)
+        if not _can_configure(row):
+            flash(f"Only an admin, or whoever created {row.label}, can configure it.", "error")
+            return redirect(url_for("inventory.module", key=key))
         if request.method == "POST":
             form = request.form
             label = (form.get("label") or "").strip()
             if not label:
                 flash("An inventory needs a name.", "error")
                 return redirect(url_for("inventory.configure", key=key))
-            row.label = label
+            row.label = label[:120]
             row.blurb = (form.get("blurb") or "").strip()
             row.item_noun = (form.get("item_noun") or "item").strip()[:60]
             row.item_noun_plural = (form.get("item_noun_plural") or row.item_noun + "s").strip()[:60]
@@ -475,24 +814,10 @@ def configure(key: str):
                 row.icon = form["icon"]
             row.enabled = "1" in form.getlist("enabled")
             lines = lambda name: [x.strip() for x in (form.get(name) or "").replace(",", "\n").split("\n") if x.strip()]
-            fields = []
-            for i in range(int(form.get("field_count") or 0)):
-                flabel = (form.get(f"field_{i}_label") or "").strip()
-                if not flabel or form.get(f"field_{i}_remove"):
-                    continue
-                from .organism_service import slugify
-                fields.append({
-                    "key": form.get(f"field_{i}_key") or slugify(flabel) or f"field_{i}",
-                    "label": flabel, "type": form.get(f"field_{i}_type") or "text",
-                    "options": [o.strip() for o in (form.get(f"field_{i}_options") or "").split(",") if o.strip()],
-                    "icon": form.get(f"field_{i}_icon") or "",
-                    "width": int(form.get(f"field_{i}_width") or 130),
-                    "in_table": form.get(f"field_{i}_in_table") == "1",
-                })
             row.settings = json.dumps(presets.normalise_settings({
                 "features": form.getlist("features"),
                 "category_label": (form.get("category_label") or "Category").strip(),
-                "categories": lines("categories"), "statuses": lines("statuses"), "fields": fields,
+                "categories": lines("categories"), "statuses": lines("statuses"), "fields": _fields_from_form(form),
             }))
             session.commit()
             flash(f"Saved {row.label}.", "success")
@@ -506,9 +831,9 @@ def configure(key: str):
 def delete_module(key: str):
     with SessionLocal() as session:
         row = _module_or_404(session, key)
-        if not (access.is_admin() or row.created_by == g.user.username):
+        if not _can_configure(row):
             flash("Only an admin, or whoever created it, can delete an inventory.", "error")
-            return redirect(url_for("inventory.configure", key=key))
+            return redirect(url_for("inventory.module", key=key))
         if (request.form.get("confirm") or "").strip() != row.label:
             flash(f"Type the name “{row.label}” to confirm deleting it.", "error")
             return redirect(url_for("inventory.configure", key=key))

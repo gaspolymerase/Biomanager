@@ -61,6 +61,13 @@ class ModuleView:
         s = self.statuses
         return s[:-2] if len(s) > 2 else s[:1]
 
+    @property
+    def available_statuses(self) -> list[str]:
+        return available_statuses(self)
+
+    def is_available(self, status: str) -> bool | None:
+        return is_available(self, status)
+
 
 def view(module: InventoryModule) -> ModuleView:
     return ModuleView(module, presets.normalise_settings(module.settings))
@@ -168,6 +175,127 @@ def expiry_state(item: InventoryItem, today: date | None = None) -> str:
     if item.expires_on <= today + timedelta(days=30):
         return "soon"
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Status: one rule for the dialog, the sheet, the board, bulk edits and CSV
+# ---------------------------------------------------------------------------
+
+# Statuses after which an item is gone: used up, emptied, thrown out,
+# cancelled. Moving into one stamps the day in attrs[ENDED_ATTR].
+TERMINAL_STATUSES = {"used up", "empty", "discarded", "cancelled"}
+ENDED_ATTR = "used_up_on"
+
+# The statuses that mean "usable" (or, for orders, "still open"): the green
+# dot on the sheet. Custom lists: anything not terminal.
+AVAILABLE_BY_KIND = {
+    "samples": {"available", "in use"},
+    "reagents": {"in stock", "low"},
+    "antibodies": {"in stock", "low"},
+    "orders": {"requested", "ordered"},
+}
+
+
+def available_statuses(mv) -> list[str]:
+    wanted = AVAILABLE_BY_KIND.get(mv.row.kind)
+    if wanted:
+        picked = [s for s in mv.statuses if s.lower() in wanted]
+        if picked:
+            return picked
+    return [s for s in mv.statuses if s.lower() not in TERMINAL_STATUSES]
+
+
+def is_available(mv, status: str) -> bool | None:
+    """True / False for the availability dot; None when the inventory has
+    no statuses (no dot)."""
+    if not mv.statuses:
+        return None
+    return (status or "").strip().lower() in {s.lower() for s in available_statuses(mv)}
+
+
+def match_status(mv, raw) -> str | None:
+    """The inventory's own spelling of a status typed in any case."""
+    raw = str(raw or "").strip().lower()
+    return next((s for s in mv.statuses if s.lower() == raw), None)
+
+
+def apply_status(mv, item: InventoryItem, new_status, today: date | None = None) -> str | None:
+    """Set an item's status the one way every path does it; an error message
+    instead when the status is not one of the inventory's.
+
+    An item keeps a status the list no longer has as long as it is not
+    changed. Changing to "received" fills an empty received date; changing
+    to a terminal status (used up, empty, discarded, cancelled) records the
+    day in attrs, and reviving the item clears it again."""
+    new = str(new_status or "").strip()[:40]
+    old = item.status or ""
+    if mv.statuses:
+        canonical = match_status(mv, new)
+        if canonical is None:
+            if new != old:
+                return f"“{new}” is not a status here. Use one of: {', '.join(mv.statuses)}."
+            canonical = new
+        new = canonical
+    if new == old and item.id:
+        return None
+    today = today or date.today()
+    item.status = new
+    if new.lower() == "received" and mv.has("received") and not item.received_on:
+        item.received_on = today
+    attrs = item.attrs_dict
+    before = dict(attrs)
+    if new.lower() in TERMINAL_STATUSES:
+        attrs.setdefault(ENDED_ATTR, today.isoformat())
+    else:
+        attrs.pop(ENDED_ATTR, None)
+    if attrs != before:
+        item.attrs = json.dumps(attrs)
+    return None
+
+
+def free_cell(session, rack: InventoryRack, taken: set | None = None) -> tuple[int, int] | None:
+    """The first empty cell of a box, row by row."""
+    used = {(r, c) for r, c in session.execute(select(InventoryItem.rack_row, InventoryItem.rack_col).where(
+        InventoryItem.rack_id_fk == rack.id, InventoryItem.rack_row.is_not(None)))}
+    used |= taken or set()
+    for r in range(1, rack.rows + 1):
+        for c in range(1, rack.cols + 1):
+            if (r, c) not in used:
+                return r, c
+    return None
+
+
+def attention_items(session, days: int = 30, limit: int = 12) -> list[dict]:
+    """Reagents and antibodies to restock: expiring within `days` (or
+    already expired) or marked low, and not already used up."""
+    today = date.today()
+    modules = {m.id: m for m in list_modules(session) if m.kind in ("reagents", "antibodies")}
+    if not modules:
+        return []
+    rows = session.scalars(select(InventoryItem).where(
+        InventoryItem.module_id_fk.in_(list(modules)),
+        (InventoryItem.expires_on <= today + timedelta(days=days)) | (func.lower(InventoryItem.status) == "low"),
+    ).order_by(InventoryItem.expires_on.is_(None), InventoryItem.expires_on, InventoryItem.name))
+    out = []
+    for item in rows:
+        if (item.status or "").lower() in TERMINAL_STATUSES:
+            continue
+        module = modules[item.module_id_fk]
+        out.append({"key": module.key, "module": module.label, "name": item.name or f"#{item.number}",
+                    "number": item.number, "status": item.status, "expires_on": item.expires_on,
+                    "expiry": expiry_state(item, today), "low": (item.status or "").lower() == "low"})
+    return out[:limit]
+
+
+def open_order_count(session) -> int:
+    """Orders still waiting, by each orders inventory's own open statuses."""
+    total = 0
+    for module in session.scalars(select(InventoryModule).where(InventoryModule.kind == "orders")):
+        statuses = view(module).open_statuses
+        if statuses:
+            total += session.scalar(select(func.count(InventoryItem.id)).where(
+                InventoryItem.module_id_fk == module.id, InventoryItem.status.in_(statuses))) or 0
+    return total
 
 
 def apply_position(session, item: InventoryItem, rack_raw, position_raw) -> str | None:

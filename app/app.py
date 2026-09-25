@@ -947,11 +947,10 @@ def home_dashboard():
         ) or 0
         order_modules = [m.id for m in db_session.scalars(
             select(InventoryModule).where(InventoryModule.kind == "orders"))]
-        pending_orders = db_session.scalar(
-            select(func.count(InventoryItem.id)).where(
-                InventoryItem.module_id_fk.in_(order_modules),
-                InventoryItem.status.in_(["requested", "ordered"]))
-        ) or 0
+        # Each orders inventory's own open statuses, not a hard-coded pair.
+        from . import inventory_service as inventories
+        pending_orders = inventories.open_order_count(db_session)
+        restock = inventories.attention_items(db_session)
         notebook_pages = db_session.scalar(
             select(func.count(NotebookPage.id))
             .join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id)
@@ -1092,6 +1091,7 @@ def home_dashboard():
         geno_queue=geno_queue,
         orders_list=orders_list,
         events_list=events_list,
+        restock=restock,
     )
 
 
@@ -3704,7 +3704,8 @@ def global_search():
                 "label": f"{module.label} #{item.number} · {item.name or '(unnamed)'}",
                 "sublabel": " · ".join(filter(None, [item.category, item.status, item.vendor,
                                                      "lab common" if item.is_shared else item.owner])),
-                "url": url_for("inventory.module", key=module.key),
+                # Open the inventory already searched down to this item.
+                "url": url_for("inventory.module", key=module.key, q=item.name or str(item.number)),
             })
 
         # Fly vials and worm plates, by genotype (or either cross parent).
@@ -3847,33 +3848,56 @@ def csv_import(entity: str):
                     errors.append(f"row {idx}: {exc}")
         elif entity == "order":
             # Orders are an inventory now; import into the one the page named.
+            # Statuses follow the inventory's own list (any case; unknown →
+            # its first), and the import is one batch, so it can be undone.
             from . import inventory_service as inventories
-            module = (inventories.get_module(db_session, request.args.get("module", ""))
-                      or inventories.first_of_kind(db_session, "orders"))
-            if module is None:
-                return jsonify({"ok": False, "error": "There is no orders inventory to import into."}), 400
+            named = request.args.get("module", "")
+            module = (inventories.get_module(db_session, named) if named
+                      else inventories.first_of_kind(db_session, "orders"))
+            if module is None or module.kind != "orders":
+                return jsonify({"ok": False, "error": "Orders can only be imported into an orders inventory."}), 400
+            mv = inventories.view(module)
             number = inventories.next_number(db_session, module.id)
-            for idx, row in enumerate(rows, start=2):
-                try:
-                    o = InventoryItem(
-                        module_id_fk=module.id, number=number,
-                        owner=(row.get("requester_name") or row.get("requester") or g.user.username).strip(),
-                        vendor=(row.get("vendor_name") or row.get("vendor") or "").strip(),
-                        name=(row.get("item_name") or row.get("item") or "").strip(),
-                        catalog_number=(row.get("catalog_number") or row.get("catalog") or "").strip(),
-                        quantity=(row.get("quantity") or "1").strip(),
-                        status=(row.get("status") or "requested").strip(),
-                        notes=(row.get("notes") or "").strip(),
-                    )
-                    if not o.name:
-                        raise ValueError("no item name")
-                    if not dry_run:
-                        db_session.add(o)
-                    number += 1
-                    preview.append({"item": o.name, "vendor": o.vendor})
-                    created += 1
-                except Exception as exc:  # noqa: BLE001
-                    errors.append(f"row {idx}: {exc}")
+            cell = lambda row, *names: next((str(row.get(n) or "").strip() for n in names if str(row.get(n) or "").strip()), "")
+            from contextlib import nullcontext
+            batch = (nullcontext() if dry_run
+                     else audit.batch(db_session, "create", f"import orders into {module.label}", "inventory_items"))
+            with batch:
+                for idx, row in enumerate(rows, start=2):
+                    try:
+                        owner = cell(row, "requester_name", "requester", "owner") or g.user.username
+                        if owner != g.user.username and not access.is_admin():
+                            owner = g.user.username
+                        received_raw = cell(row, "received_on", "received", "date_received")
+                        o = InventoryItem(
+                            module_id_fk=module.id, number=number, owner=owner[:80],
+                            vendor=cell(row, "vendor_name", "vendor")[:120],
+                            name=cell(row, "item_name", "item", "name")[:200],
+                            catalog_number=cell(row, "catalog_number", "catalog")[:120],
+                            quantity=(cell(row, "quantity") or "1")[:60],
+                            unit=cell(row, "unit", "units")[:30],
+                            notes=cell(row, "notes"),
+                        )
+                        if received_raw:
+                            try:
+                                o.received_on = date.fromisoformat(received_raw)
+                            except ValueError:
+                                raise ValueError(f"received date “{received_raw}” is not YYYY-MM-DD") from None
+                        if not o.name:
+                            raise ValueError("no item name")
+                        price = cell(row, "price", "unit_price", "cost")
+                        if price:
+                            o.attrs = json.dumps({"price": price})
+                        status = cell(row, "status")
+                        inventories.apply_status(mv, o, inventories.match_status(mv, status)
+                                                 or (mv.statuses[0] if mv.statuses else status))
+                        if not dry_run:
+                            db_session.add(o)
+                        number += 1
+                        preview.append({"item": o.name, "vendor": o.vendor, "status": o.status})
+                        created += 1
+                    except Exception as exc:  # noqa: BLE001
+                        errors.append(f"row {idx}: {exc}")
         if not dry_run:
             db_session.commit()
 
