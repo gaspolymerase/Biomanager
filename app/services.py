@@ -257,6 +257,11 @@ def ensure_schema_updates() -> None:
         alter_statements.append("ALTER TABLE fish ADD COLUMN sac_date DATE")
     if "fish_sac_log" in table_columns and "fish_id_fk" not in table_columns["fish_sac_log"]:
         alter_statements.append("ALTER TABLE fish_sac_log ADD COLUMN fish_id_fk INTEGER")
+    # Zebrafish line owners and water-system creators (2026-09-25).
+    if "fish_lines" in table_columns and "owner" not in table_columns["fish_lines"]:
+        alter_statements.append("ALTER TABLE fish_lines ADD COLUMN owner VARCHAR(80) DEFAULT ''")
+    if "water_systems" in table_columns and "created_by" not in table_columns["water_systems"]:
+        alter_statements.append("ALTER TABLE water_systems ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
 
     if alter_statements:
         with engine.begin() as connection:
@@ -275,6 +280,33 @@ def ensure_schema_updates() -> None:
                        "fish", "clutches", "water_logs", "fish_sac_log"):
         if fish_table not in table_columns:
             Base.metadata.tables[fish_table].create(bind=engine, checkfirst=True)
+    if "water_logs" in table_columns:
+        _water_logs_system_nullable()
+
+
+def _water_logs_system_nullable() -> None:
+    """Readings outlive a deleted water system (2026-09-25), so
+    water_logs.system_id_fk may be blank. SQLite can't drop NOT NULL in
+    place: the table is rebuilt from the model and the rows copied over."""
+    inspector = inspect(engine)  # fresh: the ALTERs above may have added columns
+    column = next((c for c in inspector.get_columns("water_logs") if c["name"] == "system_id_fk"), None)
+    if column is None or column.get("nullable", True):
+        return
+    if engine.dialect.name != "sqlite":
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE water_logs ALTER COLUMN system_id_fk DROP NOT NULL"))
+        return
+    table = Base.metadata.tables["water_logs"]
+    names = [c["name"] for c in inspector.get_columns("water_logs") if c["name"] in table.c]
+    cols = ", ".join(names)
+    indexes = [index["name"] for index in inspector.get_indexes("water_logs")]
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE water_logs RENAME TO water_logs_before_nullable"))
+        for name in indexes:
+            connection.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+        table.create(bind=connection)
+        connection.execute(text(f"INSERT INTO water_logs ({cols}) SELECT {cols} FROM water_logs_before_nullable"))
+        connection.execute(text("DROP TABLE water_logs_before_nullable"))
 
 
 # ---------------------------------------------------------------------------

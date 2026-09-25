@@ -534,6 +534,8 @@ class WaterSystem(Base):
     target_ph: Mapped[float | None] = mapped_column(Float, nullable=True)
     target_conductivity: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Who added the system: they (or an admin) may delete it.
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     racks: Mapped[list["FishRack"]] = relationship(back_populates="system", cascade="all, delete-orphan")
@@ -572,6 +574,8 @@ class FishLine(Base):
     founder_info: Mapped[str] = mapped_column(Text, default="")
     parent_line_id_fk: Mapped[int | None] = mapped_column(ForeignKey("fish_lines.id"), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Whoever made the line, unless handed on; blank on lines from before.
+    owner: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     parent_line: Mapped["FishLine | None"] = relationship(remote_side="FishLine.id", foreign_keys=[parent_line_id_fk])
@@ -659,7 +663,8 @@ class WaterLog(Base):
     __tablename__ = "water_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    system_id_fk: Mapped[int] = mapped_column(ForeignKey("water_systems.id"), index=True)
+    # Blank once its system is deleted: the readings are kept as history.
+    system_id_fk: Mapped[int | None] = mapped_column(ForeignKey("water_systems.id"), nullable=True, index=True)
     recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     ph: Mapped[float | None] = mapped_column(Float, nullable=True)
     conductivity: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -669,7 +674,7 @@ class WaterLog(Base):
     recorded_by: Mapped[str] = mapped_column(String(80), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
 
-    system: Mapped[WaterSystem] = relationship(back_populates="water_logs")
+    system: Mapped[WaterSystem | None] = relationship(back_populates="water_logs")
 
 
 class FishSacLog(Base):
