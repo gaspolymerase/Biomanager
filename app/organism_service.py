@@ -760,7 +760,9 @@ def capability_labels(module: OrganismModule) -> list[str]:
 
 def available_presets() -> list:
     """Presets for the builder, blank one last."""
-    return sorted(PRESETS, key=lambda p: (p.key == "custom", p.label))
+    from .organisms import STOCK_ENGINE_PRESETS
+    return sorted((p for p in PRESETS if p.key not in STOCK_ENGINE_PRESETS),
+                  key=lambda p: (p.key == "custom", p.label))
 
 
 def location_tree(session, module_id: int) -> list[OrgLocation]:

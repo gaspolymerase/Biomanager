@@ -4,12 +4,15 @@
  * page renders the shell with the `rack_grid` macro (templates/_rack_grid.html)
  * and a JSON payload:
  *
- *   { "racks": [{ "id": 3, "name": "B", "rows": 8, "cols": 10, "edit": {...} }],
+ *   { "racks": [{ "id": 3, "name": "B", "rows": 8, "cols": 10, "group": "Incubator 25", "edit": {...} }],
  *     "items": [{ "id": 12, "label": "C-104", "sub": "DBH-Cre", "badge": "4",
  *                 "tone": "breeder", "flag": false, "rack": 3, "row": 2, "col": 7,
  *                 "search": "…", "edit": { "data-org-edit": "…", … } }],
  *     "create": { "attrs": {…}, "payload": {…}, "rack_field": "location_id_fk",
  *                 "row_field": "row", "col_field": "col", "text_field": null } }
+ *
+ * A rack's optional "group" (an incubator, a room) fills a first picker,
+ * [data-rack-group], that narrows the rack picker to the racks inside it.
  *
  * Rows and columns are 1-based in the payload. A page whose storage is
  * 0-based (fish tanks) sets data-index-base="0" and this script converts on
@@ -92,21 +95,47 @@
     const status = root.querySelector('[data-rack-status]');
 
     let active = null;
+    const rackById0 = (id) => racks.find((r) => r.id === id);
     try { active = parseInt(localStorage.getItem(key) || '', 10) || null; } catch (_) {}
     if (!racks.some((r) => r.id === active)) active = racks[0] ? racks[0].id : null;
 
-    racks.forEach((rack) => {
-      const option = document.createElement('option');
-      option.value = rack.id;
-      option.textContent = rack.name;
-      select.appendChild(option);
-    });
-    if (!racks.length) {
-      select.disabled = true;
-      const option = document.createElement('option');
-      option.textContent = 'No racks yet';
-      select.appendChild(option);
+    // Incubator (or room) first, when the page offers that picker.
+    const groupSelect = root.querySelector('[data-rack-group]');
+    const NO_GROUP = '\u0000';
+    const groupOf = (rack) => (rack && rack.group) || NO_GROUP;
+    const groups = [...new Set(racks.map(groupOf))].sort((a, b) => (a === NO_GROUP) - (b === NO_GROUP) || a.localeCompare(b));
+    if (groupSelect) {
+      groups.forEach((name) => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name === NO_GROUP ? 'Not in one' : name;
+        groupSelect.appendChild(option);
+      });
+      if (!groups.length) {
+        groupSelect.disabled = true;
+        groupSelect.appendChild(Object.assign(document.createElement('option'), { textContent: '—' }));
+      }
     }
+
+    function fillRacks(group) {
+      select.innerHTML = '';
+      const shown = racks.filter((rack) => !groupSelect || groupOf(rack) === group);
+      shown.forEach((rack) => {
+        const option = document.createElement('option');
+        option.value = rack.id;
+        option.textContent = rack.name;
+        select.appendChild(option);
+      });
+      select.disabled = !shown.length;
+      if (!shown.length) {
+        const option = document.createElement('option');
+        option.textContent = 'No racks yet';
+        select.appendChild(option);
+      }
+      return shown;
+    }
+    if (groupSelect && groups.length) groupSelect.value = groupOf(rackById0(active));
+    fillRacks(groupSelect ? groupSelect.value : null);
     if (active) select.value = String(active);
 
     const say = (state, text) => {
@@ -301,6 +330,15 @@
       });
     }
 
+    if (groupSelect) {
+      groupSelect.addEventListener('change', () => {
+        const shown = fillRacks(groupSelect.value);
+        active = shown[0] ? shown[0].id : null;
+        if (active) select.value = String(active);
+        try { localStorage.setItem(key, String(active)); } catch (_) {}
+        render();
+      });
+    }
     select.addEventListener('change', () => {
       active = parseInt(select.value, 10) || null;
       try { localStorage.setItem(key, String(active)); } catch (_) {}

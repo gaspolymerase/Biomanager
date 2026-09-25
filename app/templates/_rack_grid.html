@@ -13,11 +13,16 @@
 
 {% macro rack_grid(key, payload, move_url, rack_noun='rack', rack_dialog_id=None, new_rack_payload=None,
                    index_base=1, rack_field='rack_id', row_field='row', col_field='col',
-                   empty_text='Add a rack to start placing.', hint='') %}
+                   empty_text='Add a rack to start placing.', hint='', group_label=None) %}
   <div class="rack-view" data-rack-view="{{ key }}" data-move-url="{{ move_url }}"
        data-index-base="{{ index_base }}" data-rack-field="{{ rack_field }}"
        data-row-field="{{ row_field }}" data-col-field="{{ col_field }}" data-empty-text="{{ empty_text }}">
     <div class="rack-bar">
+      {% if group_label %}
+        <label class="rack-picker">{{ group_label|capitalize }}
+          <select data-rack-group aria-label="{{ group_label|capitalize }}"></select>
+        </label>
+      {% endif %}
       <label class="rack-picker">{{ rack_noun|capitalize }}
         <select data-rack-select aria-label="{{ rack_noun|capitalize }}"></select>
       </label>

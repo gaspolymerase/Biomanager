@@ -116,10 +116,12 @@ init_database()
 # belong in this file. See app/organisms.py for the capability vocabulary.
 from .organism_routes import bp as organism_bp  # noqa: E402
 from .inventory_routes import bp as inventory_bp  # noqa: E402
+from .stock_routes import bp as stocks_bp  # noqa: E402
 from .labels import bp as labels_bp  # noqa: E402
 
 app.register_blueprint(organism_bp)
 app.register_blueprint(inventory_bp)
+app.register_blueprint(stocks_bp)
 app.register_blueprint(labels_bp)
 
 
@@ -417,6 +419,28 @@ def _inventory_module_links() -> list[dict]:
     return links
 
 
+def _stock_module_links() -> list[dict]:
+    """Rail entries for the fly and worm vial/plate databases."""
+    from . import stock_service as stocks
+    from .icons import resolve as resolve_icon
+
+    current_key = request.view_args.get("key") if request.view_args else None
+    on_stocks = (request.endpoint or "").startswith("stocks.")
+    links = []
+    try:
+        with SessionLocal() as db_session:
+            for module in stocks.list_modules(db_session):
+                links.append({
+                    "key": f"stock:{module.key}", "label": module.label, "short": module.label,
+                    "icon": resolve_icon(module.icon), "soon": None,
+                    "url": url_for("stocks.module", key=module.key),
+                    "active": on_stocks and current_key == module.key,
+                })
+    except Exception:
+        return []
+    return links
+
+
 def _organism_module_links() -> list[dict]:
     """Rail entries for the configurable organism modules.
 
@@ -466,7 +490,7 @@ def inject_nav():
             for link in links:
                 if link["key"] in renamed and renamed[link["key"]] != link["label"]:
                     link["label"] = link["short"] = renamed[link["key"]]
-            extras = _organism_module_links() + _inventory_module_links()
+            extras = _stock_module_links() + _organism_module_links() + _inventory_module_links()
             tail = [l for l in links if l["key"] in ("drosophila", "new-db")]
             head = [l for l in links if l["key"] not in ("drosophila", "new-db")]
             links = head + extras + [l for l in tail if l["key"] == "new-db"]
@@ -524,6 +548,25 @@ def _name_color(seed: str) -> tuple[int, int, int]:
     for ch in seed:
         h = (h * 31 + ord(ch)) & 0xFFFFFF
     return h % 360, 55, 32
+
+
+@app.template_filter("relative_day")
+def relative_day_filter(value) -> str:
+    """"today", "tomorrow", "in 3 d", "2 d ago", or a date further out."""
+    if not value:
+        return ""
+    days = (value - date.today()).days
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "tomorrow"
+    if days == -1:
+        return "yesterday"
+    if 1 < days <= 13:
+        return f"in {days} d"
+    if -13 <= days < -1:
+        return f"{-days} d ago"
+    return value.strftime("%d %b")
 
 
 @app.template_filter("owner_short")
@@ -1015,11 +1058,24 @@ def home_dashboard():
             "event_type": e.event_type,
         } for e in upcoming_events]
 
+    # Fly / worm work due soon: flips, egg collections, shifts, scoring.
+    from . import stock_service
+    stock_due = []
+    with SessionLocal() as db_session:
+        for module in stock_service.list_modules(db_session):
+            mv = stock_service.view(module)
+            for item in stock_service.schedule(db_session, mv, today, horizon=2):
+                stock_due.append({"module": mv.label, "key": mv.key, "icon": mv.icon, "title": item["title"],
+                                  "due": item["due"], "overdue": item["overdue"], "is_today": item["today"], "kind": item["kind"]})
+    stock_due.sort(key=lambda i: i["due"])
+
     hour = datetime.now().hour
     greeting = "Good morning" if hour < 12 else ("Good afternoon" if hour < 18 else "Good evening")
 
     return render_template(
         "home.html",
+        stock_due=stock_due[:12],
+        stock_due_total=len(stock_due),
         greeting=greeting,
         today_str=today.strftime("%A, %b %d, %Y"),
         counts={
@@ -3637,6 +3693,30 @@ def global_search():
                 "sublabel": " · ".join(filter(None, [item.category, item.status, item.vendor,
                                                      "lab common" if item.is_shared else item.owner])),
                 "url": url_for("inventory.module", key=module.key),
+            })
+
+        # Fly vials and worm plates, by genotype (or either cross parent).
+        from . import stock_service
+        from .models import StockModule, StockUnit
+        stock_modules = {m.id: stock_service.view(m) for m in db_session.scalars(select(StockModule))}
+        unit_stmt = select(StockUnit).where(StockUnit.active.is_(True))
+        if is_digit:
+            unit_stmt = unit_stmt.where(StockUnit.number == int(q))
+        else:
+            unit_stmt = unit_stmt.where(
+                StockUnit.genotype.ilike(like) | StockUnit.female_genotype.ilike(like)
+                | StockUnit.male_genotype.ilike(like) | StockUnit.notes.ilike(like))
+        for unit in db_session.scalars(unit_stmt.order_by(StockUnit.id.desc()).limit(limit * 2)).all():
+            mv = stock_modules.get(unit.module_id_fk)
+            if mv is None:
+                continue
+            results.append({
+                "type": "vial",
+                "id": unit.number,
+                "label": f"{mv.code(unit)} · {unit.genotype or '(no genotype)'}",
+                "sublabel": " · ".join(filter(None, [mv.label, mv.purpose_label(unit.purpose),
+                                                     unit.rack.name if unit.rack else "", unit.owner])),
+                "url": url_for("stocks.module", key=mv.key),
             })
 
         # Notebook pages — owner-scoped.

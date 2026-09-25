@@ -575,8 +575,13 @@ PRESETS: tuple[Preset, ...] = (
 
 PRESET_BY_KEY = {p.key: p for p in PRESETS}
 
-# Seeded automatically on first run: organisms with no hand-written module.
-AUTO_SEED_PRESETS = ("drosophila", "c_elegans")
+# Seeded automatically on first run. Flies and worms now have their own
+# vial/plate databases (app/stocks.py), so nothing is seeded here.
+AUTO_SEED_PRESETS: tuple[str, ...] = ()
+
+# Presets now served by the stock engine; kept above so old modules still
+# describe themselves, but not offered for new databases.
+STOCK_ENGINE_PRESETS = ("drosophila", "c_elegans")
 
 AGE_UNITS = (
     ("days", "Days"),

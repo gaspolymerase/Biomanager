@@ -1,0 +1,865 @@
+{% extends "base.html" %}
+{% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
+
+{% set m = module %}
+{% set key = m.key %}
+{% set S = m.s %}
+{% set parent_purposes = ['cross', 'progeny'] %}
+{% set tab_labels = {
+  'units': m.units|capitalize, 'schedule': 'Schedule', 'genotypes': 'Genotypes',
+  'setup': m.rooms|capitalize ~ ' & ' ~ m.racks_noun, 'frozen': 'Frozen', 'settings': 'Settings'} %}
+{% set tab_icons = {'units': m.icon, 'schedule': 'calendar-clock', 'genotypes': 'dna', 'setup': 'temperature',
+                    'frozen': 'snowflake', 'settings': 'settings'} %}
+
+{% block page_title %}{{ m.label }} · {{ tab_labels[view] }}{% endblock %}
+{% block page_heading %}{{ m.label }}{% endblock %}
+{% block page_subtitle %}{{ m.blurb }}{% endblock %}
+{% block page_shell_class %}shell-page-wide workbench{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('organisms.index') }}">{{ icon('database') }} All databases</a>
+{% endblock %}
+
+{# A rack picker grouped by incubator, used by the dialog, the sheet and
+   the batch bar. #}
+{% macro rack_options(selected=None, blank='Not in a rack') %}
+  <option value="">{{ blank }}</option>
+  {% for inc in incubators %}
+    {% set inside = racks | selectattr('incubator_id_fk', 'equalto', inc.id) | list %}
+    {% if inside %}
+      <optgroup label="{{ inc.name }}{% if inc.temperature %} · {{ inc.temperature }} °C{% endif %}">
+        {% for r in inside %}<option value="{{ r.id }}" {% if r.id == selected %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+      </optgroup>
+    {% endif %}
+  {% endfor %}
+  {% set loose = racks | selectattr('incubator_id_fk', 'none') | list %}
+  {% if loose %}
+    <optgroup label="Not in a {{ m.room }}">
+      {% for r in loose %}<option value="{{ r.id }}" {% if r.id == selected %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+    </optgroup>
+  {% endif %}
+{% endmacro %}
+
+{% macro purpose_options(selected=None) %}
+  {% for p in m.purposes %}<option value="{{ p.key }}" {% if p.key == selected %}selected{% endif %}>{{ p.label }}</option>{% endfor %}
+  {# A purpose since removed from Settings still shows as itself. #}
+  {% if selected and selected not in m.purposes | map(attribute='key') | list %}<option value="{{ selected }}" selected>{{ m.purpose_label(selected) }}</option>{% endif %}
+{% endmacro %}
+
+{% block page_nav %}
+  <div class="mb-4 flex flex-wrap items-center gap-3">
+    <nav class="seg max-w-full overflow-x-auto" role="tablist" aria-label="{{ m.label }} views">
+      {% for v in ['units', 'schedule', 'genotypes', 'setup'] + (['frozen'] if S.frozen else []) + ['settings'] %}
+        <a class="seg-item {% if view == v %}is-active{% endif %}" role="tab" aria-selected="{{ 'true' if view == v else 'false' }}"
+           href="{{ url_for('stocks.module', key=key, view=v) }}">
+          {{ icon(tab_icons[v]) }}{{ tab_labels[v] }}
+          {% if v == 'schedule' and overdue %}<span class="seg-count is-alert">{{ overdue }}</span>{% endif %}
+        </a>
+      {% endfor %}
+    </nav>
+    <div class="flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+      <span class="badge">{{ counts.active }} {{ m.unit if counts.active == 1 else m.units }}</span>
+      {% if counts.cross %}<span class="badge">{{ counts.cross }} cross{{ '' if counts.cross == 1 else 'es' }}</span>{% endif %}
+      <span class="badge">{{ racks|length }} {{ m.rack_noun if racks|length == 1 else m.racks_noun }}</span>
+    </div>
+  </div>
+{% endblock %}
+
+{% block content %}
+<datalist id="stock-genotypes">{% for gt in genotypes %}<option value="{{ gt.genotype }}">{{ gt.alias }}</option>{% endfor %}</datalist>
+<datalist id="stock-owners">{% for u in usernames %}<option value="{{ u }}"></option>{% endfor %}</datalist>
+
+{% set new_payload = {"owner": current_user.username, "purpose": m.default_purpose, "count": 1, "set_up_on": today.isoformat()} %}
+
+{# =====================================================================
+   VIALS / PLATES
+   ===================================================================== #}
+{% if view == 'units' %}
+<div data-layout-scope>
+  <div class="mb-3 flex flex-wrap items-center gap-2.5">
+    <div class="dt-chips view-switch" data-view-switch="stock-{{ key }}" role="group" aria-label="Layout">
+      <button type="button" class="dt-chip" data-layout="table">{{ icon('table') }}Table</button>
+      <button type="button" class="dt-chip" data-layout="grid">{{ icon('grid') }}Grid</button>
+    </div>
+    <p class="text-[12px] text-muted">In Grid, pick the {{ m.room }} and then the {{ m.rack_noun }} to see and edit {{ m.units }} where they sit.</p>
+  </div>
+
+  <div data-layout-panel="table">
+    <section class="data-table-card sheet" data-table-id="stock-{{ key }}-{{ col_sig }}" data-noun="{{ m.unit }}" data-noun-plural="{{ m.units }}"
+             data-selection-scope data-selection-noun="{{ m.unit }}" data-selection-noun-plural="{{ m.units }}">
+      <div class="dt-toolbar">
+        <div class="dt-toolbar-search">
+          {{ icon('search', 'search-icon') }}
+          <input type="text" class="dt-search" placeholder="Search genotype, #, owner…" autocomplete="off" aria-label="Search">
+        </div>
+        <div class="dt-chips" role="group" aria-label="Show">
+          <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="true">Active <span class="dt-chip-count">{{ counts.active }}</span></button>
+          <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ counts.mine }}</span></button>
+          {% for p in m.purposes if counts[p.key] %}
+            <button type="button" class="dt-chip" data-dt-filter="purpose:{{ p.key }}" aria-pressed="false">{{ p.label }} <span class="dt-chip-count">{{ counts[p.key] }}</span></button>
+          {% endfor %}
+          {% if counts.discarded %}
+            <button type="button" class="dt-chip" data-dt-filter="active:false" aria-pressed="false">Discarded <span class="dt-chip-count">{{ counts.discarded }}</span></button>
+          {% endif %}
+        </div>
+        <div class="dt-toolbar-spacer"></div>
+        <span class="sheet-save" data-save-status aria-live="polite"></span>
+        <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
+        <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
+        <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
+                data-record-edit="unit-dialog" data-record-payload='{{ new_payload | tojson }}'>
+          {{ icon('plus') }} New {{ m.unit }}
+        </button>
+      </div>
+
+      <div class="dt-scroll">
+        <table class="dt sheet-table" data-resizable="1">
+          <thead>
+            <tr>
+              <th class="sheet-pin sheet-pin-start" style="width: 34px; min-width: 34px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ m.units }}"></th>
+              <th class="dt-sortable" data-sort-key="number" style="width: 64px;"><span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}#<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="genotype" style="width: 250px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="purpose" style="width: 122px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="female_genotype" style="width: 170px;"><span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}{{ S.parents.female }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="male_genotype" style="width: 170px;"><span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}{{ S.parents.male }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="incubator" style="width: 120px;"><span class="dt-col-head">{{ icon('temperature', 'dt-col-icon') }}{{ m.room|capitalize }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="rack_id" style="width: 120px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}{{ m.rack_noun|capitalize }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="position" style="width: 78px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="set_up_on" style="width: 132px;"><span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Set up<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="nextdue" style="width: 150px;"><span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Next<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="owner" style="width: 80px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span></th>
+              <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+              <th class="sheet-pin sheet-pin-end" style="width: 132px; min-width: 132px;"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              {% set u = r.unit %}
+              {% set f = 'unit-' ~ u.id %}
+              {% set locked = not r.editable or not u.active %}
+              <tr data-id="{{ u.id }}" data-number="{{ u.number }}" data-purpose="{{ u.purpose }}"
+                  data-active="{{ 'true' if u.active else 'false' }}" data-mine="{{ 'true' if r.mine else 'false' }}"
+                  data-incubator="{{ r.incubator }}" data-nextdue="{{ r.next.on.isoformat() if r.next else '' }}"
+                  class="{% if not r.editable %}is-locked{% endif %}{% if not u.active %} is-inactive{% endif %}">
+                <td class="sheet-pin sheet-pin-start"><input type="checkbox" data-select-row value="{{ u.id }}" aria-label="Select {{ r.code }}"></td>
+                <td>
+                  <span class="sheet-id"><span class="ident">{{ r.code }}</span>
+                    {% if not r.editable %}<span class="sheet-lock" title="{{ u.owner }}’s {{ m.unit }}: read only">{{ icon('lock') }}</span>{% endif %}
+                  </span>
+                </td>
+                <td><input class="font-medium" name="genotype" form="{{ f }}" value="{{ u.genotype }}" title="{{ u.genotype }}" list="stock-genotypes" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
+                <td>
+                  <select class="status-pill" name="purpose" form="{{ f }}" data-status="{{ u.purpose }}" data-autosave="1" aria-label="Purpose" {% if locked %}disabled{% endif %}>
+                    {{ purpose_options(u.purpose) }}
+                  </select>
+                </td>
+                <td class="parent-cell"><input name="female_genotype" form="{{ f }}" value="{{ u.female_genotype }}" title="{{ u.female_genotype }}" list="stock-genotypes" data-autosave="1" aria-label="{{ S.parents.female }}" {% if locked %}disabled{% endif %}></td>
+                <td class="parent-cell"><input name="male_genotype" form="{{ f }}" value="{{ u.male_genotype }}" title="{{ u.male_genotype }}" list="stock-genotypes" data-autosave="1" aria-label="{{ S.parents.male }}" {% if locked %}disabled{% endif %}></td>
+                <td><span class="sheet-cell-text" data-incubator-cell>{{ r.incubator or '–' }}{% if r.incubator %} <span class="sheet-unit">{{ r.temp }} °C</span>{% endif %}</span></td>
+                <td>
+                  <select name="rack_id" form="{{ f }}" data-autosave="1" aria-label="{{ m.rack_noun|capitalize }}" {% if locked %}disabled{% endif %}>
+                    {{ rack_options(u.rack_id_fk, '–') }}
+                  </select>
+                </td>
+                <td><input class="ident" name="position" form="{{ f }}" value="{{ r.position }}" placeholder="–" data-autosave="1" aria-label="Position" {% if locked %}disabled{% endif %}></td>
+                <td><input type="date" name="set_up_on" form="{{ f }}" value="{{ u.set_up_on or '' }}" data-empty="{{ '0' if u.set_up_on else '1' }}" data-autosave="1" aria-label="Set up" {% if locked %}disabled{% endif %}></td>
+                <td>
+                  {% if r.next %}
+                    <span class="next-due {% if r.overdue %}is-overdue{% elif r.next.on == today %}is-today{% endif %}" title="{{ r.next.on.strftime('%a %d %b %Y') }}">
+                      {{ r.next.label }} · {{ r.next.on | relative_day }}
+                    </span>
+                  {% elif not u.active %}
+                    <span class="sheet-empty">discarded {{ u.discarded_on or '' }}</span>
+                  {% else %}<span class="sheet-empty">–</span>{% endif %}
+                </td>
+                <td>
+                  <div class="owner-cell-wrap{% if u.owner %} has-badge{% endif %}">
+                    {% if u.owner %}{{ u.owner | owner_badge }}{% endif %}
+                    <input name="owner" form="{{ f }}" value="{{ u.owner }}" list="stock-owners" data-autosave="1" aria-label="Owner" {% if locked %}disabled{% endif %}>
+                  </div>
+                </td>
+                <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ u.notes }}" title="{{ u.notes }}" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
+                <td class="sheet-pin sheet-pin-end">
+                  <div class="sheet-actions">
+                    {% if u.active %}
+                      <form method="post" action="{{ url_for('stocks.collect', key=key, unit_id=u.id) }}" class="collect-action">
+                        <button type="submit" class="row-icon-btn" title="{{ S.collect_verb }}: new {{ m.unit }} from this cross">{{ icon('egg') }}</button>
+                      </form>
+                    {% endif %}
+                    <button type="button" class="row-icon-btn" title="Open" data-record-edit="unit-dialog"
+                            data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
+                    <form method="post" action="{{ url_for('stocks.duplicate_unit', key=key, unit_id=u.id) }}">
+                      <button type="submit" class="row-icon-btn" title="Copy to a new {{ m.unit }}">{{ icon('copy') }}</button>
+                    </form>
+                    {% if u.active %}
+                      <form method="post" action="{{ url_for('stocks.unit_action', key=key, unit_id=u.id, action='discard') }}">
+                        <button type="submit" class="row-icon-btn danger-button" title="Discard" {% if not r.editable %}disabled{% endif %}>{{ icon('trash') }}</button>
+                      </form>
+                    {% else %}
+                      <form method="post" action="{{ url_for('stocks.unit_action', key=key, unit_id=u.id, action='restore') }}">
+                        <button type="submit" class="row-icon-btn" title="Restore" {% if not r.editable %}disabled{% endif %}>{{ icon('undo') }}</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td class="dt-empty" colspan="14"><span class="dt-empty-msg">No {{ m.units }} yet. {% if not racks %}Start in <a href="{{ url_for('stocks.module', key=key, view='setup') }}">{{ tab_labels.setup }}</a>, then use {% else %}Use {% endif %}<strong>New {{ m.unit }}</strong>.</span></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% for r in rows %}
+        <form id="unit-{{ r.unit.id }}" method="post" action="{{ url_for('stocks.update_unit', key=key, unit_id=r.unit.id) }}" data-record-label="{{ r.code }}">
+          <input type="hidden" name="rack_id_was" value="{{ r.unit.rack_id_fk or '' }}">
+          <input type="hidden" name="position_was" value="{{ r.position }}">
+        </form>
+      {% endfor %}
+      <div class="dt-bottom-bar">
+        <span class="dt-bottom-count dt-count">{{ rows|length }} {{ m.units }}</span>
+        <div class="dt-bottom-spacer"></div>
+        <div class="dt-pagination">
+          <span class="dt-page-label">Page 1</span>
+          <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
+          <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
+          <select class="dt-page-size" aria-label="Rows per page"><option value="100" selected>100</option><option value="100000">All</option></select>
+        </div>
+      </div>
+
+      {# Batch actions on the ticked vials. #}
+      <div class="selbar" data-selection-bar hidden>
+        <span class="selbar-count" data-selection-count></span>
+        <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="purpose">
+          <select name="value" aria-label="Purpose">{{ purpose_options() }}</select>
+          <button type="submit" class="btn btn-sm">Set purpose</button>
+        </form>
+        <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="rack_id">
+          <select name="value" aria-label="{{ m.rack_noun|capitalize }}">{{ rack_options(None, 'Unplace') }}</select>
+          <button type="submit" class="btn btn-sm">Move</button>
+        </form>
+        <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="set">
+          <select name="field" aria-label="Field">
+            <option value="genotype">Genotype</option>
+            <option value="female_genotype">{{ S.parents.female }}</option>
+            <option value="male_genotype">{{ S.parents.male }}</option>
+            <option value="owner">Owner</option>
+            <option value="set_up_on">Set up (YYYY-MM-DD)</option>
+            <option value="shift_on">Shift on (YYYY-MM-DD)</option>
+            <option value="shift_to">Shift to (°C)</option>
+            <option value="score_on">Score on (YYYY-MM-DD)</option>
+            <option value="notes">Notes</option>
+          </select>
+          <input name="value" placeholder="new value" list="stock-genotypes" aria-label="New value">
+          <button type="submit" class="btn btn-sm">Set</button>
+        </form>
+        <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="collect">
+          <button type="submit" class="btn btn-sm">{{ icon('egg') }} {{ S.collect_verb }}</button>
+        </form>
+        <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="copy">
+          <button type="submit" class="btn btn-sm">{{ icon('copy') }} Copy</button>
+        </form>
+        <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form
+              data-confirm="Discard {n} {{ m.unit }}(s)?">
+          <input type="hidden" name="action" value="discard">
+          <button type="submit" class="btn btn-sm btn-danger">Discard</button>
+        </form>
+        <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="restore">
+          <button type="submit" class="btn btn-sm btn-ghost">Restore</button>
+        </form>
+        <div class="selbar-spacer"></div>
+        <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+      </div>
+    </section>
+  </div>
+
+  <div data-layout-panel="grid" hidden>
+    <section class="data-table-card">
+      {{ rack_grid('stock-' ~ key, grid, url_for('stocks.place_unit', key=key, unit_id=0)|replace('/0/', '/{id}/'),
+                   rack_noun=m.rack_noun, rack_dialog_id='rack-dialog', group_label=m.room,
+                   new_rack_payload={'rows': S.rack_rows, 'cols': S.rack_cols},
+                   empty_text='No ' ~ m.racks_noun ~ ' yet. Add one under ' ~ tab_labels.setup ~ '.',
+                   hint='Drag to move (an occupied cell swaps). Click a ' ~ m.unit ~ ' to edit it, or an empty cell to add one there.') }}
+    </section>
+  </div>
+</div>
+{% endif %}
+
+{# =====================================================================
+   SCHEDULE
+   ===================================================================== #}
+{% if view == 'schedule' %}
+  {% set kinds = {
+    'flip': ('refresh', S.flip_verb), 'collect': ('egg', S.collect_verb), 'ready': ('seedling', S.ready_label),
+    'shift': ('temperature', 'Temperature shift'), 'score': ('microscope', 'Score')} %}
+  <div class="mb-3 flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+    <span>Showing what is due in the next</span>
+    {% for h in [7, 14, 30] %}
+      <a class="dt-chip" aria-pressed="{{ 'true' if (request.args.get('horizon', '14')|int) == h else 'false' }}"
+         href="{{ url_for('stocks.module', key=key, view='schedule', horizon=h) }}">{{ h }} days</a>
+    {% endfor %}
+    <span class="ml-2">{{ S.flip_verb }} dates come from each {{ m.rack_noun }}; egg collections from crosses; shifts from experiment {{ m.units }}.</span>
+  </div>
+  {% set buckets = [
+    ('Overdue', schedule | selectattr('overdue') | list),
+    ('Today', schedule | selectattr('today') | list),
+    ('Coming up', schedule | rejectattr('overdue') | rejectattr('today') | list)] %}
+  {% if not schedule %}
+    <div class="card empty-state">{{ icon('calendar-clock') }}<p>Nothing due. Set a {{ S.flip_verb|lower }} date on your {{ m.racks_noun }} to plan flips.</p></div>
+  {% endif %}
+  {% for title, items in buckets if items %}
+    <section class="card mb-3">
+      <header class="card-head"><h2>{{ title }}</h2><span class="badge badge-quiet">{{ items|length }}</span></header>
+      <ul class="schedule-list">
+        {% for it in items %}
+          <li class="schedule-item {% if it.overdue %}is-overdue{% elif it.today %}is-today{% endif %}">
+            <span class="schedule-icon" data-kind="{{ it.kind }}">{{ icon(kinds[it.kind][0]) }}</span>
+            <span class="schedule-when" title="{{ it.due.strftime('%a %d %b %Y') }}">{{ it.due | relative_day }}</span>
+            <span class="schedule-text">
+              <span class="schedule-title">{{ it.title }}</span>
+              <span class="schedule-detail">{{ it.detail }}</span>
+            </span>
+            <span class="schedule-actions">
+              {% if it.kind == 'flip' %}
+                <form method="post" action="{{ url_for('stocks.rack_flipped', key=key, rack_id=it.rack.id) }}" class="flex items-center gap-1.5">
+                  <input type="date" name="on" value="{{ today.isoformat() }}" class="h-7 w-[132px] text-[12px]" aria-label="Date">
+                  <button type="submit" class="btn btn-sm btn-primary">{{ icon('refresh') }} {{ S.flip_done }}</button>
+                </form>
+              {% elif it.kind == 'collect' %}
+                <form method="post" action="{{ url_for('stocks.collect', key=key, unit_id=it.unit.id) }}">
+                  <button type="submit" class="btn btn-sm btn-primary">{{ icon('egg') }} {{ S.collect_verb }}</button>
+                </form>
+              {% elif it.kind == 'ready' %}
+                <form method="post" action="{{ url_for('stocks.unit_action', key=key, unit_id=it.unit.id, action='ready-done') }}">
+                  <button type="submit" class="btn btn-sm">{{ icon('check') }} Done</button>
+                </form>
+              {% elif it.kind == 'shift' %}
+                <form method="post" action="{{ url_for('stocks.unit_action', key=key, unit_id=it.unit.id, action='shifted') }}" class="flex items-center gap-1.5">
+                  <select name="rack_id" class="h-7 text-[12px]" aria-label="Move to">
+                    <option value="">Stay in place</option>
+                    {% for inc in incubators %}
+                      {% set inside = racks | selectattr('incubator_id_fk', 'equalto', inc.id) | list %}
+                      {% if inside %}
+                        <optgroup label="{{ inc.name }}{% if inc.temperature %} · {{ inc.temperature }} °C{% endif %}">
+                          {% for r in inside %}<option value="{{ r.id }}" {% if loop.first and inc.temperature == it.unit.shift_to %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+                        </optgroup>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="btn btn-sm btn-primary">{{ icon('temperature') }} Shifted</button>
+                </form>
+              {% elif it.kind == 'score' %}
+                <form method="post" action="{{ url_for('stocks.unit_action', key=key, unit_id=it.unit.id, action='scored') }}">
+                  <button type="submit" class="btn btn-sm">{{ icon('check') }} Scored</button>
+                </form>
+              {% endif %}
+              {% if it.unit %}
+                <button type="button" class="row-icon-btn" title="Open" data-record-edit="unit-dialog"
+                        data-record-payload="{{ (rows | selectattr('unit.id', 'equalto', it.unit.id) | map(attribute='payload') | first) | tojson | forceescape }}">{{ icon('edit') }}</button>
+              {% endif %}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+{% endif %}
+
+{# =====================================================================
+   GENOTYPES
+   ===================================================================== #}
+{% if view == 'genotypes' %}
+  <section class="data-table-card sheet" data-table-id="stock-{{ key }}-genotypes" data-noun="genotype" data-noun-plural="genotypes">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">
+        {{ icon('search', 'search-icon') }}
+        <input type="text" class="dt-search" placeholder="Search genotypes…" autocomplete="off" aria-label="Search">
+      </div>
+      <p class="text-[12px] text-muted">New genotypes are added here as they are typed on a {{ m.unit }}. Renaming one relabels its {{ m.units }}.</p>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]" data-record-edit="genotype-dialog" data-record-payload='{}'>{{ icon('plus') }} New genotype</button>
+    </div>
+    <div class="dt-scroll">
+      <table class="dt sheet-table">
+        <thead><tr>
+          <th class="dt-sortable" data-sort-key="genotype" style="width: 320px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="alias" style="width: 140px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Short name<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="source" style="width: 110px;"><span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Source<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="stock_number" style="width: 110px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Stock #<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="vials" style="width: 90px;"><span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}{{ m.units|capitalize }}<span class="dt-sort-indicator"></span></span></th>
+          <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+          <th class="sheet-pin sheet-pin-end" style="width: 100px;"><span class="sr-only">Actions</span></th>
+        </tr></thead>
+        <tbody>
+          {% for gt in genotypes %}
+            {% set n = active_counts.get(gt.genotype, 0) %}
+            <tr data-id="{{ gt.id }}" data-genotype="{{ gt.genotype }}" data-alias="{{ gt.alias }}" data-source="{{ gt.source }}" data-stock_number="{{ gt.stock_number }}" data-vials="{{ n }}">
+              <td><span class="sheet-cell-text ident" title="{{ gt.genotype }}">{{ gt.genotype }}</span></td>
+              <td><span class="sheet-cell-text">{{ gt.alias or '–' }}</span></td>
+              <td><span class="sheet-cell-text">{{ gt.source or '–' }}</span></td>
+              <td><span class="sheet-cell-text ident">{{ gt.stock_number or '–' }}</span></td>
+              <td><span class="sheet-cell-text tabular-nums">{{ n or '–' }}</span></td>
+              <td><span class="sheet-cell-text text-muted">{{ gt.notes }}</span></td>
+              <td class="sheet-pin sheet-pin-end">
+                <div class="sheet-actions">
+                  <button type="button" class="row-icon-btn" title="New {{ m.unit }} of this genotype" data-record-edit="unit-dialog"
+                          data-record-payload="{{ dict(new_payload, genotype=gt.genotype) | tojson | forceescape }}">{{ icon('plus') }}</button>
+                  <button type="button" class="row-icon-btn" title="Edit" data-record-edit="genotype-dialog"
+                          data-record-payload="{{ {'id': gt.id, '_label': gt.genotype, 'genotype': gt.genotype, 'alias': gt.alias, 'source': gt.source, 'stock_number': gt.stock_number, 'notes': gt.notes} | tojson | forceescape }}">{{ icon('edit') }}</button>
+                  <form method="post" action="{{ url_for('stocks.delete_genotype', key=key, gid=gt.id) }}" onsubmit="return confirm('Remove this genotype from the list?')">
+                    <button type="submit" class="row-icon-btn danger-button" title="Remove" {% if n %}disabled{% endif %}>{{ icon('trash') }}</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="7"><span class="dt-empty-msg">No genotypes yet. They appear as you label {{ m.units }}.</span></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="dt-bottom-bar"><span class="dt-bottom-count dt-count">{{ genotypes|length }} genotypes</span></div>
+  </section>
+
+  <dialog id="genotype-dialog" class="record-dialog">
+    <form method="post" data-record-form data-create-action="{{ url_for('stocks.save_genotype', key=key) }}" data-update-action="{{ url_for('stocks.save_genotype', key=key) }}"
+          data-new-title="New genotype" data-edit-title="Genotype" data-new-submit="Add" data-edit-submit="Save">
+      <header class="record-dialog-head"><div><h3 data-record-title>New genotype</h3>
+        <p class="record-dialog-sub">Renaming relabels every {{ m.unit }} (and cross parent) written with the old text.</p></div>
+        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button></header>
+      <div class="record-dialog-body">
+        <input type="hidden" name="id">
+        <label class="record-wide">Genotype <input name="genotype" required class="font-mono" autocomplete="off"></label>
+        <label>Short name <input name="alias" placeholder="e.g. elav>GFP"></label>
+        <label>Source <input name="source" list="stock-sources" placeholder="{{ 'BDSC, VDRC, own…' if m.kind == 'fly' else 'CGC, NBRP, own…' }}"></label>
+        <label>Stock # <input name="stock_number"></label>
+        <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+      </div>
+      <footer class="record-dialog-foot">
+        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" data-record-submit>Add</button>
+      </footer>
+    </form>
+  </dialog>
+  <datalist id="stock-sources">{% for s in (['BDSC', 'VDRC', 'Kyoto', 'NIG-FLY', 'own', 'gift'] if m.kind == 'fly' else ['CGC', 'NBRP', 'own', 'gift']) %}<option value="{{ s }}"></option>{% endfor %}</datalist>
+{% endif %}
+
+{# =====================================================================
+   INCUBATORS & RACKS
+   ===================================================================== #}
+{% if view == 'setup' %}
+  <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+    <section class="card">
+      <header class="card-head">
+        <h2>{{ icon('temperature') }} {{ m.rooms|capitalize }}</h2>
+        <button type="button" class="btn btn-sm" data-record-edit="incubator-dialog" data-record-payload='{"temperature": "{{ S.default_temperature }}"}'>{{ icon('plus') }} New {{ m.room }}</button>
+      </header>
+      <table class="dt">
+        <thead><tr><th>Name</th><th>Temperature</th><th>{{ m.racks_noun|capitalize }}</th><th></th></tr></thead>
+        <tbody>
+          {% for inc in incubators %}
+            <tr>
+              <td class="font-medium text-ink">{{ inc.name }}</td>
+              <td>{{ (inc.temperature ~ ' °C') if inc.temperature else '–' }}</td>
+              <td>{{ racks | selectattr('incubator_id_fk', 'equalto', inc.id) | list | length }}</td>
+              <td class="text-right">
+                <button type="button" class="row-icon-btn" title="Edit" data-record-edit="incubator-dialog"
+                        data-record-payload="{{ {'id': inc.id, '_label': inc.name, 'name': inc.name, 'temperature': inc.temperature, 'notes': inc.notes} | tojson | forceescape }}">{{ icon('edit') }}</button>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="dt-empty">No {{ m.rooms }} yet. Each {{ m.room }}'s temperature sets how often its {{ m.racks_noun }} are {{ S.flip_done|lower }} and when progeny emerge.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <header class="card-head">
+        <h2>{{ icon('box') }} {{ m.racks_noun|capitalize }}</h2>
+        <button type="button" class="btn btn-sm" data-record-edit="rack-dialog"
+                data-record-payload='{{ {"rows": S.rack_rows, "cols": S.rack_cols, "naming_mode": S.rack_naming.mode, "naming_rows": S.rack_naming.rows or "letters", "naming_cols": S.rack_naming.cols or "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1", "incubator_id": (incubators[0].id if incubators else ""), "last_flipped_on": today.isoformat()} | tojson }}'>{{ icon('plus') }} New {{ m.rack_noun }}</button>
+      </header>
+      <table class="dt">
+        <thead><tr><th>Name</th><th>{{ m.room|capitalize }}</th><th>Size</th><th>{{ m.units|capitalize }}</th><th>{{ S.flip_verb }} every</th><th>Last</th><th>Next</th><th></th></tr></thead>
+        <tbody>
+          {% for rr in rack_rows %}
+            {% set r = rr.rack %}
+            <tr>
+              <td class="font-medium text-ink">{{ r.name }}</td>
+              <td>{{ r.incubator.name if r.incubator else '–' }}</td>
+              <td class="tabular-nums">{{ r.rows }} × {{ r.cols }}</td>
+              <td class="tabular-nums">{{ rr.count }}</td>
+              <td>{{ rr.interval }} d{% if not r.flip_days %} <span class="text-sand-400">({{ rr.temp }} °C)</span>{% endif %}</td>
+              <td>{{ r.last_flipped_on.strftime('%d %b') if r.last_flipped_on else '–' }}</td>
+              <td>{% if rr.next %}<span class="next-due {% if rr.next < today %}is-overdue{% elif rr.next == today %}is-today{% endif %}">{{ rr.next | relative_day }}</span>{% else %}–{% endif %}</td>
+              <td class="whitespace-nowrap text-right">
+                <div class="flex items-center justify-end gap-1">
+                  <form method="post" action="{{ url_for('stocks.rack_flipped', key=key, rack_id=r.id) }}">
+                    <button type="submit" class="btn btn-sm" title="Record a {{ S.flip_verb|lower }} today">{{ icon('refresh') }} {{ S.flip_done }} today</button>
+                  </form>
+                  <button type="button" class="row-icon-btn" title="Edit" data-record-edit="rack-dialog" data-record-payload="{{ rr.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8" class="dt-empty">No {{ m.racks_noun }} yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <dialog id="incubator-dialog" class="record-dialog">
+    <form method="post" data-record-form data-create-action="{{ url_for('stocks.save_incubator', key=key) }}" data-update-action="{{ url_for('stocks.save_incubator', key=key) }}"
+          data-new-title="New {{ m.room }}" data-edit-title="{{ m.room|capitalize }} {label}" data-new-submit="Create" data-edit-submit="Save">
+      <header class="record-dialog-head"><div><h3 data-record-title>New {{ m.room }}</h3>
+        <p class="record-dialog-sub">Its temperature sets the {{ S.flip_verb|lower }} interval and development time of everything inside.</p></div>
+        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button></header>
+      <div class="record-dialog-body">
+        <input type="hidden" name="id">
+        <label>Name <input name="name" required placeholder="e.g. Incubator 25 A"></label>
+        <label>Temperature (°C)
+          <input name="temperature" list="stock-temps" inputmode="decimal">
+        </label>
+        <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+      </div>
+      <footer class="record-dialog-foot">
+        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" data-record-submit>Create</button>
+      </footer>
+    </form>
+    <form method="post" class="rack-delete" data-rack-delete="{{ url_for('stocks.delete_incubator', key=key, inc_id=0) }}" hidden
+          onsubmit="return confirm('Delete this {{ m.room }}? Its {{ m.racks_noun }} are kept.')">
+      <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash') }} Delete {{ m.room }}</button>
+      <span>Its {{ m.racks_noun }} and {{ m.units }} are kept.</span>
+    </form>
+  </dialog>
+{% endif %}
+
+{% if view in ('units', 'setup') %}
+  <datalist id="stock-temps">{% for t in m.temp_values %}<option value="{{ t }}"></option>{% endfor %}</datalist>
+  {% call rack_dialog('rack-dialog', url_for('stocks.save_rack', key=key), url_for('stocks.save_rack', key=key),
+                      url_for('stocks.delete_rack', key=key, rack_id=0), noun=m.rack_noun) %}
+    <label class="col-span-full">{{ m.room|capitalize }}
+      <select name="incubator_id">
+        <option value="">Not in a {{ m.room }}</option>
+        {% for inc in incubators %}<option value="{{ inc.id }}">{{ inc.name }}{% if inc.temperature %} · {{ inc.temperature }} °C{% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label>{{ S.flip_verb }} every (days) <input type="number" name="flip_days" min="1" max="120" placeholder="from temperature"></label>
+    <label>Last {{ S.flip_done|lower }} <input type="date" name="last_flipped_on"></label>
+  {% endcall %}
+{% endif %}
+
+{# =====================================================================
+   FROZEN (worms)
+   ===================================================================== #}
+{% if view == 'frozen' %}
+  <section class="data-table-card sheet" data-table-id="stock-{{ key }}-frozen" data-noun="lot" data-noun-plural="lots">
+    <div class="dt-toolbar">
+      <div class="dt-toolbar-search">{{ icon('search', 'search-icon') }}<input type="text" class="dt-search" placeholder="Search frozen stocks…" aria-label="Search"></div>
+      <p class="text-[12px] text-muted">Thaw one vial of each new lot to check it recovers. A lot without a passed thaw test is a lot you might not have.</p>
+      <div class="dt-toolbar-spacer"></div>
+      <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]" data-record-edit="frozen-dialog"
+              data-record-payload='{{ {"frozen_on": today.isoformat(), "vials": 4, "vials_left": 4, "owner": current_user.username} | tojson }}'>{{ icon('plus') }} New frozen lot</button>
+    </div>
+    <div class="dt-scroll">
+      <table class="dt sheet-table">
+        <thead><tr>
+          <th class="dt-sortable" data-sort-key="genotype" style="width: 280px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="frozen" style="width: 110px;"><span class="dt-col-head">{{ icon('snowflake', 'dt-col-icon') }}Frozen<span class="dt-sort-indicator"></span></span></th>
+          <th style="width: 90px;"><span class="dt-col-head">{{ icon('vials', 'dt-col-icon') }}Vials left</span></th>
+          <th style="width: 160px;"><span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Where</span></th>
+          <th style="width: 150px;"><span class="dt-col-head">{{ icon('check', 'dt-col-icon') }}Thaw test</span></th>
+          <th style="width: 80px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
+          <th style="min-width: 160px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+          <th class="sheet-pin sheet-pin-end" style="width: 120px;"><span class="sr-only">Actions</span></th>
+        </tr></thead>
+        <tbody>
+          {% for lot in frozen %}
+            <tr data-id="{{ lot.id }}" data-genotype="{{ lot.genotype }}" data-frozen="{{ lot.frozen_on or '' }}">
+              <td><span class="sheet-cell-text ident">{{ lot.genotype }}</span></td>
+              <td><span class="sheet-cell-text">{{ lot.frozen_on or '–' }}</span></td>
+              <td><span class="sheet-cell-text tabular-nums {% if lot.vials_left <= 1 %}font-semibold text-warn-700{% endif %}">{{ lot.vials_left }} / {{ lot.vials }}</span></td>
+              <td><span class="sheet-cell-text">{{ lot.location or '–' }}</span></td>
+              <td><span class="sheet-cell-text">
+                {% if lot.thaw_ok %}<span class="status-pill-static" data-status="in stock">recovered {{ lot.thaw_tested_on or '' }}</span>
+                {% elif lot.thaw_ok == false %}<span class="status-pill-static" data-status="empty">failed {{ lot.thaw_tested_on or '' }}</span>
+                {% else %}<span class="status-pill-static" data-status="low">not tested</span>{% endif %}
+              </span></td>
+              <td>{% if lot.owner %}{{ lot.owner | owner_badge }}{% endif %}</td>
+              <td><span class="sheet-cell-text text-muted">{{ lot.notes }}</span></td>
+              <td class="sheet-pin sheet-pin-end">
+                <div class="sheet-actions">
+                  <form method="post" action="{{ url_for('stocks.frozen_action', key=key, fid=lot.id, action='thaw') }}">
+                    <button type="submit" class="row-icon-btn" title="Thaw one onto a new {{ m.unit }}" {% if lot.vials_left <= 0 %}disabled{% endif %}>{{ icon('temperature') }}</button>
+                  </form>
+                  <button type="button" class="row-icon-btn" title="Edit" data-record-edit="frozen-dialog"
+                          data-record-payload="{{ {'id': lot.id, '_label': lot.genotype, 'genotype': lot.genotype, 'frozen_on': (lot.frozen_on or '')|string, 'vials': lot.vials, 'vials_left': lot.vials_left, 'location': lot.location, 'thaw_tested_on': (lot.thaw_tested_on or '')|string, 'thaw_ok': ('1' if lot.thaw_ok else '0' if lot.thaw_ok == false else ''), 'owner': lot.owner, 'notes': lot.notes} | tojson | forceescape }}">{{ icon('edit') }}</button>
+                  <form method="post" action="{{ url_for('stocks.frozen_action', key=key, fid=lot.id, action='delete') }}" onsubmit="return confirm('Delete this frozen lot record?')">
+                    <button type="submit" class="row-icon-btn danger-button" title="Delete">{{ icon('trash') }}</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td class="dt-empty" colspan="8"><span class="dt-empty-msg">No frozen stocks recorded.</span></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <dialog id="frozen-dialog" class="record-dialog">
+    <form method="post" data-record-form data-create-action="{{ url_for('stocks.save_frozen', key=key) }}" data-update-action="{{ url_for('stocks.save_frozen', key=key) }}"
+          data-new-title="New frozen lot" data-edit-title="Frozen {label}" data-new-submit="Add" data-edit-submit="Save">
+      <header class="record-dialog-head"><div><h3 data-record-title>New frozen lot</h3></div>
+        <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button></header>
+      <div class="record-dialog-body">
+        <input type="hidden" name="id">
+        <label class="record-wide">Genotype <input name="genotype" list="stock-genotypes" required class="font-mono"></label>
+        <label>Frozen on <input type="date" name="frozen_on"></label>
+        <label>Where <input name="location" placeholder="-80 box 3, LN₂ cane 2…"></label>
+        <label>Vials frozen <input type="number" name="vials" min="0"></label>
+        <label>Vials left <input type="number" name="vials_left" min="0"></label>
+        <label>Thaw tested on <input type="date" name="thaw_tested_on"></label>
+        <label>Recovered? <select name="thaw_ok"><option value="">Not tested</option><option value="1">Yes</option><option value="0">No</option></select></label>
+        <label>Owner <input name="owner" list="stock-owners"></label>
+        <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+      </div>
+      <footer class="record-dialog-foot">
+        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary" data-record-submit>Add</button>
+      </footer>
+    </form>
+  </dialog>
+{% endif %}
+
+{# =====================================================================
+   SETTINGS
+   ===================================================================== #}
+{% if view == 'settings' %}
+  <div class="grid max-w-[1000px] grid-cols-1 gap-3">
+    <form method="post" action="{{ url_for('stocks.save_settings', key=key) }}" class="flex flex-col gap-3">
+      <section class="card">
+        <header class="card-head"><h2>{{ icon('type') }} Name and words</h2><span class="badge badge-quiet">{{ 'Drosophila' if m.kind == 'fly' else 'C. elegans' }}</span></header>
+        <div class="grid grid-cols-1 gap-3.5 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label class="field-label sm:col-span-2">Name <input name="label" value="{{ m.label }}" required></label>
+          <label class="field-label sm:col-span-2">Description <input name="blurb" value="{{ m.blurb }}"></label>
+          <label class="field-label">One is a… <input name="unit_noun" value="{{ S.unit_noun }}"></label>
+          <label class="field-label">Many are… <input name="unit_noun_plural" value="{{ S.unit_noun_plural }}"></label>
+          <label class="field-label">Held in a… <input name="rack_noun" value="{{ S.rack_noun }}"></label>
+          <label class="field-label">…plural <input name="rack_noun_plural" value="{{ S.rack_noun_plural }}"></label>
+          <label class="field-label">Which sits in a… <input name="room_noun" value="{{ S.room_noun }}"></label>
+          <label class="field-label">…plural <input name="room_noun_plural" value="{{ S.room_noun_plural }}"></label>
+          <label class="field-label">Number prefix <input name="code_prefix" value="{{ S.code_prefix }}"></label>
+          <label class="field-label">Maintenance is called <input name="flip_verb" value="{{ S.flip_verb }}"></label>
+          <label class="field-label">…and once done <input name="flip_done" value="{{ S.flip_done }}"></label>
+          <label class="field-label">Egg collection is called <input name="collect_verb" value="{{ S.collect_verb }}"></label>
+          <label class="field-label">Progeny due is called <input name="ready_label" value="{{ S.ready_label }}"></label>
+          <label class="field-label">Cross, one side <input name="parent_female" value="{{ S.parents.female }}"></label>
+          <label class="field-label">Cross, other side <input name="parent_male" value="{{ S.parents.male }}"></label>
+          <label class="flex items-center gap-2 text-[12.5px] sm:col-span-2">
+            <input type="hidden" name="enabled" value="0"><input type="checkbox" name="enabled" value="1" {% if m.enabled %}checked{% endif %}> Show in the sidebar
+          </label>
+          <label class="flex items-center gap-2 text-[12.5px] sm:col-span-2">
+            <input type="hidden" name="frozen" value="0"><input type="checkbox" name="frozen" value="1" {% if S.frozen %}checked{% endif %}> Keep a frozen-stock list
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <header class="card-head"><h2>{{ icon('tag') }} Purposes</h2></header>
+        <div class="p-4">
+          <label class="field-label">One per line, as <code class="ident">key = Label</code>. <code class="ident">cross</code> and <code class="ident">progeny</code> drive the cross and egg-collection behaviour and are always kept.
+            <textarea name="purposes" rows="8" class="font-mono">{% for p in m.purposes %}{{ p.key }} = {{ p.label }}
+{% endfor %}</textarea>
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <header class="card-head"><h2>{{ icon('temperature') }} Temperatures and timing</h2></header>
+        <div class="overflow-x-auto p-4">
+          <p class="mb-3 text-[12.5px] leading-snug text-muted">
+            Per incubator temperature: days between {{ S.flip_verb|lower }}s of a {{ m.rack_noun }}, days from egg to adult
+            (when collected progeny are due), and days between egg collections from a cross.
+          </p>
+          <table class="field-editor" data-temp-table>
+            <thead><tr><th>°C</th><th>{{ S.flip_verb }} every</th><th>Egg → adult</th><th>Collect every</th><th>Default</th><th>Remove</th></tr></thead>
+            <tbody data-temp-body>
+              {% for t in m.temperatures + [{'temp': '', 'flip': '', 'develop': '', 'collect': ''}] %}
+                <tr data-temp-row>
+                  <td><input type="text" name="temp_{{ loop.index0 }}" value="{{ t.temp }}" class="w-16" aria-label="Temperature"></td>
+                  <td><input type="number" name="temp_{{ loop.index0 }}_flip" value="{{ t.flip }}" min="1" class="w-20" aria-label="Flip days"> d</td>
+                  <td><input type="number" name="temp_{{ loop.index0 }}_develop" value="{{ t.develop }}" min="1" class="w-20" aria-label="Development days"> d</td>
+                  <td><input type="number" name="temp_{{ loop.index0 }}_collect" value="{{ t.collect }}" min="1" class="w-20" aria-label="Collection days"> d</td>
+                  <td class="text-center">{% if t.temp %}<input type="radio" name="default_temperature" value="{{ t.temp }}" {% if t.temp|string == S.default_temperature|string %}checked{% endif %} aria-label="Default">{% endif %}</td>
+                  <td class="text-center">{% if t.temp %}<input type="checkbox" name="temp_{{ loop.index0 }}_remove" value="1" aria-label="Remove">{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <input type="hidden" name="temp_count" value="{{ m.temperatures|length + 1 }}">
+          <p class="mt-2 text-[11.5px] text-muted">Fill the empty row to add a temperature.</p>
+        </div>
+      </section>
+
+      <div class="flex justify-end gap-2"><button type="submit" class="btn btn-primary">Save</button></div>
+    </form>
+
+    <form method="post" action="{{ url_for('stocks.delete_module', key=key) }}" class="card border-danger-200">
+      <header class="card-head"><h2 class="text-danger-700">{{ icon('trash') }} Delete this database</h2></header>
+      <div class="flex flex-wrap items-end gap-3 p-4">
+        <p class="basis-full text-[12.5px] leading-snug text-muted">Deletes {{ m.label }} with every {{ m.unit }}, {{ m.rack_noun }}, {{ m.room }} and genotype in it. To keep the data but hide it, untick “Show in the sidebar” instead.</p>
+        <label class="field-label grow">Type “{{ m.label }}” to confirm <input name="confirm" autocomplete="off"></label>
+        <button type="submit" class="btn btn-danger">Delete</button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+{# ============================ VIAL DIALOG ============================ #}
+<dialog id="unit-dialog" class="record-dialog" aria-labelledby="unit-dialog-title">
+  <form method="post" data-record-form data-unit-form
+        data-create-action="{{ url_for('stocks.save_unit', key=key) }}" data-update-action="{{ url_for('stocks.save_unit', key=key) }}"
+        data-new-title="New {{ m.unit }}" data-edit-title="{{ m.unit|capitalize }} {label}"
+        data-new-submit="Create" data-edit-submit="Save">
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="unit-dialog-title" data-record-title>New {{ m.unit }}</h3>
+        <p class="record-dialog-sub">{{ m.label }} · the next {{ m.unit }} is {{ S.code_prefix }}{{ next_number }}. Type a genotype or pick one; new ones join the list.</p>
+      </div>
+      <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <input type="hidden" name="id">
+      <label class="record-wide">Genotype <input name="genotype" list="stock-genotypes" class="font-mono" autocomplete="off" placeholder="{{ 'w1118; UAS-GFP/CyO' if m.kind == 'fly' else 'unc-119(ed3) III; oxIs12' }}"></label>
+      <fieldset class="record-group">
+        <legend>{{ m.unit|capitalize }}</legend>
+        <label>Purpose <select name="purpose" data-purpose-select>{{ purpose_options() }}</select></label>
+        <label data-new-only>How many <input type="number" name="count" min="1" max="60" value="1"></label>
+        <label>Set up <input type="date" name="set_up_on"></label>
+        <label>Owner <input name="owner" list="stock-owners"></label>
+        <label>Generation <input name="generation" placeholder="e.g. F2"></label>
+      </fieldset>
+      <fieldset class="record-group" data-show-for="cross progeny">
+        <legend>Cross</legend>
+        <label>{{ S.parents.female }} <input name="female_genotype" list="stock-genotypes" class="font-mono" autocomplete="off"></label>
+        <label>{{ S.parents.male }} <input name="male_genotype" list="stock-genotypes" class="font-mono" autocomplete="off"></label>
+        <p class="col-span-full text-[11.5px] leading-snug text-muted" data-show-for="cross">
+          Use <strong>{{ S.collect_verb }}</strong> ({{ icon('egg', 'inline size-3') }} on the row, or in Schedule) to move the parents on and keep the eggs: a new {{ m.unit }} is made for the progeny, with this cross written on it.
+        </p>
+        <label data-show-for="progeny">{{ S.ready_label }} on <input type="date" name="ready_on"></label>
+      </fieldset>
+      <fieldset class="record-group" data-show-for="experiment">
+        <legend>Temperature shift</legend>
+        <label>Shift on <input type="date" name="shift_on"></label>
+        <label>Shift to (°C) <input name="shift_to" list="stock-temps-all" inputmode="decimal"></label>
+        <label>Score on <input type="date" name="score_on"></label>
+      </fieldset>
+      <fieldset class="record-group">
+        <legend>Where</legend>
+        <label>{{ m.rack_noun|capitalize }} <select name="rack_id">{{ rack_options() }}</select></label>
+        <label>Position <input name="position" class="font-mono" placeholder="blank = next free"></label>
+      </fieldset>
+      <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary" data-record-submit>Create</button>
+    </footer>
+  </form>
+</dialog>
+<datalist id="stock-temps-all">{% for t in m.temp_values %}<option value="{{ t }}"></option>{% endfor %}</datalist>
+{% endblock %}
+
+{% block body_end %}
+<script>
+  /* Inline autosave, shared with the other sheets. */
+  (function () {
+    const status = document.querySelector('[data-save-status]');
+    let clear = null;
+    const say = (state, text) => {
+      if (!status) return;
+      clearTimeout(clear);
+      status.dataset.state = state;
+      status.textContent = text;
+      if (state === 'saved') clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
+    };
+    const timers = new Map();
+    async function save(form) {
+      say('saving', 'Saving…');
+      try {
+        const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
+        if ('position' in body) {
+          form.querySelector('[name="rack_id_was"]').value = body.rack_id;
+          form.querySelector('[name="position_was"]').value = body.position;
+          const pos = document.querySelector(`[form="${form.id}"][name="position"]`);
+          if (pos && document.activeElement !== pos) pos.value = body.position;
+          const row = pos && pos.closest('tr');
+          const cell = row && row.querySelector('[data-incubator-cell]');
+          if (cell) cell.textContent = body.incubator || '–';
+        }
+        say('saved', 'All changes saved');
+      } catch (error) {
+        say('error', `Couldn’t save ${form.dataset.recordLabel || 'this change'}: ${error.message}`);
+      }
+    }
+    document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
+      const queue = (delay) => {
+        const form = document.getElementById(input.getAttribute('form'));
+        if (!form) return;
+        clearTimeout(timers.get(form.id));
+        timers.set(form.id, setTimeout(() => save(form), delay));
+      };
+      input.addEventListener('input', () => { if (input.tagName !== 'SELECT') queue(500); });
+      input.addEventListener('change', () => {
+        if (input.classList.contains('status-pill')) {
+          input.dataset.status = input.value;
+          const row = input.closest('tr');
+          if (row) row.dataset.purpose = input.value;
+        }
+        if (input.type === 'date') input.dataset.empty = input.value ? '0' : '1';
+        queue(0);
+      });
+    });
+    document.addEventListener('rack-grid:moved', (event) => {
+      const { id, rackId, position } = event.detail || {};
+      const form = document.getElementById(`unit-${id}`);
+      if (!form) return;
+      const set = (name, v) => { const el = document.querySelector(`[form="unit-${id}"][name="${name}"]`); if (el) el.value = v || ''; };
+      set('rack_id', rackId);
+      set('position', position);
+      form.querySelector('[name="rack_id_was"]').value = rackId || '';
+      form.querySelector('[name="position_was"]').value = position || '';
+    });
+  })();
+
+  /* Vial dialog: show the cross / experiment / progeny parts only for
+     that purpose, and "How many" only for new vials. */
+  (function () {
+    const dialog = document.getElementById('unit-dialog');
+    const form = dialog.querySelector('form');
+    const purpose = form.querySelector('[data-purpose-select]');
+    const sync = () => {
+      const p = purpose.value;
+      form.querySelectorAll('[data-show-for]').forEach((el) => {
+        el.hidden = !el.dataset.showFor.split(' ').includes(p);
+      });
+      const isNew = !form.elements.id.value;
+      form.querySelectorAll('[data-new-only]').forEach((el) => { el.hidden = !isNew; });
+    };
+    purpose.addEventListener('change', sync);
+    dialog.addEventListener('record-dialog:open', () => setTimeout(sync, 0));
+    sync();
+  })();
+</script>
+{% endblock %}
