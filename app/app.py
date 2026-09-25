@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import SessionLocal
-from . import access
+from . import access, positions
 # Importing this registers the SQLAlchemy flush listener that writes
 # audit_log rows for every tracked change; nothing here calls into it.
 from . import audit  # noqa: F401
@@ -77,12 +77,10 @@ from .services import (
     cage_derived_dates,
     cage_is_active,
     calculate_reagent_requirements,
-    cage_position_text,
     current_lab_usernames,
     mouse_is_active,
     mouse_racks,
     normalize_status,
-    parse_cage_position,
     sample_source_label,
     sample_sources,
     dropdown_options_map,
@@ -588,7 +586,13 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
         mouse.cage = None
 
     if mouse.cage is not None:
-        mouse.cage.cage_location = form.get("cage_location", mouse.cage.cage_location).strip()
+        # Rack, position and location note belong to the cage; see form_changed.
+        if form_changed(form, "cage_location"):
+            mouse.cage.cage_location = form.get("cage_location", "").strip()
+        if "cage_rack" in form and form_changed(form, "cage_rack", "cage_position"):
+            error = apply_cage_position(db_session, mouse.cage, form.get("cage_rack"), form.get("cage_position"))
+            if error:
+                flash(error, "error")
 
     transgenes = transgene_values_from_form(form)
     sync_mouse_transgenes(mouse, transgenes)
@@ -656,7 +660,7 @@ def _merged_choices(*groups) -> list[str]:
     return out
 
 
-def mouse_sheet_meta(mouse_rows: list[dict], dropdowns: dict) -> dict:
+def mouse_sheet_meta(mouse_rows: list[dict], dropdowns: dict, racks=()) -> dict:
     """What the mouse sheet needs beyond the rows themselves: the choices
     for its dropdown cells, and which transgene columns hold anything (an
     empty TG3/TG4 starts hidden, and one click brings it back)."""
@@ -669,6 +673,8 @@ def mouse_sheet_meta(mouse_rows: list[dict], dropdowns: dict) -> dict:
             (r["gender"] for r in mouse_rows)),
         "tg_used": [any(r[f"transgene_{n}"] for r in mouse_rows) for n in range(1, 5)],
         "active_count": sum(1 for r in mouse_rows if r["active"]),
+        "racks": [{"id": r.id, "name": r.name} for r in racks],
+        "location_notes_used": any(r["cage_location"] for r in mouse_rows),
     }
 
 
@@ -704,6 +710,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
 
         mouse_rows = [mouse_display_row(mouse, g.user.username if g.user else None, g.user.role if g.user else None) for mouse in mice]
         cage_racks = mouse_rack_payload(db_session, cages) if active_view == "cages" else None
+        sheet_racks = mouse_racks(db_session)
         # The sheet renders rows you may not edit as read-only, using the
         # same rule the update routes enforce, rather than letting an edit
         # appear to save and then be refused.
@@ -724,6 +731,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
                     "genotyping_date": derived["genotyping_date"],
                     "weaning_date": derived["weaning_date"],
                     "card_id": cage.card_id,
+                    "rack_id": cage.rack_id_fk,
+                    "position": cage_position_label(cage),
                     "genotype_summary": cage.genotype_summary,
                     "location_detail": cage.location_detail,
                     "room": cage.room,
@@ -802,7 +811,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         "active_view": active_view,
         "colony_views": COLONY_VIEWS,
         "mouse_rows": mouse_rows,
-        "mouse_sheet": mouse_sheet_meta(mouse_rows, dropdowns),
+        "mouse_sheet": mouse_sheet_meta(mouse_rows, dropdowns, sheet_racks),
         "cage_racks": cage_racks,
         "cage_rows": cage_rows,
         "litter_rows": litter_rows,
@@ -1714,7 +1723,11 @@ def update_mouse(mouse_row_id: int):
             create_transfer_copy(db_session, mouse, transfer_recipient, sender_username)
         stamp_updated(mouse)
         db_session.commit()
-    return autosave_response("mice")
+        state = cage_state(mouse.cage)
+    result = autosave_response("mice")
+    if request.headers.get("X-Autosave") == "1" and not isinstance(result, tuple):
+        return jsonify({"ok": True, "cage": state})
+    return result
 
 
 @app.route("/colony/mice/<int:mouse_row_id>/duplicate", methods=["POST"])
@@ -2197,37 +2210,107 @@ def create_cage():
         cage.room = request.form.get("room", "").strip()
         if not cage.owner and g.user:
             cage.owner = g.user.username
+        if "rack_id" in request.form:
+            error = apply_cage_position(db_session, cage, request.form.get("rack_id"), request.form.get("position"))
+            if error:
+                flash(f"Cage {cage.cage_id} was created but not placed: {error}", "error")
         db_session.commit()
     return autosave_response("cages")
 
 
 # ---- Cage racks -------------------------------------------------------------
-# A cage's position is its location text ("B-D7"); see services.parse_cage_position.
+# A cage sits at (rack_row, rack_col) of its rack; the rack's naming scheme
+# (app/positions.py) decides what that position is called: D7, 4-7, 37…
+
+
+def rack_naming_payload(rack) -> dict:
+    """What rack-grid.js needs to label a rack's rows, columns and cells."""
+    return positions.scheme(rack.naming)
 
 
 def _mouse_rack_from_form(db_session, rack, form) -> str | None:
     name = (form.get("name") or "").strip()
     if not name:
         return "A rack needs a name."
-    if re.search(r"[-/: ][A-Za-z]\d{1,2}$", name):
-        return f"“{name}” ends like a position (e.g. -D7), which would make locations ambiguous."
     clash = db_session.scalar(select(MouseRack.id).where(
         func.lower(MouseRack.name) == name.lower(), MouseRack.id != (rack.id or 0)))
     if clash:
         return f"There is already a rack called {name}."
-    rows = max(1, min(26, int(form.get("rows") or 8)))
-    cols = max(1, min(40, int(form.get("cols") or 10)))
-    old_name = rack.name
-    rack.name, rack.rows, rack.cols = name, rows, cols
+    rack.name = name
+    rack.rows = max(1, min(26, int(form.get("rows") or 8)))
+    rack.cols = max(1, min(40, int(form.get("cols") or 10)))
     rack.room = (form.get("room") or "").strip()
-    if old_name and old_name != name:
-        # Renaming keeps every cage in place: rewrite their location text.
-        racks = {old_name.lower(): rack}
-        for cage in db_session.scalars(select(CageRecord)):
-            placed = parse_cage_position(cage.cage_location, racks)
-            if placed:
-                cage.cage_location = cage_position_text(name, placed[1], placed[2])
+    rack.naming = json.dumps(positions.scheme_from_form(form))
     return None
+
+
+def form_changed(form, *names) -> bool:
+    """True when any of `names` was edited in this form.
+
+    Cage fields appear on many rows (every mouse in the cage has a Rack,
+    Position and Location note cell) and on the cage card. Each form also
+    sends `<name>_was`, the value it was showing; a field only counts as
+    edited when it differs. Without this, saving any other cell of a stale
+    row would post the old value and undo a change made in another row, on
+    the grid, or on the card. Forms without `_was` fields (dialogs) always
+    count as edited."""
+    for name in names:
+        if name not in form:
+            continue
+        was = form.get(f"{name}_was")
+        if was is None or form.get(name, "").strip() != was.strip():
+            return True
+    return False
+
+
+def cage_state(cage) -> dict | None:
+    """A cage's shared fields, returned after a save so the sheet can update
+    every row of that cage at once."""
+    if cage is None:
+        return None
+    return {"cage_id": cage.cage_id, "rack_id": cage.rack_id_fk or "",
+            "rack_name": cage.rack.name if cage.rack else "",
+            "position": cage_position_label(cage), "location": cage.cage_location}
+
+
+def apply_cage_position(db_session, cage, rack_raw, position_raw) -> str | None:
+    """Put `cage` in the rack and position a person typed; return an error
+    message instead of guessing. An empty rack takes the cage out of racks;
+    a rack with no position keeps it in that rack but unplaced. Typing a
+    position that another cage holds is refused rather than moving that
+    cage (dragging on the grid is how you swap)."""
+    rack_raw = str(rack_raw or "").strip()
+    position_raw = str(position_raw or "").strip()
+    if not rack_raw:
+        cage.rack_id_fk = cage.rack_row = cage.rack_col = None
+        return None
+    rack = db_session.get(MouseRack, int(rack_raw)) if rack_raw.isdigit() else db_session.scalar(
+        select(MouseRack).where(func.lower(MouseRack.name) == rack_raw.lower()))
+    if rack is None:
+        return f"There is no rack called {rack_raw}."
+    if not position_raw:
+        cage.rack_id_fk, cage.rack_row, cage.rack_col = rack.id, None, None
+        return None
+    cell = positions.parse(position_raw, rack.naming, rack.rows, rack.cols)
+    if cell is None:
+        first = positions.label(1, 1, rack.naming, rack.cols)
+        last = positions.label(rack.rows, rack.cols, rack.naming, rack.cols)
+        return f"“{position_raw}” is not a position in rack {rack.name} ({first}–{last})."
+    holder = db_session.scalar(select(CageRecord).where(
+        CageRecord.rack_id_fk == rack.id, CageRecord.rack_row == cell[0],
+        CageRecord.rack_col == cell[1], CageRecord.id != (cage.id or 0)))
+    if holder is not None:
+        name = positions.label(*cell, rack.naming, rack.cols)
+        return f"{rack.name} · {name} already holds cage {holder.cage_id}. Drag on the rack grid to swap."
+    cage.rack_id_fk, (cage.rack_row, cage.rack_col) = rack.id, cell
+    return None
+
+
+def cage_position_label(cage) -> str:
+    """"D7" under the cage's rack scheme, or "" when not placed."""
+    if cage is None or cage.rack is None:
+        return ""
+    return positions.label(cage.rack_row, cage.rack_col, cage.rack.naming, cage.rack.cols)
 
 
 @app.route("/colony/racks/save", methods=["POST"])
@@ -2253,12 +2336,13 @@ def save_mouse_rack():
 @app.route("/colony/racks/<int:rack_id>/delete", methods=["POST"])
 @login_required
 def delete_mouse_rack(rack_id: int):
-    """Delete a rack. Its cages keep their location text, which no longer
-    names a rack, so they show as unplaced; nothing else changes."""
+    """Delete a rack. Its cages are kept, just unplaced."""
     with SessionLocal() as db_session:
         rack = db_session.get(MouseRack, rack_id)
         if rack is not None:
             name = rack.name
+            for cage in db_session.scalars(select(CageRecord).where(CageRecord.rack_id_fk == rack.id)):
+                cage.rack_id_fk = cage.rack_row = cage.rack_col = None
             db_session.delete(rack)
             db_session.commit()
             flash(f"Deleted rack {name}. Its cages are now unplaced.", "success")
@@ -2278,7 +2362,8 @@ def place_cage(cage_row_id: int):
             return jsonify({"ok": False, "error": access.reason_denied(cage)}), 403
         rack_id = request.form.get("rack_id", "").strip()
         if not rack_id:
-            cage.cage_location = ""
+            # Dropped on the Unplaced tray: out of the rack altogether.
+            cage.rack_id_fk = cage.rack_row = cage.rack_col = None
             db_session.commit()
             return jsonify({"ok": True})
         rack = db_session.get(MouseRack, int(rack_id)) if rack_id.isdigit() else None
@@ -2288,15 +2373,14 @@ def place_cage(cage_row_id: int):
             return jsonify({"ok": False, "error": "Missing row or column."}), 400
         if rack is None or not (1 <= row <= rack.rows and 1 <= col <= rack.cols):
             return jsonify({"ok": False, "error": "That position is not in the rack."}), 400
-        target = cage_position_text(rack.name, row, col)
-        racks = {r.name.lower(): r for r in mouse_racks(db_session)}
-        for other in db_session.scalars(select(CageRecord).where(CageRecord.id != cage.id)):
-            placed = parse_cage_position(other.cage_location, racks)
-            if placed and placed[0].id == rack.id and placed[1:] == (row, col):
-                if not can_edit_cage(other):
-                    return jsonify({"ok": False, "error": f"{target} holds cage {other.cage_id}, which you may not move."}), 403
-                other.cage_location = cage.cage_location
-        cage.cage_location = target
+        holder = db_session.scalar(select(CageRecord).where(
+            CageRecord.rack_id_fk == rack.id, CageRecord.rack_row == row,
+            CageRecord.rack_col == col, CageRecord.id != cage.id))
+        if holder is not None:
+            if not can_edit_cage(holder):
+                return jsonify({"ok": False, "error": f"That position holds cage {holder.cage_id}, which you may not move."}), 403
+            holder.rack_id_fk, holder.rack_row, holder.rack_col = cage.rack_id_fk, cage.rack_row, cage.rack_col
+        cage.rack_id_fk, cage.rack_row, cage.rack_col = rack.id, row, col
         db_session.commit()
     return jsonify({"ok": True})
 
@@ -2304,24 +2388,23 @@ def place_cage(cage_row_id: int):
 def mouse_rack_payload(db_session, cages) -> dict:
     """Racks and the cages in scope, for the rack grid."""
     racks = mouse_racks(db_session)
-    by_name = {r.name.lower(): r for r in racks}
     items = []
     for cage in cages:
         live = [m for m in cage.mice if mouse_is_active(m)]
-        placed = parse_cage_position(cage.cage_location, by_name)
         strains = sorted({(m.transgene_1 or "").strip() for m in live if (m.transgene_1 or "").strip()})
-        sexes = "".join(sorted(m.gender[:1] for m in live if m.gender in ("F", "M")))
+        sexes = "".join(m.gender[:1] for m in live if m.gender in ("F", "M"))
+        where = f"{cage.rack.name} · {cage_position_label(cage)}" if cage.rack and cage.rack_row else ""
         items.append({
             "id": cage.id,
             "label": cage.cage_id,
             "sub": cage.genotype_summary or ", ".join(strains[:2]) or cage.purpose or "",
             "badge": f"{len(live)}" if live else "",
             "tone": normalize_status(cage.purpose) if live else "inactive",
-            "rack": placed[0].id if placed else None,
-            "row": placed[1] if placed else None,
-            "col": placed[2] if placed else None,
+            "rack": cage.rack_id_fk,
+            "row": cage.rack_row,
+            "col": cage.rack_col,
             "title": "\n".join(filter(None, [
-                f"Cage {cage.cage_id}" + (f" · {cage.cage_location}" if cage.cage_location else ""),
+                f"Cage {cage.cage_id}" + (f" · {where}" if where else ""),
                 cage.purpose, f"{len(live)} live ({sexes.count('F')}F {sexes.count('M')}M)" if live else "empty",
                 ", ".join(str(m.mouse_id) for m in live[:12]),
             ])),
@@ -2329,6 +2412,7 @@ def mouse_rack_payload(db_session, cages) -> dict:
                                 cage.genotype_summary, *strains, *(str(m.mouse_id) for m in live)]).lower(),
             "edit": {"data-record-edit": "cage-dialog", "data-record-payload": json.dumps({
                 "id": cage.id, "_label": cage.cage_id, "_locked": not can_edit_cage(cage),
+                "rack_id": cage.rack_id_fk or "", "position": cage_position_label(cage),
                 "cage_location": cage.cage_location, "purpose": cage.purpose, "room": cage.room,
                 "card_id": cage.card_id, "genotype_summary": cage.genotype_summary,
                 "location_detail": cage.location_detail, "notes": cage.notes,
@@ -2337,12 +2421,14 @@ def mouse_rack_payload(db_session, cages) -> dict:
         })
     return {
         "racks": [{"id": r.id, "name": r.name, "rows": r.rows, "cols": r.cols,
+                   "naming": rack_naming_payload(r),
                    "edit": {"data-record-payload": json.dumps({
                        "id": r.id, "_label": r.name, "name": r.name, "rows": r.rows,
-                       "cols": r.cols, "room": r.room})}} for r in racks],
+                       "cols": r.cols, "room": r.room,
+                       **{f"naming_{k}": v for k, v in rack_naming_payload(r).items()}})}} for r in racks],
         "items": items,
         "create": {"attrs": {"data-record-edit": "cage-dialog"}, "payload": {"purpose": "Experiments"},
-                   "text_field": "cage_location"},
+                   "rack_field": "rack_id", "text_field": "position"},
     }
 
 
@@ -2364,8 +2450,18 @@ def update_cage(cage_row_id: int):
         cage.genotype_summary = request.form.get("genotype_summary", "").strip()
         cage.location_detail = request.form.get("location_detail", "").strip()
         cage.room = request.form.get("room", "").strip()
+        if "rack_id" in request.form and form_changed(request.form, "rack_id", "position"):
+            error = apply_cage_position(db_session, cage, request.form.get("rack_id"), request.form.get("position"))
+            if error:
+                db_session.rollback()
+                flash(error, "error")
+                return autosave_response("cages")
         db_session.commit()
-    return autosave_response("cages")
+        state = cage_state(cage)
+    result = autosave_response("cages")
+    if request.headers.get("X-Autosave") == "1" and not isinstance(result, tuple):
+        return jsonify({"ok": True, "cage": state})
+    return result
 
 
 @app.route("/colony/cages/<int:cage_row_id>/add-mouse", methods=["POST"])
@@ -4796,7 +4892,7 @@ def _zebrafish_context(active_view: str):
         tank_rows = []
         for t in tanks:
             total = sum(f.count for f in t.fish if (f.status or "alive").lower() == "alive")
-            tank_rows.append({"row": t, "total_fish": total})
+            tank_rows.append({"row": t, "total_fish": total, "position": fish_position_label(t)})
 
         # Per-system most recent water log.
         latest_logs = {}
@@ -4835,9 +4931,11 @@ def _zebrafish_context(active_view: str):
     # 1-based and the page tells rack-grid.js to convert back.
     fish_racks = {
         "racks": [{"id": r.id, "name": r.name, "rows": r.rows, "cols": r.cols,
+                   "naming": positions.scheme(r.naming),
                    "edit": {"data-record-payload": json.dumps({
                        "id": r.id, "_label": r.name, "name": r.name, "rows": r.rows,
-                       "cols": r.cols, "system_id_fk": r.system_id_fk or ""})}} for r in racks],
+                       "cols": r.cols, "system_id_fk": r.system_id_fk or "",
+                       **{f"naming_{k}": v for k, v in positions.scheme(r.naming).items()}})}} for r in racks],
         "items": [{
             "id": tr["row"].id, "label": tr["row"].tank_id,
             "sub": tr["row"].line.name if tr["row"].line else tr["row"].purpose,
@@ -4856,14 +4954,13 @@ def _zebrafish_context(active_view: str):
                 "id": tr["row"].id, "_label": tr["row"].tank_id, "tank_id": tr["row"].tank_id,
                 "purpose": tr["row"].purpose, "line_id_fk": tr["row"].line_id_fk or "",
                 "owner": tr["row"].owner, "rack_id_fk": tr["row"].rack_id_fk or "",
-                "row": tr["row"].row if tr["row"].row is not None else "",
-                "col": tr["row"].col if tr["row"].col is not None else "",
+                "position": fish_position_label(tr["row"]),
                 "card_id": tr["row"].card_id, "notes": tr["row"].notes})},
         } for tr in tank_rows],
         "create": {"attrs": {"data-record-edit": "tank-dialog"},
                    "payload": {"tank_id": f"T{next_tank_n:03d}", "purpose": "stock",
                                "owner": g.user.username if g.user else ""},
-                   "rack_field": "rack_id_fk", "row_field": "row", "col_field": "col"},
+                   "rack_field": "rack_id_fk", "text_field": "position"},
     }
 
     return {
@@ -4900,6 +4997,39 @@ def zebrafish():
 # ---- Tanks -----------------------------------------------------------------
 
 
+def fish_position_label(tank) -> str:
+    """A tank's position under its rack's naming scheme ("C3"). Tanks store
+    0-based rows and columns."""
+    rack = tank.rack
+    if rack is None or tank.row is None or tank.col is None:
+        return ""
+    return positions.label(tank.row + 1, tank.col + 1, rack.naming, rack.cols)
+
+
+def apply_fish_position(s, tank, raw) -> str | None:
+    """Set a tank's row/col from a typed position; an error message instead
+    of a guess. Needs the tank's rack to be set first."""
+    raw = (raw or "").strip()
+    if not raw:
+        tank.row = tank.col = None
+        return None
+    rack = s.get(FishRack, tank.rack_id_fk) if tank.rack_id_fk else None
+    if rack is None:
+        return f"Pick a rack before giving a position (“{raw}” was not saved)."
+    cell = positions.parse(raw, rack.naming, rack.rows, rack.cols)
+    if cell is None:
+        return (f"“{raw}” is not a position in {rack.name} "
+                f"({positions.label(1, 1, rack.naming, rack.cols)}–{positions.label(rack.rows, rack.cols, rack.naming, rack.cols)}).")
+    row, col = cell[0] - 1, cell[1] - 1
+    holder = s.scalar(select(TankRecord).where(
+        TankRecord.rack_id_fk == rack.id, TankRecord.row == row, TankRecord.col == col,
+        TankRecord.id != (tank.id or 0)))
+    if holder is not None:
+        return f"{rack.name} · {raw} already holds tank {holder.tank_id}. Drag on the rack grid to swap."
+    tank.row, tank.col = row, col
+    return None
+
+
 @app.route("/zebrafish/tanks/create", methods=["POST"])
 @login_required
 def zebrafish_create_tank():
@@ -4913,7 +5043,7 @@ def zebrafish_create_tank():
             tank_id = f"T{n:03d}"
         rack_id = request.form.get("rack_id_fk") or None
         line_id = request.form.get("line_id_fk") or None
-        s.add(TankRecord(
+        tank = TankRecord(
             tank_id=tank_id,
             rack_id_fk=int(rack_id) if rack_id else None,
             row=int(request.form["row"]) if request.form.get("row") else None,
@@ -4923,9 +5053,14 @@ def zebrafish_create_tank():
             owner=request.form.get("owner", g.user.username if g.user else "").strip(),
             card_id=request.form.get("card_id", "").strip(),
             notes=request.form.get("notes", "").strip(),
-        ))
+        )
+        s.add(tank)
+        if "position" in request.form:
+            error = apply_fish_position(s, tank, request.form.get("position"))
+            if error:
+                flash(f"Tank {tank_id} was created but not placed: {error}", "error")
         s.commit()
-    return redirect(url_for("zebrafish", view="tanks"))
+    return autosave_response("zebrafish")
 
 
 @app.route("/zebrafish/tanks/<int:tank_row_id>/update", methods=["POST"])
@@ -4952,6 +5087,12 @@ def zebrafish_update_tank(tank_row_id: int):
             t.col = int(v) if v.isdigit() else None
         if "active" in request.form:
             t.active = request.form.get("active", "1") not in ("0", "false", "no", "off")
+        if "position" in request.form:
+            error = apply_fish_position(s, t, request.form.get("position"))
+            if error:
+                s.rollback()
+                flash(error, "error")
+                return autosave_response("zebrafish")
         s.commit()
     return autosave_response("zebrafish")
 
@@ -5176,6 +5317,7 @@ def zebrafish_create_rack():
             system_id_fk=int(sys_fk) if sys_fk else None,
             rows=int(request.form.get("rows", "8") or 8),
             cols=int(request.form.get("cols", "10") or 10),
+            naming=json.dumps(positions.scheme_from_form(request.form)),
             notes=request.form.get("notes", "").strip(),
         ))
         s.commit()
@@ -5198,6 +5340,8 @@ def zebrafish_update_rack(rack_id: int):
             sys_fk = request.form.get("system_id_fk")
             if sys_fk is not None:
                 r.system_id_fk = int(sys_fk) if sys_fk.isdigit() else None
+            if "naming_mode" in request.form:
+                r.naming = json.dumps(positions.scheme_from_form(request.form))
             s.commit()
             flash(f"Saved rack {r.name}.", "success")
     return redirect(url_for("zebrafish", view="tanks", mode="grid"))

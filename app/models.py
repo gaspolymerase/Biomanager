@@ -215,10 +215,8 @@ class LitterRecord(Base):
 
 
 class MouseRack(Base):
-    """A cage rack. Cages are placed by their location text, written as
-    `<rack>-<row letter><column>` (e.g. "B-D7"), so a location typed into
-    the mouse sheet and a cage dragged on the rack grid are the same thing,
-    and a location that names no rack simply shows as unplaced."""
+    """A cage rack. A cage sits in it at (rack_row, rack_col); the name of
+    that position ("D7", "4-7", "37"…) follows the rack's naming scheme."""
 
     __tablename__ = "mouse_racks"
 
@@ -228,6 +226,8 @@ class MouseRack(Base):
     cols: Mapped[int] = mapped_column(Integer, default=10)
     room: Mapped[str] = mapped_column(String(120), default="")
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # How positions are named (app/positions.py): letters/numbers, order…
+    naming: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -251,9 +251,14 @@ class CageRecord(Base):
     genotype_summary: Mapped[str] = mapped_column(String(200), default="")
     location_detail: Mapped[str] = mapped_column(String(120), default="")
     room: Mapped[str] = mapped_column(String(120), default="")
+    # Rack placement, 1-based. cage_location stays a free-text note.
+    rack_id_fk: Mapped[int | None] = mapped_column(ForeignKey("mouse_racks.id"), nullable=True, index=True)
+    rack_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rack_col: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     mice: Mapped[list["MouseRecord"]] = relationship(back_populates="cage")
+    rack: Mapped["MouseRack | None"] = relationship()
 
 
 class MouseRecord(Base):
@@ -541,6 +546,7 @@ class FishRack(Base):
     system_id_fk: Mapped[int | None] = mapped_column(ForeignKey("water_systems.id"), nullable=True)
     rows: Mapped[int] = mapped_column(Integer, default=8)
     cols: Mapped[int] = mapped_column(Integer, default=10)
+    naming: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

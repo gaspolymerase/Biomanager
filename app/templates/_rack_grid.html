@@ -6,8 +6,8 @@
 
 {% macro view_switch(key, table_label='Table', grid_label='Grid') %}
   <div class="dt-chips view-switch" data-view-switch="{{ key }}" role="group" aria-label="Layout">
-    <button type="button" class="dt-chip" data-layout="table" title="{{ table_label }}" aria-label="{{ table_label }}">{{ icon('table') }}</button>
-    <button type="button" class="dt-chip" data-layout="grid" title="{{ grid_label }}" aria-label="{{ grid_label }}">{{ icon('grid') }}</button>
+    <button type="button" class="dt-chip" data-layout="table">{{ icon('table') }}{{ table_label }}</button>
+    <button type="button" class="dt-chip" data-layout="grid">{{ icon('grid') }}{{ grid_label }}</button>
   </div>
 {% endmacro %}
 
@@ -25,7 +25,7 @@
       {% if rack_dialog_id %}
         <button type="button" class="btn btn-sm" data-rack-edit data-record-edit="{{ rack_dialog_id }}" hidden>{{ icon('edit') }} Edit</button>
         <button type="button" class="btn btn-sm" data-record-edit="{{ rack_dialog_id }}"
-                data-record-payload='{{ (new_rack_payload or {"rows": 8, "cols": 10}) | tojson }}'>{{ icon('plus') }} New {{ rack_noun }}</button>
+                data-record-payload='{{ dict({"rows": 8, "cols": 10, "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"}, **(new_rack_payload or {})) | tojson }}'>{{ icon('plus') }} New {{ rack_noun }}</button>
       {% endif %}
       <span class="rack-status" data-rack-status aria-live="polite"></span>
       <div class="dt-toolbar-search rack-search">
@@ -57,7 +57,7 @@
       <header class="record-dialog-head">
         <div>
           <h3 id="{{ id }}-title" data-record-title>New {{ noun }}</h3>
-          <p class="record-dialog-sub">Positions read as row letter and column number, e.g. <span class="ident">B-D7</span>.</p>
+          <p class="record-dialog-sub">Set its size and how its positions are named, to match the labels on the physical rack.</p>
         </div>
         <button type="button" class="modal-close" onclick="this.closest('dialog').close()" aria-label="Close">{{ icon('close') }}</button>
       </header>
@@ -70,6 +70,49 @@
           <label>Rows <input type="number" name="rows" min="1" max="26" required></label>
           <label>Columns <input type="number" name="cols" min="1" max="40" required></label>
           {{ caller() if caller else '' }}
+        </fieldset>
+        <fieldset class="record-group rack-naming" data-rack-naming>
+          <legend>Position names</legend>
+          <label>Numbering
+            <select name="naming_mode">
+              <option value="grid">Row and column (e.g. D7)</option>
+              <option value="sequential">One number per position (1, 2, 3…)</option>
+            </select>
+          </label>
+          <label>Start at
+            <select name="naming_start">
+              <option value="1">1</option>
+              <option value="0">0</option>
+            </select>
+          </label>
+          <label data-naming-grid>Rows are
+            <select name="naming_rows">
+              <option value="letters">Letters (A, B, C…)</option>
+              <option value="numbers">Numbers (1, 2, 3…)</option>
+            </select>
+          </label>
+          <label data-naming-grid>Columns are
+            <select name="naming_cols">
+              <option value="numbers">Numbers (1, 2, 3…)</option>
+              <option value="letters">Letters (A, B, C…)</option>
+            </select>
+          </label>
+          <label data-naming-grid>Written as
+            <select name="naming_order">
+              <option value="row_col">Row, then column (D7)</option>
+              <option value="col_row">Column, then row (7D)</option>
+            </select>
+          </label>
+          <label data-naming-grid>Between them
+            <select name="naming_separator">
+              <option value="">Nothing (D7)</option>
+              <option value="-">Hyphen (D-7)</option>
+              <option value=".">Dot (D.7)</option>
+              <option value=":">Colon (D:7)</option>
+              <option value="/">Slash (D/7)</option>
+            </select>
+          </label>
+          <p class="rack-naming-example col-span-full">Positions will read <span class="ident" data-naming-example>A1 · D7 · H10</span></p>
         </fieldset>
       </div>
       <footer class="record-dialog-foot">

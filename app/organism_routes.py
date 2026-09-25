@@ -33,6 +33,7 @@ from .models import (
 )
 from . import access
 from . import organism_service as svc
+from . import positions
 from .icons import housing_icon
 from .organisms import (
     AGE_UNITS,
@@ -63,11 +64,22 @@ MODULE_VIEWS = [
 ]
 
 
+# Header glyph for a custom field, by what kind of value it holds.
+FIELD_ICONS = {
+    "text": "type", "textarea": "note", "mono": "dna", "number": "count", "date": "calendar",
+    "select": "tag", "checkbox": "check", "user": "user", "line": "sitemap", "url": "link",
+}
+
+
+def field_icon(field) -> str:
+    return FIELD_ICONS.get(getattr(field, "field_type", ""), "type")
+
+
 @bp.app_context_processor
 def inject_helpers():
     """Helpers the module templates need. `age_label` renders an age in the
     unit the organism's community uses, which only the module knows."""
-    return {"age_label": svc.age_label}
+    return {"age_label": svc.age_label, "field_icon": field_icon}
 
 
 @bp.before_request
@@ -248,6 +260,7 @@ def module(key: str):
             "schedule_anchors": SCHEDULE_ANCHORS,
             "today": date.today().isoformat(),
             "metrics_text": svc.metrics_to_text(svc.measurement_metrics(mv)),
+            "housing_icon": housing_icon(mv.housing_noun),
         }
 
         lines = session.scalars(
@@ -277,6 +290,7 @@ def module(key: str):
             ctx["locations"] = svc.location_tree(session, row.id)
             ctx["occupancy"] = _occupancy(session, row.id)
             ctx["next_code"] = svc.next_code(session, row, "housing")
+            ctx["unit_positions"] = {u.id: housing_position_label(u) for u in housing}
             if mv.has("housing_grid"):
                 ctx["housing_racks"] = housing_rack_payload(
                     mv, ctx["locations"], housing, ctx["occupancy"], ctx["next_code"], ctx["today"])
@@ -431,8 +445,13 @@ def save_housing(key: str):
 
         row.code = (form.get("code") or "").strip() or svc.next_code(session, module, "housing")
         row.location_id_fk = _ref(session, OrgLocation, module.id, form.get("location_id_fk"))
-        row.row = _int(form.get("row"), 0) or None
-        row.col = _int(form.get("col"), 0) or None
+        if "position" in form:
+            error = _apply_position(session, row, form.get("position"))
+            if error:
+                flash(error, "error")
+        else:
+            row.row = _int(form.get("row"), 0) or None
+            row.col = _int(form.get("col"), 0) or None
         row.purpose = (form.get("purpose") or "").strip()
         row.line_id_fk = _ref(session, OrgLine, module.id, form.get("line_id_fk"))
         row.owner = (form.get("owner") or "").strip()
@@ -454,6 +473,41 @@ def save_housing(key: str):
         session.commit()
         flash(f"Saved {row.code}.", "success")
         return _redirect_back(key, "housing")
+
+
+def location_naming(location) -> dict:
+    return positions.scheme(svc.load_dict(location.settings).get("naming") if location else None)
+
+
+def housing_position_label(unit) -> str:
+    loc = unit.location
+    if loc is None or not loc.cols:
+        return ""
+    return positions.label(unit.row, unit.col, location_naming(loc), loc.cols)
+
+
+def _apply_position(session, unit, raw) -> str | None:
+    """Set a vial / plate's position from what was typed ("D7"), read with
+    its rack's naming scheme; an error message instead of a guess."""
+    raw = (raw or "").strip()
+    if not raw:
+        unit.row = unit.col = None
+        return None
+    loc = session.get(OrgLocation, unit.location_id_fk) if unit.location_id_fk else None
+    if loc is None or not loc.rows or not loc.cols:
+        return f"Pick a rack with rows and columns before giving a position (“{raw}” was not saved)."
+    cell = positions.parse(raw, location_naming(loc), loc.rows, loc.cols)
+    if cell is None:
+        n = location_naming(loc)
+        return (f"“{raw}” is not a position in {loc.name} "
+                f"({positions.label(1, 1, n, loc.cols)}–{positions.label(loc.rows, loc.cols, n, loc.cols)}).")
+    holder = session.scalar(select(OrgHousing).where(
+        OrgHousing.location_id_fk == loc.id, OrgHousing.row == cell[0],
+        OrgHousing.col == cell[1], OrgHousing.id != (unit.id or 0)))
+    if holder is not None:
+        return f"{loc.name} · {raw} already holds {holder.code}. Drag on the rack grid to swap."
+    unit.row, unit.col = cell
+    return None
 
 
 @bp.route("/<key>/housing/<int:unit_id>/place", methods=["POST"])
@@ -502,7 +556,7 @@ def housing_rack_payload(mv, locations, units, occupancy, next_code, today) -> d
         attrs = unit.attrs_dict
         payload = {
             "id": unit.id, "code": unit.code, "location_id_fk": unit.location_id_fk,
-            "row": unit.row, "col": unit.col, "purpose": unit.purpose,
+            "position": housing_position_label(unit), "purpose": unit.purpose,
             "line_id_fk": unit.line_id_fk, "owner": unit.owner,
             "protocol": unit.protocol, "card_id": unit.card_id,
             "established_on": unit.established_on.isoformat() if unit.established_on else "",
@@ -532,15 +586,16 @@ def housing_rack_payload(mv, locations, units, occupancy, next_code, today) -> d
         "racks": [{
             "id": loc.id,
             "name": f"{names[loc.parent_id_fk]} › {loc.name}" if loc.parent_id_fk in names else loc.name,
-            "rows": loc.rows, "cols": loc.cols,
+            "rows": loc.rows, "cols": loc.cols, "naming": location_naming(loc),
             "edit": {"data-record-payload": json.dumps({
                 "id": loc.id, "_label": loc.name, "name": loc.name, "rows": loc.rows,
-                "cols": loc.cols, "kind": loc.kind, "parent_id_fk": loc.parent_id_fk or ""})},
+                "cols": loc.cols, "kind": loc.kind, "parent_id_fk": loc.parent_id_fk or "",
+                **{f"naming_{k}": v for k, v in location_naming(loc).items()}})},
         } for loc in racks],
         "items": items,
         "create": {"attrs": {"data-org-edit": "housing-dialog"},
                    "payload": {"code": next_code, "established_on": today},
-                   "rack_field": "location_id_fk", "row_field": "row", "col_field": "col"},
+                   "rack_field": "location_id_fk", "text_field": "position"},
     }
 
 
@@ -701,6 +756,10 @@ def save_location(key: str):
         row.rows = _int(form.get("rows"), 0) or None
         row.cols = _int(form.get("cols"), 0) or None
         row.notes = (form.get("notes") or "").strip()
+        if "naming_mode" in form:
+            settings = svc.load_dict(row.settings)
+            settings["naming"] = positions.scheme_from_form(form)
+            row.settings = svc.dump(settings)
         session.commit()
         flash(f"Saved {row.name}.", "success")
         return _redirect_back(key, "housing")

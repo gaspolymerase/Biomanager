@@ -775,6 +775,10 @@
      either an inline SVG injected by data-table.js (date/status/check/list)
      or a typographic marker for the plain types. */
   .dt-col-head { @apply flex items-center gap-1.5; }
+  /* Each header carries a glyph for what the column holds (sex, age, DNA,
+     rack…), drawn from the sprite. */
+  .dt-col-icon { @apply size-[12px] shrink-0 text-sand-400; }
+  th:hover .dt-col-icon { @apply text-sand-500; }
   .dt-col-type {
     @apply inline-flex size-[14px] shrink-0 items-center justify-center text-sand-400;
   }
@@ -1750,8 +1754,10 @@
 
 @layer components {
 
-  .view-switch .dt-chip { @apply w-8 justify-center px-0; }
-  .view-switch .dt-chip svg { @apply size-[14px]; }
+  .view-switch .dt-chip { @apply gap-1.5 px-2.5; }
+  .rack-chips { @apply flex flex-wrap items-center gap-1.5; }
+  .rack-chips-label { @apply text-[11px] font-semibold uppercase tracking-[0.07em] text-sand-400; }
+  .view-switch .dt-chip svg { @apply size-[13px]; }
 
   .rack-view { @apply flex flex-col; }
   .rack-bar { @apply flex flex-wrap items-center gap-2 border-b border-sand-100 px-3 py-2.5; }
@@ -1781,8 +1787,17 @@
     @apply grid flex-1 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-transparent
            transition-colors;
   }
-  .rack-cell-add svg { @apply size-3.5; }
+  .rack-cell-add svg { @apply hidden size-3.5; }
   .rack-cell:hover .rack-cell-add { @apply bg-brand-50/70 text-brand-600; }
+  .rack-cell:hover .rack-cell-add svg { @apply block; }
+  .rack-cell:hover .rack-cell-add .rack-cell-name { @apply hidden; }
+  /* An empty cell shows its own name, faintly, so the grid reads like the
+     labels on the physical rack. */
+  .rack-cell-name {
+    @apply m-auto select-none font-mono text-[10.5px] font-medium text-sand-300 tabular-nums;
+  }
+  .rack-naming-example { @apply rounded-lg bg-sand-50 px-3 py-2 text-[12px] text-muted; }
+  .rack-naming-example .ident { @apply font-semibold text-ink; }
   .rack-empty { @apply col-span-full py-16 text-center text-[12.5px] text-muted; }
 
   .rack-tray { @apply flex flex-col gap-2 self-start rounded-xl border border-dashed border-sand-300 p-3; }
