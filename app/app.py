@@ -3670,7 +3670,9 @@ def global_search():
         else:
             plasmid_stmt = plasmid_stmt.where(
                 PlasmidRecord.name.ilike(like) | PlasmidRecord.backbone.ilike(like)
-                | PlasmidRecord.insert_seq.ilike(like) | PlasmidRecord.notes.ilike(like)
+                | PlasmidRecord.insert_seq.ilike(like) | PlasmidRecord.resistance.ilike(like)
+                | PlasmidRecord.owner.ilike(like) | PlasmidRecord.storage_box.ilike(like)
+                | PlasmidRecord.location.ilike(like) | PlasmidRecord.notes.ilike(like)
             )
         for p in db_session.scalars(plasmid_stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(limit)).all():
             results.append({
@@ -3678,7 +3680,7 @@ def global_search():
                 "id": p.plasmid_id,
                 "label": f"Plasmid #{p.plasmid_id} · {p.name or '(no name)'}",
                 "sublabel": f"{p.backbone or '?'} · {p.resistance or 'no resistance'} · {p.owner or 'no owner'}",
-                "url": url_for("plasmids"),
+                "url": url_for("plasmid_detail", row_id=p.id),
             })
 
         # Every lab inventory: samples, orders, reagents, antibodies, custom.
@@ -3818,17 +3820,31 @@ def csv_import(entity: str):
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"row {idx}: {exc}")
         elif entity == "plasmid":
+            # Numbers for rows without one come from a counter that skips
+            # numbers already used (in the database or earlier in the file);
+            # re-reading max() per row double-counted rows already added.
+            taken = set(db_session.scalars(select(PlasmidRecord.plasmid_id)))
+            next_free = max(taken, default=0) + 1
+            if not dry_run:
+                batch_ctx = audit.batch(db_session, "create", f"import plasmids from {upload.filename}", "plasmids")
+                batch_ctx.__enter__()
             for idx, row in enumerate(rows, start=2):
                 try:
                     pid_raw = (row.get("plasmid_id") or "").strip()
-                    pid_value = int(pid_raw) if pid_raw else ((db_session.scalar(select(func.max(PlasmidRecord.plasmid_id))) or 0) + 1 + (created if not dry_run else 0))
-                    if not pid_raw and dry_run:
-                        # in dry-run, we still want unique-ish ids in preview
-                        pid_value = (db_session.scalar(select(func.max(PlasmidRecord.plasmid_id))) or 0) + 1 + created
-                    existing = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == pid_value))
-                    if existing is not None:
+                    if pid_raw:
+                        if not pid_raw.isdigit() or int(pid_raw) < 1:
+                            raise ValueError(f"plasmid_id “{pid_raw}” is not a whole number above zero")
+                        pid_value = int(pid_raw)
+                    else:
+                        while next_free in taken:
+                            next_free += 1
+                        pid_value = next_free
+                    if pid_value in taken:
                         errors.append(f"row {idx}: plasmid_id {pid_value} already exists")
                         continue
+                    if not (row.get("name") or "").strip():
+                        raise ValueError("no name")
+                    taken.add(pid_value)
                     p = PlasmidRecord(
                         plasmid_id=pid_value,
                         name=(row.get("name") or "").strip(),
@@ -3845,6 +3861,8 @@ def csv_import(entity: str):
                     created += 1
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"row {idx}: {exc}")
+            if not dry_run:
+                batch_ctx.__exit__(None, None, None)
         elif entity == "order":
             # Orders are an inventory now; import into the one the page named.
             from . import inventory_service as inventories
@@ -4406,100 +4424,379 @@ def notebook_search_entity(entity_type: str):
         return jsonify({"ok": False, "error": f"Unknown entity type: {entity_type}"}), 400
 
 
+# ---------------------------------------------------------------------------
+# Plasmids: the sheet, box grid and list (/plasmids), the detail page with
+# the sequence editor (/plasmids/<id>), and the writes behind them.
+#
+# Every write checks access.can_edit: a plasmid is its owner's (or anyone's
+# while unowned); admins can change anything. Box positions are 0-based
+# row/column pairs, shown as a row letter and a 1-based column ("B4"), the
+# way the box grid labels its cells.
+# ---------------------------------------------------------------------------
+
+PLASMID_BOX_MAX = 20   # the largest box the grid draws, rows and columns
+PLASMID_BOX_FILL = 9   # the grid's default box size; batch moves fill this
+PLASMID_ROW_LETTERS = "ABCDEFGHIJKLMNOPQRST"
+_PLASMID_POSITION_RE = re.compile(r"^([A-Za-z])\s*-?\s*(\d{1,2})$")
+
+
+def plasmid_position_label(p) -> str:
+    if p.box_row is None or p.box_col is None:
+        return ""
+    row = p.box_row
+    letter = PLASMID_ROW_LETTERS[row] if 0 <= row < len(PLASMID_ROW_LETTERS) else f"{row + 1}-"
+    return f"{letter}{p.box_col + 1}"
+
+
+def parse_plasmid_position(raw: str) -> tuple[int | None, int | None]:
+    """"B4" → (1, 3). Blank → (None, None). Raises ValueError with a message
+    worth showing for anything else, including cells outside the box."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None, None
+    m = _PLASMID_POSITION_RE.match(raw)
+    if not m:
+        raise ValueError(f"“{raw}” is not a box position. Use a row letter and a column number, like B4.")
+    row = ord(m.group(1).upper()) - ord("A")
+    col = int(m.group(2)) - 1
+    if not (0 <= row < PLASMID_BOX_MAX and 0 <= col < PLASMID_BOX_MAX):
+        raise ValueError(f"{raw.upper()} is outside the box (rows A–T, columns 1–{PLASMID_BOX_MAX}).")
+    return row, col
+
+
+def _plasmid_denied(p) -> str:
+    owner = (p.owner or "").strip() or "someone else"
+    return f"Plasmid #{p.plasmid_id} belongs to {owner}. Ask them, or an admin, to change it."
+
+
+def _plasmid_label(p) -> str:
+    return f"#{p.plasmid_id}" + (f" {p.name}" if p.name else "")
+
+
+def _next_plasmid_id(db_session) -> int:
+    return (db_session.scalar(select(func.max(PlasmidRecord.plasmid_id))) or 0) + 1
+
+
+def _plasmid_at(db_session, box: str, row: int, col: int, other_than=None):
+    """The plasmid in a cell, if any (other than `other_than`). Runs without
+    autoflush, so a plasmid being created is not inserted by the lookup."""
+    stmt = select(PlasmidRecord).where(PlasmidRecord.storage_box == box, PlasmidRecord.box_row == row,
+                                       PlasmidRecord.box_col == col)
+    if other_than is not None and other_than.id is not None:
+        stmt = stmt.where(PlasmidRecord.id != other_than.id)
+    with db_session.no_autoflush:
+        return db_session.scalar(stmt)
+
+
+def _place_plasmid(db_session, p, box: str, row: int | None, col: int | None, swap: bool = False) -> str | None:
+    """Put `p` at (box, row, col), or unplaced in `box` when row/col is None.
+    Refuses cells outside the box and occupied cells, unless `swap`, when
+    the occupant takes p's old place (if the user may move it). Returns a
+    message on refusal, having changed nothing."""
+    box = (box or "").strip()[:80]
+    if not box or row is None or col is None:
+        p.storage_box, p.box_row, p.box_col = box, None, None
+        return None
+    if not (0 <= row < PLASMID_BOX_MAX and 0 <= col < PLASMID_BOX_MAX):
+        return f"That cell is outside the box (rows A–T, columns 1–{PLASMID_BOX_MAX})."
+    holder = _plasmid_at(db_session, box, row, col, p)
+    if holder is not None:
+        where = f"{PLASMID_ROW_LETTERS[row]}{col + 1} in {box}"
+        if not swap:
+            return f"{where} already holds plasmid #{holder.plasmid_id}."
+        if not access.can_edit(holder):
+            return f"{where} holds plasmid #{holder.plasmid_id}, which you may not move."
+        # The occupant takes p's old cell; a plasmid coming from the tray
+        # leaves the occupant unplaced in the same box.
+        if p.box_row is not None and p.box_col is not None and p.storage_box:
+            holder.storage_box, holder.box_row, holder.box_col = p.storage_box, p.box_row, p.box_col
+        else:
+            holder.box_row = holder.box_col = None
+        stamp_updated(holder)
+    p.storage_box, p.box_row, p.box_col = box, row, col
+    return None
+
+
+def _free_plasmid_cells(db_session, box: str, exclude_ids=()) -> list[tuple[int, int]]:
+    taken = {
+        (r, c) for r, c in db_session.execute(
+            select(PlasmidRecord.box_row, PlasmidRecord.box_col)
+            .where(PlasmidRecord.storage_box == box, PlasmidRecord.box_row.is_not(None),
+                   PlasmidRecord.id.not_in(list(exclude_ids) or [0]))
+        )
+    }
+    return [(r, c) for r in range(PLASMID_BOX_FILL) for c in range(PLASMID_BOX_FILL) if (r, c) not in taken]
+
+
+def _submitted_sequence(file_field: str) -> tuple[dict | None, str]:
+    """The sequence a form sent, as (parsed, problem). Both are empty when
+    nothing was sent; a file or text that is not a sequence gives a problem
+    instead of being quietly ignored."""
+    from .sequence_parser import parse_sequence_bytes, parse_sequence_text
+
+    upload = request.files.get(file_field)
+    if upload is not None and upload.filename:
+        parsed = parse_sequence_bytes(upload.read(), upload.filename)
+        if not parsed or not parsed.get("sequence"):
+            return None, (f"{upload.filename} is not a sequence file this app can read "
+                          f"(SnapGene .dna, GenBank or FASTA).")
+        return parsed, ""
+    raw_text = (request.form.get("sequence_text") or "").strip()
+    if raw_text:
+        parsed = parse_sequence_text(raw_text)
+        if not parsed or not parsed.get("sequence"):
+            return None, ("The pasted text is not a sequence. Paste FASTA, GenBank, "
+                          "or bases only (IUPAC letters).")
+        return parsed, ""
+    return None, ""
+
+
+def _apply_parsed_sequence(p, parsed: dict) -> None:
+    p.full_sequence = parsed["sequence"]
+    p.is_circular = bool(parsed.get("is_circular"))
+    p.features_json = json.dumps(parsed.get("features") or [])
+    p.sequence_format = parsed.get("format", "")
+    p.sequence_uploaded_at = datetime.utcnow()
+
+
+def _plasmid_values(p) -> dict:
+    """What the sheet shows for a row, as the server now has it."""
+    return {
+        "name": p.name, "backbone": p.backbone, "insert_seq": p.insert_seq,
+        "resistance": p.resistance, "owner": p.owner, "location": p.location,
+        "notes": p.notes, "storage_box": p.storage_box or "", "position": plasmid_position_label(p),
+    }
+
+
+def _plasmid_stored(p) -> bool:
+    """Physically stored: it has a cell in a box."""
+    return bool(p.storage_box) and p.box_row is not None and p.box_col is not None
+
+
+def _plasmid_payload(p, editable: bool) -> dict:
+    """The record dialog's view of a plasmid (see static/record-dialog.js)."""
+    values = _plasmid_values(p)
+    return {
+        "id": p.id, "_label": _plasmid_label(p), "_locked": not editable,
+        "plasmid_id": p.plasmid_id, **values,
+        "storage_box_was": values["storage_box"], "position_was": values["position"],
+    }
+
+
+def _plasmid_back(row_id: int | None = None):
+    """Back to the page the form was on (this site only), else the plasmid."""
+    referrer = request.referrer or ""
+    if referrer.startswith(request.host_url):
+        return redirect(referrer)
+    if row_id:
+        return redirect(url_for("plasmid_detail", row_id=row_id))
+    return redirect(url_for("plasmids"))
+
+
+def _plasmid_int(raw) -> int | None:
+    raw = (raw or "").strip()
+    return int(raw) if raw.lstrip("-").isdigit() else None
+
+
 @app.route("/plasmids", methods=["GET", "POST"])
 @login_required
 def plasmids():
     if request.method == "POST":
-        import json as _json
-        from .sequence_parser import parse_sequence_bytes, parse_sequence_text
-
-        # Optional sequence: a file upload (.dna/.gbk/.fasta/...) or pasted text.
-        parsed = None
-        upload = request.files.get("sequence_file")
-        if upload is not None and upload.filename:
-            parsed = parse_sequence_bytes(upload.read(), upload.filename)
-        if parsed is None:
-            raw_text = (request.form.get("sequence_text") or "").strip()
-            if raw_text:
-                parsed = parse_sequence_text(raw_text)
-
-        def _int_or_none(s: str):
-            s = (s or "").strip()
-            return int(s) if s.lstrip("-").isdigit() else None
-
-        with SessionLocal() as db_session:
-            plasmid_id_raw = request.form.get("plasmid_id", "").strip()
-            if not plasmid_id_raw:
-                max_existing = db_session.scalar(select(func.max(PlasmidRecord.plasmid_id))) or 0
-                plasmid_id_value = max_existing + 1
-            else:
-                plasmid_id_value = int(plasmid_id_raw)
-            existing = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == plasmid_id_value))
-            if existing is None:
-                name = request.form.get("name", "").strip() or (parsed.get("name") if parsed else "")
-                record = PlasmidRecord(
-                    plasmid_id=plasmid_id_value,
-                    name=name,
-                    backbone=request.form.get("backbone", "").strip(),
-                    insert_seq=request.form.get("insert_seq", "").strip(),
-                    resistance=request.form.get("resistance", "").strip(),
-                    owner=request.form.get("owner", g.user.username if g.user else "").strip(),
-                    location=request.form.get("location", "").strip(),
-                    notes=request.form.get("notes", "").strip(),
-                    storage_box=request.form.get("storage_box", "").strip(),
-                    box_row=_int_or_none(request.form.get("box_row", "")),
-                    box_col=_int_or_none(request.form.get("box_col", "")),
-                )
-                if parsed and parsed.get("sequence"):
-                    record.full_sequence = parsed["sequence"]
-                    record.is_circular = bool(parsed.get("is_circular"))
-                    record.features_json = _json.dumps(parsed.get("features") or [])
-                    record.sequence_format = parsed.get("format", "")
-                    record.sequence_uploaded_at = datetime.utcnow()
-                db_session.add(record)
-                db_session.commit()
-                if parsed and parsed.get("sequence"):
-                    flash(
-                        f"Added plasmid #{plasmid_id_value} with {parsed['format'].upper()} sequence "
-                        f"({len(parsed['sequence'])} bp · {len(parsed.get('features') or [])} features).",
-                        "success",
-                    )
-        return redirect(url_for("plasmids"))
+        return _create_plasmid()
+    me = g.user.username
     with SessionLocal() as db_session:
-        rows = db_session.scalars(select(PlasmidRecord).order_by(PlasmidRecord.plasmid_id.desc())).all()
-        next_id = (db_session.scalar(select(func.max(PlasmidRecord.plasmid_id))) or 0) + 1
-        # Collect the distinct list of box names that have any plasmid in
-        # them — feeds the box selector dropdown in the grid view.
-        boxes = sorted({(p.storage_box or "").strip() for p in rows if (p.storage_box or "").strip()})
+        records = db_session.scalars(select(PlasmidRecord).order_by(PlasmidRecord.plasmid_id.desc())).all()
+        rows = []
+        for p in records:
+            editable = access.can_edit(p)
+            rows.append({
+                "p": p, "editable": editable, "mine": p.owner == me,
+                "stored": _plasmid_stored(p), "position": plasmid_position_label(p),
+                "length": len(p.full_sequence or ""),
+                "payload": _plasmid_payload(p, editable),
+            })
+        next_id = _next_plasmid_id(db_session)
+        usernames = current_lab_usernames(db_session)
+        # Every box name in use feeds the box pickers and the grid's selector.
+        boxes = sorted({(p.storage_box or "").strip() for p in records if (p.storage_box or "").strip()})
         active_box = (request.args.get("box") or "").strip()
         if not active_box and boxes:
             active_box = boxes[0]
+        counts = {
+            "all": len(rows),
+            "mine": sum(1 for r in rows if r["mine"]),
+            "sequence": sum(1 for r in rows if r["length"]),
+            "stored": sum(1 for r in rows if r["stored"]),
+        }
     return render_template(
         "plasmids.html",
-        plasmids=rows,
+        rows=rows,
+        counts=counts,
+        usernames=usernames,
         next_plasmid_id=next_id,
         boxes=boxes,
         active_box=active_box,
+        box_max=PLASMID_BOX_MAX,
     )
+
+
+def _create_plasmid():
+    """New plasmid from the dialog. The number comes from the server when
+    the one the dialog offered was taken meanwhile; a sequence that cannot
+    be read, or a box cell that is taken, is reported rather than dropped
+    in silence (the plasmid itself is still created)."""
+    form = request.form
+    parsed, seq_problem = _submitted_sequence("sequence_file")
+
+    raw_id = (form.get("plasmid_id") or "").strip()
+    if raw_id and (not raw_id.isdigit() or int(raw_id) < 1):
+        flash(f"“{raw_id}” is not a plasmid number. Leave it blank for the next free one.", "error")
+        return redirect(url_for("plasmids"))
+    requested = int(raw_id) if raw_id else None
+
+    name = (form.get("name") or "").strip()[:200] or ((parsed or {}).get("name") or "")[:200]
+    if not name:
+        flash("Give the plasmid a name.", "error")
+        return redirect(url_for("plasmids"))
+
+    # Where it is stored: "position" (B4) from the dialog, or the older
+    # 0-based box_row / box_col pair.
+    box = (form.get("storage_box") or "").strip()[:80]
+    position_problem = ""
+    row = col = None
+    try:
+        if (form.get("position") or "").strip():
+            row, col = parse_plasmid_position(form.get("position"))
+        elif (form.get("box_row") or "").strip() or (form.get("box_col") or "").strip():
+            row, col = _plasmid_int(form.get("box_row")), _plasmid_int(form.get("box_col"))
+            if row is None or col is None:
+                raise ValueError("A box position needs both a row and a column.")
+    except ValueError as exc:
+        position_problem = str(exc)
+        row = col = None
+    if row is not None and not box:
+        position_problem = "A position needs a box; the plasmid was saved without one."
+        row = col = None
+
+    notes: list[str] = []
+    for _attempt in range(3):
+        with SessionLocal() as db_session:
+            plasmid_id = requested or _next_plasmid_id(db_session)
+            if requested and db_session.scalar(select(PlasmidRecord.id).where(PlasmidRecord.plasmid_id == requested)):
+                plasmid_id = _next_plasmid_id(db_session)
+            record = PlasmidRecord(
+                plasmid_id=plasmid_id,
+                name=name,
+                backbone=(form.get("backbone") or "").strip()[:200],
+                insert_seq=(form.get("insert_seq") or "").strip()[:200],
+                resistance=(form.get("resistance") or "").strip()[:80],
+                owner=form.get("owner", g.user.username).strip()[:120],
+                location=(form.get("location") or "").strip()[:120],
+                notes=(form.get("notes") or "").strip(),
+            )
+            problem = _place_plasmid(db_session, record, box, row, col)
+            if problem:
+                record.storage_box, record.box_row, record.box_col = box, None, None
+                position_problem = f"{problem} The new plasmid is in {box} but not placed."
+            db_session.add(record)
+            if parsed:
+                _apply_parsed_sequence(record, parsed)
+            stamp_updated(record)
+            try:
+                db_session.commit()
+            except IntegrityError:
+                # Someone took the number between our check and the commit.
+                db_session.rollback()
+                requested = None
+                continue
+            saved_id, row_id = record.plasmid_id, record.id
+            break
+    else:
+        flash("Couldn’t allocate a plasmid number. Try again.", "error")
+        return redirect(url_for("plasmids"))
+
+    if raw_id and saved_id != int(raw_id):
+        notes.append(f"Plasmid #{raw_id} was taken by the time you saved, so this one is #{saved_id}.")
+    if parsed:
+        flash(
+            f"Added plasmid #{saved_id} with a {parsed['format'].upper()} sequence "
+            f"({len(parsed['sequence'])} bp · {len(parsed.get('features') or [])} features).",
+            "success",
+        )
+    else:
+        flash(f"Added plasmid #{saved_id} {name}.", "success")
+    for note in notes:
+        flash(note, "warning")
+    if seq_problem:
+        flash(f"{seq_problem} Plasmid #{saved_id} was saved without a sequence; add one on its page.", "warning")
+    if position_problem:
+        flash(position_problem, "warning")
+    return redirect(url_for("plasmids"))
+
+
+def _plasmid_answer(p, message: str = "", error: str = "", status: int = 409):
+    """Answer a plasmid save: JSON for the sheet's autosave, else a flash
+    and a redirect back to the page the form was on."""
+    if request.headers.get("X-Autosave") == "1":
+        if error:
+            return jsonify({"ok": False, "error": error}), status
+        return jsonify({"ok": True, "row": {"active": _plasmid_stored(p), "values": _plasmid_values(p)}})
+    if error:
+        flash(error, "error")
+    elif message:
+        flash(message, "success")
+    return _plasmid_back(p.id if p is not None else None)
 
 
 @app.route("/plasmids/<int:row_id>/update", methods=["POST"])
 @login_required
 def update_plasmid(row_id: int):
+    """Inline edits from the sheet (X-Autosave, JSON back) and the record
+    dialog / detail page forms (redirect back). Only fields the form sent
+    change; box and position follow the `_was` stale-form guard, because
+    the box grid can move a plasmid while its sheet row is on screen."""
+    form = request.form
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
         if p is None:
-            return autosave_response("plasmids")
-        p.name = request.form.get("name", p.name).strip()
-        p.backbone = request.form.get("backbone", p.backbone).strip()
-        p.insert_seq = request.form.get("insert_seq", p.insert_seq).strip()
-        p.resistance = request.form.get("resistance", p.resistance).strip()
-        p.owner = request.form.get("owner", p.owner).strip()
-        p.location = request.form.get("location", p.location).strip()
-        p.notes = request.form.get("notes", p.notes).strip()
+            if request.headers.get("X-Autosave") == "1":
+                return jsonify({"ok": False, "error": "That plasmid no longer exists."}), 404
+            flash("That plasmid no longer exists.", "error")
+            return redirect(url_for("plasmids"))
+        if not access.can_edit(p):
+            return _plasmid_answer(p, error=_plasmid_denied(p), status=403)
+        if "name" in form and not form["name"].strip() and (p.name or "").strip():
+            return _plasmid_answer(p, error="A plasmid needs a name.", status=400)
+        for field, limit in (("name", 200), ("backbone", 200), ("insert_seq", 200),
+                             ("resistance", 80), ("owner", 120), ("location", 120)):
+            if field in form:
+                setattr(p, field, (form.get(field) or "").strip()[:limit])
+        if "notes" in form:
+            p.notes = (form.get("notes") or "").strip()
+
+        problem = None
+        if ("storage_box" in form or "position" in form) and form_changed(form, "storage_box", "position"):
+            box = form.get("storage_box", p.storage_box or "")
+            try:
+                row, col = parse_plasmid_position(form.get("position", plasmid_position_label(p)))
+            except ValueError as exc:
+                problem = str(exc)
+            else:
+                # Clearing the box takes the plasmid out of it; typing a
+                # position with no box is a mistake worth saying so.
+                if row is not None and not (box or "").strip() and form_changed(form, "position"):
+                    problem = "A position needs a box. Fill in the box first."
+                else:
+                    problem = _place_plasmid(db_session, p, box, row, col)
+        if problem and request.headers.get("X-Autosave") == "1":
+            db_session.rollback()
+            return jsonify({"ok": False, "error": problem}), 409
         stamp_updated(p)
         db_session.commit()
-    return autosave_response("plasmids")
+        if problem:
+            # A dialog save keeps its other fields; only the move is refused.
+            return _plasmid_answer(p, error=f"Saved plasmid #{p.plasmid_id}, but not the box position: {problem}")
+        return _plasmid_answer(p, message=f"Saved plasmid #{p.plasmid_id}.")
 
 
 @app.route("/plasmids/<int:row_id>/delete", methods=["POST"])
@@ -4507,36 +4804,125 @@ def update_plasmid(row_id: int):
 def delete_plasmid(row_id: int):
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
-        if p is not None:
-            log_delete(
-                db_session, "plasmids", p.id,
-                record_label=f"Plasmid #{p.plasmid_id} {p.name}".strip(),
-                details=f"backbone={p.backbone} owner={p.owner}",
-            )
+        if p is None:
+            flash("That plasmid no longer exists.", "error")
+            return redirect(url_for("plasmids"))
+        if not access.can_edit(p):
+            flash(_plasmid_denied(p), "error")
+            return redirect(url_for("plasmids"))
+        label = _plasmid_label(p)
+        # A batch of one, so Batch history can bring it back.
+        with audit.batch(db_session, "delete", f"delete plasmid {label}", "plasmids"):
             db_session.delete(p)
-            db_session.commit()
+        db_session.commit()
+    flash(f"Deleted plasmid {label}. Undo it from Batch history.", "success")
     return redirect(url_for("plasmids"))
 
 
-# ---------------------------------------------------------------------------
-# Plasmid detail page (sequence view + storage + properties tabs).
-# ---------------------------------------------------------------------------
+@app.route("/plasmids/<int:row_id>/duplicate", methods=["POST"])
+@login_required
+def duplicate_plasmid(row_id: int):
+    """A copy to start a derivative from: same construct and sequence, the
+    next number, owned by you, not in a box."""
+    with SessionLocal() as db_session:
+        p = db_session.get(PlasmidRecord, row_id)
+        if p is None:
+            flash("That plasmid no longer exists.", "error")
+            return redirect(url_for("plasmids"))
+        copy = PlasmidRecord(
+            plasmid_id=_next_plasmid_id(db_session), name=f"{p.name} (copy)"[:200],
+            backbone=p.backbone, insert_seq=p.insert_seq, resistance=p.resistance,
+            owner=g.user.username, location="", notes=p.notes,
+            full_sequence=p.full_sequence, is_circular=p.is_circular, features_json=p.features_json,
+            sequence_format=p.sequence_format, sequence_uploaded_at=p.sequence_uploaded_at,
+        )
+        db_session.add(copy)
+        stamp_updated(copy)
+        db_session.commit()
+        flash(f"Duplicated plasmid #{p.plasmid_id} as #{copy.plasmid_id}.", "success")
+    return redirect(url_for("plasmids"))
+
+
+@app.route("/plasmids/bulk", methods=["POST"])
+@login_required
+def bulk_plasmids():
+    """Batch actions on ticked plasmids: set owner or resistance, move to a
+    box, delete. One audit batch, so /batches can undo it; plasmids the user
+    may not edit are skipped and counted."""
+    action = request.form.get("action", "")
+    value = (request.form.get("value") or "").strip()
+    ids = [int(i) for i in request.form.getlist("selected_ids") if i.isdigit()]
+    with SessionLocal() as db_session:
+        records = db_session.scalars(
+            select(PlasmidRecord).where(PlasmidRecord.id.in_(ids)).order_by(PlasmidRecord.plasmid_id)
+        ).all() if ids else []
+        if not records:
+            flash("Tick the plasmids to change first.", "info")
+            return redirect(url_for("plasmids"))
+        if action not in ("owner", "resistance", "move", "delete"):
+            flash("Unknown batch action.", "error")
+            return redirect(url_for("plasmids"))
+        editable = [p for p in records if access.can_edit(p)]
+        skipped = len(records) - len(editable)
+        done, unplaced = 0, 0
+        noun = lambda n: "plasmid" if n == 1 else "plasmids"  # noqa: E731
+        descriptions = {
+            "owner": f"set owner to {value or 'nobody'} on {len(editable)} {noun(len(editable))}",
+            "resistance": f"set resistance to {value or 'none'} on {len(editable)} {noun(len(editable))}",
+            "move": f"move {len(editable)} {noun(len(editable))} to {value or 'no box'}",
+            "delete": f"delete {len(editable)} {noun(len(editable))}",
+        }
+        with audit.batch(db_session, "delete" if action == "delete" else "update",
+                         descriptions[action], "plasmids"):
+            if action in ("owner", "resistance"):
+                limit = 120 if action == "owner" else 80
+                for p in editable:
+                    setattr(p, action, value[:limit])
+                    stamp_updated(p)
+                    done += 1
+                message = f"Set {action} on {done} {noun(done)}."
+            elif action == "move":
+                box = value[:80]
+                moving = [p for p in editable if not (p.storage_box == box and _plasmid_stored(p))]
+                free = _free_plasmid_cells(db_session, box, [p.id for p in moving]) if box else []
+                for p in moving:
+                    if box and free:
+                        p.storage_box, (p.box_row, p.box_col) = box, free.pop(0)
+                    else:
+                        p.storage_box, p.box_row, p.box_col = box, None, None
+                        unplaced += 1 if box else 0
+                    stamp_updated(p)
+                done = len(editable)
+                message = (f"Moved {done} {noun(done)} to {box}." if box
+                           else f"Took {done} {noun(done)} out of their boxes.")
+                if unplaced:
+                    message += f" {unplaced} did not fit in the first {PLASMID_BOX_FILL}×{PLASMID_BOX_FILL} cells and wait unplaced in the box."
+            else:
+                for p in editable:
+                    db_session.delete(p)
+                    done += 1
+                message = f"Deleted {done} {noun(done)}. Undo it from Batch history."
+        db_session.commit()
+    if skipped:
+        message += f" {skipped} belong to someone else and were left alone."
+    flash(message, "success" if done else "warning")
+    return redirect(url_for("plasmids"))
 
 
 @app.route("/plasmids/<int:row_id>")
 @login_required
 def plasmid_detail(row_id: int):
-    from .sequence_parser import parse_sequence_text  # local import
-    import json as _json
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
         if p is None:
             flash("Plasmid not found.", "error")
             return redirect(url_for("plasmids"))
         try:
-            features = _json.loads(p.features_json) if p.features_json else []
-        except _json.JSONDecodeError:
+            features = json.loads(p.features_json) if p.features_json else []
+        except json.JSONDecodeError:
             features = []
+        boxes = sorted({b for b in db_session.scalars(select(PlasmidRecord.storage_box)) if (b or "").strip()})
+        usernames = current_lab_usernames(db_session)
         data = {
             "row_id": p.id,
             "plasmid_id": p.plasmid_id,
@@ -4547,6 +4933,9 @@ def plasmid_detail(row_id: int):
             "owner": p.owner,
             "location": p.location,
             "notes": p.notes,
+            "storage_box": p.storage_box or "",
+            "position": plasmid_position_label(p),
+            "stored": _plasmid_stored(p),
             "sequence": p.full_sequence or "",
             "is_circular": bool(p.is_circular),
             "features": features,
@@ -4555,8 +4944,10 @@ def plasmid_detail(row_id: int):
             "length_bp": len(p.full_sequence or ""),
             "updated_at": p.updated_at.strftime("%b %d, %Y") if p.updated_at else "",
             "updated_by": p.updated_by or "",
+            "locked": not access.can_edit(p),
+            "denied": _plasmid_denied(p),
         }
-    return render_template("plasmid_detail.html", plasmid=data)
+    return render_template("plasmid_detail.html", plasmid=data, boxes=boxes, usernames=usernames)
 
 
 @app.route("/plasmids/<int:row_id>/upload-sequence", methods=["POST"])
@@ -4565,32 +4956,23 @@ def plasmid_upload_sequence(row_id: int):
     """Accept a FASTA / GenBank / SnapGene .dna file (or pasted text) and
     parse it into the plasmid's sequence + features. Replaces any existing
     sequence."""
-    import json as _json
-    from .sequence_parser import parse_sequence_bytes, parse_sequence_text
-
-    parsed = None
-    upload = request.files.get("file")
-    if upload is not None and upload.filename:
-        raw_bytes = upload.read()
-        parsed = parse_sequence_bytes(raw_bytes, upload.filename)
-    if parsed is None:
-        raw_text = (request.form.get("sequence_text") or "").strip()
-        if raw_text:
-            parsed = parse_sequence_text(raw_text)
-
-    if not parsed or not parsed.get("sequence"):
-        flash("Couldn't parse the sequence. Use FASTA, GenBank, or SnapGene .dna format.", "error")
-        return redirect(url_for("plasmid_detail", row_id=row_id))
-
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
         if p is None:
+            flash("That plasmid no longer exists.", "error")
             return redirect(url_for("plasmids"))
-        p.full_sequence = parsed["sequence"]
-        p.is_circular = parsed["is_circular"]
-        p.features_json = _json.dumps(parsed["features"])
-        p.sequence_format = parsed["format"]
-        p.sequence_uploaded_at = datetime.utcnow()
+        if not access.can_edit(p):
+            flash(_plasmid_denied(p), "error")
+            return redirect(url_for("plasmid_detail", row_id=row_id))
+        parsed, problem = _submitted_sequence("file")
+        if problem:
+            # Nothing was changed, so a warning (as on create), not an error.
+            flash(f"{problem} The sequence was not changed.", "warning")
+            return redirect(url_for("plasmid_detail", row_id=row_id))
+        if not parsed:
+            flash("Choose a file or paste a sequence first.", "info")
+            return redirect(url_for("plasmid_detail", row_id=row_id))
+        _apply_parsed_sequence(p, parsed)
         if parsed.get("name") and not p.name:
             p.name = parsed["name"]
         stamp_updated(p)
@@ -4599,60 +4981,117 @@ def plasmid_upload_sequence(row_id: int):
     return redirect(url_for("plasmid_detail", row_id=row_id))
 
 
+@app.route("/plasmids/<int:row_id>/clear-sequence", methods=["POST"])
+@login_required
+def plasmid_clear_sequence(row_id: int):
+    """The one way to empty a sequence: an explicit, confirmed action. The
+    editor's autosave refuses an empty sequence, so a stray select-all and
+    delete cannot wipe a construct."""
+    with SessionLocal() as db_session:
+        p = db_session.get(PlasmidRecord, row_id)
+        if p is None:
+            flash("That plasmid no longer exists.", "error")
+            return redirect(url_for("plasmids"))
+        if not access.can_edit(p):
+            flash(_plasmid_denied(p), "error")
+            return redirect(url_for("plasmid_detail", row_id=row_id))
+        if request.form.get("confirm") != "1":
+            flash("Confirm clearing the sequence first.", "error")
+            return redirect(url_for("plasmid_detail", row_id=row_id))
+        p.full_sequence = ""
+        p.features_json = "[]"
+        p.sequence_format = ""
+        p.sequence_uploaded_at = None
+        stamp_updated(p)
+        db_session.commit()
+        flash(f"Cleared the sequence of plasmid #{p.plasmid_id}. Its audit history keeps the old one.", "success")
+    return redirect(url_for("plasmid_detail", row_id=row_id))
+
+
 @app.route("/plasmids/<int:row_id>/move", methods=["POST"])
 @login_required
 def plasmid_move_in_box(row_id: int):
     """Update a plasmid's storage_box / box_row / box_col. Used by the
     drag-and-drop grid view. If box_row/col is empty the plasmid is moved
-    to the "unplaced" pool for that box."""
+    to the "unplaced" pool for that box; an occupied cell swaps."""
     new_box = (request.form.get("storage_box") or "").strip()
     row_raw = (request.form.get("box_row") or "").strip()
     col_raw = (request.form.get("box_col") or "").strip()
-    new_row = int(row_raw) if row_raw.lstrip("-").isdigit() else None
-    new_col = int(col_raw) if col_raw.lstrip("-").isdigit() else None
+    new_row, new_col = _plasmid_int(row_raw), _plasmid_int(col_raw)
+    if (row_raw or col_raw) and (new_row is None or new_col is None):
+        return jsonify({"ok": False, "error": "A box position needs both a row and a column."}), 400
 
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
         if p is None:
-            return jsonify({"ok": False}), 404
-        # If another plasmid is already at the destination cell in the same
-        # box, swap them so the user never loses a tube reference.
-        if new_box and new_row is not None and new_col is not None:
-            occupant = db_session.scalar(
-                select(PlasmidRecord)
-                .where(PlasmidRecord.storage_box == new_box)
-                .where(PlasmidRecord.box_row == new_row)
-                .where(PlasmidRecord.box_col == new_col)
-                .where(PlasmidRecord.id != p.id)
-            )
-            if occupant is not None:
-                occupant.storage_box = p.storage_box
-                occupant.box_row = p.box_row
-                occupant.box_col = p.box_col
-        p.storage_box = new_box
-        p.box_row = new_row
-        p.box_col = new_col
+            return jsonify({"ok": False, "error": "That plasmid no longer exists."}), 404
+        if not access.can_edit(p):
+            return jsonify({"ok": False, "error": _plasmid_denied(p)}), 403
+        holder = (_plasmid_at(db_session, new_box, new_row, new_col, p)
+                  if new_box and new_row is not None and new_col is not None else None)
+        problem = _place_plasmid(db_session, p, new_box, new_row, new_col, swap=True)
+        if problem:
+            db_session.rollback()
+            return jsonify({"ok": False, "error": problem}), 409
         stamp_updated(p)
         db_session.commit()
-        return jsonify({"ok": True})
+        # Where each plasmid that moved now sits, so the page can update the
+        # grid and the sheet rows (and their _was guards) without a reload.
+        moved = [{"id": q.id, "storage_box": q.storage_box or "",
+                  "box_row": q.box_row if q.box_row is not None else -1,
+                  "box_col": q.box_col if q.box_col is not None else -1,
+                  "position": plasmid_position_label(q), "stored": _plasmid_stored(q)}
+                 for q in (p, holder) if q is not None]
+        return jsonify({"ok": True, "moved": moved})
+
+
+def _clean_features(raw_features, length: int) -> list[dict]:
+    """Stored features from the editor's, dropping any outside the sequence.
+    A feature crossing the origin keeps start > end."""
+    translated = []
+    for f in raw_features if isinstance(raw_features, list) else []:
+        if not isinstance(f, dict):
+            continue
+        try:
+            start = int(f.get("start", 0) or 0)
+            end = int(f.get("end", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if not (0 <= start < length and 0 <= end < length):
+            continue
+        if "forward" in f:
+            direction = 1 if f.get("forward") else -1
+        else:
+            try:
+                direction = 1 if int(f.get("strand", f.get("direction", 1)) or 0) >= 0 else -1
+            except (TypeError, ValueError):
+                direction = 1
+        notes = f.get("notes")
+        translated.append({
+            "name": str(f.get("name") or "")[:120],
+            "type": str(f.get("type") or "misc_feature")[:40],
+            "start": start,
+            "end": end,
+            "direction": direction,
+            "color": str(f.get("color") or "#cbd5e1")[:20],
+            "notes": notes[:400] if isinstance(notes, str) else "",
+        })
+    return translated
 
 
 @app.route("/plasmids/<int:row_id>/edit-sequence", methods=["POST"])
 @login_required
 def plasmid_edit_sequence(row_id: int):
-    """Save a hand-edited raw sequence. Strips whitespace/digits/non-ACGTN
-    characters. Features whose end falls beyond the new length are dropped;
-    those that are still in-range are kept untouched."""
-    import json as _json
-    import re as _re
+    """Save a hand-edited raw sequence. Strips whitespace/digits and FASTA
+    headers; keeps the IUPAC letters. Features that no longer fit in the
+    new length are dropped. An empty result is refused: clearing a
+    sequence is its own confirmed action."""
+    from .sequence_parser import clean_bases
 
     raw = request.form.get("sequence_text", "")
-    # Drop FASTA header lines and GenBank metadata lines before flattening.
+    # Drop FASTA header lines before flattening.
     lines = [ln for ln in raw.splitlines() if not ln.lstrip().startswith(">")]
-    flat = "\n".join(lines)
-    # Strip whitespace / digits / punctuation, then keep only IUPAC base codes.
-    cleaned = _re.sub(r"[^A-Za-z]", "", flat).upper()
-    cleaned = _re.sub(r"[^ACGTUMRWSYKVHDBN]", "", cleaned)
+    cleaned = clean_bases("\n".join(lines))
 
     is_circular_raw = (request.form.get("is_circular") or "").lower()
     new_circular = is_circular_raw in ("1", "true", "on", "yes")
@@ -4660,21 +5099,27 @@ def plasmid_edit_sequence(row_id: int):
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
         if p is None:
+            flash("That plasmid no longer exists.", "error")
             return redirect(url_for("plasmids"))
+        if not access.can_edit(p):
+            flash(_plasmid_denied(p), "error")
+            return redirect(url_for("plasmid_detail", row_id=row_id))
+        if not cleaned:
+            flash("That leaves no sequence, so nothing was saved. Use Clear sequence to empty it.", "error")
+            return redirect(url_for("plasmid_detail", row_id=row_id))
         p.full_sequence = cleaned
         p.is_circular = new_circular
-        # Trim out-of-range features so the viewer doesn't blow up.
         try:
-            features = _json.loads(p.features_json) if p.features_json else []
-        except _json.JSONDecodeError:
+            features = json.loads(p.features_json) if p.features_json else []
+        except json.JSONDecodeError:
             features = []
-        new_features = [f for f in features if int(f.get("end", -1)) < len(cleaned)]
+        new_features = _clean_features(features, len(cleaned))
         if len(new_features) != len(features):
             flash(
                 f"Dropped {len(features) - len(new_features)} feature(s) that fell beyond the new sequence length.",
                 "warning",
             )
-        p.features_json = _json.dumps(new_features)
+        p.features_json = json.dumps(new_features)
         if not p.sequence_format:
             p.sequence_format = "manual"
         p.sequence_uploaded_at = datetime.utcnow()
@@ -4690,48 +5135,36 @@ def plasmid_sequence_save_json(row_id: int):
     """JSON endpoint hit by the Open Vector Editor onSave callback. The body
     contains OVE's `sequenceData` shape: {sequence, circular, features, name}.
     OVE features look like {id, name, start, end, type, color, forward,
-    strand, notes, locations[]}. We translate to our schema and persist."""
-    import json as _json
+    strand, notes, locations[]}. We translate to our schema and persist.
 
-    payload = request.get_json(silent=True) or {}
-    sd = payload.get("sequenceData") or payload  # accept either wrapping
-    sequence = (sd.get("sequence") or "").upper()
-    is_circular = bool(sd.get("circular"))
-    raw_features = sd.get("features") or []
+    An empty or malformed save is refused (400) rather than stored: the
+    editor autosaves after every edit, and a blank body used to wipe the
+    construct. Clearing a sequence is /clear-sequence."""
+    from .sequence_parser import looks_like_bases
 
-    # Translate OVE features → our stored format. Our viewer uses
-    # {start, end (inclusive), direction: 1|-1|0, name, type, color, notes}.
-    translated = []
-    for f in raw_features:
-        start = int(f.get("start", 0) or 0)
-        end = int(f.get("end", 0) or 0)
-        if "forward" in f:
-            direction = 1 if f.get("forward") else -1
-        elif "strand" in f:
-            direction = 1 if int(f.get("strand", 1) or 1) >= 0 else -1
-        else:
-            direction = 1
-        translated.append({
-            "name": f.get("name") or "",
-            "type": f.get("type") or "misc_feature",
-            "start": start,
-            "end": end,
-            "direction": direction,
-            "color": f.get("color") or "#cbd5e1",
-            "notes": f.get("notes") or "",
-        })
+    payload = request.get_json(silent=True)
+    sd = payload.get("sequenceData", payload) if isinstance(payload, dict) else None
+    raw_sequence = sd.get("sequence") if isinstance(sd, dict) else None
+    if not isinstance(raw_sequence, str) or not raw_sequence.strip():
+        return jsonify({"ok": False, "error": "Refusing to save an empty sequence. Use Clear sequence to empty it."}), 400
+    if not looks_like_bases(raw_sequence):
+        return jsonify({"ok": False, "error": "The sequence has letters that are not IUPAC nucleotide codes."}), 400
+    sequence = re.sub(r"\s+", "", raw_sequence).upper()
+    translated = _clean_features(sd.get("features") or [], len(sequence))
 
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
         if p is None:
-            return jsonify({"ok": False, "error": "not found"}), 404
+            return jsonify({"ok": False, "error": "That plasmid no longer exists."}), 404
+        if not access.can_edit(p):
+            return jsonify({"ok": False, "error": _plasmid_denied(p)}), 403
         p.full_sequence = sequence
-        p.is_circular = is_circular
-        p.features_json = _json.dumps(translated)
+        p.is_circular = bool(sd.get("circular"))
+        p.features_json = json.dumps(translated)
         if not p.sequence_format:
             p.sequence_format = "ove"
         if sd.get("name") and not p.name:
-            p.name = sd["name"]
+            p.name = str(sd["name"])[:200]
         p.sequence_uploaded_at = datetime.utcnow()
         stamp_updated(p)
         db_session.commit()
@@ -4741,15 +5174,14 @@ def plasmid_sequence_save_json(row_id: int):
 @app.route("/plasmids/<int:row_id>/sequence.json")
 @login_required
 def plasmid_sequence_json(row_id: int):
-    """Return the plasmid's sequence + features as JSON for SeqViz."""
-    import json as _json
+    """Return the plasmid's sequence + features as JSON for the editor."""
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
         if p is None:
             return jsonify({"ok": False}), 404
         try:
-            features = _json.loads(p.features_json) if p.features_json else []
-        except _json.JSONDecodeError:
+            features = json.loads(p.features_json) if p.features_json else []
+        except json.JSONDecodeError:
             features = []
         # Translate stored features (direction +1/-1) into OVE's shape
         # (forward bool, plus stable `id`s so OVE can diff its render).
@@ -4772,6 +5204,7 @@ def plasmid_sequence_json(row_id: int):
             "is_circular": bool(p.is_circular),
             "circular": bool(p.is_circular),  # OVE uses this key
             "features": ove_features,
+            "locked": not access.can_edit(p),
         })
 
 
