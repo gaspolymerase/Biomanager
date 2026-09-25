@@ -61,11 +61,11 @@
               {% if u.id != current_user.id %}
                 <div class="flex items-center gap-1.5">
                   <form method="post" action="{{ url_for('admin_toggle_role', user_id=u.id) }}"
-                        onsubmit="return confirm('Change this user\'s role?')">
+                        data-confirm="Change this user’s role?">
                     <button type="submit" class="btn btn-sm">{{ 'Demote' if u.role == 'admin' else 'Promote' }}</button>
                   </form>
                   <form method="post" action="{{ url_for('admin_toggle_disabled', user_id=u.id) }}"
-                        onsubmit="return confirm('Toggle this account\'s disabled state?')">
+                        data-confirm="Toggle this account’s disabled state?">
                     <button type="submit" class="btn btn-sm {% if not u.disabled %}btn-danger{% endif %}">
                       {{ 'Enable' if u.disabled else 'Disable' }}
                     </button>

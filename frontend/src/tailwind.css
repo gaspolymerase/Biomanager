@@ -2158,6 +2158,21 @@
   .cage-card { @apply card p-2.5 transition-shadow duration-150; }
   .cage-card:hover { @apply shadow-sm; }
   .cage-form { @apply m-0; }
+  /* Title row: cage number, shared flag, owner, how many alive, lock. */
+  .cage-card-title { @apply mb-1.5 flex flex-wrap items-center gap-2 px-0.5; }
+  .cage-card-name { @apply inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink; }
+  .cage-card-name svg { @apply size-[14px] text-sand-400; }
+  .cage-card-lock { @apply ml-auto inline-flex items-center gap-1 text-[11.5px] text-muted; }
+  .cage-card-lock svg { @apply size-3; }
+  .cage-card.is-locked .cage-header-grid { @apply bg-sand-100/60; }
+  .cage-card :is(input, select):disabled { @apply cursor-not-allowed opacity-70; }
+  .colony-subtable tr.is-inactive td { @apply text-muted; }
+  .colony-subtable .sheet-lock { @apply ml-1 inline-flex align-middle; }
+  /* Mice of a litter, on the Litters sheet. */
+  .litter-mouse {
+    @apply mr-1.5 inline-flex items-center gap-1 whitespace-nowrap font-mono text-[11.5px] text-ink-soft no-underline;
+  }
+  .litter-mouse:hover { @apply text-brand-700 underline; }
 
   .cage-header-grid {
     @apply mb-2 grid grid-cols-[repeat(auto-fit,minmax(92px,1fr))] items-end gap-x-1.5 gap-y-1
