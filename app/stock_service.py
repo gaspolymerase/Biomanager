@@ -28,6 +28,23 @@ from .models import (
 DEFAULT_DAYS = {"flip": 14, "develop": 10, "collect": 2}
 
 
+def norm_temp(raw) -> str:
+    """"25.0", " 25 ", "25 °C" → "25"; "18.5" stays; anything else as typed."""
+    text = str(raw or "").replace("°C", "").replace("°", "").strip()
+    try:
+        value = float(text)
+    except ValueError:
+        return text
+    return str(int(value)) if value == int(value) else f"{value:g}"
+
+
+def is_cross_label(text: str) -> bool:
+    """Cross labels ("A × B", "F1 of A × B") describe a vial; they are not
+    genotypes to suggest."""
+    text = text or ""
+    return " × " in text or text.startswith("F1 of ")
+
+
 @dataclass
 class ModuleView:
     row: StockModule
@@ -88,8 +105,8 @@ class ModuleView:
     def interval(self, what: str, temp: str | None) -> int:
         """Days for "flip", "develop" or "collect" at a temperature, falling
         back to the default temperature, then to the nearest one listed."""
-        table = {str(t["temp"]): t for t in self.temperatures}
-        row = table.get(str(temp or "")) or table.get(str(self.s["default_temperature"]))
+        table = {norm_temp(t["temp"]): t for t in self.temperatures}
+        row = table.get(norm_temp(temp)) or table.get(norm_temp(self.s["default_temperature"]))
         if row is None and self.temperatures:
             try:
                 target = float(temp or self.s["default_temperature"])
@@ -255,7 +272,7 @@ def apply_position(session, unit: StockUnit, rack_raw, position_raw) -> str | No
 def remember_genotype(session, module_id: int, text: str, user: str = "") -> None:
     """Add a genotype to the list the first time anyone writes it."""
     text = (text or "").strip()
-    if not text:
+    if not text or is_cross_label(text):
         return
     exists = session.scalar(select(StockGenotype.id).where(
         StockGenotype.module_id_fk == module_id, StockGenotype.genotype == text))
@@ -288,12 +305,13 @@ def collect_eggs(session, mv: ModuleView, cross: StockUnit, user: str, today: da
     session.add(progeny)
     note = ""
     if cross.rack is not None:
+        # Same rack as the cross; without a cell if the rack is full.
+        progeny.rack_id_fk, progeny.rack = cross.rack_id_fk, cross.rack
         cells = free_cells(session, cross.rack, 1)
         if cells:
-            progeny.rack_id_fk, (progeny.rack_row, progeny.rack_col) = cross.rack_id_fk, cells[0]
-            progeny.rack = cross.rack
+            progeny.rack_row, progeny.rack_col = cells[0]
         else:
-            note = f"{cross.rack.name} is full, so it is unplaced."
+            note = f"{cross.rack.name} is full, so it has no position yet."
     cross.last_collected_on = today
     session.flush()
     return progeny, note
@@ -357,6 +375,24 @@ def schedule(session, mv: ModuleView, today: date | None = None, horizon: int = 
 # ---------------------------------------------------------------------------
 # Boot: create the fly and worm databases, moving any organism-engine data
 # ---------------------------------------------------------------------------
+
+
+def tidy_genotype_lists() -> int:
+    """Once: drop cross labels that earlier versions saved into the
+    genotype lists."""
+    from .inventory_service import get_setting, set_setting
+
+    with SessionLocal() as session:
+        if get_setting(session, "stock_genotypes_tidied"):
+            return 0
+        removed = 0
+        for item in session.scalars(select(StockGenotype)):
+            if is_cross_label(item.genotype):
+                session.delete(item)
+                removed += 1
+        set_setting(session, "stock_genotypes_tidied", "1")
+        session.commit()
+        return removed
 
 
 def seed_modules() -> list[str]:

@@ -1244,6 +1244,7 @@ class StockIncubator(Base):
     name: Mapped[str] = mapped_column(String(120))
     temperature: Mapped[str] = mapped_column(String(10), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -1263,6 +1264,7 @@ class StockRack(Base):
     # Days between flips; empty = from the incubator's temperature.
     flip_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     incubator: Mapped[StockIncubator | None] = relationship()
@@ -1323,6 +1325,11 @@ class StockUnit(Base, _JsonAttrs):
 
     rack: Mapped[StockRack | None] = relationship()
     parent: Mapped["StockUnit | None"] = relationship(remote_side="StockUnit.id")
+
+    @property
+    def audit_label(self) -> str:
+        """How the audit log and batches name a vial: its number and genotype."""
+        return f"No. {self.number}" + (f" · {self.genotype[:60]}" if self.genotype else "")
 
 
 class StockFrozen(Base):

@@ -126,7 +126,7 @@
       </footer>
     </form>
     <form method="post" class="rack-delete" data-rack-delete="{{ delete_action }}" hidden
-          onsubmit="return confirm('Delete this {{ noun }}? Everything in it moves to Unplaced; nothing is deleted.')">
+          data-confirm="Delete this {{ noun }}? Everything in it moves to Unplaced; nothing is deleted.">
       <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash') }} Delete {{ noun }}</button>
       <span>Nothing inside is deleted. It moves to Unplaced.</span>
     </form>
