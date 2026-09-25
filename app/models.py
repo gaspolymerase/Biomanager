@@ -229,6 +229,9 @@ class MouseRack(Base):
     # How positions are named (app/positions.py): letters/numbers, order…
     naming: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Who added the rack: they (or an admin) may resize, rename or delete
+    # it. Racks from before this column have no creator and are admin-only.
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

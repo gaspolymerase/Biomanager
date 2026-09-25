@@ -12,8 +12,8 @@
     <a class="btn {% if show_all %}btn-primary{% endif %}"
        href="{{ url_for('batches_view') }}">Everyone</a>
   {% endif %}
-  <a class="btn" href="{{ url_for('colony', view='mice') }}">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Colony
+  <a class="btn" href="{{ url_for('colony', view='mice') }}" title="{{ db_labels.get('colony', 'Mouse colony') }}">
+    {{ icon('back') }} {{ db_labels.get('colony', 'Mouse colony') }}
   </a>
 {% endblock %}
 
@@ -70,7 +70,7 @@
               <td>
                 {% if batch.can_undo %}
                   <form method="post" action="{{ url_for('undo_batch', batch_id=batch.id) }}"
-                        onsubmit="return confirm('Undo “{{ batch.description }}”? This reverses {{ batch.count }} record(s).')">
+                        data-confirm="Undo “{{ batch.description }}”? This reverses {{ batch.count }} record(s).">
                     {% if batch.blocked %}
                       <input type="hidden" name="force" value="1">
                       <button type="submit" class="btn btn-sm btn-danger" title="Reverses anyway, discarding later edits">
@@ -78,7 +78,7 @@
                       </button>
                     {% else %}
                       <button type="submit" class="btn btn-sm">
-                        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#undo"></use></svg> Undo
+                        {{ icon('undo') }} Undo
                       </button>
                     {% endif %}
                   </form>
@@ -102,10 +102,10 @@
   </div>
 {% else %}
   <div class="card empty-state">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#layers"></use></svg>
+    {{ icon('layers') }}
     <p>No batch operations recorded yet.</p>
     <a class="btn mt-2" href="{{ url_for('batch_mice') }}">
-      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#duplicate"></use></svg> Add mice in bulk
+      {{ icon('duplicate') }} Add mice in bulk
     </a>
   </div>
 {% endif %}

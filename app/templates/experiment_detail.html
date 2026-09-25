@@ -5,41 +5,47 @@
 {% block page_subtitle %}
   <span class="dt-status" data-status="{{ experiment.status }}">{{ experiment.status }}</span>
   · {{ members|length }} {{ 'mouse' if members|length == 1 else 'mice' }}
+  {%- if experiment.owner %} · {{ experiment.owner | owner_with_badge }}{% endif %}
   {%- if experiment.start_date %} · started {{ experiment.start_date }}{% endif %}
 {% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('colony', view='experiments') }}">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> All experiments
-  </a>
-  <form method="post" action="{{ url_for('delete_experiment', experiment_id=experiment.id) }}"
-        onsubmit="return confirm('Delete this experiment? Member mice are not deleted, only their membership.')">
-    <button type="submit" class="btn btn-danger">
-      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg> Delete experiment
-    </button>
-  </form>
+  <span class="sheet-save" data-save-status aria-live="polite"></span>
+  <a class="btn" href="{{ url_for('colony', view='experiments') }}">{{ icon('back') }} All experiments</a>
+  {% if experiment.editable %}
+    <form method="post" action="{{ url_for('delete_experiment', experiment_id=experiment.id) }}"
+          data-confirm="Delete the experiment {{ experiment.name }}? Its mice are not deleted, only their membership.">
+      <button type="submit" class="btn btn-danger">{{ icon('trash') }} Delete experiment</button>
+    </form>
+  {% endif %}
 {% endblock %}
 
 {% block content %}
+{% set locked = not experiment.editable %}
+{% if locked %}
+  <p class="inset mb-3 flex items-center gap-2 text-[12.5px] text-muted">
+    {{ icon('lock') }} This is {{ experiment.owner or 'another member' }}’s experiment, so it is read only. They, or an admin, can change it.
+  </p>
+{% endif %}
 <section class="experiment-detail-grid">
   {# Treatment + metadata column #}
   <article class="panel">
     <h2>Treatment plan</h2>
     <form method="post" action="{{ url_for('update_experiment', experiment_id=experiment.id) }}" class="form-panel autosave-experiment">
-      <label>Name <input name="name" value="{{ experiment.name }}" data-autosave="1"></label>
-      <label>Start date <input type="date" name="start_date" value="{{ experiment.start_date }}" data-autosave="1"></label>
-      <label>End date <input type="date" name="end_date" value="{{ experiment.end_date }}" data-autosave="1"></label>
+      <label>Name <input name="name" value="{{ experiment.name }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
+      <label>Start date <input type="date" name="start_date" value="{{ experiment.start_date }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
+      <label>End date <input type="date" name="end_date" value="{{ experiment.end_date }}" data-autosave="1" {% if locked %}disabled{% endif %}></label>
       <label>Status
-        <select name="status" data-autosave="1">
-          {% for opt in ['active', 'paused', 'done', 'cancelled'] %}
+        <select name="status" data-autosave="1" {% if locked %}disabled{% endif %}>
+          {% for opt in statuses %}
             <option value="{{ opt }}" {% if experiment.status == opt %}selected{% endif %}>{{ opt }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Description <textarea name="description" rows="3" data-autosave="1">{{ experiment.description }}</textarea></label>
+      <label>Description <textarea name="description" rows="3" data-autosave="1" {% if locked %}disabled{% endif %}>{{ experiment.description }}</textarea></label>
       <label>Treatment plan (free text · drug, dose, schedule, endpoints)
-        <textarea name="treatment_plan" rows="8" data-autosave="1" placeholder="e.g.&#10;Drug X 10 mg/kg, IP, qd × 14d&#10;Vehicle: 0.9% saline&#10;Endpoint: motor behavior + tissue harvest at D14">{{ experiment.treatment_plan }}</textarea>
+        <textarea name="treatment_plan" rows="8" data-autosave="1" {% if locked %}disabled{% endif %} placeholder="e.g.&#10;Drug X 10 mg/kg, IP, qd × 14d&#10;Vehicle: 0.9% saline&#10;Endpoint: motor behavior + tissue harvest at D14">{{ experiment.treatment_plan }}</textarea>
       </label>
     </form>
   </article>
@@ -48,29 +54,32 @@
   <article class="panel">
     <h2>Members <span class="muted-inline">({{ members|length }})</span></h2>
 
+    {% if not locked %}
     <div class="experiment-add-row">
       <form method="post" action="{{ url_for('experiment_add_cage', experiment_id=experiment.id) }}" class="experiment-add-cage">
-        <input name="cage_id" placeholder="Cage ID" list="exp-cage-list" required>
+        <input name="cage_id" placeholder="Cage" aria-label="Cage" list="exp-cage-list" required>
         <datalist id="exp-cage-list">
           {% for cage in cages %}<option value="{{ cage.cage_id }}">{{ cage.mouse_count }} mice</option>{% endfor %}
         </datalist>
         <button type="submit">+ All mice in cage</button>
       </form>
       <form method="post" action="{{ url_for('experiment_add_mouse', experiment_id=experiment.id) }}" class="experiment-add-mouse">
-        <select name="mouse_row_id" required>
+        <select name="mouse_row_id" aria-label="Mouse" required>
           <option value="">Add single mouse…</option>
           {% for m in candidate_mice %}<option value="{{ m.id }}">{{ m.label }}</option>{% endfor %}
         </select>
-        <input name="treatment_group" placeholder="Group (optional)">
+        <input name="treatment_group" placeholder="Group (optional)" aria-label="Treatment group">
         <button type="submit">Add</button>
       </form>
     </div>
+    <p class="mb-2 text-[11.5px] text-muted">Only living mice you may edit are offered, and added from a cage.</p>
+    {% endif %}
 
     {% if members %}
       <table class="dense-table fit-table experiment-member-table">
         <thead>
           <tr>
-            <th>MID</th>
+            <th>Mouse</th>
             <th>Sex</th>
             <th>Genotype</th>
             <th>Cage</th>
@@ -88,31 +97,35 @@
               <td>{{ m.cage_id }}</td>
               <td>
                 <input class="member-group-input" data-membership-id="{{ m.membership_id }}" data-experiment-id="{{ experiment.id }}"
-                       value="{{ m.treatment_group }}" placeholder="(no group)">
+                       value="{{ m.treatment_group }}" placeholder="(no group)" aria-label="Treatment group of mouse {{ m.mouse_id }}"
+                       {% if locked %}disabled{% endif %}>
               </td>
               <td class="experiment-weight-cell">
                 <div class="weight-sparkline" data-weights='{{ m.weights|tojson }}'></div>
                 <span class="weight-latest" data-mouse-id="{{ m.mouse_row_id }}">
                   {% if m.weights %}{{ '%.1f' % m.weights[-1].grams }} g{% else %}—{% endif %}
                 </span>
-                <button type="button" class="weight-add-btn" data-mouse-row-id="{{ m.mouse_row_id }}"
-                        data-mouse-id="{{ m.mouse_id }}"
-                        onclick="openWeightModal({{ m.mouse_row_id }}, '{{ m.mouse_id }}')">
-                  + weigh
-                </button>
+                {% if m.can_weigh %}
+                  <button type="button" class="weight-add-btn" data-mouse-row-id="{{ m.mouse_row_id }}"
+                          data-mouse-id="{{ m.mouse_id }}">
+                    + weigh
+                  </button>
+                {% endif %}
               </td>
               <td>
-                <form method="post" action="{{ url_for('experiment_member_remove', experiment_id=experiment.id, membership_id=m.membership_id) }}"
-                      onsubmit="return confirm('Remove mouse #{{ m.mouse_id }} from this experiment? The mouse itself is not deleted.')">
-                  <button type="submit" class="danger-button">×</button>
-                </form>
+                {% if not locked %}
+                  <form method="post" action="{{ url_for('experiment_member_remove', experiment_id=experiment.id, membership_id=m.membership_id) }}"
+                        data-confirm="Remove mouse {{ m.mouse_id }} from this experiment? The mouse itself is not deleted.">
+                    <button type="submit" class="danger-button" title="Remove mouse {{ m.mouse_id }}" aria-label="Remove mouse {{ m.mouse_id }}">×</button>
+                  </form>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     {% else %}
-      <p class="muted-inline">No mice yet. Add a cage or pick a mouse above.</p>
+      <p class="muted-inline">No mice yet.{% if not locked %} Add a cage or pick a mouse above.{% endif %}</p>
     {% endif %}
   </article>
 </section>
@@ -206,6 +219,29 @@
   }
   document.querySelectorAll('.weight-sparkline').forEach(renderSparkline);
 
+  // ---- Save indicator: a refused save (end before start, not yours…)
+  // shows here instead of vanishing into the console. ------------------
+  const status = document.querySelector('[data-save-status]');
+  let clearTimer = null;
+  function say(state, text) {
+    if (!status) return;
+    clearTimeout(clearTimer);
+    status.dataset.state = state;
+    status.textContent = text;
+    if (state === 'saved') clearTimer = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
+  }
+  async function post(url, body) {
+    say('saving', 'Saving…');
+    try {
+      const r = await fetch(url, { method: 'POST', body, headers: { 'X-Autosave': '1' } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data.ok === false) throw new Error(data.error || `The server answered ${r.status}.`);
+      say('saved', 'All changes saved');
+    } catch (error) {
+      say('error', `Couldn’t save: ${error.message}`);
+    }
+  }
+
   // ---- Autosave experiment metadata --------------------------------------
   let saveTimer = null;
   document.querySelectorAll('.autosave-experiment [data-autosave="1"]').forEach((el) => {
@@ -213,14 +249,14 @@
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
         const form = el.closest('form');
-        fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' } });
+        post(form.action, new FormData(form));
       }, 250);
     };
     el.addEventListener('input', trigger);
     el.addEventListener('change', trigger);
   });
 
-  // ---- Member treatment-group autosave -----------------------------------
+  // ---- Member treatment-group autosave (blank clears the group) ---------
   document.querySelectorAll('.member-group-input').forEach((input) => {
     let t = null;
     input.addEventListener('input', () => {
@@ -230,9 +266,13 @@
         const memId = input.dataset.membershipId;
         const fd = new FormData();
         fd.append('treatment_group', input.value);
-        fetch(`/colony/experiments/${expId}/members/${memId}/update`, { method: 'POST', body: fd });
+        post(`/colony/experiments/${expId}/members/${memId}/update`, fd);
       }, 300);
     });
+  });
+
+  document.querySelectorAll('.weight-add-btn').forEach((button) => {
+    button.addEventListener('click', () => openWeightModal(button.dataset.mouseRowId, button.dataset.mouseId));
   });
 })();
 
@@ -259,7 +299,9 @@ async function submitWeight() {
   fd.append('grams', document.getElementById('weigh-grams').value);
   fd.append('notes', document.getElementById('weigh-notes').value);
   const r = await fetch(`/colony/mice/${currentWeighMouseRowId}/weights/create`, { method: 'POST', body: fd });
-  if (r.ok) window.location.reload();
+  if (r.ok) { window.location.reload(); return; }
+  const data = await r.json().catch(() => ({}));
+  window.alert(`The weight was not saved: ${data.error || `the server answered ${r.status}`}.`);
 }
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeWeightModal();

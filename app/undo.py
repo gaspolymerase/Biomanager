@@ -132,6 +132,11 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
                 if row is None:
                     skipped += 1
                     continue
+                # Write the reverts made so far first. A cage created by the
+                # batch still has the batch's mice pointing at it in the
+                # database; deleting it before their restored cage is
+                # flushed would let the ORM null that restored value.
+                session.flush()
                 session.delete(row)
                 reverted += 1
 
