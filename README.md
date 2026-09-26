@@ -362,7 +362,10 @@ flowchart TB
 2. **macOS:** open the download and drag BioManager into Applications.
    The first time, **right-click the app and choose Open** — macOS asks
    once because the app is not signed through the App Store.
-3. Create your account. The first account on a computer is the admin.
+3. Create your account (the first account on a computer is the admin) and
+   answer the short setup survey: tick what your lab keeps, and BioManager
+   creates just those databases, with racks and incubators to match. Home
+   then shows a **Getting started** list of first steps.
 
 Your data lives outside the app, so updating or reinstalling never
 touches it:
@@ -576,6 +579,7 @@ records as a zip at any time.
 
 | Document | For |
 | --- | --- |
+| [**User guide**](https://gaspolymerase.github.io/biomanager-app/guide.html) | Using BioManager, step by step: setting up a lab, every module, phones, backups. Also under **Help** in the app's sidebar |
 | [`deploy/README.md`](deploy/README.md) | Setting up a lab server: HTTPS, Tailscale, Google/Microsoft sign-in, backups, updates |
 | [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) | Running a lab server: alerts, outages, restores, people joining and leaving |
 | [`docs/GOOGLE_CALENDAR_SETUP.md`](docs/GOOGLE_CALENDAR_SETUP.md) | Connecting Google Calendar |
