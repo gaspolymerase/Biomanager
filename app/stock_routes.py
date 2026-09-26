@@ -212,6 +212,11 @@ def grid_payload(mv, racks, units) -> dict:
                    "naming": positions.scheme(r.naming),
                    # Flipping is done a rack at a time: its last flip shows above the grid.
                    "note": svc.flip_status(mv, r),
+                   "action": {"url": url_for("stocks.rack_flipped", key=mv.key, rack_id=r.id),
+                              "label": f"{mv.s.get('flip_done', 'Flipped')} today", "icon": "check",
+                              "fields": {"back": "units"}, "done": r.last_flipped_on == date.today(),
+                              "title": f"Record that every vial in {r.name} was "
+                                       f"{mv.s.get('flip_done', 'Flipped').lower()} today"},
                    "edit": {"data-record-edit": "rack-dialog", "data-record-payload": json.dumps(rack_payload(mv, r))}}
                   for r in racks],
         "items": [{
@@ -792,7 +797,7 @@ def rack_flipped(key: str, rack_id: int):
             return _back(key, view="schedule", error=str(error))
         rack.last_flipped_on = on or date.today()
         session.commit()
-        return _back(key, view="schedule",
+        return _back(key, view="units" if request.form.get("back") == "units" else "schedule",
                      message=f"{rack.name}: {mv.s['flip_verb'].lower()} recorded for {rack.last_flipped_on:%d %b}; "
                              f"next on {svc.next_flip(mv, rack):%a %d %b}.")
 
