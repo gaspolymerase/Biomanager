@@ -46,6 +46,9 @@ if POSTGRES_URL:
 else:
     os.environ["DATABASE_URL"] = f"sqlite:///{DB_PATH}"
 os.environ["BIOMANAGER_DATA_DIR"] = _TMP
+# The suite expects every default database to exist, as installations did
+# before the setup survey made new ones start empty (app/lab.py).
+os.environ["BIOMANAGER_SEED_DEFAULTS"] = "1"
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 atexit.register(shutil.rmtree, _TMP, True)
 

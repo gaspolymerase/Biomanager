@@ -4,6 +4,10 @@
                     the admin's "Lab setup" page: databases, functions,
                     what members may do, who else is an admin
   /welcome          a short tour for anyone signing in for the first time
+  /guide            the user guide on the BioManager website (remembers that
+                    you opened it, for the Getting started list)
+  /milestone/guide  a guide link was opened (sent by base.html)
+  /getting-started/hide   hide the Getting started list on your home page
   /databases/<kind>/<key>/audience   share a personal database with the lab,
                     or make a lab database someone's own again
   /notifications    everything you were told, and the bell's data
@@ -14,7 +18,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request,
+                   session, url_for)
 from sqlalchemy import select
 
 from . import lab, notify
@@ -133,10 +138,13 @@ def setup():
         members = db_session.scalars(select(UserAccount).where(UserAccount.role == "member",
                                                                UserAccount.disabled.is_(False))
                                      .order_by(UserAccount.username)).all()
+        from .stocks import PRESETS as STOCK_PRESETS
         return render_template(
             "lab/setup.html", first_run=first_run, state=state, custom=custom,
             features=lab.FEATURES, stock_choices=lab.STOCK_CHOICES, inventory_choices=lab.INVENTORY_CHOICES,
-            permissions=lab.MEMBER_PERMISSIONS,
+            permissions=lab.MEMBER_PERMISSIONS, rack_labels=lab.RACK_LABELS,
+            incubator_temps=lab.INCUBATOR_TEMPS, incubator_defaults=lab.INCUBATOR_DEFAULTS,
+            stock_default_labels={kind: STOCK_PRESETS[kind]["label"] for kind in lab.STOCK_CHOICES},
             admins=[{"id": a.id, "username": a.username, "name": a.display_name or a.username} for a in admins],
             members=[{"id": m.id, "username": m.username, "name": m.display_name or m.username} for m in members])
 
@@ -158,6 +166,82 @@ def welcome():
         may_create = lab.may_create_database(db_session)
         may_share = lab.may_create_lab_database(db_session)
     return render_template("lab/welcome.html", lab_name=name, may_create=may_create, may_share=may_share)
+
+
+# ---------------------------------------------------------------- user guide and getting started
+
+# Pages that tick off a Getting started step just by being opened.
+MILESTONE_ENDPOINTS = {"labels.cage_cards": "cage_cards"}
+
+
+@bp.before_app_request
+def remember_milestones():
+    milestone = MILESTONE_ENDPOINTS.get(request.endpoint or "")
+    user = g.get("user")
+    if milestone is None or user is None or session.get(f"did:{milestone}"):
+        return None
+    session[f"did:{milestone}"] = True
+    with SessionLocal() as db_session:
+        if not lab.did(db_session, user, milestone):
+            lab.mark_did(db_session, user, milestone)
+            db_session.commit()
+    return None
+
+
+@bp.route("/guide")
+def guide():
+    """The user guide lives on the BioManager website, so it is the same for
+    every installation and can be read before installing."""
+    user = g.get("user")
+    if user is not None:
+        with SessionLocal() as db_session:
+            if not lab.did(db_session, user, "guide"):
+                lab.mark_did(db_session, user, "guide")
+                db_session.commit()
+    anchor = request.args.get("section", "")
+    return redirect(lab.GUIDE_URL + (f"#{anchor}" if anchor.replace("-", "").isalnum() else ""))
+
+
+@bp.route("/milestone/<name>", methods=["POST"])
+def milestone(name: str):
+    """A guide link was opened (navigator.sendBeacon from base.html)."""
+    if g.get("user") is None or name not in ("guide",):
+        return "", 204
+    with SessionLocal() as db_session:
+        if not lab.did(db_session, g.user, name):
+            lab.mark_did(db_session, g.user, name)
+            db_session.commit()
+    return "", 204
+
+
+@bp.route("/getting-started/hide", methods=["POST"])
+def hide_getting_started():
+    if g.get("user") is None:
+        return redirect(url_for("login"))
+    with SessionLocal() as db_session:
+        lab.hide_getting_started(db_session, g.user)
+        db_session.commit()
+    flash("Getting started is hidden. The user guide is under Help in the sidebar.", "success")
+    return redirect(url_for("home_dashboard"))
+
+
+@bp.app_context_processor
+def _getting_started():
+    def getting_started_card():
+        """For the home page: the steps, or None once they are all done, the
+        person hid them, or the lab is not set up yet."""
+        user = g.get("user")
+        if user is None:
+            return None
+        with SessionLocal() as db_session:
+            if not lab.setup_done(db_session) or lab.getting_started_hidden(db_session, user):
+                return None
+            steps = lab.getting_started(db_session, user, on_server=not current_app.config.get("LOCAL_SETUP"))
+        done = sum(1 for s in steps if s["done"])
+        if done == len(steps):
+            return None
+        return {"steps": steps, "done": done, "total": len(steps)}
+    return {"getting_started_card": getting_started_card, "guide_url": lab.GUIDE_URL}
 
 
 # ---------------------------------------------------------------- a database: mine or the lab's

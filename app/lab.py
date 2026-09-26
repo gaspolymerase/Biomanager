@@ -9,8 +9,11 @@ setup survey and the routes all agree:
   configurable databases (fly and worm stocks, organism databases,
   inventories) use their own `enabled` flag.
 - **Has the lab been set up?** The first admin answers a short survey
-  (/setup) choosing what the lab keeps; until then everything stays on, as
-  it always was.
+  (/setup) choosing what the lab keeps, with a few details for each (its
+  name; racks for the mouse colony; incubator temperatures for flies and
+  worms). A new installation starts empty: no database exists until the
+  survey asks for it (`start_empty`). An older one that predates the survey
+  keeps everything on until its admin answers.
 - **Who may add databases?** Admins always. Members may add their own
   (personal) databases unless an admin turned that off, and may add
   databases for the whole lab only if an admin allowed it.
@@ -24,6 +27,7 @@ and turning it back on brings everything back.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -119,6 +123,42 @@ def setup_done(session) -> bool:
 def mark_setup_done(session) -> None:
     _, set_setting = _settings()
     set_setting(session, SETUP_DONE_KEY, datetime.utcnow().isoformat(timespec="seconds"))
+
+
+STARTED_EMPTY_KEY = "lab_started_empty"
+
+# Offered in the survey for a new fly or worm database: which incubators the
+# lab runs, one made for each. Values match the presets' timing tables.
+INCUBATOR_TEMPS = {"fly": ("18", "22", "25", "29"), "worm": ("15", "20", "25")}
+INCUBATOR_DEFAULTS = {"fly": ("18", "25"), "worm": ("20",)}
+
+# Mouse rack position labels the survey offers, as rack naming schemes.
+RACK_LABELS = {
+    "letters": ("A1, A2 … B1", {"naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers",
+                                "naming_order": "row_col", "naming_separator": "", "naming_start": "1"}),
+    "numbers": ("1-1, 1-2 … 2-1", {"naming_mode": "grid", "naming_rows": "numbers", "naming_cols": "numbers",
+                                   "naming_order": "row_col", "naming_separator": "-", "naming_start": "1"}),
+    "sequential": ("1, 2, 3 …", {"naming_mode": "sequential", "naming_rows": "letters", "naming_cols": "numbers",
+                                 "naming_order": "row_col", "naming_separator": "", "naming_start": "1"}),
+}
+
+
+def start_empty(session) -> None:
+    """A brand-new installation: create nothing until the lab says what it
+    keeps. Marks the default databases as already seeded, so they are made
+    only when the survey asks for them, and switches the built-in databases
+    off until then. Calendar and notebook stay on."""
+    _, set_setting = _settings()
+    for key in ("inventory_seeded", "stocks_seeded"):
+        set_setting(session, key, "1")
+    for key in ("colony", "zebrafish", "plasmids"):
+        set_feature(session, key, False)
+    set_setting(session, STARTED_EMPTY_KEY, "1")
+
+
+def started_empty(session) -> bool:
+    get_setting, _ = _settings()
+    return bool(get_setting(session, STARTED_EMPTY_KEY, ""))
 
 
 def lab_name(session) -> str:
@@ -262,34 +302,88 @@ def apply_survey(session, form, actor: str) -> list[str]:
         if on and not before["features"][key]:
             switched_on.append(feature.label)
         set_feature(session, key, on)
+        name = _name(form, f"name:{key}")
+        if on and name and key in inventory_service.BUILTIN_DATABASES:
+            set_setting(session, f"db_label:{key}", name)
+    if form.get("feature:colony") == "1":
+        _make_mouse_racks(session, form, actor)
 
     for kind, (label, _blurb, _icon) in STOCK_CHOICES.items():
         wanted = form.get(f"stock:{kind}") == "1"
         existing = _stock_by_kind(session, kind)
+        name = _name(form, f"name:stock:{kind}")
         if wanted and not existing:
-            stock_service.create_module(session, kind, label, actor)
-            switched_on.append(label)
+            from .stocks import PRESETS as STOCK_PRESETS
+            module = stock_service.create_module(session, kind, name or STOCK_PRESETS[kind]["label"], actor)
+            _make_incubators(session, module, kind, form, actor)
+            switched_on.append(module.label)
         for module in existing:
             if wanted and not module.enabled:
                 switched_on.append(module.label)
             module.enabled = wanted
+            if wanted and name:
+                module.label = name
 
     for kind, (label, _blurb, _icon) in INVENTORY_CHOICES.items():
         wanted = form.get(f"inventory:{kind}") == "1"
         existing = _inventory_by_kind(session, kind)
+        name = _name(form, f"name:inventory:{kind}")
         if wanted and not existing:
-            inventory_service.create_module(session, kind, label, actor)
-            switched_on.append(label)
+            inventory_service.create_module(session, kind, name or label, actor)
+            switched_on.append(name or label)
         for module in existing:
             if wanted and not module.enabled:
                 switched_on.append(module.label)
             module.enabled = wanted
+            if wanted and name:
+                module.label = name
 
     for key in MEMBER_PERMISSIONS:
         _set_flag(session, key, form.get(key) == "1")
     set_setting(session, "lab_name", (form.get("lab_name") or "").strip()[:80])
     mark_setup_done(session)
     return switched_on
+
+
+def _name(form, field: str) -> str:
+    return (form.get(field) or "").strip()[:80]
+
+
+def _make_mouse_racks(session, form, actor: str) -> int:
+    """The survey's "racks" answer: that many racks, all the same size and
+    labelled the same way. Only for a colony with no racks yet."""
+    from sqlalchemy import func, select
+    from . import positions
+    from .models import MouseRack
+    try:
+        count = max(0, min(20, int(form.get("racks:count") or 0)))
+        rows = max(1, min(26, int(form.get("racks:rows") or 5)))
+        cols = max(1, min(40, int(form.get("racks:cols") or 7)))
+    except ValueError:
+        return 0
+    if not count or session.scalar(select(func.count(MouseRack.id))):
+        return 0
+    _label, naming = RACK_LABELS.get(form.get("racks:labels"), RACK_LABELS["letters"])
+    scheme = json.dumps(positions.scheme_from_form(naming))
+    for n in range(1, count + 1):
+        session.add(MouseRack(name=f"Rack {n}", rows=rows, cols=cols, naming=scheme, created_by=actor))
+    return count
+
+
+def _make_incubators(session, module, kind: str, form, actor: str) -> None:
+    """One incubator for each temperature the lab ticked, and the most
+    usual of them as the database's default temperature."""
+    from .models import StockIncubator
+    from .stock_service import norm_temp
+    chosen = [t for t in INCUBATOR_TEMPS[kind] if t in form.getlist(f"temps:{kind}")]
+    for temp in chosen:
+        session.add(StockIncubator(module_id_fk=module.id, name=f"Incubator {temp} °C",
+                                   temperature=norm_temp(temp), created_by=actor))
+    if chosen:
+        settings = json.loads(module.settings or "{}")
+        if settings.get("default_temperature") not in chosen:
+            settings["default_temperature"] = chosen[0]
+            module.settings = json.dumps(settings)
 
 
 def custom_databases(session) -> list[dict]:
@@ -335,3 +429,91 @@ def everyone_but(session, username: str) -> list[str]:
         UserAccount.username != username, UserAccount.disabled.is_(False),
         UserAccount.role != "pending")).all())
 
+
+
+# ---------------------------------------------------------------- getting started
+
+GUIDE_URL = "https://gaspolymerase.github.io/biomanager-app/guide.html"
+
+
+def did(session, user, milestone: str) -> bool:
+    """Has this person done a one-off thing the data does not show (printed
+    cage cards, opened the guide)?"""
+    get_setting, _ = _settings()
+    return bool(get_setting(session, f"did:{user.id}:{milestone}", ""))
+
+
+def mark_did(session, user, milestone: str) -> None:
+    _, set_setting = _settings()
+    set_setting(session, f"did:{user.id}:{milestone}", datetime.utcnow().isoformat(timespec="seconds"))
+
+
+def getting_started_hidden(session, user) -> bool:
+    get_setting, _ = _settings()
+    return bool(get_setting(session, f"getting_started_hidden:{user.id}", ""))
+
+
+def hide_getting_started(session, user) -> None:
+    _, set_setting = _settings()
+    set_setting(session, f"getting_started_hidden:{user.id}", "1")
+
+
+def getting_started(session, user, on_server: bool) -> list[dict]:
+    """The first steps for what this lab keeps, each ticked off by the data
+    itself: a rack exists, mice exist, cage cards were printed. Lab-wide, so
+    a step one person did is done for everyone."""
+    from flask import url_for
+    from sqlalchemy import func, select
+    from . import inventory_service, stock_service
+    from .models import (FishRecord, InventoryItem, MouseRack, MouseRecord, PlasmidRecord, StockRack,
+                         StockUnit, UserAccount)
+
+    def exists(stmt) -> bool:
+        return session.scalar(stmt.limit(1)) is not None
+
+    def step(title, hint, url, done, external=False):
+        return {"title": title, "hint": hint, "url": url, "done": bool(done), "external": external}
+
+    features = features_on(session)
+    steps: list[dict] = []
+    if features["colony"]:
+        steps.append(step("Add a rack", "Cages → Rack grid → New rack, labelled like the stickers on your racks.",
+                          url_for("colony", view="cages"), exists(select(MouseRack.id))))
+        steps.append(step("Bring in your mice", "Mice → Add many: describe a group, or upload your spreadsheet as a CSV.",
+                          url_for("colony", view="mice"), exists(select(MouseRecord.id))))
+        steps.append(step("Print cage cards", "Cages → Cage cards. Scanning a card's QR code opens its cage.",
+                          url_for("labels.cage_cards"), did(session, user, "cage_cards")))
+    if features["zebrafish"]:
+        steps.append(step("Add a tank and its fish", "New tank, then New fish to put a group in it.",
+                          url_for("zebrafish"), exists(select(FishRecord.id))))
+    for module in stock_service.list_modules(session):
+        mv = stock_service.view(module)
+        unit = getattr(mv, "unit", "vial")
+        steps.append(step(f"Set up {module.label}", "Incubators & racks: add a rack inside an incubator.",
+                          url_for("stocks.module", key=module.key),
+                          exists(select(StockRack.id).where(StockRack.module_id_fk == module.id))))
+        steps.append(step(f"Add your first {unit}", f"New {unit}: its genotype and purpose.",
+                          url_for("stocks.module", key=module.key),
+                          exists(select(StockUnit.id).where(StockUnit.module_id_fk == module.id))))
+    if features["plasmids"]:
+        steps.append(step("Add a plasmid", "Upload its GenBank or FASTA file to see the map.",
+                          url_for("plasmids"), exists(select(PlasmidRecord.id))))
+    for module in inventory_service.list_modules(session):
+        steps.append(step(f"Add to {module.label}", "One item, or several with Add many.",
+                          url_for("inventory.module", key=module.key),
+                          exists(select(InventoryItem.id).where(InventoryItem.module_id_fk == module.id))))
+    if on_server and user.role == "admin":
+        others = session.scalar(select(func.count(UserAccount.id)).where(
+            UserAccount.id != user.id, UserAccount.disabled.is_(False))) or 0
+        steps.append(step("Invite your lab", "Send members this address. They sign up, and you approve them in Manage users.",
+                          url_for("admin_users"), others > 0))
+    steps.append(step("Read the user guide", "Ten minutes on everything BioManager does. Help in the sidebar opens it too.",
+                      GUIDE_URL, did(session, user, "guide"), external=True))
+    return steps
+
+
+def getting_started_pending(session, user, on_server: bool) -> bool:
+    """Should this person start on the home page, where Getting started is?"""
+    if not setup_done(session) or getting_started_hidden(session, user):
+        return False
+    return not all(s["done"] for s in getting_started(session, user, on_server))

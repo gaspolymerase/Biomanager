@@ -16,15 +16,23 @@
   </label>
 {% endmacro %}
 
+{% macro name_field(field, placeholder) %}
+  <label class="field-label" style="width: 220px">Name
+    <input name="{{ field }}" maxlength="80" placeholder="{{ placeholder }}">
+  </label>
+{% endmacro %}
+
 {% block content %}
 <div class="setup-page">
   {% if first_run %}
     <section class="setup-intro">
       <h2>Welcome, {{ current_user.display_name or current_user.username }}</h2>
       <p>You're the lab's first admin. Tell BioManager what your lab keeps, and everyone who joins
-        gets exactly those databases: in their sidebar, on their home page, in search. Nothing here
-        is permanent. Change any of it later under <strong>Lab setup</strong>, and anyone can still
-        add a database of their own.</p>
+        gets exactly those databases: in their sidebar, on their home page, in search. Nothing is
+        created until you answer, and nothing here is permanent: change any of it later under
+        <strong>Lab setup</strong>, and anyone can still add a database of their own.
+        New to BioManager? The <a href="{{ guide_url }}" target="_blank" rel="noopener" data-milestone="guide">user guide</a>
+        walks through everything.</p>
     </section>
   {% endif %}
 
@@ -58,6 +66,97 @@
         {% endfor %}
       </div>
       <p class="setup-note">Another species (Xenopus, rats, cell lines…)? After this, <strong>Add database</strong> in the sidebar builds one to your lab's vocabulary.</p>
+
+      {% if first_run %}
+        {# Details for each ticked database, shown as it is ticked. All optional. #}
+        <div id="setup-details">
+          <p class="setup-group-label">A few details</p>
+          <p class="setup-note" data-details-empty>Tick what your lab keeps above, and BioManager asks a little about each.</p>
+          <div class="setup-list" data-details-list>
+            <div class="setup-row" data-details-for="feature:colony">
+              <div style="width: 100%"><span class="font-medium text-ink">{{ icon('mouse') }} {{ features['colony'].label }}</span></div>
+              <div>
+                {{ name_field('name:colony', features['colony'].label) }}
+                <label class="field-label" style="width: 110px">Racks
+                  <input name="racks:count" type="number" min="0" max="20" placeholder="0" inputmode="numeric">
+                </label>
+                <label class="field-label" style="width: 90px">Rows
+                  <input name="racks:rows" type="number" min="1" max="26" value="5" inputmode="numeric">
+                </label>
+                <label class="field-label" style="width: 90px">Columns
+                  <input name="racks:cols" type="number" min="1" max="40" value="7" inputmode="numeric">
+                </label>
+                <label class="field-label" style="width: 170px">Positions read
+                  <select name="racks:labels">
+                    {% for key, (example, _naming) in rack_labels.items() %}<option value="{{ key }}">{{ example }}</option>{% endfor %}
+                  </select>
+                </label>
+              </div>
+              <p class="setup-note" style="width: 100%">How many cage racks the room has, and how their positions are labelled, so the rack grid matches the stickers. Leave racks at 0 to add them later.</p>
+            </div>
+
+            <div class="setup-row" data-details-for="feature:zebrafish">
+              <div style="width: 100%"><span class="font-medium text-ink">{{ icon('fish') }} {{ features['zebrafish'].label }}</span></div>
+              <div>{{ name_field('name:zebrafish', features['zebrafish'].label) }}</div>
+            </div>
+
+            {% for kind, (label, _blurb, icon_name) in stock_choices.items() %}
+              <div class="setup-row" data-details-for="stock:{{ kind }}">
+                <div style="width: 100%"><span class="font-medium text-ink">{{ icon(icon_name) }} {{ label }}</span></div>
+                <div>
+                  {{ name_field('name:stock:' ~ kind, stock_default_labels[kind]) }}
+                  <fieldset class="field-label" style="border: 0; margin: 0; padding: 0">
+                    <legend>Incubators</legend>
+                    <span class="flex flex-wrap items-center gap-y-2" style="column-gap: 14px; padding-top: 6px">
+                      {% for temp in incubator_temps[kind] %}
+                        <label class="inline-flex items-center gap-1.5 text-ink" style="text-transform: none; letter-spacing: 0">
+                          <input type="checkbox" name="temps:{{ kind }}" value="{{ temp }}" class="accent-brand-600"
+                                 {% if temp in incubator_defaults[kind] %}checked{% endif %}> {{ temp }} °C
+                        </label>
+                      {% endfor %}
+                    </span>
+                  </fieldset>
+                </div>
+                <p class="setup-note" style="width: 100%">One incubator is made for each temperature ticked. {{ 'Flip' if kind == 'fly' else 'Chunk' }} schedules follow the temperature a rack is kept at.</p>
+              </div>
+            {% endfor %}
+
+            <div class="setup-row" data-details-for="feature:plasmids">
+              <div style="width: 100%"><span class="font-medium text-ink">{{ icon('plasmid') }} {{ features['plasmids'].label }}</span></div>
+              <div>{{ name_field('name:plasmids', features['plasmids'].label) }}</div>
+            </div>
+
+            {% for kind, (label, _blurb, icon_name) in inventory_choices.items() %}
+              <div class="setup-row" data-details-for="inventory:{{ kind }}">
+                <div style="width: 100%"><span class="font-medium text-ink">{{ icon(icon_name) }} {{ label }}</span></div>
+                <div>{{ name_field('name:inventory:' ~ kind, label) }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <script nonce="{{ csp_nonce() }}">
+          // Show the details for what is ticked. Without JavaScript all of them show.
+          (function () {
+            var form = document.getElementById('setup-form');
+            var rows = document.querySelectorAll('[data-details-for]');
+            var list = document.querySelector('[data-details-list]');
+            var empty = document.querySelector('[data-details-empty]');
+            function sync() {
+              var any = false;
+              rows.forEach(function (row) {
+                var box = form.querySelector('input[name="' + row.dataset.detailsFor + '"]');
+                var on = !!(box && box.checked);
+                row.hidden = !on;
+                any = any || on;
+              });
+              list.hidden = !any;
+              empty.hidden = any;
+            }
+            form.addEventListener('change', sync);
+            sync();
+          })();
+        </script>
+      {% endif %}
     </section>
 
     <section class="setup-step">

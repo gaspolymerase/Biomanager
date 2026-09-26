@@ -1406,8 +1406,14 @@ def landing_url(user, after_welcome: bool = False) -> str:
         if user.role == "admin" and not lab.setup_done(db_session):
             return url_for("lab.setup")
         features = lab.features_on(db_session)
+        # Someone who has not chosen a start page starts at home while
+        # their Getting started list has steps left.
+        new_to_it = not (user.default_landing or "").strip() and lab.getting_started_pending(
+            db_session, user, on_server=not app.config.get("LOCAL_SETUP"))
     if getattr(user, "welcomed_at", None) is None and not after_welcome:
         return url_for("lab.welcome")
+    if new_to_it:
+        return url_for("home_dashboard")
     landing = (user.default_landing or "").strip()
     if landing not in ALLOWED_LANDING_ENDPOINTS:
         landing = "colony"

@@ -81,12 +81,23 @@
                 {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
               </a>
             {% endfor %}
+            {# The user guide is on the BioManager website (app/lab.py GUIDE_URL). #}
+            <a class="rail-item" href="{{ guide_url }}" target="_blank" rel="noopener"
+               data-label="User guide" data-milestone="guide">
+              {{ icon('info') }}<span class="rail-label">Help</span>
+            </a>
             <button type="button" class="rail-toggle" data-rail-toggle
                     aria-label="Hide or show the sidebar">
               {{ icon('chevrons-right') }}<span class="rail-label">Hide sidebar</span>
             </button>
           </div>
         </aside>
+        <script nonce="{{ csp_nonce() }}">
+          document.addEventListener('click', function (event) {
+            var link = event.target.closest && event.target.closest('a[data-milestone]');
+            if (link && navigator.sendBeacon) navigator.sendBeacon('/milestone/' + link.dataset.milestone);
+          });
+        </script>
 
         <div class="shell-main">
 
