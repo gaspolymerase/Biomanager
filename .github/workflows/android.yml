@@ -66,6 +66,11 @@ jobs:
         run: |
           gradle -p android assembleRelease --no-daemon -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
           cp android/app/build/outputs/apk/release/app-release.apk BioManager-Android.apk
+      - name: Signing certificate
+        # Every release must carry the same certificate, or phones refuse the update.
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs BioManager-Android.apk | grep -E "SHA-256|DN"
 
       # ---- smoke test: the app against a real server, in an emulator
       - uses: actions/setup-python@v5
