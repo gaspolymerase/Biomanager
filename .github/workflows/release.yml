@@ -1,0 +1,102 @@
+name: release
+
+# Push a version tag (git tag v0.2.0 && git push origin v0.2.0) and this
+# builds the desktop app on macOS (Apple silicon and Intel) and Windows, then
+# publishes the files as a release of the public repository that hosts the
+# website, gaspolymerase/biomanager-app. The website's download buttons link
+# to .../releases/latest/download/<file>, so the file names below must not
+# change.
+#
+# Needs one secret, PUBLIC_RELEASE_TOKEN: a fine-grained personal access
+# token with "Contents: read and write" on gaspolymerase/biomanager-app only.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to publish, e.g. v0.1.0"
+        required: true
+
+env:
+  PUBLIC_REPO: gaspolymerase/biomanager-app
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14            # Apple silicon
+            asset: BioManager-macOS-AppleSilicon.zip
+          - os: macos-15-intel
+            asset: BioManager-macOS-Intel.zip
+          - os: windows-latest
+            asset: BioManager-Windows.zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+      - name: Build
+        env:
+          BIOMANAGER_VERSION: ${{ env.TAG }}
+        run: |
+          export BIOMANAGER_VERSION="${BIOMANAGER_VERSION#v}"
+          ./scripts/build-desktop.sh
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        # ditto keeps the bundle's symlinks and permissions, which zip does not.
+        run: ditto -c -k --keepParent dist/BioManager.app "${{ matrix.asset }}"
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/BioManager -DestinationPath "${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Publish to ${{ env.PUBLIC_REPO }}
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+        run: |
+          ls -la assets
+          cat > notes.md <<'EOF'
+          **Download** the file for your computer below, or from the [website](https://gaspolymerase.github.io/biomanager-app/#download).
+
+          | File | For |
+          | --- | --- |
+          | `BioManager-macOS-AppleSilicon.zip` | Macs with an M1 or later chip |
+          | `BioManager-macOS-Intel.zip` | Macs with an Intel chip |
+          | `BioManager-Windows.zip` | Windows 10 and 11, 64-bit |
+
+          **First launch:** on a Mac, right-click BioManager and choose **Open**; on Windows, choose **More info → Run anyway**. The app is not signed by Apple or Microsoft, so the system asks once.
+
+          Your data is kept outside the app, so updating never touches it.
+          EOF
+          gh release create "$TAG" assets/* --repo "$PUBLIC_REPO" --title "BioManager ${TAG#v}" --notes-file notes.md
