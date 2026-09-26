@@ -36,6 +36,7 @@ CATEGORIES = {
     "genotyping": ("Genotyping", "Genotypes recorded or requested for your animals, and what is waiting"),
     "orders": ("Orders", "Your orders placed, received or cancelled"),
     "lab": ("Lab news", "Databases or functions added for the lab"),
+    "notebook": ("Notebook", "Pages shared with you, comments and @mentions, meeting notes and action items"),
 }
 MAX_LISTED = 5
 

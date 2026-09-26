@@ -761,7 +761,7 @@ def shares_set(page_id: int):
             verb = "edit" if share_role == "edit" else "read"
             notify.send(s, username, f"{g.user.display_name or _me()} shared “{page.title}” with you",
                         f"You can {verb} it in your notebook, under Shared with me.",
-                        category="general", link=page_url(page_id), actor=_me())
+                        category="notebook", link=page_url(page_id), actor=_me())
         s.commit()
         return jsonify({"ok": True})
 
@@ -915,7 +915,7 @@ def comment_add(page_id: int):
                 no_access.append(username)
                 continue
             if notify.send(s, username, f"{who} mentioned you on “{page.title}”", body[:300],
-                           category="general", link=link, actor=me):
+                           category="notebook", link=link, actor=me):
                 told.add(username)
         followers = {owner_of(page)}
         if parent is not None:
@@ -925,7 +925,7 @@ def comment_add(page_id: int):
             target = s.scalar(select(UserAccount).where(UserAccount.username == username))
             if target is not None and role_for(s, page, target) is not None:
                 notify.send(s, username, f"{who} commented on “{page.title}”", body[:300],
-                            category="general", link=link, actor=me)
+                            category="notebook", link=link, actor=me)
         s.commit()
         return jsonify({"ok": True, "id": comment.id, "no_access": no_access,
                         "no_access_names": list(display_names(s, no_access).values())})
@@ -1344,7 +1344,7 @@ def create_meeting_note(s, series: NotebookMeetingSeries, when: date | None = No
         if member != me:
             s.add(NotebookShare(page_id_fk=page.id, username=member, role="edit", shared_by=me))
             notify.send(s, member, f"Notes for {series.name} on {when:%d %b} are open",
-                        "Everyone in the meeting can write in them.", category="general",
+                        "Everyone in the meeting can write in them.", category="notebook",
                         link=page_url(page.id), actor=me)
     if members and advance:
         series.next_index = (series.next_index + 1) % len(members)
@@ -1455,7 +1455,7 @@ def send_action_items(page_id: int):
                 s.add(TaskItem(title=item["text"], due_date=_date(item["due"]), status="todo", priority="medium",
                                owner=username, notes=f"{marker}: “{page.title}” {link}"))
                 notify.send(s, username, f"Action item from “{page.title}”", item["text"],
-                            category="general", link=link, actor=_me())
+                            category="notebook", link=link, actor=_me())
                 made.append({"username": username, "name": names.get(username, username), "text": item["text"],
                              "due": item["due"]})
         s.commit()
