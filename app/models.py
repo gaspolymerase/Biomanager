@@ -1465,6 +1465,121 @@ class StockFrozen(Base):
 
 
 # ---------------------------------------------------------------------------
+# Calendar: repeats, protocol timelines, equipment booking, away days and
+# the per-person feed a phone subscribes to (app/lab_calendar.py). Each is
+# its own table, so existing calendar rows need no new columns.
+# ---------------------------------------------------------------------------
+
+
+class CalendarRepeat(Base):
+    """How one calendar event repeats: every `interval` days, weeks or
+    months from its date, until `until` (or for good), minus skipped dates."""
+    __tablename__ = "calendar_repeats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id_fk: Mapped[int] = mapped_column(ForeignKey("calendar_events.id", ondelete="CASCADE"),
+                                             unique=True, index=True)
+    freq: Mapped[str] = mapped_column(String(10), default="weekly")  # daily | weekly | monthly
+    interval: Mapped[int] = mapped_column(Integer, default=1)
+    until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # ISO dates taken out of the series, comma separated.
+    skip: Mapped[str] = mapped_column(Text, default="")
+
+
+class ProtocolTemplate(Base):
+    """A reusable timeline: steps counted in days from a start (day 0).
+    `steps` is a JSON list of {"from": 0, "to": 4, "title": "Tamoxifen"}."""
+    __tablename__ = "protocol_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    steps: Mapped[str] = mapped_column(Text, default="[]")
+    color: Mapped[str] = mapped_column(String(20), default="")
+    owner: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ProtocolRun(Base):
+    """A template applied from one start date, to an experiment or a named
+    group. The steps are copied when it starts, so editing the template
+    later leaves runs already under way as they were; moving `start_date`
+    moves every step."""
+    __tablename__ = "protocol_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    template_id_fk: Mapped[int | None] = mapped_column(ForeignKey("protocol_templates.id", ondelete="SET NULL"),
+                                                       nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    label: Mapped[str] = mapped_column(String(160), default="")
+    start_date: Mapped[date] = mapped_column(Date)
+    steps: Mapped[str] = mapped_column(Text, default="[]")
+    experiment_id_fk: Mapped[int | None] = mapped_column(ForeignKey("experiments.id", ondelete="SET NULL"),
+                                                         nullable=True, index=True)
+    color: Mapped[str] = mapped_column(String(20), default="")
+    owner: Mapped[str] = mapped_column(String(80), default="", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Equipment(Base):
+    """A shared instrument people book time on: a confocal, a rig."""
+    __tablename__ = "equipment"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    location: Mapped[str] = mapped_column(String(120), default="")
+    color: Mapped[str] = mapped_column(String(20), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EquipmentBooking(Base):
+    """A slot on an instrument. Two bookings of one instrument never overlap."""
+    __tablename__ = "equipment_bookings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    equipment_id_fk: Mapped[int] = mapped_column(ForeignKey("equipment.id", ondelete="CASCADE"), index=True)
+    owner: Mapped[str] = mapped_column(String(80), default="", index=True)
+    start_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    end_at: Mapped[datetime] = mapped_column(DateTime)
+    purpose: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    equipment: Mapped[Equipment] = relationship()
+
+
+class Absence(Base):
+    """Someone away (leave, a conference), and who covers their work."""
+    __tablename__ = "absences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner: Mapped[str] = mapped_column(String(80), index=True)
+    start_date: Mapped[date] = mapped_column(Date, index=True)
+    end_date: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(20), default="leave")  # leave | conference | other
+    note: Mapped[str] = mapped_column(String(200), default="")
+    cover: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CalendarFeed(Base):
+    """A person's private calendar link for Apple, Google or Outlook
+    Calendar. Looked up by a hash of the token; the token itself is kept
+    encrypted so the link can be shown again."""
+    __tablename__ = "calendar_feeds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner: Mapped[str] = mapped_column(String(80), unique=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    token: Mapped[str] = mapped_column(EncryptedText, default="")
+    scope: Mapped[str] = mapped_column(String(10), default="mine")  # mine | lab
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # Model-wide table settings. Keep this block last in the file.
 #
 # Every integer primary key uses SQLite AUTOINCREMENT, so an id is never
