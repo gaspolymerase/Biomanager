@@ -75,7 +75,7 @@ everyone signs in to from a browser, including on their phone at the rack.
 | 🦎 | [**Any other organism**](#-any-other-organism) | Your own database, in your own words, with no programming |
 | 🧬 | [**Plasmids**](#-plasmids) | Sequences with an interactive map, and where each tube lives |
 | 🧪 | [**Lab inventories**](#-lab-inventories) | Samples, orders, reagents, antibodies, or a list of your own |
-| 📅 | [**Calendar & notebook**](#-calendar-and-notebook) | Experiments, to-dos, colony dates and notes, all linked |
+| 📅 | [**Calendar & notebook**](#-calendar-and-notebook) | Experiments, to-dos and colony dates; a shared lab notebook with data sheets, protocols and meeting notes |
 
 ### 🐭 Mouse colony
 
@@ -233,9 +233,55 @@ stock**, and statuses and categories can be renamed without losing items.
     are away and who covers it (they are told).
   - **On your phone**: a private link that Apple, Google or Outlook
     Calendar subscribes to, with just your things or the whole lab.
-- **Lab notebook** — pages in tabs, reusable templates, images and file
-  attachments. A page links to animals and calendar events, so the record
-  and the notes point at each other.
+- **Lab notebook** — pages in topics, written like a document and saved as
+  Markdown. A page links to mice, plasmids and orders (`@mouse 12`), so the
+  record and the notes point at each other. Type **/** on a new line for
+  everything below.
+  - **Experiments**: aim, setup, samples and lot numbers, steps, results.
+    *Start* and *Finished* stamp the times; planned, running, done or
+    failed shows in the sidebar.
+  - **Protocols** with numbered versions. *Start an experiment from it*
+    copies the steps as a checklist and records which version was followed.
+    **Run mode** goes through the checklist at the bench one step at a time
+    in large type: each tick gets the time, a deviation is written under the
+    page's Deviations heading.
+  - **Data sheets**: paste from Excel or import a CSV, add formula columns
+    (`=B/mean(B)*100`), and get a bar, dot, box, scatter or line plot with
+    SEM or SD error bars, a fitted line, and a t-test, Mann–Whitney or ANOVA
+    (Holm-corrected pairs) with significance stars. Plots download as SVG or
+    PNG.
+  - **Plate reader and qPCR**: paste readings onto a 6- to 384-well
+    heatmap, mark blanks, standards and samples, and read concentrations off
+    the standard curve; paste Ct values and get ΔΔCt fold changes.
+  - **Buffer recipes**: final volume and concentrations in, grams and
+    millilitres to add out (from molecular weight or a stock); change the
+    volume and every amount follows. Common buffers are built in; the lab's
+    own are saved to a shared library.
+  - **Calculators**: dilution (C₁V₁ = C₂V₂), molarity, master mix, serial
+    dilution, ligation insert, cell counting and seeding, agarose gel,
+    DNA/RNA concentration and copy number.
+  - **Timers**: every duration written in a step ("incubate 30 min") gets a
+    ⏱ button; timers keep running across pages and ring, vibrate and notify
+    when they end.
+  - **Daily log**: *Today* opens the day's page; each quick entry is added
+    with the time.
+  - **Meetings and seminars**: a rotation of who presents next, notes for
+    each meeting shared with everyone in it, the coming meetings on the
+    calendar, and action items (`- [ ] @name order primers, due
+    2026-10-02`) sent to each person's to-dos.
+  - **Markdown, plus**: tables, checklists, code, equations in LaTeX
+    (`$…$` inline or an equation block), Mermaid diagrams (flowcharts,
+    sequence, Gantt timelines) and mind maps from an indented list. Edit
+    the page as Markdown, download it as `.md`, or import `.md` files.
+  - **Pictures and files**: paste, drop, or take a photo on the phone.
+  - **Working together**: share a page with lab mates (or the whole lab)
+    to read or to edit. Editors write in it at the same time and see each
+    other's cursors. Comments sit on a passage of text, and an `@name`
+    tells that person.
+  - **Version history**: every editing session is kept, compared line by
+    line with the page now, and any version can be restored.
+  - **Tags and search** across every page you own or that is shared with
+    you, by words, kind, status, tag and date.
 - **Utilities** — molecular-weight reference data and a
   concentration-to-mass calculator.
 

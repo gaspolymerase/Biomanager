@@ -146,6 +146,7 @@ app.register_blueprint(oidc.bp)
 from . import guests, lab_routes, notify  # noqa: E402,F401
 from . import appearance, home_layouts  # noqa: E402
 from . import lab_calendar  # noqa: E402
+from . import lab_notebook  # noqa: E402
 
 with SessionLocal() as _db_session:
     if _db_session.scalar(select(func.count(UserAccount.id))) == 0:
@@ -287,6 +288,8 @@ app.register_blueprint(lab_routes.bp)
 app.register_blueprint(guests.bp)
 # Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
 app.register_blueprint(lab_calendar.bp)
+# Sharing, live editing, versions, comments, protocols and meetings (app/lab_notebook.py).
+app.register_blueprint(lab_notebook.bp)
 
 
 @app.route("/app-icon/<glyph>/<color>.svg")
@@ -4434,37 +4437,56 @@ def notebook():
         tabs = db_session.scalars(
             _notebook_owner_filter(select(NotebookTab)).order_by(NotebookTab.position, NotebookTab.id)
         ).all()
-        selected_tab = None
-        if selected_tab_id is not None:
-            selected_tab = next((tab for tab in tabs if tab.id == selected_tab_id), None)
-        if selected_tab is None and tabs:
-            selected_tab = tabs[0]
         selected_page = None
-        if selected_tab is not None:
-            if selected_page_id is not None:
-                selected_page = next((page for page in selected_tab.pages if page.id == selected_page_id), None)
-            if selected_page is None and selected_tab.pages:
+        role = None
+        if selected_page_id is not None:
+            candidate = db_session.get(NotebookPage, selected_page_id)
+            role = lab_notebook.role_for(db_session, candidate) if candidate is not None else None
+            if role is not None:
+                selected_page = candidate
+        selected_tab = None
+        if selected_page is not None and role == "owner":
+            selected_tab = next((tab for tab in tabs if tab.id == selected_page.tab_id_fk), None)
+        if selected_tab is None and selected_page is None:
+            if selected_tab_id is not None:
+                selected_tab = next((tab for tab in tabs if tab.id == selected_tab_id), None)
+            if selected_tab is None and tabs:
+                selected_tab = tabs[0]
+            if selected_tab is not None and selected_tab.pages:
                 selected_page = selected_tab.pages[0]
+                role = "owner"
 
+        side = lab_notebook.sidebar(db_session)
+        kinds = side.pop("kinds_by_page")
         tabs_data = [
             {
                 "id": tab.id,
                 "title": tab.title,
                 "pages": [
-                    {"id": page.id, "title": page.title, "tab_id": tab.id, "updated_at": page.updated_at.isoformat()}
+                    {"id": page.id, "title": page.title, "tab_id": tab.id, "updated_at": page.updated_at.isoformat(),
+                     "kind": kinds.get(page.id, "note")}
                     for page in tab.pages
                 ],
             }
             for tab in tabs
         ]
-        selected_page_data = _serialize_page(selected_page) if selected_page else None
+        selected_page_data = (lab_notebook.page_payload(db_session, selected_page, role)
+                              if selected_page is not None else None)
         selected_tab_id_value = selected_tab.id if selected_tab else None
+        me = {"username": g.user.username, "name": g.user.display_name or g.user.username}
 
     return render_template(
         "notebook.html",
         tabs=tabs_data,
         selected_tab_id=selected_tab_id_value,
         selected_page=selected_page_data,
+        side=side,
+        kinds=lab_notebook.KINDS,
+        kind_icons=lab_notebook.KIND_ICONS,
+        statuses=lab_notebook.STATUSES,
+        me=me,
+        starters=[{"key": key, "title": st["title"], "kind": st["kind"], "hint": st["hint"]}
+                  for key, st in lab_notebook.STARTERS.items()],
     )
 
 
@@ -4501,6 +4523,7 @@ def notebook_delete_tab(tab_id: int):
     with SessionLocal() as db_session:
         tab = db_session.get(NotebookTab, tab_id)
         if tab is not None and tab.owner_username == g.user.username:
+            lab_notebook.delete_page_rows(db_session, [page.id for page in tab.pages])
             db_session.delete(tab)
             db_session.commit()
     return redirect(url_for("notebook"))
@@ -4748,11 +4771,10 @@ def global_search():
         from . import organism_service
         results.extend(organism_service.search(db_session, q, limit))
 
-        # Notebook pages — owner-scoped.
+        # Notebook pages — the person's own and those shared with them.
         page_stmt = (
-            select(NotebookPage)
-            .join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id)
-            .where(NotebookTab.owner_username == g.user.username)
+            lab_notebook.accessible_filter(
+                select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
             .where(NotebookPage.title.ilike(like) | NotebookPage.body.ilike(like))
             .order_by(NotebookPage.updated_at.desc())
             .limit(limit)
@@ -4762,8 +4784,9 @@ def global_search():
                 "type": "page",
                 "id": page.id,
                 "label": page.title or "Untitled page",
-                "sublabel": f"Notebook · {page.tab.title if page.tab else ''}",
-                "url": url_for("notebook") + f"?tab={page.tab_id_fk}&page={page.id}",
+                "sublabel": (f"Notebook · {page.tab.title}" if page.tab and page.tab.owner_username == g.user.username
+                             else f"Notebook · shared by {page.tab.owner_username if page.tab else ''}"),
+                "url": url_for("notebook", page=page.id),
             })
 
     # Nothing from a function the lab switched off (app/lab.py).
@@ -5069,6 +5092,17 @@ def notebook_templates_list():
         ]})
 
 
+@app.route("/notebook/templates/<int:template_id>")
+@login_required
+def notebook_template_get(template_id: int):
+    with SessionLocal() as db_session:
+        template = db_session.get(NotebookTemplate, template_id)
+        if template is None or template.owner_username != g.user.username:
+            return jsonify({"ok": False}), 404
+        return jsonify({"ok": True, "template": {"id": template.id, "title": template.title,
+                                                 "icon": template.icon, "body": template.body or ""}})
+
+
 @app.route("/notebook/templates/create", methods=["POST"])
 @login_required
 def notebook_template_create():
@@ -5088,7 +5122,7 @@ def notebook_template_create():
     with SessionLocal() as db_session:
         if from_page_id:
             page = db_session.get(NotebookPage, from_page_id)
-            if page is None or page.tab.owner_username != g.user.username:
+            if page is None or lab_notebook.role_for(db_session, page) is None:
                 return jsonify({"ok": False, "error": "page not found"}), 404
             body = page.body or body
         template = NotebookTemplate(
@@ -5185,14 +5219,34 @@ def notebook_move_page(page_id: int):
 @app.route("/notebook/pages/<int:page_id>/update", methods=["POST"])
 @login_required
 def notebook_update_page(page_id: int):
+    """Save a page's title, text, date or properties; anyone it is shared
+    with for editing may. The live editor sends X-Collab-Gen with the text:
+    a save from an editor on an older editing state is refused (it would put
+    back what a restore replaced), and a save without it (the plain-text
+    fallback) starts the live editors again from the new text."""
     with SessionLocal() as db_session:
         page = db_session.get(NotebookPage, page_id)
-        if page is None or page.tab.owner_username != g.user.username:
+        role = lab_notebook.role_for(db_session, page) if page is not None else None
+        if role is None:
             return jsonify({"ok": False}), 404
+        if not lab_notebook.can_edit_role(role):
+            return jsonify({"ok": False, "error": "This page is view only."}), 403
+        changed = False
         if "title" in request.form:
-            page.title = (request.form.get("title") or "").strip() or "Untitled page"
+            title = (request.form.get("title") or "").strip() or "Untitled page"
+            changed = changed or title != page.title
+            page.title = title
         if "body" in request.form:
-            page.body = request.form.get("body", "")
+            body = request.form.get("body", "")
+            collab = request.headers.get("X-Collab-Gen")
+            generation = lab_notebook.collab_generation(db_session, page.id)
+            if collab is not None and collab != str(generation):
+                return jsonify({"ok": False, "reset": True, "gen": generation}), 409
+            if body != (page.body or ""):
+                page.body = body
+                changed = True
+                if collab is None:
+                    lab_notebook.reset_collab(db_session, page.id)
         if "entry_date" in request.form:
             raw_date = (request.form.get("entry_date") or "").strip()
             page.entry_date = parse_date(raw_date) if raw_date else None
@@ -5206,6 +5260,9 @@ def notebook_update_page(page_id: int):
             except _json.JSONDecodeError:
                 pass
         page.updated_at = datetime.utcnow()
+        if changed:
+            live = request.headers.get("X-Collab-Gen") is not None
+            lab_notebook.record_edit(db_session, page, lab_notebook.last_editor(db_session, page.id) if live else None)
         db_session.commit()
         return jsonify({"ok": True, "updated_at": page.updated_at.isoformat()})
 
@@ -5218,8 +5275,11 @@ def notebook_delete_page(page_id: int):
         if page is None or page.tab.owner_username != g.user.username:
             return redirect(url_for("notebook"))
         tab_id = page.tab_id_fk
+        lab_notebook.delete_page_rows(db_session, [page.id])
         db_session.delete(page)
         db_session.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"ok": True, "tab_id": tab_id})
     return redirect(url_for("notebook", tab=tab_id))
 
 
@@ -5296,8 +5356,6 @@ def notebook_lookup_plasmid(plasmid_id: int):
         )
 
 
-@app.route("/notebook/lookup/order/<int:order_id>")
-@login_required
 def _order_items_query(db_session, query: str, limit: int):
     """Orders for @order mentions: items of the first orders inventory,
     where an order's number is what @order <n> refers to."""
@@ -5315,6 +5373,8 @@ def _order_items_query(db_session, query: str, limit: int):
     return db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)).all()
 
 
+@app.route("/notebook/lookup/order/<int:order_id>")
+@login_required
 def notebook_lookup_order(order_id: int):
     with SessionLocal() as db_session:
         found = _order_items_query(db_session, str(order_id), 1)
@@ -5347,7 +5407,7 @@ def notebook_lookup_order(order_id: int):
 def notebook_backlinks(entity_type: str, entity_id: int):
     """Return notebook pages whose body mentions @<type> <id>.
 
-    Scoped to pages the current user owns (via their tabs). Returns a list of
+    Scoped to pages the current user may open (theirs and shared). Returns a list of
     {page_id, page_title, tab_id, tab_title, snippet, updated_at}.
     """
     if entity_type not in ("mouse", "plasmid", "order"):
@@ -5355,9 +5415,8 @@ def notebook_backlinks(entity_type: str, entity_id: int):
     needle = f"@{entity_type} {entity_id}"
     with SessionLocal() as db_session:
         stmt = (
-            select(NotebookPage)
-            .join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id)
-            .where(NotebookTab.owner_username == g.user.username)
+            lab_notebook.accessible_filter(
+                select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
             .where(NotebookPage.body.ilike(f"%{needle}%"))
             .order_by(NotebookPage.updated_at.desc())
             .limit(25)

@@ -888,12 +888,17 @@
 }
 
 @media (max-width: 720px) {
+  /* One row that scrolls sideways, so it never covers half the page. */
   .editor-toolbar {
     bottom: 12px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     max-width: calc(100vw - 24px);
-    justify-content: center;
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: none;
   }
+  .editor-toolbar::-webkit-scrollbar { display: none; }
+  .editor-toolbar-btn { flex: none; }
 }
 
 /* ---- Excel-style autofill for notebook tables ----------------------- */

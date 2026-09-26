@@ -1,0 +1,307 @@
+/* The notebook's working blocks (sheets, plots, recipes, calculators,
+   plates, qPCR, diagrams, equations), step timers, run mode, the "/" menu,
+   comment marks and collaborators' cursors. Colours come from the app's
+   tokens (frontend/src/tailwind.css), so dark mode follows. */
+
+/* Chart colours: a categorical order validated for colour-blind
+   separation, stepped separately for the dark surface. Text never takes a
+   series colour. */
+:root {
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100;
+  --viz-5: #e87ba4; --viz-6: #008300; --viz-7: #4a3aa7; --viz-8: #e34948;
+  --viz-surface: var(--color-surface);
+  --viz-grid: color-mix(in srgb, var(--color-hairline) 55%, transparent);
+  --viz-axis: var(--color-hairline);
+  --viz-ink: var(--color-ink);
+  --viz-muted: var(--color-muted);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500;
+    --viz-5: #d55181; --viz-6: #008300; --viz-7: #9085e9; --viz-8: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500;
+  --viz-5: #d55181; --viz-6: #008300; --viz-7: #9085e9; --viz-8: #e66767;
+}
+
+/* ---------------------------------------------------------------- shared bits */
+
+.nb-muted { color: var(--color-muted); font-size: 12px; }
+.nb-warn { color: var(--color-danger-600); font-size: 12px; }
+.nb-spacer, .nb-grow { flex: 1 1 auto; }
+.nb-mini {
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--color-hairline); border-radius: 6px; background: var(--color-surface);
+  color: var(--color-ink); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.nb-mini:hover { background: var(--color-sand-50); }
+.nb-icon-btn {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px;
+  background: transparent; color: var(--color-muted); font-size: 15px; line-height: 1; cursor: pointer;
+}
+.nb-icon-btn:hover { background: var(--color-sand-200); color: var(--color-ink); }
+.nb-icon-btn .icon { width: 13px; height: 13px; }
+.nb-seg { display: inline-flex; border: 1px solid var(--color-hairline); border-radius: 6px; overflow: hidden; }
+.nb-seg button {
+  border: 0; background: var(--color-surface); color: var(--color-ink-soft); font: inherit; font-size: 12px;
+  padding: 3px 9px; cursor: pointer;
+}
+.nb-seg button + button { border-left: 1px solid var(--color-hairline); }
+.nb-seg button.is-on { background: color-mix(in srgb, var(--color-brand-600) 12%, var(--color-surface)); color: var(--color-brand-700); font-weight: 600; }
+.nb-check { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ---------------------------------------------------------------- block frame */
+
+.tiptap-editor-host .nb-block {
+  margin: 14px 0; border: 1px solid var(--color-hairline); border-radius: 10px; background: var(--color-surface);
+  box-shadow: var(--shadow-xs); overflow: hidden; white-space: normal; font-size: 12.5px; line-height: 1.45;
+}
+.tiptap-editor-host .nb-block.is-selected,
+.tiptap-editor-host .ProseMirror-selectednode.nb-block { outline: 2px solid var(--color-brand-400); outline-offset: 1px; }
+.nb-block-head {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 4px; border-bottom: 1px solid var(--color-sand-100);
+  background: var(--color-recess); color: var(--color-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+}
+.nb-block-grip { cursor: grab; padding: 0 4px; color: var(--color-sand-400); letter-spacing: -2px; user-select: none; }
+.nb-block-label { flex: 1; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10.5px; }
+.nb-block-actions { display: inline-flex; gap: 2px; }
+.nb-block-body { padding: 10px 12px 12px; }
+.nb-block-body input, .nb-block-body select, .nb-block-body textarea {
+  font: inherit; font-size: 12.5px; color: var(--color-ink); background: var(--color-surface);
+  border: 1px solid var(--color-hairline); border-radius: 5px; padding: 2px 6px; min-width: 0;
+}
+.nb-block-body input:focus, .nb-block-body select:focus, .nb-block-body textarea:focus { outline: none; border-color: var(--color-brand-500); }
+.nb-block-body input:disabled, .nb-block-body select:disabled, .nb-block-body textarea:disabled { background: transparent; border-color: transparent; color: var(--color-ink); opacity: 1; }
+.nb-block-body table { border-collapse: collapse; margin: 0; }
+
+/* ---------------------------------------------------------------- sheet */
+
+.nb-sheet-toolbar, .nb-sheet-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 8px; }
+.nb-sheet-controls label { display: inline-flex; align-items: center; gap: 4px; color: var(--color-muted); font-size: 12px; }
+.nb-sheet-title { flex: 1 1 180px; font-weight: 600 !important; font-size: 13.5px !important; border-color: transparent !important; padding-left: 2px !important; }
+.nb-sheet-title:hover { border-color: var(--color-hairline) !important; }
+.nb-sheet-scroll { overflow-x: auto; max-width: 100%; margin-bottom: 8px; }
+.tiptap-editor-host .nb-sheet-table { min-width: 100%; border: 1px solid var(--color-hairline); border-radius: 0; font-variant-numeric: tabular-nums; }
+.tiptap-editor-host .nb-sheet-table th, .tiptap-editor-host .nb-sheet-table td {
+  border: 1px solid var(--color-sand-100); padding: 0; min-width: 72px; background: var(--color-surface); vertical-align: top;
+}
+.tiptap-editor-host .nb-sheet-table thead th { background: var(--color-recess); padding: 4px; font-weight: 500; }
+.nb-sheet-table td input { width: 100%; border: 0 !important; border-radius: 0 !important; background: transparent !important; padding: 5px 6px !important; }
+.nb-sheet-table td input:focus { box-shadow: inset 0 0 0 2px var(--color-brand-500); }
+.nb-sheet-table td.is-num input, .nb-sheet-table td.is-num { text-align: right; }
+.nb-sheet-table td.is-formula { padding: 5px 6px; color: var(--color-ink-soft); background: color-mix(in srgb, var(--color-brand-600) 4%, var(--color-surface)); }
+.nb-sheet-table td input.is-bad { color: var(--color-danger-600); }
+.tiptap-editor-host .nb-sheet-table .nb-sheet-rownum, .tiptap-editor-host .nb-sheet-table .nb-sheet-corner {
+  min-width: 28px; width: 28px; text-align: center; color: var(--color-sand-400); background: var(--color-recess); font-size: 11px; padding: 5px 2px; cursor: pointer;
+}
+.nb-sheet-rownum:hover { color: var(--color-danger-600); text-decoration: line-through; }
+.nb-sheet-colhead { display: flex; align-items: center; gap: 3px; }
+.nb-sheet-letter { color: var(--color-sand-400); font-size: 10px; width: 12px; text-align: center; }
+.nb-sheet-colname { flex: 1; min-width: 60px; font-weight: 600 !important; border-color: transparent !important; background: transparent !important; }
+.nb-sheet-colname:hover, .nb-sheet-colname:focus { border-color: var(--color-hairline) !important; background: var(--color-surface) !important; }
+.nb-sheet-coltype { width: 44px; padding: 1px !important; font-size: 11px !important; color: var(--color-muted) !important; }
+.nb-sheet-colmenu { border: 0; background: none; color: var(--color-sand-400); cursor: pointer; font-size: 14px; padding: 0 2px; }
+.nb-sheet-colmenu:hover { color: var(--color-danger-600); }
+.nb-sheet-unit, .nb-sheet-formula { display: block; width: 100%; margin-top: 3px; font-size: 11px !important; color: var(--color-muted) !important; }
+.nb-sheet-formula { font-family: var(--font-mono) !important; }
+.nb-sheet-formula.has-error { border-color: var(--color-danger-600) !important; }
+.nb-sheet-addcol { min-width: 28px !important; width: 28px; }
+.nb-sheet-addcol button { width: 100%; height: 100%; border: 0; background: none; color: var(--color-brand-600); font-size: 16px; cursor: pointer; }
+.nb-sheet-plot, .nb-sheet-stats { border-top: 1px solid var(--color-sand-100); padding-top: 10px; margin-top: 6px; }
+.tiptap-editor-host .nb-stats-table { font-variant-numeric: tabular-nums; margin: 6px 0; display: block; max-width: 100%; overflow-x: auto; }
+.tiptap-editor-host .nb-stats-table th, .tiptap-editor-host .nb-stats-table td { white-space: nowrap; }
+.tiptap-editor-host .nb-stats-table th, .tiptap-editor-host .nb-stats-table td { border: 0; border-bottom: 1px solid var(--color-sand-100); padding: 4px 10px 4px 0; text-align: left; background: transparent; min-width: 0; }
+.tiptap-editor-host .nb-stats-table thead th { color: var(--color-muted); font-weight: 500; font-size: 11.5px; }
+.nb-stats-table td.is-num { text-align: right; }
+.nb-stats-table tr.is-total th, .nb-stats-table tr.is-total td { border-top: 1px solid var(--color-hairline); }
+.nb-stats-table input { width: 100%; }
+.nb-stats-result { margin: 8px 0 4px !important; }
+.nb-stars { font-weight: 700; }
+
+/* ---------------------------------------------------------------- plot */
+
+.nb-plot-host { position: relative; width: 100%; overflow-x: auto; }
+.nb-plot-svg { display: block; max-width: 100%; height: auto; }
+.nb-plot-empty { padding: 24px; text-align: center; color: var(--color-muted); border: 1px dashed var(--color-hairline); border-radius: 8px; }
+.nb-plot-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0 58px; color: var(--color-ink-soft); font-size: 12px; }
+.nb-plot-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.nb-plot-legend-fit { color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.nb-plot-tooltip {
+  position: fixed; z-index: 90; pointer-events: none; padding: 6px 9px; border-radius: 7px;
+  background: var(--material-popover); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-md); color: var(--color-ink); font-size: 12px; line-height: 1.4; max-width: 260px;
+}
+
+/* ---------------------------------------------------------------- recipe */
+
+.nb-recipe-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.nb-recipe-name { flex: 1 1 200px; font-weight: 600 !important; font-size: 13.5px !important; }
+.nb-recipe-vol, .nb-recipe-ph { display: inline-flex; align-items: center; gap: 4px; color: var(--color-muted); }
+.nb-recipe-vol input { width: 70px; text-align: right; }
+.nb-recipe-ph input { width: 52px; }
+.tiptap-editor-host .nb-recipe-table { width: 100%; min-width: 760px; table-layout: fixed; }
+.nb-recipe-table col.c-tick { width: 26px; } .nb-recipe-table col.c-name { width: auto; } .nb-recipe-table col.c-conc { width: 150px; }
+.nb-recipe-table col.c-mw { width: 84px; } .nb-recipe-table col.c-stock { width: 150px; } .nb-recipe-table col.c-add { width: 128px; } .nb-recipe-table col.c-x { width: 28px; }
+.tiptap-editor-host .nb-recipe-table th, .tiptap-editor-host .nb-recipe-table td { border: 0; border-bottom: 1px solid var(--color-sand-100); padding: 3px 6px 3px 0; background: transparent; min-width: 0; text-align: left; vertical-align: middle; }
+.tiptap-editor-host .nb-recipe-table thead th { font-weight: 500; font-size: 11px; color: var(--color-muted); }
+.nb-recipe-table td input { width: 100%; }
+.nb-recipe-conc { white-space: nowrap; }
+.nb-recipe-conc { display: flex; gap: 3px; }
+.nb-recipe-conc input { width: 58px !important; flex: none; text-align: right; }
+.nb-recipe-conc select { flex: 1; min-width: 0; }
+.nb-recipe-tick { width: 22px; text-align: center !important; }
+.nb-recipe-tick input { width: auto !important; }
+.nb-recipe-amount { min-width: 120px; font-variant-numeric: tabular-nums; }
+.nb-recipe-amount b { display: block; font-size: 13px; }
+.nb-recipe-amount small, .nb-recipe-table small { display: block; color: var(--color-muted); font-size: 11px; }
+tr:has(input[data-c="done"]:checked) .nb-recipe-amount b { text-decoration: line-through; color: var(--color-muted); }
+.nb-recipe-water { margin: 8px 0; }
+.nb-recipe-notes { width: 100%; resize: vertical; }
+.nb-recipe-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nb-recipe-library { margin-top: 10px; padding: 8px; border: 1px solid var(--color-hairline); border-radius: 8px; max-height: 300px; overflow: auto; background: var(--color-recess); }
+.nb-lib-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.nb-lib-label { margin: 8px 0 2px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-sand-400); }
+.nb-lib-item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 5px 6px; border-radius: 6px; cursor: pointer; color: var(--color-ink); font: inherit; }
+.nb-lib-item:hover { background: var(--color-surface); }
+.nb-lib-item small { display: block; color: var(--color-muted); font-size: 11px; }
+
+/* ---------------------------------------------------------------- calculators */
+
+.nb-calc-head { margin-bottom: 8px; }
+.nb-calc-type { font-weight: 600 !important; }
+.nb-calc-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; }
+.nb-calc-field { display: flex; flex-direction: column; gap: 3px; color: var(--color-muted); font-size: 11.5px; }
+.nb-calc-input { display: flex; gap: 3px; }
+.nb-calc-input input { flex: 1; text-align: right; }
+.nb-calc-field.is-solved input { background: color-mix(in srgb, var(--color-brand-600) 8%, var(--color-surface)); border-style: dashed; }
+.nb-calc-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
+.nb-calc-row { display: flex; gap: 6px; align-items: center; }
+.nb-calc-row input:first-child { flex: 1; }
+.nb-calc-row input:nth-child(2) { width: 80px; text-align: right; }
+.nb-calc-results { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--color-sand-100); }
+.nb-calc-results p { margin: 3px 0 !important; }
+.nb-calc-answer { font-size: 14px; }
+.nb-calc-answer b { font-size: 15px; }
+
+/* ---------------------------------------------------------------- plate & qPCR */
+
+.nb-plate-paste { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; margin-bottom: 8px; }
+.nb-plate-paste textarea { flex: 1 1 260px; font-family: var(--font-mono) !important; font-size: 11.5px !important; }
+.tiptap-editor-host .nb-plate-grid { border-collapse: separate; border-spacing: 2px; user-select: none; font-variant-numeric: tabular-nums; }
+.tiptap-editor-host .nb-plate-grid th { border: 0; background: none; color: var(--color-sand-400); font-size: 10px; font-weight: 500; padding: 0 2px; min-width: 0; }
+.tiptap-editor-host .nb-plate-grid td {
+  width: 48px; min-width: 48px; height: 34px; border: 1px solid var(--color-hairline); border-radius: 50%; padding: 0;
+  text-align: center; vertical-align: middle; background: var(--color-recess); cursor: default; position: relative; font-size: 10px; line-height: 1.1;
+}
+.tiptap-editor-host .nb-plate-grid.is-small td { width: 30px; min-width: 30px; height: 26px; font-size: 8.5px; }
+.nb-plate-grid td.is-sel { box-shadow: 0 0 0 2px var(--color-brand-500); }
+.nb-plate-grid td.role-blank { border-style: dashed; }
+.nb-plate-grid td.role-std { border: 2px solid var(--viz-4); }
+.nb-plate-grid td.role-sample { border: 2px solid var(--viz-2); }
+.nb-plate-val { display: block; }
+.nb-plate-tag { display: block; font-size: 8.5px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46px; margin: 0 auto; }
+.nb-plate-tools input { width: 80px; }
+.nb-plate-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.nb-qpcr-raw { max-height: 260px; overflow: auto; }
+.nb-qpcr-flags { margin: 4px 0 8px; padding-left: 18px; }
+
+/* ---------------------------------------------------------------- diagrams & maths */
+
+.nb-diagram-view { min-height: 40px; overflow-x: auto; text-align: center; cursor: pointer; border-radius: 6px; }
+.nb-diagram-view:hover { background: var(--color-recess); }
+.nb-diagram-view svg { max-width: 100%; height: auto; }
+.nb-diagram-view.has-error { text-align: left; }
+.nb-diagram-empty { padding: 18px; }
+.nb-diagram-editor textarea { width: 100%; font-family: var(--font-mono) !important; font-size: 12.5px !important; line-height: 1.5; resize: vertical; margin-top: 8px; }
+.nb-diagram-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
+.nb-diagram-src { margin: 6px 0 0; white-space: pre-wrap; font-size: 11.5px; }
+.nb-block-math .nb-block-head { display: none; }
+.nb-block-math { box-shadow: none !important; border-style: dashed !important; }
+.nb-block-math .katex-display { margin: 6px 0; }
+.nb-math-inline { cursor: pointer; padding: 0 1px; border-radius: 3px; }
+.nb-math-inline:hover { background: var(--color-sand-100); }
+
+/* ---------------------------------------------------------------- timers */
+
+.nb-timer-chip {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; margin: 0 2px; padding: 0; vertical-align: -3px;
+  border: 1px solid var(--color-hairline); border-radius: 50%; background: var(--color-surface); color: var(--color-brand-600); cursor: pointer;
+}
+.nb-timer-chip svg { width: 11px; height: 11px; }
+.nb-timer-chip:hover { background: color-mix(in srgb, var(--color-brand-600) 12%, var(--color-surface)); border-color: var(--color-brand-400); }
+.nb-timers {
+  position: fixed; right: 16px; bottom: 76px; z-index: 70; display: flex; flex-direction: column; gap: 6px; width: 250px; max-height: 60vh; overflow: auto;
+}
+.nb-timer {
+  padding: 8px 10px; border-radius: 12px; background: var(--material-popover); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  box-shadow: var(--shadow-lg); color: var(--color-ink); font-size: 12px;
+}
+.nb-timer.is-done { background: color-mix(in srgb, var(--color-warn-600) 22%, var(--color-surface)); animation: nb-pulse 1s ease-in-out infinite alternate; }
+@keyframes nb-pulse { to { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn-600) 45%, transparent), var(--shadow-lg); } }
+@media (prefers-reduced-motion: reduce) { .nb-timer.is-done { animation: none; } }
+.nb-timer-main { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.nb-timer-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-timer-left { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.nb-timer-bar { height: 3px; margin: 5px 0; border-radius: 2px; background: var(--color-sand-200); overflow: hidden; }
+.nb-timer-bar i { display: block; height: 100%; background: var(--color-brand-600); }
+.nb-timer-actions { display: flex; gap: 4px; }
+.nb-timer-actions button, .nb-timer-new {
+  border: 1px solid var(--color-hairline); background: var(--color-surface); color: var(--color-ink); border-radius: 6px;
+  font: inherit; font-size: 11.5px; padding: 2px 7px; cursor: pointer;
+}
+.nb-timer-new { align-self: flex-end; box-shadow: var(--shadow-sm); }
+
+/* ---------------------------------------------------------------- run mode */
+
+body.nb-run-open { overflow: hidden; }
+body.nb-run-open .editor-toolbar, body.nb-run-open .insert-menu { display: none !important; }
+body.nb-run-open .nb-timers { z-index: 85; }
+.nb-run {
+  position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; gap: 18px; padding: 24px max(24px, 6vw) 32px;
+  background: var(--color-surface); color: var(--color-ink); overflow: auto;
+}
+.nb-run-top { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; }
+.nb-run-title { font-weight: 600; font-size: 15px; }
+.nb-run-close { grid-row: 1 / span 3; grid-column: 2; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--color-hairline); background: var(--color-surface); font-size: 20px; cursor: pointer; color: var(--color-ink); }
+.nb-run-progress { height: 6px; border-radius: 3px; background: var(--color-sand-200); overflow: hidden; }
+.nb-run-progress i { display: block; height: 100%; background: var(--color-ok-600); transition: width 0.25s; }
+.nb-run-count { color: var(--color-muted); font-size: 13px; }
+.nb-run-step { flex: 1; display: flex; gap: 20px; align-items: flex-start; max-width: 900px; width: 100%; margin: 4vh auto 0; }
+.nb-run-num { flex: none; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: color-mix(in srgb, var(--color-brand-600) 14%, var(--color-surface)); color: var(--color-brand-700); font-size: 24px; font-weight: 700; }
+.nb-run-step.is-done .nb-run-num { background: color-mix(in srgb, var(--color-ok-600) 18%, var(--color-surface)); color: var(--color-ok-700); }
+.nb-run-text { font-size: clamp(22px, 3.4vw, 34px); line-height: 1.3; font-weight: 500; }
+.nb-run-stamp { margin-top: 10px; font-size: 14px; color: var(--color-ok-700); font-weight: 600; }
+.nb-run-timers { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.nb-run-timer { padding: 12px 20px; border-radius: 12px; border: 1px solid var(--color-brand-400); background: color-mix(in srgb, var(--color-brand-600) 8%, var(--color-surface)); color: var(--color-brand-700); font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
+.nb-run-next { text-align: center; color: var(--color-muted); font-size: 14px; }
+.nb-run-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.nb-run-actions button { min-width: 120px; padding: 14px 22px; border-radius: 12px; border: 1px solid var(--color-hairline); background: var(--color-surface); color: var(--color-ink); font: inherit; font-size: 16px; font-weight: 500; cursor: pointer; }
+.nb-run-actions button:disabled { opacity: 0.4; cursor: default; }
+.nb-run-actions button.is-primary { background: var(--color-ok-600); border-color: transparent; color: #fff; min-width: 180px; font-weight: 700; }
+
+/* ---------------------------------------------------------------- menus */
+
+.insert-menu-main { width: 320px; max-height: min(70vh, 560px); display: flex; flex-direction: column; padding: 6px !important; }
+.insert-menu-main .insert-menu-items { overflow-y: auto; }
+.insert-menu-search { margin: 2px 2px 6px; height: 28px; padding: 0 8px; border: 1px solid var(--color-hairline); border-radius: 6px; background: var(--color-surface); color: var(--color-ink); font: inherit; font-size: 12.5px; }
+.insert-menu-slash { position: fixed; z-index: 75; width: 300px; max-height: 340px; overflow-y: auto; }
+.insert-menu-item.is-active { background: color-mix(in srgb, var(--color-brand-600) 12%, transparent); }
+.insert-menu-item[hidden], .insert-menu-label[hidden] { display: none !important; }
+
+/* ---------------------------------------------------------------- comments & collaborators */
+
+.tiptap-editor-host .nb-comment-mark { background: color-mix(in srgb, var(--viz-4) 26%, transparent); border-bottom: 2px solid var(--viz-4); cursor: pointer; border-radius: 2px; }
+.tiptap-editor-host .nb-comment-mark.is-flash { background: color-mix(in srgb, var(--viz-4) 55%, transparent); }
+.collaboration-cursor__caret { position: relative; margin: 0 -1px; border-left: 2px solid; border-right: 0; word-break: normal; pointer-events: none; }
+.collaboration-cursor__label {
+  position: absolute; top: -1.35em; left: -2px; padding: 0 5px; border-radius: 4px 4px 4px 0; color: #fff; font-size: 10.5px; font-weight: 600;
+  line-height: 1.5; white-space: nowrap; user-select: none; pointer-events: none;
+}
+.tiptap-editor-host .ProseMirror-yjs-selection { opacity: 0.35; }
+
+@media print {
+  .nb-timers, .nb-timer-chip, .nb-block-head, .nb-mini, .nb-sheet-controls, .nb-plate-paste, .nb-diagram-editor { display: none !important; }
+  .tiptap-editor-host .nb-block { box-shadow: none; break-inside: avoid; }
+}
