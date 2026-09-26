@@ -95,7 +95,9 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          # No Google Play services: on a loaded CI machine they hang, and Android
+          # then kills every app bound to them. Only the Scan button needs them.
+          target: default
           arch: x86_64
           disable-animations: true
           script: ./android/ci-smoke.sh BioManager-Android.apk smoke

@@ -57,6 +57,7 @@ public class SetupActivity extends Activity {
     }
 
     private void check() {
+        if (!connect.isEnabled()) return;  // already checking: Enter can arrive as a key and as an action
         String address = Server.normalise(field.getText().toString());
         if (address == null) {
             show(getString(R.string.err_empty));
