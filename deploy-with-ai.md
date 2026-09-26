@@ -64,6 +64,12 @@ Ask these, then recommend an option (the table after them) and wait for a yes.
   `/opt/biomanager`, so the deploy folder is
   `/opt/biomanager/Biomanager/deploy` (scripts and systemd units assume it).
   `BUNDLE.md`, `README.md` and `RUNBOOK.md` inside are the reference.
+- **The app image** is not pulled from a registry: the same release has
+  `biomanager-image-amd64.tar.gz` and `biomanager-image-arm64.tar.gz`, and
+  `deploy/host/load-image.sh` downloads the one for this machine (for the
+  version in `deploy/VERSION`) and `docker load`s it with the tag
+  `compose.yaml` expects. Run it after every unpack, before `docker compose up`.
+  Check: `docker image ls ghcr.io/gaspolymerase/biomanager` shows the version.
 - **Settings:** `deploy/.env` (from `.env.example`, mode 600). Required:
   `DOMAIN`, `TLS` (`internal` | `tailscale` | `acme` | `files`),
   `POSTGRES_PASSWORD` (letters and digits only). Usual: `TZ`,
@@ -122,6 +128,7 @@ curl -fsSL -o /tmp/biomanager-server.tar.gz \
   https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
 cd /opt/biomanager/Biomanager/deploy
+host/load-image.sh
 cp .env.example .env && chmod 600 .env
 sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
 sed -i "s|^DOMAIN=.*|DOMAIN=biomanager.tailXXXX.ts.net|; s|^TLS=.*|TLS=tailscale|" .env
@@ -194,7 +201,7 @@ front. Then no inbound ports are needed.
 ## Moving the desktop app's data in
 
 Only into a **new, empty** server, before `docker compose up -d` (after
-`.env` is filled in). The app's folder: macOS
+`host/load-image.sh` and with `.env` filled in). The app's folder: macOS
 `~/Library/Application Support/Biomanager/`, Windows `%APPDATA%\Biomanager\`,
 Linux `~/.local/share/Biomanager/`; it holds `biomanager.db` and `uploads/`.
 The person quits the app and copies the folder to the server (`scp -r`),
@@ -218,7 +225,7 @@ cd /opt/biomanager/Biomanager/deploy
 docker compose exec backup backup.sh
 curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/b.tar.gz -C /opt/biomanager      # .env and backups are not in the bundle
-docker compose pull app && docker compose up -d --build
+host/load-image.sh && docker compose up -d --build
 ```
 
 Check: `docker compose ps` healthy; `/healthz` prints `ok`. The database
@@ -229,6 +236,7 @@ schema updates itself on start.
 | Symptom | Likely cause and fix |
 | --- | --- |
 | `permission denied` on the Docker socket | The user isn't in the `docker` group yet: log out and in, or `newgrp docker` |
+| `pull access denied for ghcr.io/gaspolymerase/biomanager` | The image wasn't loaded: run `host/load-image.sh` in the deploy folder, then `docker compose up -d` |
 | `app` never healthy | `docker compose logs app`. A malformed `DATABASE_URL` usually means `POSTGRES_PASSWORD` has symbols: use hex only, then `docker compose down` (not `-v`) and `up -d` |
 | `/healthz` fails but containers are healthy | `docker compose logs caddy`. `TLS=tailscale`: HTTPS Certificates not enabled in the tailnet, or `COMPOSE_FILE` missing. `TLS=acme`: DNS not pointing at the VM yet, or port 80 closed |
 | Browser says the certificate isn't trusted (`TLS=internal`) | Install `biomanager-root.crt` on that device |

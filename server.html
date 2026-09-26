@@ -117,9 +117,10 @@
 
       <div class="note"><b>What every server needs.</b> A machine with 2 CPU cores, 2 GB of memory and 20 GB of disk
         or more (a small lab uses far less), running Linux or macOS with <b>Docker</b>. BioManager runs as four
-        small containers: the app, a PostgreSQL database, Caddy for HTTPS, and a backup service. You get them as
-        the <b>server bundle</b> — a small download with everything that runs it, from the
-        <a href="https://github.com/gaspolymerase/biomanager-app/releases/latest">latest release</a>.</div>
+        small containers: the app, a PostgreSQL database, Caddy for HTTPS, and a backup service. You get them from the
+        <a href="https://github.com/gaspolymerase/biomanager-app/releases/latest">latest release</a>: the <b>server
+        bundle</b>, a small download with everything that runs it, and the app itself as a file for Intel or ARM
+        machines, which the bundle's <code>host/load-image.sh</code> fetches for you. No accounts or registries.</div>
     </section>
 
     <!-- ======================================================= A -->
@@ -159,6 +160,7 @@ curl -fsSL -o /tmp/biomanager-server.tar.gz \
   https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
 cd /opt/biomanager/Biomanager/deploy
+host/load-image.sh                  # downloads the app for this machine (Intel or ARM)
 cp .env.example .env &amp;&amp; chmod 600 .env</code></pre></li>
         <li><b>Fill in <code>.env</code></b> with a text editor (<code>nano .env</code>):
 <pre><code>DOMAIN=192.168.1.50            # or the DNS name IT gave you
@@ -258,6 +260,7 @@ sudo tailscale up --ssh --hostname=biomanager</code></pre>
   https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
 cd /opt/biomanager/Biomanager/deploy
+host/load-image.sh                     # downloads the app for this machine (Intel or ARM)
 cp .env.example .env &amp;&amp; chmod 600 .env
 nano .env</code></pre>
 <pre><code>DOMAIN=biomanager.tail1234.ts.net     # biomanager + your tailnet name
@@ -355,7 +358,7 @@ ACME_EMAIL=you@yourlab.org       # Let's Encrypt writes here before a certificat
 <pre><code>cd /opt/biomanager/Biomanager/deploy
 docker compose exec backup backup.sh      # a fresh backup first
 curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz \
-  &amp;&amp; tar -xzf /tmp/b.tar.gz -C /opt/biomanager &amp;&amp; docker compose pull app &amp;&amp; docker compose up -d --build</code></pre>
+  &amp;&amp; tar -xzf /tmp/b.tar.gz -C /opt/biomanager &amp;&amp; host/load-image.sh &amp;&amp; docker compose up -d --build</code></pre>
           Your <code>.env</code> and backups are never in the bundle, so unpacking over it keeps them.</dd>
       </dl>
     </section>
@@ -393,7 +396,7 @@ curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/rele
       <ol class="steps-list">
         <li>Quit the app, and copy its data folder (see <a href="#desktop">A</a>) to the server, for example with
           <code>scp</code>, to <code>/tmp/lab</code>.</li>
-        <li>On the server, in the deploy folder, after filling in <code>.env</code>:
+        <li>On the server, in the deploy folder, after <code>host/load-image.sh</code> and filling in <code>.env</code>:
 <pre><code>docker compose up -d db
 docker compose run --rm --no-deps -v /tmp/lab/biomanager.db:/import/lab.db:ro app \
   sh -c 'python scripts/migrate-to-postgres.py /import/lab.db "$DATABASE_URL"'
