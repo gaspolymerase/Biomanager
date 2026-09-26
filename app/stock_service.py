@@ -199,6 +199,28 @@ def next_flip(mv: ModuleView, rack: StockRack) -> date | None:
     return rack.last_flipped_on + timedelta(days=flip_interval(mv, rack))
 
 
+def flip_status(mv: ModuleView, rack: StockRack, today: date | None = None) -> dict:
+    """The rack's last flip and when the next is due, for the line above its
+    grid: {"text", "tone" ("", "due" or "overdue"), "title"}."""
+    today = today or date.today()
+    verb = mv.s.get("flip_verb", "Flip")
+    done = mv.s.get("flip_done", f"{verb}ped")
+    every = flip_interval(mv, rack)
+    title = f"Every {every} days at {rack_temperature(mv, rack)} °C" + (" (set on this rack)" if rack.flip_days else "")
+    if rack.last_flipped_on is None:
+        return {"text": f"No {verb.lower()} recorded yet", "tone": "due",
+                "title": f"{title}. Set the last {verb.lower()} date under Edit."}
+    last = rack.last_flipped_on
+    ago = (today - last).days
+    when = f"{done} {last:%a %d %b}" + (" (today)" if ago == 0 else f" ({ago} d ago)" if ago > 0 else "")
+    due = next_flip(mv, rack)
+    if due < today:
+        return {"text": f"{when} · {verb.lower()} {(today - due).days} d overdue", "tone": "overdue", "title": title}
+    if due == today:
+        return {"text": f"{when} · {verb.lower()} due today", "tone": "due", "title": title}
+    return {"text": f"{when} · next {due:%a %d %b}", "tone": "", "title": title}
+
+
 # ---------------------------------------------------------------------------
 # Units
 # ---------------------------------------------------------------------------

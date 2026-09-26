@@ -193,7 +193,13 @@
         grid.innerHTML = `<div class="rack-empty">${escapeHtml(root.dataset.emptyText || 'Add a rack to start placing.')}</div>`;
       } else {
         const occupied = items.filter((item) => placedIn(rack, item)).length;
-        if (meta) meta.textContent = `${rack.rows} × ${rack.cols} · ${occupied} of ${rack.rows * rack.cols} filled`;
+        if (meta) {
+          // A rack may carry a note for this line, e.g. a fly rack's last flip.
+          const note = rack.note && rack.note.text
+            ? ` · <span class="rack-note ${{ overdue: 'text-danger-700 font-semibold', due: 'text-warn-700 font-semibold' }[rack.note.tone] || ''}" title="${escapeHtml(rack.note.title || '')}">${escapeHtml(rack.note.text)}</span>`
+            : '';
+          meta.innerHTML = `${rack.rows} × ${rack.cols} · ${occupied} of ${rack.rows * rack.cols} filled${note}`;
+        }
         const scheme = naming(rack.naming);
         const sequential = scheme.mode === 'sequential';
         grid.style.gridTemplateColumns = `28px repeat(${rack.cols}, minmax(84px, 1fr))`;
