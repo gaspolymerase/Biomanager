@@ -2738,3 +2738,74 @@
   background: transparent;
   box-shadow: none;
 }
+
+/* --- Touch screens: phones and tablets ------------------------------------
+   The desktop layout is sized for a mouse (28px controls, 13px type). On a
+   screen worked with fingers, two things change. These rules sit outside the
+   layers on purpose, so they win over the component styles without
+   !important; desktop browsers, whose pointer is fine, never see them. */
+@media (pointer: coarse) {
+  /* iOS Safari zooms the whole page into any field whose text is under 16px
+     when it is tapped, and leaves it zoomed. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* Something a fingertip can hit: 36px for buttons, 32px for pills in rows. */
+  .btn, .btn-sm, .seg-item, .dt-chip, .dt-toolbar-btn, .dt-bottom-action,
+  .dt-page-size, .strip-btn, .omnibox, .account-btn, .menu-item {
+    min-height: 36px;
+  }
+  .row-icon-btn, .omnibox, .strip-btn, .dt-prev, .dt-next {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  select, .status-pill, .sex-pill, .scope-pill {
+    min-height: 32px;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    width: 20px;
+    height: 20px;
+  }
+  .wtab-close {
+    width: 28px;
+    height: 28px;
+  }
+  /* The whole height of a workspace tab, not just its label, opens it. */
+  .wtab-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+  }
+  .card-head-link, .flag-toggle, .weight-add-btn, .danger-button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+  /* The plasmid editor's own dropdowns (Blueprint) set their size more
+     specifically than the rule above. */
+  .bp3-html-select select {
+    font-size: 16px;
+  }
+}
+
+/* A phone's header has room for the page title or for labelled buttons, not
+   both: the buttons there show their icon only. The label stays in the page
+   for screen readers, and a button without an icon keeps its text. */
+@media (max-width: 480px) {
+  .toolbar-actions .btn:has(.icon) {
+    font-size: 0;
+    gap: 0;
+    padding-inline: 9px;
+  }
+}
+
+/* The row a link or a QR code pointed at (#cage-12): marked until another is. */
+tr.is-scanned > td {
+  background-color: color-mix(in srgb, var(--color-brand-500) 14%, transparent);
+}
+tr.is-scanned > td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-brand-500);
+}

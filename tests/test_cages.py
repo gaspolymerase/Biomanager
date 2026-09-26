@@ -627,3 +627,32 @@ class PlaceCageTests(RackMixin, Case):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CageCardQrTests(Case):
+    """A cage card is scanned by whoever is at the rack, not only its owner."""
+
+    def qr_targets(self, client, url):
+        from unittest import mock
+        from app import labels
+        real = labels._qr_svg
+        seen = []
+
+        def capture(payload, scale=4):
+            seen.append(payload)
+            return real(payload, scale)
+
+        with mock.patch.object(labels, "_qr_svg", side_effect=capture):
+            self.assertEqual(client.get(url).status_code, 200)
+        return seen
+
+    def test_the_qr_opens_the_whole_colony_at_that_cage(self):
+        from urllib.parse import urlparse
+        cage = self.make_cage(self.m)          # the member's own cage
+        target = next(t for t in self.qr_targets(self.m, f"/labels/cards/cages?ids={cage}")
+                      if t.endswith(f"#cage-{cage}"))
+        self.assertIn("scope=all", target)
+        # Someone else scanning it lands on a page that lists the cage.
+        parsed = urlparse(target)
+        html = self.o.get(f"{parsed.path}?{parsed.query}").get_data(as_text=True)
+        self.assertIn(f'id="cage-{cage}"', html)
