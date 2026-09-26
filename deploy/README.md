@@ -26,14 +26,16 @@ On the server, with Docker and the compose plugin installed. Get these files
 one of two ways, into `/opt/biomanager/Biomanager/deploy` (the scripts, timers
 and RUNBOOK assume that place):
 
-- **The server bundle** from the latest release, no source needed. It runs
-  the published image `ghcr.io/gaspolymerase/biomanager` (see `BUNDLE.md`):
+- **The server bundle** from the latest release, no source needed. The app
+  image comes as a file from the same release, loaded by `host/load-image.sh`
+  (see `BUNDLE.md`):
 
   ```bash
   sudo mkdir -p /opt/biomanager && sudo chown "$USER" /opt/biomanager
   curl -fsSL -o /tmp/biomanager-server.tar.gz \
     https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
   tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
+  /opt/biomanager/Biomanager/deploy/host/load-image.sh
   ```
 
 - **Or a checkout** of the source repository, which builds the image itself:
@@ -233,7 +235,7 @@ with the same repository and password, then restore from those files.
 ```bash
 docker compose exec backup backup.sh     # a fresh backup first
 git pull                                 # a checkout; with the bundle, unpack the newer one over it
-docker compose pull app                  # the bundle only: fetch that version's image
+host/load-image.sh                       # the bundle only: load that version's image
 docker compose up -d --build
 docker compose logs -f app               # watch it start
 ```

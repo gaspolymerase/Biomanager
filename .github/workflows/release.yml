@@ -135,9 +135,10 @@ jobs:
 
   # The lab server, without the source: the app as an image for Intel and ARM
   # machines (Oracle's free VMs are ARM), and the deploy files as a bundle
-  # that runs it (scripts/make-server-bundle.sh). The image is pushed to
-  # ghcr.io/gaspolymerase/biomanager; its package must be set to Public once,
-  # in the package's settings on GitHub, for other labs to pull it.
+  # that runs it (scripts/make-server-bundle.sh). The image goes into the
+  # release as a file per architecture, which the bundle's host/load-image.sh
+  # downloads and loads, so no registry is needed. It is also pushed to
+  # ghcr.io/gaspolymerase/biomanager, for whoever can pull from there.
   server:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -172,14 +173,28 @@ jobs:
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.url=https://gaspolymerase.github.io/biomanager-app/server.html
 
+      # The same image as files for the release; the layers come from the build's cache.
+      - name: Image files
+        run: |
+          for arch in amd64 arm64; do
+            docker buildx build --platform "linux/$arch" -t "$IMAGE:$VERSION" \
+              --output "type=docker,dest=biomanager-image-$arch.tar" .
+            gzip -9 "biomanager-image-$arch.tar"
+          done
+          ls -la biomanager-image-*.tar.gz
+
       - name: Server bundle
         run: scripts/make-server-bundle.sh "$VERSION" biomanager-server.tar.gz
 
-      # Start the bundle as a lab would, from the image just pushed, and ask it for a page.
+      # Start the bundle as a lab would, from the release's image file with no
+      # registry login at all, and ask it for a page.
       - name: Check the bundle runs
         run: |
+          docker logout ghcr.io
+          docker image rm -f "$IMAGE:$VERSION" 2>/dev/null || true
           mkdir -p "$RUNNER_TEMP/server" && tar -xzf biomanager-server.tar.gz -C "$RUNNER_TEMP/server"
           cd "$RUNNER_TEMP/server/Biomanager/deploy"
+          host/load-image.sh "$GITHUB_WORKSPACE/biomanager-image-amd64.tar.gz"
           cp .env.example .env
           sed -i "s|^DOMAIN=.*|DOMAIN=localhost|; s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
           docker compose up -d
@@ -194,8 +209,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: server-bundle
-          path: biomanager-server.tar.gz
+          path: |
+            biomanager-server.tar.gz
+            biomanager-image-amd64.tar.gz
+            biomanager-image-arm64.tar.gz
           if-no-files-found: error
+          compression-level: 0
 
   android:
     uses: ./.github/workflows/android.yml
@@ -231,7 +250,9 @@ jobs:
           | `BioManager-Linux.AppImage` | Linux, x86-64: mark it executable and open it |
           | `BioManager-Linux.tar.gz` | Linux, the same app as a folder |
           | `BioManager-Android.apk` | Android 7 and later: connects to your lab's BioManager server |
-          | `biomanager-server.tar.gz` | A lab server: the deploy files, running the image `ghcr.io/gaspolymerase/biomanager`. [How to set one up](https://gaspolymerase.github.io/biomanager-app/server.html) |
+          | `biomanager-server.tar.gz` | A lab server: the deploy files. [How to set one up](https://gaspolymerase.github.io/biomanager-app/server.html) |
+          | `biomanager-image-amd64.tar.gz` | The lab server's app for Intel/AMD machines, loaded by the bundle's `host/load-image.sh` |
+          | `biomanager-image-arm64.tar.gz` | The same for ARM machines, such as Oracle Cloud's free Ampere VMs |
 
           **First launch:** on a Mac, right-click BioManager and choose **Open**; on Windows, choose **More info → Run anyway**. The apps are not signed by Apple or Microsoft, so the system asks once. On Android, allow your browser to install apps when asked.
 

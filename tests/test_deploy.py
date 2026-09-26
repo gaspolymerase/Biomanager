@@ -214,6 +214,10 @@ class ServerBundle(unittest.TestCase):
                 names = tar.getnames()
                 compose = tar.extractfile("Biomanager/deploy/compose.yaml").read().decode()
             self.assertIn("Biomanager/deploy/BUNDLE.md", names)
+            self.assertIn("Biomanager/deploy/host/load-image.sh", names)
+            with tarfile.open(out) as tar:
+                self.assertEqual(tar.extractfile("Biomanager/deploy/VERSION").read().decode().strip(), "1.2.3")
+                self.assertTrue(tar.getmember("Biomanager/deploy/host/load-image.sh").mode & 0o111)
             self.assertIn("Biomanager/deploy/host/internet-access.sh", names)
             self.assertIn("image: ${BIOMANAGER_IMAGE:-ghcr.io/gaspolymerase/biomanager:1.2.3}", compose)
             self.assertNotIn("context: ..", compose)          # nothing to build the app from
