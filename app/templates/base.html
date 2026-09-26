@@ -8,7 +8,7 @@
        honour this (Dark Reader) leave its colours alone. #}
     <meta name="darkreader-lock">
     <title>{% block page_title %}BioManager{% endblock %} · BioManager</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ app_icon_url }}" id="app-icon-link">
     {# Add to Home Screen: Android reads the manifest, iPhone the touch icon. #}
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
@@ -20,6 +20,8 @@
 
     <link rel="stylesheet"
           href="{{ url_for('static', filename='tailwind.css') }}?v={{ asset_version('tailwind.css') }}">
+    {# The accent that matches the person's app icon (app/appearance.py). #}
+    <style id="brand-css">{{ brand_css|safe }}</style>
 
     {# Declarative handlers (data-on-click=…); before any page script registers its actions. #}
     <script src="{{ url_for('static', filename='actions.js') }}?v={{ asset_version('actions.js') }}"></script>
@@ -50,7 +52,7 @@
         {# ---- Sidebar ---- #}
         <aside class="rail" aria-label="Sidebar">
           <a class="rail-brand" href="{{ url_for('home_dashboard') }}">
-            <img src="{{ url_for('static', filename='icon.svg') }}" alt="">
+            <img src="{{ app_icon_url }}" alt="" data-app-icon>
             <span class="rail-brand-word">BioManager</span>
           </a>
 

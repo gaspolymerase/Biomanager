@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, timedelta
 from functools import wraps
 
-from flask import Flask, Response, flash, g, get_flashed_messages, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, Response, abort, flash, g, get_flashed_messages, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from markupsafe import Markup, escape
 from werkzeug.datastructures import ImmutableMultiDict
 from sqlalchemy import func, select
@@ -143,7 +143,7 @@ app.register_blueprint(oidc.bp)
 
 # Importing app.notify registers the listener that sends notifications.
 from . import guests, lab_routes, notify  # noqa: E402,F401
-from . import home_layouts  # noqa: E402
+from . import appearance, home_layouts  # noqa: E402
 
 with SessionLocal() as _db_session:
     if _db_session.scalar(select(func.count(UserAccount.id))) == 0:
@@ -285,6 +285,24 @@ app.register_blueprint(lab_routes.bp)
 app.register_blueprint(guests.bp)
 
 
+@app.route("/app-icon/<glyph>/<color>.svg")
+def app_icon(glyph: str, color: str):
+    """A picture and colour from Settings (app/appearance.py). Needs no
+    login: it is the same for everyone and says nothing about the lab."""
+    if glyph not in appearance.GLYPHS or color not in appearance.PALETTES:
+        abort(404)
+    return Response(appearance.render(glyph, color), mimetype="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+def app_icon_url(glyph: str, color: str) -> str:
+    # The default is the static icon the build script writes, so the sign-in
+    # page and everyone who never chose share one cached file.
+    if appearance.is_default(glyph, color):
+        return url_for("static", filename="icon.svg", v=appearance.version(glyph, color))
+    return url_for("app_icon", glyph=glyph, color=color, v=appearance.version(glyph, color))
+
+
 @app.errorhandler(IntegrityError)
 def handle_integrity_error(error: IntegrityError):
     """A duplicate ID (or similar) is a message for the person, not a 500.
@@ -360,6 +378,17 @@ def inject_user():
     return {"current_user": user, "min_password_length": security.MIN_PASSWORD_LENGTH,
             "sign_in_providers": oidc.provider_choices(), "notification_unread": unread,
             "lab_features": lab.request_features() if user is not None else {}}
+
+
+@app.context_processor
+def inject_appearance():
+    """The person's app icon, and the accent colour that goes with it."""
+    user = g.get("user")
+    glyph, color = appearance.DEFAULT_GLYPH, appearance.DEFAULT_COLOR
+    if user is not None:
+        with SessionLocal() as db_session:
+            glyph, color = appearance.get_choice(db_session, user.username)
+    return {"app_icon_url": app_icon_url(glyph, color), "brand_css": appearance.brand_css(color)}
 
 
 # ---------------------------------------------------------------------------
@@ -1482,6 +1511,16 @@ def settings():
                     home_layouts.set_layout(db_session, user.username, request.form.get("home_layout", ""))
                 db_session.commit()
                 flash("Profile updated.", "success")
+            elif action == "appearance":
+                glyph, color = appearance.set_choice(db_session, user.username,
+                                                     request.form.get("glyph", ""), request.form.get("color", ""))
+                db_session.commit()
+                if request.headers.get("X-Autosave") == "1":
+                    # Picked in Settings and saved at once: the page swaps the
+                    # icon and the accent in place.
+                    return jsonify({"ok": True, "icon": app_icon_url(glyph, color),
+                                    "brand_css": appearance.brand_css(color)})
+                flash("App icon updated.", "success")
             elif action == "notifications":
                 for category in notify.CATEGORIES:
                     setattr(user, f"notify_{category}", request.form.get(f"notify_{category}") == "1")
@@ -1515,6 +1554,7 @@ def settings():
             "role_title": user.role_title,
             "default_landing": user.default_landing,
             "home_layout": home_layouts.get_layout(db_session, user.username),
+            "app_icon": appearance.get_choice(db_session, user.username),
             "role": user.role,
             "created_at": user.created_at.strftime("%Y-%m-%d") if user.created_at else "",
             "notify_transfer": user.notify_transfer,
@@ -1536,6 +1576,9 @@ def settings():
         user_settings=user_data,
         landing_choices=sorted(ALLOWED_LANDING_ENDPOINTS),
         home_layout_choices=home_layouts.LAYOUTS,
+        icon_glyphs={key: label for key, (label, _draw) in appearance.GLYPHS.items()},
+        icon_palettes=appearance.PALETTES,
+        icon_urls={f"{g}/{c}": app_icon_url(g, c) for g in appearance.GLYPHS for c in appearance.PALETTES},
         mail_status=mailer.status_line(),
         mail_configured=mailer.is_configured(),
         identities=identities,
