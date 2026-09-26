@@ -68,6 +68,22 @@ app.config["TESTING"] = True
 ON_POSTGRES = engine.dialect.name == "postgresql"
 only_sqlite = unittest.skipIf(ON_POSTGRES, "tests SQLite-only machinery")
 
+def _wait_out_midnight() -> None:
+    """Tests fix "today" once, here (TODAY, T, days_ago), while the app asks
+    the clock every time it stamps a date. A run that crosses midnight would
+    compare two different days and fail in dozens of places, so a run that
+    starts close to midnight waits for it to pass. Runs take a few minutes."""
+    import time
+    margin = float(os.environ.get("BIOMANAGER_TEST_MIDNIGHT_MARGIN_MIN", "15")) * 60
+    now = datetime.now()
+    left = (datetime.combine(now.date() + timedelta(days=1), datetime.min.time()) - now).total_seconds()
+    if left < margin:
+        print(f"tests: {left / 60:.1f} min to midnight; waiting for it to pass so the date "
+              "cannot change during the run", file=sys.stderr)
+        time.sleep(left + 5)
+
+
+_wait_out_midnight()
 TODAY = date.today()
 T = TODAY.isoformat()
 AUTOSAVE = {"X-Autosave": "1"}
