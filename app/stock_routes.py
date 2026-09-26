@@ -210,6 +210,8 @@ def grid_payload(mv, racks, units) -> dict:
         "racks": [{"id": r.id, "name": r.name, "rows": r.rows, "cols": r.cols,
                    "group": r.incubator.name if r.incubator else "",
                    "naming": positions.scheme(r.naming),
+                   # Flipping is done a rack at a time: its last flip shows above the grid.
+                   "note": svc.flip_status(mv, r),
                    "edit": {"data-record-edit": "rack-dialog", "data-record-payload": json.dumps(rack_payload(mv, r))}}
                   for r in racks],
         "items": [{

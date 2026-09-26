@@ -323,6 +323,27 @@ class FlipAndShiftTests(StockCase):
         self.assertEqual(rack_cols(rack)["last_flipped_on"], days_ago(3))
         self.assertFlash(r, "next on " + fmt(TODAY + timedelta(days=25), "%a %d %b"))  # 18 °C: every 28 d
 
+    def test_the_rack_grid_shows_the_last_flip_and_the_next(self):
+        import json as _json
+        import re as _re
+
+        def note(rack_id):
+            html = self.get_ok(self.a, self.url(self.key, ""))
+            blob = _re.search(r'<script type="application/json" data-rack-data>(.*?)</script>', html, _re.S).group(1)
+            return next(r["note"] for r in _json.loads(blob)["racks"] if r["id"] == rack_id)
+
+        fresh = self.make_stock_rack(self.a, self.key, incubator_id=self.inc25, last_flipped_on=days_ago(4))
+        got = note(fresh)
+        self.assertEqual(got["text"], f"Flipped {fmt(TODAY - timedelta(days=4), '%a %d %b')} (4 d ago) · next "
+                                      f"{fmt(TODAY + timedelta(days=10), '%a %d %b')}")
+        self.assertEqual(got["tone"], "")
+        self.assertEqual(got["title"], "Every 14 days at 25 °C")
+        late = self.make_stock_rack(self.a, self.key, incubator_id=self.inc25, last_flipped_on=days_ago(20))
+        self.assertEqual(note(late)["tone"], "overdue")
+        self.assertIn("flip 6 d overdue", note(late)["text"])
+        never = self.make_stock_rack(self.a, self.key, incubator_id=self.inc25)
+        self.assertEqual(note(never)["text"], "No flip recorded yet")
+
     def test_flipped_with_a_bad_date_is_refused(self):
         rack = self.make_stock_rack(self.a, self.key, incubator_id=self.inc25, last_flipped_on=days_ago(4))
         r = self.post(self.a, self.url(self.key, f"/racks/{rack}/flipped"), {"on": "yesterday"})
