@@ -36,7 +36,8 @@ export function attachTableAutofill(editor, editorEl) {
     const node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
     if (!node || !editorEl.contains(node)) { hideHandle(); return; }
     const cell = node.closest('td, th');
-    if (!cell || !editorEl.contains(cell)) { hideHandle(); return; }
+    // Data sheets and other blocks have their own cells.
+    if (!cell || !editorEl.contains(cell) || cell.closest('.nb-block')) { hideHandle(); return; }
     activeCell = cell;
     positionHandle(cell);
   }
