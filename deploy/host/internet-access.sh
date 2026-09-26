@@ -50,7 +50,13 @@ case "${1:-status}" in
       echo "Update BioManager first (git pull, then docker compose up -d --build in $DEPLOY_DIR)."
       exit 1
     }
-    tailscale funnel --bg --yes --https="$PORT" http://127.0.0.1:8081
+    # Until Funnel is allowed for this machine, tailscale prints a link and
+    # waits for it: give up after a minute instead of hanging.
+    if ! timeout 60 tailscale funnel --bg --yes --https="$PORT" http://127.0.0.1:8081; then
+      echo
+      echo "Funnel is not on. If Tailscale printed a link above, open it, allow Funnel, and run this again."
+      exit 1
+    fi
     tell_app "$URL"
     echo
     echo "On. Guests open $URL/guest and enter the code from Guests (Manage users → Guests)."
