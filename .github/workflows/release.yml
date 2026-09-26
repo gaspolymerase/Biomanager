@@ -99,4 +99,10 @@ jobs:
 
           Your data is kept outside the app, so updating never touches it.
           EOF
-          gh release create "$TAG" assets/* --repo "$PUBLIC_REPO" --title "BioManager ${TAG#v}" --notes-file notes.md
+          # A release made by hand first (or a re-run) gets its files replaced.
+          if gh release view "$TAG" --repo "$PUBLIC_REPO" > /dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --repo "$PUBLIC_REPO" --clobber
+            gh release edit "$TAG" --repo "$PUBLIC_REPO" --notes-file notes.md
+          else
+            gh release create "$TAG" assets/* --repo "$PUBLIC_REPO" --title "BioManager ${TAG#v}" --notes-file notes.md
+          fi
