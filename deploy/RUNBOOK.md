@@ -23,6 +23,7 @@ cd /opt/biomanager/Biomanager/deploy
 | Services | `db` (PostgreSQL 16), `app` (gunicorn), `caddy` (HTTPS), `backup` |
 | Backups on the server | `/opt/biomanager/backups/` (root only): nightly at 02:30, 30 kept, restore-tested on Sundays |
 | Backups on the Mac | `~/BioManagerBackups/db` and `files`, pulled nightly at 03:15, 30 kept, in Time Machine too |
+| Backups off-site | Backblaze B2 bucket (restic, encrypted; the password is in your password manager and in `.env`), after each nightly backup |
 | Alerts | the ntfy topic in `/etc/biomanager/watchdog.env` on the server; macOS notifications from the Mac job |
 | Automatic jobs | watchdog every 5 min; image refresh Sundays 03:30; OS security updates nightly (reboot at 04:30 if needed) |
 
@@ -35,6 +36,8 @@ cd /opt/biomanager/Biomanager/deploy
 | **disk** | the disk is over 85% full | **server** `df -h /`, `docker system df`; `docker image prune -f` frees old images. If backups grew, lower `KEEP_LOCAL` in `.env` |
 | **backup** | no good backup for 26 hours | **server** `docker compose logs backup`; run one now with `docker compose exec backup backup.sh` |
 | **restore-test** | the weekly restore test has not passed for 8 days | **server** `docker compose exec backup restore-test.sh` and read what it says. Treat this as urgent: the backups may not be restorable |
+| **offsite** | last night's off-site copy failed (the local backup is fine) | **server** `docker compose logs backup` names the reason: no answer from the storage, a wrong password, or a key that may not write. Run one now: `docker compose exec backup backup.sh` |
+| **offsite-restore-test** | the weekly read-back from off-site has not passed for 8 days | **server** `docker compose exec backup restore-test.sh`. Urgent: the off-site copies may not be restorable |
 | **certificate** | the HTTPS certificate expires within 14 days | Tailscale renews it; check HTTPS is still enabled in the Tailscale admin console (DNS), then **server** `docker compose restart caddy` |
 | **tailscale** | the server left the Tailscale network | **server** (over the Oracle console's serial console if SSH is down) `sudo tailscale up` |
 | **weekly update failed** | Sunday's image refresh stopped | Read the message. Nothing was updated if the backup failed. If the app is unhealthy after it, see [Updating went wrong](#updating-went-wrong) |
@@ -106,6 +109,21 @@ The VM was deleted, or its disk is unreadable. Rebuild from the Mac's copy.
    sudo mv /tmp/biomanager-files-*.tar.gz /opt/biomanager/backups/files/
    docker compose stop app
    docker compose --profile restore run --rm restore /backups/db/<newest>.dump /backups/files/<newest>.tar.gz
+   docker compose start app
+   ```
+   **If the Mac's copy is gone too**, restore from off-site. Put the same
+   `RESTIC_REPOSITORY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and
+   `RESTIC_PASSWORD` (from your password manager) in the new `.env`, then:
+
+   ```bash
+   # server
+   docker compose up -d --force-recreate backup
+   docker compose exec backup restic snapshots                 # the copies there
+   docker compose exec backup restic restore latest --tag biomanager --target /backups/from-offsite
+   docker compose exec backup sh -c 'ls /backups/from-offsite/backups/db /backups/from-offsite/backups/files'
+   docker compose stop app
+   docker compose --profile restore run --rm restore \
+     /backups/from-offsite/backups/db/<name>.dump /backups/from-offsite/backups/files/<name>.tar.gz
    docker compose start app
    ```
 6. **server** `sudo deploy/host/install.sh` for the watchdog and weekly
@@ -180,6 +198,8 @@ docker compose up -d --build                          # server
 | Microsoft client secret | it expires on the date shown in Entra; create a new one, put it in `.env`, `docker compose up -d` before the old one expires | "Sign in with Microsoft" fails after expiry |
 | Google client secret | Google Cloud → Credentials → the client → add a secret, update `.env`, then delete the old one | nothing |
 | ntfy topic | edit `/etc/biomanager/watchdog.env` on the server, subscribe to the new topic | nothing |
+| Backblaze key | create a new application key (this bucket, read and write), run `offsite-setup.sh` again with it, then delete the old key in Backblaze | nothing |
+| Backup password | not rotated in place: it encrypts every stored copy. To change it, `docker compose exec backup restic key add`, then `restic key remove` the old one, and update `.env` and your password manager | nothing |
 | The Mac's SSH key | `ssh-keygen -t ed25519 -f ~/.ssh/biomanager_key`, put the new `.pub` in the server's `~/.ssh/authorized_keys`, remove the old line | nothing |
 
 ## Checking on it by hand

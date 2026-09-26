@@ -39,3 +39,20 @@ tar -tzf "$files" > /dev/null
 
 date -u +%s > "$BACKUP_ROOT/last-restore-test"
 log "restore test passed for $(basename "$dump") (restored/live:$report)"
+
+# The off-site copy, read back with the repository password: the check that
+# matters on the day this server is gone. restic check reads a fifth of the
+# stored data each week, so over a few weeks all of it gets read.
+if [ -n "${RESTIC_REPOSITORY:-}" ]; then
+  timeout 3600 restic check --read-data-subset=20% > /dev/null 2>&1 \
+    || { log "OFF-SITE CHECK FAILED: restic check found a problem in $RESTIC_REPOSITORY"; exit 1; }
+  away=$(mktemp -d)
+  trap 'dropdb --if-exists "$scratch"; rm -rf "$away"' EXIT
+  timeout 3600 restic restore latest --tag biomanager --host biomanager --target "$away" --include '*.dump' > /dev/null \
+    || { log "OFF-SITE RESTORE FAILED: could not restore the latest snapshot"; exit 1; }
+  offsite_dump=$(find "$away" -name 'biomanager-*.dump' | head -n 1)
+  [ -n "$offsite_dump" ] && pg_restore --list "$offsite_dump" > /dev/null \
+    || { log "OFF-SITE RESTORE FAILED: the restored dump is missing or unreadable"; exit 1; }
+  date -u +%s > "$BACKUP_ROOT/last-offsite-test"
+  log "off-site copy readable: $(basename "$offsite_dump") restored from $RESTIC_REPOSITORY"
+fi

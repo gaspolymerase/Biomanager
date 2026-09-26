@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One backup: the database and the app's data volume, each checked before
 # it is kept; local copies pruned to KEEP_LOCAL; sent off-site when
-# RESTIC_REPOSITORY is set. Works outside Docker too, with the usual
+# RESTIC_REPOSITORY is set. Exit 0: all done; 1: no backup; 2: the local
+# backup is done but the off-site copy failed. Works outside Docker too, with the usual
 # PGHOST/PGUSER/PGPASSWORD/PGDATABASE and APPDATA_DIR set.
 set -euo pipefail
 : "${BACKUP_ROOT:=/backups}" "${APPDATA_DIR:=/appdata}" "${KEEP_LOCAL:=30}"
@@ -38,15 +39,46 @@ prune() {  # keep the newest KEEP_LOCAL files matching $1
 prune "$BACKUP_ROOT/db/biomanager-*.dump"
 prune "$BACKUP_ROOT/files/biomanager-files-*.tar.gz"
 
-if [ -n "${RESTIC_REPOSITORY:-}" ]; then
-  restic cat config > /dev/null 2>&1 || restic init
-  restic backup --quiet --tag biomanager --host biomanager "$dump" "$files"
-  restic forget --quiet --tag biomanager --host biomanager \
-    --keep-daily 30 --keep-weekly 12 --keep-monthly 24 --prune
+# Off-site: a failure here does not undo the local backup (it is recorded
+# above as a success), but it is reported on its own: exit status 2, and no
+# fresh last-offsite for the watchdog.
+# restic retries an unreachable server for a long time; these limits make an
+# outage fail in minutes (and get reported) instead of stalling the night.
+: "${OFFSITE_CONNECT_TIMEOUT:=120}" "${OFFSITE_BACKUP_TIMEOUT:=3600}"
+offsite() {
+  local err rc
+  err=$(timeout "$OFFSITE_CONNECT_TIMEOUT" restic cat config 2>&1 > /dev/null)
+  rc=$?
+  # restic's exit codes (0.17+) say why it could not open the repository;
+  # its messages do not (every failure ends "Is there a repository…?").
+  case $rc in
+    0) ;;
+    10) log "creating the off-site repository at $RESTIC_REPOSITORY"
+        timeout "$OFFSITE_CONNECT_TIMEOUT" restic init > /dev/null || return 1 ;;
+    12) log "cannot open the off-site repository: wrong RESTIC_PASSWORD"; return 1 ;;
+    124) log "cannot open the off-site repository: no answer within ${OFFSITE_CONNECT_TIMEOUT}s"; return 1 ;;
+    *) log "cannot open the off-site repository: $(echo "$err" | grep -v '^Is there a repository' | tail -n 1)"; return 1 ;;
+  esac
+  timeout "$OFFSITE_BACKUP_TIMEOUT" restic backup --quiet --tag biomanager --host biomanager "$dump" "$files" || return 1
+  timeout "$OFFSITE_BACKUP_TIMEOUT" restic forget --quiet --tag biomanager --host biomanager \
+    --keep-daily 30 --keep-weekly 12 --keep-monthly 24 --prune \
+    || log "off-site pruning failed (the new copy was made; old ones are kept)"
   log "sent off-site to $RESTIC_REPOSITORY"
-fi
+}
 
 date -u +%s > "$BACKUP_ROOT/last-success"
-if [ -n "${HEALTHCHECK_PING_URL:-}" ]; then
+
+status=0
+if [ -n "${RESTIC_REPOSITORY:-}" ]; then
+  if offsite; then
+    date -u +%s > "$BACKUP_ROOT/last-offsite"
+  else
+    log "OFF-SITE COPY FAILED: the local backup above is fine"
+    status=2
+  fi
+fi
+
+if [ "$status" = 0 ] && [ -n "${HEALTHCHECK_PING_URL:-}" ]; then
   curl -fsS -m 10 --retry 3 "$HEALTHCHECK_PING_URL" > /dev/null || log "could not ping $HEALTHCHECK_PING_URL"
 fi
+exit "$status"

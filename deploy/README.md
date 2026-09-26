@@ -150,6 +150,44 @@ docker compose exec backup backup.sh        # a backup now
 docker compose exec backup restore-test.sh  # a restore test now
 ```
 
+### Off-site copies (Backblaze B2)
+
+The copies on this server and on the admin's Mac do not survive losing both.
+An off-site copy in Backblaze B2 does, and costs nothing at this size (the
+first 10 GB are free; a year of nightly backups is well under 1 GB).
+
+1. Create a Backblaze account at backblaze.com (B2 Cloud Storage).
+2. **Buckets → Create a Bucket**: a unique name (for example
+   `biomanager-yourlab-offsite`), Files **Private**, Default Encryption
+   **Enable**, Object Lock **Enable**. Then, in the bucket's settings, set
+   the default Object Lock retention to **Governance, 30 days**. With it, no
+   one who takes over the server can delete or overwrite the copies of the
+   last 30 days, even with its key.
+3. On the bucket's page, note the **Endpoint**, such as `s3.us-east-005.backblazeb2.com`.
+4. **Application Keys → Add a New Application Key**: name `biomanager-server`,
+   access to **this bucket only**, **Read and Write**. Keep the page open: the
+   `applicationKey` is shown only once.
+5. From the Mac, in your own terminal:
+
+   ```bash
+   ssh -t biomanager sudo /opt/biomanager/Biomanager/deploy/host/offsite-setup.sh
+   ```
+
+   Repository: `s3:https://<endpoint>/<bucket>/biomanager`. Paste the keyID
+   and the applicationKey when asked (the key is not shown as you paste).
+   It shows the backup password once: **save it in your password manager**.
+   Then it takes a backup, sends it off-site and restores it back to prove
+   the path works.
+
+From then on every night's backup goes off-site too (kept 30 days, 12 weeks,
+24 months), a fifth of the stored data is read back every Sunday with the
+latest backup restored from off-site, and the watchdog alerts **offsite**
+if a night's copy fails, **offsite-restore-test** if the weekly read-back
+stops passing. A failed off-site copy never counts against the local backup.
+
+Other S3-compatible storage (AWS S3, Wasabi, a university's S3 service)
+works the same way with its own endpoint.
+
 ### Restoring
 
 The backup files belong to root and only root can read them (they hold the
