@@ -92,6 +92,7 @@
     const trayBox = root.querySelector('[data-rack-tray]');
     const search = root.querySelector('[data-rack-search]');
     const editRack = root.querySelector('[data-rack-edit]');
+    const rackAction = root.querySelector('[data-rack-action]');
     const status = root.querySelector('[data-rack-status]');
 
     let active = null;
@@ -188,6 +189,22 @@
       if (editRack) {
         editRack.hidden = !rack;
         if (rack && rack.edit) Object.entries(rack.edit).forEach(([n, v]) => editRack.setAttribute(n, typeof v === 'string' ? v : JSON.stringify(v)));
+      }
+      if (rackAction) {
+        // A plain form post: the server records it and brings the page back.
+        const action = rack && rack.action;
+        rackAction.hidden = !action;
+        rackAction.innerHTML = '';
+        if (action) {
+          rackAction.action = action.url;
+          Object.entries(action.fields || {}).forEach(([name, value]) => {
+            rackAction.appendChild(Object.assign(document.createElement('input'), { type: 'hidden', name, value }));
+          });
+          const button = Object.assign(document.createElement('button'), { type: 'submit', className: 'btn btn-sm', title: action.title || '' });
+          button.disabled = !!action.done;
+          button.innerHTML = `<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#${escapeHtml(action.icon || 'check')}"></use></svg> ${escapeHtml(action.done ? `${action.label} ✓` : action.label)}`;
+          rackAction.appendChild(button);
+        }
       }
       if (!rack) {
         grid.innerHTML = `<div class="rack-empty">${escapeHtml(root.dataset.emptyText || 'Add a rack to start placing.')}</div>`;
