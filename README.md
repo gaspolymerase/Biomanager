@@ -1,226 +1,354 @@
-# BioManager
+<p align="center">
+  <img src="app/static/icon.svg" width="112" alt="BioManager icon">
+</p>
 
-**One place for a biology lab's living things and the stuff around them:
-mice, zebrafish, flies, worms, plasmids, samples, orders, reagents,
-the calendar and the lab notebook.**
+<h1 align="center">BioManager</h1>
+
+<p align="center">
+  <b>Your lab's animals, stocks and supplies — in one place, instead of twenty spreadsheets.</b><br>
+  Mice · zebrafish · flies · worms · plasmids · samples · orders · reagents · antibodies · calendar · notebook
+</p>
+
+<p align="center">
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Flask" src="https://img.shields.io/badge/Flask-web%20app-000000?logo=flask&logoColor=white">
+  <img alt="SQLite or PostgreSQL" src="https://img.shields.io/badge/database-SQLite%20%7C%20PostgreSQL-4169E1?logo=postgresql&logoColor=white">
+  <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/runs%20on-macOS%20%7C%20Windows%20%7C%20Linux-555555">
+  <img alt="Dark mode" src="https://img.shields.io/badge/dark%20mode-yes-1f2937">
+</p>
+
+<p align="center">
+  <a href="#-what-you-can-track">What it tracks</a> ·
+  <a href="#-features-across-the-app">Features</a> ·
+  <a href="#-ways-to-run-it">Ways to run it</a> ·
+  <a href="#-getting-started">Get started</a> ·
+  <a href="#-a-first-week-with-biomanager">First week</a> ·
+  <a href="#-documentation">Docs</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/home.webp" alt="The BioManager home page: mice older than 30 weeks, upcoming weanings, the genotyping queue, fly vials due, expiring reagents and the next 14 days" width="100%">
+  <br><sub><i>Home — every morning, what needs doing today.</i></sub>
+</p>
+
+---
 
 BioManager replaces the pile of spreadsheets, whiteboards and paper cage
-cards most labs run on. You edit records the way you would in a
-spreadsheet, but underneath is a real database. It knows which mouse is in
-which cage, when a litter needs weaning, which fly vials need flipping and
-which antibody is about to expire, and every morning it tells you what
-needs attention.
+cards most labs run on. You edit records **the way you would in a
+spreadsheet**, but underneath is a real database. It knows which mouse is
+in which cage, when a litter needs weaning, which fly vials need flipping
+and which antibody is about to expire — and it tells you.
 
 It runs as a **desktop app** for one person, or on a **lab server** that
-the whole lab signs in to from a browser, including on their phones at the
-rack.
+everyone signs in to from a browser, including on their phone at the rack.
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>🧑‍🔬 Lab members</h3>
+      Manage your own lines, fish, stocks and samples without hunting
+      through someone else's spreadsheet.
+    </td>
+    <td width="33%" valign="top">
+      <h3>📋 Lab managers &amp; PIs</h3>
+      A census that is actually complete: who owns what, which cages are
+      idle, what is overdue.
+    </td>
+    <td width="33%" valign="top">
+      <h3>🧬 Multi-organism labs</h3>
+      Mice, fish, flies and worms side by side — plus a database for any
+      other organism, set up in a few clicks.
+    </td>
+  </tr>
+</table>
 
 ---
 
-## Contents
+## 🔬 What you can track
 
-- [Who it's for](#who-its-for)
-- [What you can track](#what-you-can-track)
-- [Features across the app](#features-across-the-app)
-- [Ways to run it](#ways-to-run-it)
-- [Getting started](#getting-started)
-- [How to use it: a first week](#how-to-use-it-a-first-week)
-- [Keyboard shortcuts](#keyboard-shortcuts)
-- [Accounts, permissions and privacy](#accounts-permissions-and-privacy)
-- [Your data and backups](#your-data-and-backups)
-- [Documentation](#documentation)
-- [Credits](#credits)
+| | Module | In one line |
+|:-:|---|---|
+| 🐭 | [**Mouse colony**](#-mouse-colony) | Mice, cages, litters, breeders, strains, experiments and racks |
+| 🐟 | [**Zebrafish**](#-zebrafish) | Lines, tanks, fish, clutches, matings and water systems |
+| 🪰 | [**Drosophila & C. elegans**](#-drosophila-and-c-elegans) | Vials and plates, crosses, and temperature-aware flip schedules |
+| 🦎 | [**Any other organism**](#-any-other-organism) | Your own database, in your own words, with no programming |
+| 🧬 | [**Plasmids**](#-plasmids) | Sequences with an interactive map, and where each tube lives |
+| 🧪 | [**Lab inventories**](#-lab-inventories) | Samples, orders, reagents, antibodies, or a list of your own |
+| 📅 | [**Calendar & notebook**](#-calendar-and-notebook) | Experiments, to-dos, colony dates and notes, all linked |
 
----
-
-## Who it's for
-
-- **Lab members** who manage their own mouse lines, fish, stocks or
-  samples and are tired of hunting through someone else's spreadsheet.
-- **Lab managers and PIs** who need a census that is actually complete:
-  who owns what, which cages are idle, what is overdue.
-- **Labs with more than one organism.** Mice and zebrafish have dedicated
-  modules, flies and worms have their own vial and plate databases, and
-  any other organism gets a database you configure in a few clicks.
-
-## What you can track
-
-### Mouse colony
+### 🐭 Mouse colony
 
 The most complete module, built around how a mouse room actually works.
 
-- **Mice**: a spreadsheet of every animal with ID, sex, date of birth,
-  strain, genotype, cage, owner, experiment and notes. IDs are assigned for
-  you, in order, and never reused. A mouse is alive until it has a date of
-  death, and a live dot shows which is which.
-- **Cages**: a sheet of every cage with its rack and position, purpose,
-  owner, the mice inside (with the sex breakdown), litter born and the P21
-  weaning date. Expand a cage to edit its mice right there.
-- **Litters**: record a birth once, and the pups' date of birth, weaning
-  date (P21) and genotyping date (about P28) follow from it.
-- **Breeders**: breeding cages at a glance, with breeders past 30 weeks
+<p align="center">
+  <img src="docs/screenshots/mice.webp" alt="The mouse sheet: one row per mouse with sex, age, status, transgenes, cage, rack, position and owner" width="100%">
+</p>
+
+- **Mice** — a spreadsheet of every animal: ID, sex, age, status,
+  transgenes, cage, rack, owner and notes. IDs are assigned in order and
+  never reused. A mouse is alive until it has a date of death, and the
+  green dot shows which is which.
+- **Cages** — every cage with its rack position, purpose, owner, the mice
+  inside (with the sex breakdown), litter born and the P21 weaning date.
+  Expand a cage to edit its mice right there.
+- **Litters** — record a birth once, and the weaning date (P21) and
+  genotyping date (about P28) follow from it.
+- **Breeders** — breeding cages at a glance, with breeders past 30 weeks
   flagged.
-- **Strains**: your lab's lines, with owners.
-- **Experiments**: put a group of mice under one experiment with a shared
-  treatment group.
-- **Racks**: a grid of every rack showing which positions are filled.
+- **Strains** and **Experiments** — your lab's lines with owners, and
+  groups of mice under one experiment with a shared treatment group.
 
-### Zebrafish
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/cages.webp" alt="The cage sheet"></td>
+    <td width="50%"><img src="docs/screenshots/rack-grid.webp" alt="A rack grid showing which positions hold which cages"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Cages</b> — one row per cage, mice one click away</sub></td>
+    <td align="center"><sub><b>Rack grid</b> — drag a cage to move it</sub></td>
+  </tr>
+</table>
 
-Lines, tanks, individual fish, clutches, matings (and returning the
-fish afterwards), water systems with water-quality logs, and a sac log.
-Tanks can hold a group with a headcount or resolve into named individuals.
+### 🐟 Zebrafish
 
-### Drosophila and C. elegans
+Lines, tanks, individual fish, clutches, matings (and returning the fish
+afterwards), water systems with water-quality logs, and a sac log. A tank
+can hold a group with a headcount, or resolve into named individuals.
 
-Vial (fly) and plate (worm) databases, organised into racks and
+### 🪰 Drosophila and C. elegans
+
+Vial (fly) and plate (worm) databases, organised into racks inside
 incubators.
 
-- Label each vial with genotype and purpose: stock, experiment, cross or
-  progeny.
+- Label each vial with its genotype and purpose: stock, experiment,
+  cross or progeny.
 - **Set crosses**, collect eggs or pick progeny into new vials, and see
   when the progeny will be adults.
-- **Flip / chunk schedules that depend on temperature**, e.g. flip every
-  14 days at 25 °C and every 28 at 18 °C.
+- **Flip / chunk schedules that follow temperature** — flip every 14 days
+  at 25 °C, every 28 at 18 °C — and they show up on Home when due.
 - Frozen-stock records for worms.
 
-### Any other organism: build your own database
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/fly-stocks.webp" alt="Fly vials with genotype, purpose, incubator and rack"></td>
+    <td width="50%"><img src="docs/screenshots/fly-grid.webp" alt="A fly rack as a grid of vials"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Vials</b> — genotype, purpose, incubator, rack</sub></td>
+    <td align="center"><sub><b>Grid</b> — the rack as it sits in the incubator</sub></td>
+  </tr>
+</table>
 
-Pick **Add database** in the sidebar, start from a preset or a blank
+### 🦎 Any other organism
+
+Choose **Add database** in the sidebar, start from a preset or a blank
 sheet, and describe your organism:
 
-- **The words it uses**: cage, tank, vial or plate; strain, line or stock;
-  litter, clutch or progeny. The interface then uses your words.
-- **How it is counted**: individual animals, groups with a headcount, or
-  both.
-- **What it needs**, chosen from a checklist: crosses, cohorts, a nursery
+- **The words it uses** — cage, tank, vial or plate; strain, line or
+  stock; litter, clutch or progeny. The interface then speaks your
+  language.
+- **How it is counted** — individual animals, groups with a headcount,
+  or both.
+- **What it needs**, from a checklist — crosses, cohorts, a nursery
   stage, genotyping, environment logs, cryo inventory, census and more.
-- **Schedules**, such as "wean at P21", which can vary with rearing
+- **Schedules** like "wean at P21", which can vary with rearing
   temperature.
-- **Your own columns**: text, numbers, dates, dropdowns, people or links.
+- **Your own columns** — text, numbers, dates, dropdowns, people or links.
 
-No programming is needed, and existing data is untouched.
+<p align="center">
+  <img src="docs/screenshots/new-database.webp" alt="The Add database page with presets for flies, worms, inventories and organisms" width="100%">
+</p>
 
-### Plasmids
+> [!TIP]
+> Xenopus, axolotls, cell lines, yeast strains — anything you keep in
+> containers and breed or passage fits here. No code and no migration.
 
-Upload a GenBank or FASTA file and BioManager stores the sequence and its
-features and shows an interactive plasmid map. Plasmid boxes sit on
-the same rack grid as everything else, so you can see where each tube is
-kept.
+### 🧬 Plasmids
 
-### Lab inventories: samples, orders, reagents, antibodies
+Upload a GenBank, FASTA or SnapGene file and BioManager keeps the sequence
+and its features, with an interactive map you can edit. Plasmid boxes sit
+on the same rack grid as everything else, so every tube has an address.
+
+<p align="center">
+  <img src="docs/screenshots/plasmid-map.webp" alt="A plasmid map with features, restriction sites and the sequence view" width="100%">
+</p>
+
+### 🧪 Lab inventories
 
 Every inventory runs on the same engine, starting from a preset you can
 change:
 
 | Preset | Tracks |
 | --- | --- |
-| **Samples** | harvested tissue and material, linked to the animal it came from, where it is stored (RT / 4 °C / −20 °C / −80 °C / LN₂) and in which box position |
-| **Orders** | a status board from *requested* to *ordered* to *received*, with vendor, catalogue number, price and grant account |
-| **Reagents** | quantity, concentration, CAS number, hazard, supplier and lot, and expiry dates with warnings for expired and expiring-soon items |
-| **Antibodies** | host, clonality, clone, conjugate, reactivity, applications, dilution, RRID, and where each vial is stored |
-| **Custom** | whatever you define |
+| 🧫 **Samples** | harvested tissue and material, linked to the animal it came from, stored at RT / 4 °C / −20 °C / −80 °C / LN₂ in a box position |
+| 🛒 **Orders** | a board from *requested* to *ordered* to *received*, with vendor, catalogue number, price and grant account |
+| ⚗️ **Reagents** | quantity, concentration, CAS number, hazard, supplier and lot, and expiry dates with warnings |
+| 🔬 **Antibodies** | host, clonality, clone, conjugate, reactivity, applications, dilution, RRID and where each vial is stored |
+| 📝 **Custom** | whatever you define |
 
-Each inventory can separate **your own stock** from **lab common stock**,
-and you can rename statuses and categories without losing items.
+Each inventory can keep **your own stock** apart from **lab common
+stock**, and statuses and categories can be renamed without losing items.
 
-### Calendar and tasks
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/orders.webp" alt="The orders board with requested, ordered, received and cancelled columns"></td>
+    <td width="50%"><img src="docs/screenshots/reagents.webp" alt="The reagents table with CAS numbers, concentration, storage and hazard"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Orders</b> — drag a card when it arrives</sub></td>
+    <td align="center"><sub><b>Reagents</b> — what's low, what's expiring</sub></td>
+  </tr>
+</table>
 
-An experiment calendar with to-dos. It can show your **Google Calendar**
-and any **ICS subscription** alongside lab events.
+### 📅 Calendar and notebook
 
-### Lab notebook
+- **Calendar** — experiments and to-dos, with colony dates (weanings,
+  genotyping, sac reminders) filled in for you. Shows your **Google
+  Calendar** and any **ICS subscription** alongside.
+- **Lab notebook** — pages in tabs, reusable templates, images and file
+  attachments. A page links to animals and calendar events, so the record
+  and the notes point at each other.
+- **Utilities** — molecular-weight reference data and a
+  concentration-to-mass calculator.
 
-Notebook pages organised in tabs, with reusable templates, images and file
-attachments. A page can link to animals and calendar events, so the
-record and the notes point at each other.
-
-### Utilities
-
-Molecular-weight reference data and a concentration-to-mass calculator.
-
----
-
-## Features across the app
-
-**A home page that tells you what to do today.** It shows the mice
-older than 30 weeks, upcoming weanings, the genotyping queue, fly and worm
-vials due for flipping, expiring and low stock, zebrafish tasks, the next
-14 days of the calendar and recent orders.
-
-**Spreadsheet-style editing.** Click a cell and type. Changes save as you
-go, and every table can be sorted, filtered, exported to CSV and printed.
-
-**Add many at once.** Describe one mouse and say how many
-(`4 females, 2 males`), or upload a CSV. BioManager shows an editable
-preview, including the IDs it will assign, before anything is saved. Mice,
-tanks, vials, plasmids and inventory items all support this.
-
-**Batch actions with undo.** Tick rows and act on all of them together:
-set a field, add them to an experiment, or sac them. Every bulk action is
-recorded and **can be undone**. BioManager refuses to undo something if
-someone has changed those records since, so their edits are never
-silently thrown away.
-
-**Racks and positions the way your lab labels them.** `D7`, `4-7`, `7D`,
-`G12` or plain 1 to 80. Each rack keeps its own naming scheme, and a grid
-shows what is where.
-
-**Cage cards with QR codes.** Print correctly sized cards for cages,
-tanks and vials. Scanning the code at the rack opens that record on your
-phone, so nobody has to walk back to a computer to type an ID.
-
-**Works on phones.** Controls are sized for fingers and pages don't zoom
-when you tap, so you can check or edit a cage from the animal room.
-
-**Search everything.** Press `Cmd/Ctrl + K` from anywhere.
-
-**Tabs.** Every page you open becomes a tab you can reorder, and your tabs
-are still there when you come back.
-
-**Full change history.** Every create, edit and delete is recorded with who
-made it and exactly what changed (`genotype: DBH-Cre → ∅`). Admins can read
-the whole history.
-
-**Daily reminder emails.** Each person can get a digest of what is
-overdue or coming up for their animals, stocks and tasks. This is
-optional.
-
-**Sign in with Google or Microsoft**, or with a BioManager password. This
-is optional too.
-
-**Looks at home on a Mac.** The interface follows macOS conventions and has
-a full dark mode, and it works in any modern browser on Windows and Linux.
+<p align="center">
+  <img src="docs/screenshots/calendar.webp" alt="A month calendar with experiments, meetings, weaning and genotyping dates" width="100%">
+</p>
 
 ---
 
-## Ways to run it
+## ✨ Features across the app
 
-| | Desktop app | Lab server | From source |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h4>☀️ A home page that tells you what to do</h4>
+      Mice older than 30 weeks, upcoming weanings, the genotyping queue,
+      vials due for flipping, expiring stock, zebrafish tasks, the next
+      14 days and recent orders.
+    </td>
+    <td width="50%" valign="top">
+      <h4>📊 Spreadsheet-style editing</h4>
+      Click a cell and type; it saves as you go. Every table sorts,
+      filters, exports to CSV and prints.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>➕ Add many at once</h4>
+      Describe one mouse and say how many (<code>4 females, 2 males</code>),
+      or upload a CSV. You check an editable preview — IDs included —
+      before anything is saved.
+    </td>
+    <td valign="top">
+      <h4>↩️ Batch actions with undo</h4>
+      Tick rows, then set a field, add them to an experiment or sac them.
+      Every bulk action can be <b>undone</b> — unless someone has edited
+      those records since, so their work is never silently lost.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🗄️ Racks named your way</h4>
+      <code>D7</code>, <code>4-7</code>, <code>7D</code>, <code>G12</code>
+      or plain 1 to 80. Each rack keeps its own scheme, and a grid shows
+      what is where.
+    </td>
+    <td valign="top">
+      <h4>🔎 Search and tabs</h4>
+      <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd> searches everything.
+      Every page opens as a tab you can reorder, and your tabs are still
+      there tomorrow.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🕓 Full change history</h4>
+      Every create, edit and delete is recorded with who and exactly what
+      changed (<code>genotype: DBH-Cre → ∅</code>).
+    </td>
+    <td valign="top">
+      <h4>🔐 Sign-in options and reminders</h4>
+      Sign in with Google, Microsoft or a password. Optional daily emails
+      list what is overdue or coming up for each person.
+    </td>
+  </tr>
+</table>
+
+### 📱 Cage cards that open on your phone
+
+Print correctly sized cards for cages, tanks and vials. Scan the QR code
+with any phone camera at the rack and that cage opens, ready to edit —
+nobody walks back to a computer to type an ID.
+
+<table>
+  <tr>
+    <td width="62%" valign="top"><img src="docs/screenshots/cage-cards.webp" alt="Printable cage cards with owner, purpose, genotype and a QR code"></td>
+    <td width="19%" valign="top"><img src="docs/screenshots/phone-cage.webp" alt="A cage opened on a phone after scanning its card"></td>
+    <td width="19%" valign="top"><img src="docs/screenshots/phone-home.webp" alt="The home page on a phone"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Print</b> the cards</sub></td>
+    <td align="center"><sub><b>Scan</b> one…</sub></td>
+    <td align="center"><sub>…or check <b>Home</b></sub></td>
+  </tr>
+</table>
+
+### 🌗 At home on a Mac, and in the dark
+
+The interface follows macOS conventions and has a full dark mode. It works
+in any modern browser on Windows and Linux too.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/home.webp" alt="Home in light mode"></td>
+    <td width="50%"><img src="docs/screenshots/home-dark.webp" alt="Home in dark mode"></td>
+  </tr>
+</table>
+
+---
+
+## 🚀 Ways to run it
+
+```mermaid
+flowchart TB
+    subgraph one["💻 Desktop app"]
+        direction LR
+        A[You] --> B[BioManager.app] --> C[(SQLite on<br>your computer)]
+    end
+    subgraph lab["🏫 Lab server"]
+        direction LR
+        D[Lab members<br>laptops & phones] -- HTTPS --> E[BioManager] --> F[(PostgreSQL)]
+        F -. nightly, tested .-> G[Backups]
+    end
+```
+
+| | 💻 Desktop app | 🏫 Lab server | 🛠️ From source |
 | --- | --- | --- | --- |
 | **For** | one person, one computer | a whole lab, from any browser | developers |
 | **Database** | SQLite, on your computer | PostgreSQL | SQLite (or PostgreSQL) |
 | **Setup** | download and open | Docker on a Linux machine or VM | Python 3.11+ and Node |
-| **Backups** | `dbtool.py backup` | automatic, nightly, tested weekly, optional off-site copy | `dbtool.py backup` |
-| **Phones and QR codes** | no, only your computer can reach it | yes | on your local network |
+| **Backups** | `dbtool.py backup` | automatic, nightly, test-restored weekly, optional off-site copy | `dbtool.py backup` |
+| **Phones & QR codes** | — only your computer can reach it | ✅ | on your local network |
 
-You can start with the desktop app and move to a server later:
-`scripts/migrate-to-postgres.py` moves an existing database across.
+> [!NOTE]
+> Start on the desktop and move to a server later —
+> `scripts/migrate-to-postgres.py` carries an existing database across.
 
 ---
 
-## Getting started
+## 🏁 Getting started
 
-### Desktop app
+### 💻 Desktop app
 
-1. Download BioManager for your system from the **Download** page, or build
-   it yourself (below).
-2. **macOS**: open the `.dmg` or `.zip` and drag BioManager into
-   Applications. The first time, **right-click the app and choose Open**.
-   macOS asks once because the app is not yet signed through the App Store.
-3. Create your account. The first account on a computer becomes the admin.
+1. Download BioManager for your system from the **Download** page, or
+   build it yourself (below).
+2. **macOS:** open the download and drag BioManager into Applications.
+   The first time, **right-click the app and choose Open** — macOS asks
+   once because the app is not signed through the App Store.
+3. Create your account. The first account on a computer is the admin.
 
-Your data is kept outside the app, so updating or reinstalling never
+Your data lives outside the app, so updating or reinstalling never
 touches it:
 
 | System | Data folder |
@@ -229,18 +357,23 @@ touches it:
 | Windows | `%APPDATA%\Biomanager\` |
 | Linux | `~/.local/share/Biomanager/` |
 
-To build the desktop app yourself:
+<details>
+<summary><b>Build the desktop app yourself</b></summary>
 
 ```bash
 ./scripts/build-desktop.sh
 open dist/BioManager.app
 ```
 
-### Lab server
+This produces `dist/BioManager.app` on macOS, or `dist/BioManager/` on
+Windows and Linux.
+</details>
 
-The supported setup is the Docker stack in [`deploy/`](deploy/README.md).
-It includes HTTPS, PostgreSQL, and a backup service that dumps the
-database every night, checks each dump, and test-restores one every week.
+### 🏫 Lab server
+
+The supported setup is the Docker stack in [`deploy/`](deploy/README.md):
+HTTPS, PostgreSQL, and a backup service that dumps the database every
+night, checks each dump and test-restores one every week.
 
 ```bash
 git clone <this repository> biomanager && cd biomanager/deploy
@@ -249,15 +382,17 @@ docker compose up -d --build
 docker compose logs app | grep "setup code"
 ```
 
-Open `https://<your domain>/register` and create the first account using
-the **setup code** from the log. That account becomes the admin.
+Open `https://<your domain>/register` and create the first account with
+the **setup code** from the log. That account is the admin.
 
-Keep the server off the open internet. Put it on the campus network, VPN
-or a private network such as Tailscale, which `deploy/README.md` covers
-step by step. [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) says what to do when
-something goes wrong.
+> [!IMPORTANT]
+> Keep the server off the open internet: on the campus network, a VPN, or
+> a private network such as Tailscale — `deploy/README.md` walks through
+> it. [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) covers what to do when
+> something goes wrong.
 
-### From source
+<details>
+<summary><b>🛠️ Run from source</b></summary>
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -266,121 +401,148 @@ pip install -r requirements.txt
 PORT=5055 python run.py
 ```
 
-Open <http://127.0.0.1:5055>. (On macOS, port 5000 is taken by AirPlay,
-which is why the example uses 5055.) The first account needs the setup code
-printed in the terminal.
+Open <http://127.0.0.1:5055> (on macOS, AirPlay holds port 5000). The
+first account needs the setup code printed in the terminal.
+
+Want something to click around in? `python scripts/demo-data.py
+/tmp/biomanager-demo` builds a made-up lab — the one in these
+screenshots — and `BIOMANAGER_DATA_DIR=/tmp/biomanager-demo python run.py`
+opens it.
+</details>
 
 ---
 
-## How to use it: a first week
+## 📆 A first week with BioManager
 
 A walk-through for a mouse colony. The other modules work the same way.
 
-**Day 1: set up.**
-1. Sign in as the admin. Other lab members register, and you approve them
-   in **Settings → Manage users**.
-2. Open **Mouse colony → Racks** and add your racks. Choose how positions
-   are labelled (`D7`, `4-7`, 1 to 80…) to match the stickers on the real
-   racks.
-3. Add your lines under **Strains**.
+<table>
+  <tr>
+    <td valign="top" width="25%">
+      <h4>Day 1 · Set up</h4>
+      <ol>
+        <li>Sign in as the admin; approve colleagues in <b>Settings → Manage users</b>.</li>
+        <li><b>Mouse colony → Cages → Rack grid → New rack</b>, labelled like the stickers on your real racks.</li>
+        <li>Add your lines under <b>Strains</b>.</li>
+      </ol>
+    </td>
+    <td valign="top" width="25%">
+      <h4>Day 2 · Bring the mice in</h4>
+      <ol>
+        <li><b>Mice → Add many</b>: describe a group, or upload your old spreadsheet as CSV.</li>
+        <li>Check the preview; <b>Fill down</b>, <b>Skip</b>, then save.</li>
+        <li>Give each cage a purpose and a rack position.</li>
+      </ol>
+    </td>
+    <td valign="top" width="25%">
+      <h4>Day 3 · Label the rack</h4>
+      <ol>
+        <li><b>Cages → Cage cards → Print.</b></li>
+        <li>One card per cage.</li>
+        <li>From now on, a phone camera opens any cage.</li>
+      </ol>
+    </td>
+    <td valign="top" width="25%">
+      <h4>Every day after</h4>
+      <ol>
+        <li>Open <b>Home</b>: weanings, genotyping, old breeders, low stock.</li>
+        <li>Click an item to go straight to it.</li>
+      </ol>
+    </td>
+  </tr>
+</table>
 
-**Day 2: bring the mice in.**
-1. On **Mice**, choose **Add many**. Either describe a group (`4 females,
-   2 males`, strain, date of birth, cage `new`) or upload your old
-   spreadsheet as a CSV. Headers like `sex`, `dob`, `cage` and `notes` are
-   recognised, and other columns are ignored.
-2. Check the preview grid. Fix anything, use **Fill down** for repeated
-   values, and tick **Skip** for rows you don't want. Then save.
-3. Open **Cages** and give each cage a purpose and a rack position.
+<details>
+<summary><b>🍼 When a litter is born</b></summary>
 
-**Day 3: label the rack.**
-Select cages and choose **Print cage cards**. Put a card on each cage.
-From now on, scanning a card with a phone opens that cage.
+Open the breeding cage and choose **Litter born today**. The weaning and
+genotyping dates appear on Home and the calendar when they come due. At
+weaning, add the pups with **Add many** and move them to their new cages.
+</details>
 
-**Every morning: open Home.**
-It lists the weanings due, the genotyping queue, breeders getting old and
-anything else overdue. Click an item to go straight to it.
+<details>
+<summary><b>🧪 When an experiment starts</b></summary>
 
-**When a litter is born:**
-Open the breeding cage and record the birth. The weaning and genotyping
-dates appear on Home when they come due. At weaning, add the pups with
-**Add many** and move them to their new cages.
+Tick the mice on **Mice** (shift-click selects a range). In the bar that
+rises from the bottom, choose **Add to experiment** and name the treatment
+group.
+</details>
 
-**When an experiment starts:**
-Tick the mice on **Mice**. In the bar that appears at the bottom, choose
-**Add to experiment** and give the treatment group. Shift-click selects a
-range.
+<details>
+<summary><b>↩️ When you make a mistake</b></summary>
 
-**When you make a mistake:**
 Open **Batches** in the sidebar and undo the bulk action. For a single
 edit, the change history shows what the value used to be.
+</details>
 
-**When you need a new kind of database:**
-Choose **Add database**, pick a preset (Drosophila, C. elegans,
-zebrafish, mouse) or start blank, name things your way and choose what it
-needs to track.
+<details>
+<summary><b>🦎 When you need a new kind of database</b></summary>
 
----
+Choose **Add database**, pick a preset (Drosophila, C. elegans, zebrafish,
+mouse) or start blank, name things your way and choose what it needs to
+track.
+</details>
 
-## Keyboard shortcuts
+<details>
+<summary><b>⌨️ Keyboard shortcuts</b></summary>
 
 | Keys | Does |
 | --- | --- |
-| `Cmd/Ctrl + K` | Search everything |
-| `Cmd/Ctrl + B` | Show or hide the sidebar |
-| `Alt + 1…9` | Switch to tab 1 to 9 |
-| `Alt + ←` / `Alt + →` | Previous / next tab |
-| `Alt + W` | Close the current tab |
+| <kbd>⌘/Ctrl</kbd> + <kbd>K</kbd> | Search everything |
+| <kbd>⌘/Ctrl</kbd> + <kbd>B</kbd> | Show or hide the sidebar |
+| <kbd>Alt</kbd> + <kbd>1</kbd>…<kbd>9</kbd> | Switch to tab 1 to 9 |
+| <kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd> | Previous / next tab |
+| <kbd>Alt</kbd> + <kbd>W</kbd> | Close the current tab |
 | Middle-click a tab | Close it |
-| Shift-click a row | Select a range |
+| <kbd>Shift</kbd>-click a row | Select a range |
+</details>
 
 ---
 
-## Accounts, permissions and privacy
+## 👥 Accounts, permissions and privacy
 
 - **The first account is the admin.** On a server it needs the setup code,
   so nobody else on the network can claim it first.
-- **New sign-ups wait for approval** from an admin.
-- **You can edit what you own.** Your mice, cages and records are yours to
-  change. **Breeder cages and anything marked shared belong to the whole
-  lab.** Admins can change anything.
-- **Everyone can see everything**, because a census with holes is not a
-  census. The **My colony / Shared / Everyone** switch filters what you see
-  without changing who may edit what.
-- **When someone leaves**, the admin's **Colony overview** shows every cage
-  by owner, idle cages and living mice without a cage. The **Racks & boxes**
-  page hands their racks to someone else.
-- Passwords are at least 12 characters, repeated failed sign-ins are locked
-  out, and changing a password signs out every other session.
-- Everything stays on your computer or your lab's server. BioManager
-  sends nothing anywhere unless you connect Google Calendar, Google or
+- **New sign-ups wait for an admin's approval.**
+- **You edit what you own.** Your mice, cages and records are yours.
+  **Breeder cages and anything marked shared belong to the whole lab.**
+  Admins can change anything.
+- **Everyone sees everything** — a census with holes is not a census. The
+  **My colony / Shared / Everyone** switch filters the view without
+  changing who may edit what.
+- **When someone leaves,** the admin's **Overview** shows every cage by
+  owner, idle cages and living mice without a cage, and **Racks & boxes**
+  hands their racks to someone else.
+- Passwords are at least 12 characters, repeated failed sign-ins are
+  locked out, and changing a password signs out every other session.
+- **Your data stays with you** — on your computer or your lab's server.
+  Nothing is sent anywhere unless you connect Google Calendar, Google or
   Microsoft sign-in, or reminder emails.
 
----
+## 💾 Your data and backups
 
-## Your data and backups
-
-**Don't keep the database in a cloud-synced folder** (OneDrive, Dropbox,
-Google Drive, iCloud Drive). Syncing corrupts SQLite files. BioManager
-warns you at startup if it spots this.
+> [!WARNING]
+> **Don't keep the database in a cloud-synced folder** (OneDrive, Dropbox,
+> Google Drive, iCloud Drive). Syncing corrupts SQLite files. BioManager
+> warns you at startup if it spots this.
 
 On a single computer:
 
 ```bash
-python scripts/dbtool.py check                      # where the data is, is it healthy, is it at risk
+python scripts/dbtool.py check                      # where is it, is it healthy, is it at risk
 python scripts/dbtool.py backup                     # a consistent snapshot; keeps the last 30
 python scripts/dbtool.py relocate ~/BioManagerData  # move it somewhere safe
 python scripts/dbtool.py restore <file>
 ```
 
-A lab server backs itself up every night, checks every backup, and
-test-restores one every week. It can also keep a copy off-site and a
-nightly copy on the admin's Mac. **Settings → Export my data** downloads
-your own records as a zip at any time.
+A lab server backs itself up every night, checks every backup and
+test-restores one every week, with an optional off-site copy and a nightly
+copy on the admin's Mac. **Settings → Export my data** downloads your own
+records as a zip at any time.
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | Document | For |
 | --- | --- |
@@ -389,17 +551,16 @@ your own records as a zip at any time.
 | [`docs/GOOGLE_CALENDAR_SETUP.md`](docs/GOOGLE_CALENDAR_SETUP.md) | Connecting Google Calendar |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | How BioManager is built: stack, styling, icons, the organism engine, access control, audit and undo, tests, security settings |
 
-To work on BioManager itself, start with
+Working on BioManager itself? Start with
 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md). The test suite runs on SQLite
-and PostgreSQL with `scripts/test.sh`, and runs on every push.
+and PostgreSQL with `scripts/test.sh`, on every push. To refresh these
+screenshots, see `scripts/screenshots.py`.
 
----
-
-## Credits
+## 🙏 Credits
 
 Built with Python, Flask, SQLAlchemy, PostgreSQL / SQLite and Tailwind CSS.
-
-Icons come from [Font Awesome Free](https://fontawesome.com) (CC BY 4.0)
-and [game-icons.net](https://game-icons.net) by Delapouite (CC BY 3.0).
-The mouse and fly icons are theirs. Plasmid, petri dish, cage, tank and
-culture-vial icons are drawn for this project.
+Icons from [Font Awesome Free](https://fontawesome.com) (CC BY 4.0) and
+[game-icons.net](https://game-icons.net) by Delapouite (CC BY 3.0) — the
+mouse and fly are theirs; the plasmid, petri dish, cage, tank and
+culture-vial icons were drawn for this project. The people and records in
+the screenshots are made up.
