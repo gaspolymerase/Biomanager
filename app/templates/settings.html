@@ -53,6 +53,15 @@
         <span class="field-hint normal-case tracking-normal">Where you arrive after signing in.</span>
       </label>
 
+      <label class="field-label">Home layout
+        <select name="home_layout">
+          {% for key, (label, _icon) in home_layout_choices.items() %}
+            <option value="{{ key }}" {% if user_settings.home_layout == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-hint normal-case tracking-normal">Classic cards, Tracks (the next weeks on one day ruler) or Freezer (your racks and a pull list). Also switchable on Home.</span>
+      </label>
+
       <div class="sm:col-span-2">
         <button type="submit" class="btn btn-primary">Save profile</button>
       </div>

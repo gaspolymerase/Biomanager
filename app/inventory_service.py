@@ -405,7 +405,7 @@ def attention_items(session, days: int = 30, limit: int = 12) -> list[dict]:
         if (item.status or "").lower() in TERMINAL_STATUSES:
             continue
         module = modules[item.module_id_fk]
-        out.append({"key": module.key, "module": module.label, "name": item.name or f"#{item.number}",
+        out.append({"id": item.id, "key": module.key, "module": module.label, "name": item.name or f"#{item.number}",
                     "number": item.number, "status": item.status, "expires_on": item.expires_on,
                     "expiry": expiry_state(item, today), "low": (item.status or "").lower() == "low"})
     return out[:limit]
