@@ -16,9 +16,9 @@ trap keep_logs EXIT
 adb logcat -c || true
 
 adb install -r "$APK"
-# Wait (up to a minute) for an activity to be the one on screen.
+# Wait (up to 20 seconds) for an activity to be the one on screen.
 wait_for() {
-  for _ in $(seq 30); do
+  for _ in $(seq 10); do
     adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q "$1" && return 0
     sleep 2
   done
@@ -31,8 +31,14 @@ sleep 3
 shot 1-setup
 
 adb shell input text "http://10.0.2.2:5077"
-adb shell input keyevent KEYCODE_ENTER
-wait_for MainActivity || { shot 2-connected; echo "did not reach the main screen"; exit 1; }
+# The emulator's soft keyboard sometimes swallows an injected Enter, so press
+# it again (up to three times) until the app moves on.
+connected=""
+for _ in 1 2 3; do
+  adb shell input keyevent KEYCODE_ENTER
+  if wait_for MainActivity; then connected=1; break; fi
+done
+[ -n "$connected" ] || { shot 2-connected; echo "did not reach the main screen"; exit 1; }
 for _ in $(seq 30); do grep -q "GET /login" "$SERVER_LOG" && break; sleep 2; done
 sleep 5
 shot 2-connected
