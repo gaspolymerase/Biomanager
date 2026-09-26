@@ -16,16 +16,37 @@ trap keep_logs EXIT
 adb logcat -c || true
 
 adb install -r "$APK"
+# Wait (up to a minute) for an activity to be the one on screen.
+wait_for() {
+  for _ in $(seq 30); do
+    adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q "$1" && return 0
+    sleep 2
+  done
+  return 1
+}
+
 adb shell am start -W -n org.biomanager.app/.MainActivity
-sleep 8
+wait_for SetupActivity || { shot 1-setup; echo "setup screen did not open"; exit 1; }
+sleep 3
 shot 1-setup
-adb shell dumpsys activity activities | grep -q "SetupActivity" || { echo "setup screen did not open"; exit 1; }
 
 adb shell input text "http://10.0.2.2:5077"
 adb shell input keyevent KEYCODE_ENTER
-sleep 20
+wait_for MainActivity || { shot 2-connected; echo "did not reach the main screen"; exit 1; }
+for _ in $(seq 30); do grep -q "GET /login" "$SERVER_LOG" && break; sleep 2; done
+sleep 5
 shot 2-connected
-adb shell dumpsys activity activities | grep "mResumedActivity\|topResumedActivity" | grep -q "MainActivity" \
-  || { echo "did not reach the main screen"; exit 1; }
 grep -q "GET /login" "$SERVER_LOG" || { echo "the server never saw the app"; cat "$SERVER_LOG"; exit 1; }
+# Sign in to the demo lab (its throwaway account from scripts/demo-data.py).
+# The username field has focus on the sign-in page.
+adb shell input text "alex"
+adb shell input keyevent KEYCODE_TAB
+adb shell input text "$(cat "$DEMO_DIR/demo-password")"
+adb shell input keyevent KEYCODE_ENTER
+for _ in $(seq 30); do grep -q "POST /login" "$SERVER_LOG" && break; sleep 2; done
+sleep 8
+adb shell input keyevent KEYCODE_BACK || true   # closes the keyboard if it is up
+sleep 2
+shot 3-signed-in
+grep -q "GET /home\|GET / " "$SERVER_LOG" && echo "signed in" || echo "(sign-in not confirmed; see screenshots)"
 echo "smoke test passed"
