@@ -8,12 +8,14 @@ set -uo pipefail
 log() { echo "[$(date -Is)] $*"; }
 
 run_once() {
-  if backup.sh; then
-    if [ "$(date +%u)" = "$RESTORE_TEST_WEEKDAY" ]; then
-      restore-test.sh || log "RESTORE TEST FAILED — the latest backup could not be restored"
-    fi
-  else
-    log "BACKUP FAILED"
+  backup.sh
+  case $? in
+    0) ;;
+    2) log "OFF-SITE COPY FAILED (local backup kept)" ;;
+    *) log "BACKUP FAILED"; return ;;
+  esac
+  if [ "$(date +%u)" = "$RESTORE_TEST_WEEKDAY" ]; then
+    restore-test.sh || log "RESTORE TEST FAILED — a backup could not be restored"
   fi
 }
 

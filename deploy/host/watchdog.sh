@@ -84,6 +84,16 @@ t=$(age_of "$BACKUP_ROOT/last-restore-test")
 [ "$t" -lt $(( RESTORE_TEST_MAX_DAYS * 86400 )) ] && report restore-test ok \
   || report restore-test "no successful restore test for $(( t / 86400 )) days"
 
+# --- off-site copies, once they are set up (RESTIC_REPOSITORY in .env)
+if grep -qE '^RESTIC_REPOSITORY=.+' "$DEPLOY_DIR/.env" 2>/dev/null; then
+  o=$(age_of "$BACKUP_ROOT/last-offsite")
+  [ "$o" -lt $(( BACKUP_MAX_HOURS * 3600 )) ] && report offsite ok \
+    || report offsite "the last off-site copy is $(( o / 3600 )) hours old. See: docker compose logs backup"
+  ot=$(age_of "$BACKUP_ROOT/last-offsite-test")
+  [ "$ot" -lt $(( RESTORE_TEST_MAX_DAYS * 86400 )) ] && report offsite-restore-test ok \
+    || report offsite-restore-test "the off-site copy has not been read back for $(( ot / 86400 )) days"
+fi
+
 # --- the HTTPS certificate is not about to lapse (Tailscale renews it)
 if [ -n "$DOMAIN" ]; then
   end=$(echo | timeout 20 openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null \
