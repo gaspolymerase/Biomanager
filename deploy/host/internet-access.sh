@@ -47,7 +47,7 @@ case "${1:-status}" in
   on)
     curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8081/healthz || {
       echo "Caddy's internet-facing site does not answer on 127.0.0.1:8081."
-      echo "Update BioManager first (git pull, then docker compose up -d --build in $DEPLOY_DIR)."
+      echo "Update BioManager first (deploy/README.md, Updating), then run this again."
       exit 1
     }
     # Until Funnel is allowed for this machine, tailscale prints a link and

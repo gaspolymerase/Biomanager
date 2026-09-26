@@ -29,6 +29,8 @@
       <span class="rack-meta" data-rack-meta></span>
       {% if rack_dialog_id %}
         <button type="button" class="btn btn-sm" data-rack-edit data-record-edit="{{ rack_dialog_id }}" hidden>{{ icon('edit') }} Edit</button>
+        {# A rack's own action (a fly rack's "Flipped today"), filled in by rack-grid.js. #}
+        <form method="post" class="contents" data-rack-action hidden></form>
         <button type="button" class="btn btn-sm" data-record-edit="{{ rack_dialog_id }}"
                 data-record-payload='{{ dict({"rows": 8, "cols": 10, "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"}, **(new_rack_payload or {})) | tojson }}'>{{ icon('plus') }} New {{ rack_noun }}</button>
       {% endif %}

@@ -133,6 +133,70 @@ jobs:
           path: BioManager-*.*
           if-no-files-found: error
 
+  # The lab server, without the source: the app as an image for Intel and ARM
+  # machines (Oracle's free VMs are ARM), and the deploy files as a bundle
+  # that runs it (scripts/make-server-bundle.sh). The image is pushed to
+  # ghcr.io/gaspolymerase/biomanager; its package must be set to Public once,
+  # in the package's settings on GitHub, for other labs to pull it.
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/gaspolymerase/biomanager
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.title=BioManager
+            org.opencontainers.image.description=BioManager lab server (see biomanager-server.tar.gz in the release)
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.url=https://gaspolymerase.github.io/biomanager-app/server.html
+
+      - name: Server bundle
+        run: scripts/make-server-bundle.sh "$VERSION" biomanager-server.tar.gz
+
+      # Start the bundle as a lab would, from the image just pushed, and ask it for a page.
+      - name: Check the bundle runs
+        run: |
+          mkdir -p "$RUNNER_TEMP/server" && tar -xzf biomanager-server.tar.gz -C "$RUNNER_TEMP/server"
+          cd "$RUNNER_TEMP/server/Biomanager/deploy"
+          cp .env.example .env
+          sed -i "s|^DOMAIN=.*|DOMAIN=localhost|; s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
+          docker compose up -d
+          for i in $(seq 60); do
+            if curl -fsSk -o /dev/null https://localhost/healthz && curl -fsSk -o /dev/null https://localhost/register; then
+              echo "the bundled server answered"; docker compose down -v; exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps; docker compose logs; exit 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-bundle
+          path: biomanager-server.tar.gz
+          if-no-files-found: error
+
   android:
     uses: ./.github/workflows/android.yml
     with:
@@ -140,7 +204,7 @@ jobs:
     secrets: inherit
 
   publish:
-    needs: [desktop, android]
+    needs: [desktop, android, server]
     runs-on: ubuntu-latest
     env:
       HAS_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN != '' }}
@@ -148,7 +212,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: assets
-          pattern: "{desktop-*,BioManager-Android.apk}"
+          pattern: "{desktop-*,BioManager-Android.apk,server-bundle}"
           merge-multiple: true
       - run: ls -la assets
       - name: Publish to ${{ env.PUBLIC_REPO }}
@@ -167,6 +231,7 @@ jobs:
           | `BioManager-Linux.AppImage` | Linux, x86-64: mark it executable and open it |
           | `BioManager-Linux.tar.gz` | Linux, the same app as a folder |
           | `BioManager-Android.apk` | Android 7 and later: connects to your lab's BioManager server |
+          | `biomanager-server.tar.gz` | A lab server: the deploy files, running the image `ghcr.io/gaspolymerase/biomanager`. [How to set one up](https://gaspolymerase.github.io/biomanager-app/server.html) |
 
           **First launch:** on a Mac, right-click BioManager and choose **Open**; on Windows, choose **More info → Run anyway**. The apps are not signed by Apple or Microsoft, so the system asks once. On Android, allow your browser to install apps when asked.
 

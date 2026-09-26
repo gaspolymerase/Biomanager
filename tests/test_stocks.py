@@ -344,6 +344,25 @@ class FlipAndShiftTests(StockCase):
         never = self.make_stock_rack(self.a, self.key, incubator_id=self.inc25)
         self.assertEqual(note(never)["text"], "No flip recorded yet")
 
+    def test_flipped_today_from_the_grid_records_it_and_comes_back_to_the_vials(self):
+        import json as _json
+        import re as _re
+
+        def action(rack_id):
+            html = self.get_ok(self.m, self.url(self.key, ""))
+            blob = _re.search(r'<script type="application/json" data-rack-data>(.*?)</script>', html, _re.S).group(1)
+            return next(r["action"] for r in _json.loads(blob)["racks"] if r["id"] == rack_id)
+
+        rack = self.make_stock_rack(self.a, self.key, incubator_id=self.inc25, last_flipped_on=days_ago(12))
+        offered = action(rack)
+        self.assertEqual(offered["label"], "Flipped today")
+        self.assertFalse(offered["done"])
+        r = self.m.post(offered["url"], data=offered["fields"])
+        self.assertEqual(r.status_code, 302)
+        self.assertNotIn("view=schedule", r.headers["Location"])
+        self.assertEqual(rack_cols(rack)["last_flipped_on"], T)
+        self.assertTrue(action(rack)["done"])
+
     def test_flipped_with_a_bad_date_is_refused(self):
         rack = self.make_stock_rack(self.a, self.key, incubator_id=self.inc25, last_flipped_on=days_ago(4))
         r = self.post(self.a, self.url(self.key, f"/racks/{rack}/flipped"), {"on": "yesterday"})
