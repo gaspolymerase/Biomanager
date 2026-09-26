@@ -41,7 +41,9 @@ ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"
 CODE_LENGTH = 16                     # about 78 bits: guessing is hopeless
 # Anyone on the internet may reach these without a session.
 OPEN_PATHS = ("/guest", "/healthz", "/logout", security.CSP_REPORT_PATH)
-OPEN_PREFIXES = ("/static/",)
+# A calendar feed link carries its own secret (app/lab_calendar.py), so a
+# phone or Google Calendar can fetch it from outside the lab's network.
+OPEN_PREFIXES = ("/static/", "/calendar/feed/")
 
 # Wrong codes from anywhere, counted together: behind the proxies every
 # internet request can look as if it came from the same address.

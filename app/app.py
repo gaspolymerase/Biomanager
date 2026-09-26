@@ -25,6 +25,7 @@ from .models import (
     COLONY_VIEWS,
     CageRecord,
     CalendarEvent,
+    CalendarRepeat,
     CalendarSubscription,
     ClutchRecord,
     FishLine,
@@ -144,6 +145,7 @@ app.register_blueprint(oidc.bp)
 # Importing app.notify registers the listener that sends notifications.
 from . import guests, lab_routes, notify  # noqa: E402,F401
 from . import appearance, home_layouts  # noqa: E402
+from . import lab_calendar  # noqa: E402
 
 with SessionLocal() as _db_session:
     if _db_session.scalar(select(func.count(UserAccount.id))) == 0:
@@ -283,6 +285,8 @@ app.register_blueprint(lab_routes.bp)
 
 # Guest passes and the gate in front of internet access (app/guests.py).
 app.register_blueprint(guests.bp)
+# Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
+app.register_blueprint(lab_calendar.bp)
 
 
 @app.route("/app-icon/<glyph>/<color>.svg")
@@ -3798,8 +3802,17 @@ def calendar():
     """Calendar page — TOAST UI Calendar mount + custom list view.
     Data is fetched async from /calendar/events.json so the page itself is light."""
     with SessionLocal() as db_session:
-        animals = db_session.scalars(select(AnimalRecord).order_by(AnimalRecord.animal_id)).all()
-    return render_template("calendar.html", animals=animals, task_statuses=TASK_STATUS_OPTIONS)
+        cal_data = {
+            "me": g.user.username,
+            "admin": g.user.role == "admin",
+            "people": lab_calendar.people(db_session),
+            "equipment": lab_calendar.equipment_list(db_session),
+            "experiments": [{"id": e.id, "name": e.name} for e in db_session.scalars(
+                select(Experiment).where(Experiment.status.in_(["active", "paused", "planned"]))
+                .order_by(Experiment.name))],
+            "colors": lab_calendar.COLORS,
+        }
+    return render_template("calendar.html", cal_data=cal_data)
 
 
 def _serialize_calendar_event(e: CalendarEvent) -> dict:
@@ -3873,82 +3886,97 @@ def _serialize_task(t: TaskItem) -> dict:
     }
 
 
-@app.route("/calendar/events.json")
-@login_required
-def calendar_events_json():
-    """Unified feed of CalendarEvent + TaskItem rows for the calendar view.
-    Optional ?start=&end= ISO bounds let TOAST UI fetch only the visible window;
-    we pad ±1 month to keep month-view scrolling snappy without re-fetching."""
-    from datetime import datetime as _dt
-    start = request.args.get("start")
-    end = request.args.get("end")
+def calendar_items(db_session, start: date | None, end: date | None, owner: str | None = None,
+                   external: bool = True) -> list[dict]:
+    """Everything on the calendar between two dates, as TOAST UI schedules:
+    events (repeats expanded), to-dos, mouse colony dates, the other
+    organisms and supplies, protocol steps, bookings and away days
+    (app/lab_calendar.py), then connected calendars. With `owner`, only that
+    person's own things (their phone feed can ask for that)."""
+    today = date.today()
+    start = start or today - timedelta(days=400)
+    end = end or today + timedelta(days=400)
+    ev_q = select(CalendarEvent).where(
+        ((CalendarEvent.event_date >= start) & (CalendarEvent.event_date <= end))
+        | ((CalendarEvent.event_date <= end) & CalendarEvent.id.in_(select(CalendarRepeat.event_id_fk))))
+    tk_q = select(TaskItem).where(
+        TaskItem.due_date.is_(None) | ((TaskItem.due_date >= start) & (TaskItem.due_date <= end)))
+    if owner is not None:
+        ev_q = ev_q.where(CalendarEvent.owner == owner)
+        tk_q = tk_q.where(TaskItem.owner == owner)
+    events = db_session.scalars(ev_q.order_by(CalendarEvent.event_date)).all()
+    repeats = lab_calendar.repeats_by_event(db_session, [e.id for e in events])
+    items: list[dict] = []
+    for e in events:
+        item = _serialize_calendar_event(e)
+        repeat = repeats.get(e.id)
+        if repeat is None:
+            items.append(item)
+            continue
+        item["raw"]["repeat"] = lab_calendar.repeat_summary(repeat)
+        for day in lab_calendar.occurrences(e.event_date, repeat, start, end):
+            shift = timedelta(days=(day - e.event_date).days)
+            copy = dict(item, id=f"{item['id']}@{day.isoformat()}",
+                        start=(datetime.fromisoformat(item["start"]) + shift).isoformat(),
+                        end=(datetime.fromisoformat(item["end"]) + shift).isoformat(),
+                        raw=dict(item["raw"], occurrence=day.isoformat()))
+            items.append(copy)
+    items += [_serialize_task(t) for t in db_session.scalars(tk_q.order_by(TaskItem.due_date)).all()]
 
-    def _parse_iso(v):
-        if not v:
-            return None
-        try:
-            return _dt.fromisoformat(v.replace("Z", "+00:00"))
-        except ValueError:
-            return None
+    start_dt = datetime.combine(start, datetime.min.time())
+    end_dt = datetime.combine(end, datetime.max.time())
+    features = lab.request_features()
+    if owner is None and features.get("colony", True):
+        # Mouse colony dates carry no owner, so a personal feed leaves them out.
+        items += derive_auto_calendar_items(db_session, start_dt, end_dt)
+    zebrafish = zebrafish_home_summary() if features.get("zebrafish", True) else None
+    items += lab_calendar.agenda_items(db_session, start, end, features, zebrafish, owner=owner)
+    items += lab_calendar.protocol_items(db_session, start, end, owner=owner)
+    items += lab_calendar.booking_items(db_session, start, end, owner=owner)
+    items += lab_calendar.absence_items(db_session, start, end, owner=owner)
 
-    start_dt = _parse_iso(start)
-    end_dt = _parse_iso(end)
-
-    with SessionLocal() as db_session:
-        ev_q = select(CalendarEvent)
-        tk_q = select(TaskItem)
-        if start_dt:
-            ev_q = ev_q.where(CalendarEvent.event_date >= start_dt.date())
-            # Tasks may have no due_date; only filter rows that have one.
-            tk_q = tk_q.where(
-                (TaskItem.due_date.is_(None)) | (TaskItem.due_date >= start_dt.date())
-            )
-        if end_dt:
-            ev_q = ev_q.where(CalendarEvent.event_date <= end_dt.date())
-            tk_q = tk_q.where(
-                (TaskItem.due_date.is_(None)) | (TaskItem.due_date <= end_dt.date())
-            )
-        events = db_session.scalars(ev_q.order_by(CalendarEvent.event_date)).all()
-        tasks_ = db_session.scalars(tk_q.order_by(TaskItem.due_date)).all()
-
-        # Auto-derived items from colony / experiment tables (weaning,
-        # genotyping, sac threshold, experiment start/end).
-        auto_items = derive_auto_calendar_items(db_session, start_dt, end_dt)
-
-        # External subscriptions (ICS + Google) — owner-scoped for now.
-        owner = g.user.username if g.user else ""
+    if external and g.user is not None:
+        # Connected calendars are the viewer's own, and read-only here.
         subs = db_session.scalars(
             select(CalendarSubscription)
-            .where(CalendarSubscription.owner == owner)
+            .where(CalendarSubscription.owner == g.user.username)
             .where(CalendarSubscription.enabled == True)  # noqa: E712
         ).all()
-        sub_items: list[dict] = []
         for sub in subs:
-            sub_items.extend(fetch_ics_subscription(sub, db_session))
-
-        # Google Calendar events (if user connected) — Pass 3 attaches a fetcher here.
-        google_items: list[dict] = []
+            items.extend(fetch_ics_subscription(sub, db_session))
         try:
             from .services import fetch_google_calendar_items  # optional, may not exist yet
             for link in db_session.scalars(
                 select(GoogleCalendarLink)
-                .where(GoogleCalendarLink.owner == owner)
+                .where(GoogleCalendarLink.owner == g.user.username)
                 .where(GoogleCalendarLink.enabled == True)  # noqa: E712
             ).all():
-                google_items.extend(fetch_google_calendar_items(link, db_session, start_dt, end_dt))
+                items.extend(fetch_google_calendar_items(link, db_session, start_dt, end_dt))
         except ImportError:
             pass
         except Exception as exc:  # don't break the feed for transient Google errors
             app.logger.warning("Google Calendar fetch failed: %s", exc)
+    return items
 
-        return jsonify({
-            "ok": True,
-            "items": [_serialize_calendar_event(e) for e in events]
-            + [_serialize_task(t) for t in tasks_]
-            + auto_items
-            + sub_items
-            + google_items,
-        })
+
+@app.route("/calendar/events.json")
+@login_required
+def calendar_events_json():
+    """The calendar page's feed for ?start=&end= (ISO dates or date-times),
+    plus who is away soon and what of theirs falls due meanwhile."""
+    def _day(v):
+        try:
+            return date.fromisoformat((v or "")[:10]) if v else None
+        except ValueError:
+            return None
+
+    with SessionLocal() as db_session:
+        items = calendar_items(db_session, _day(request.args.get("start")), _day(request.args.get("end")))
+        features = lab.request_features()
+        cover = lab_calendar.cover_report(
+            db_session, features, zebrafish_home_summary() if features.get("zebrafish", True) else None)
+        db_session.commit()
+        return jsonify({"ok": True, "items": items, "cover": cover})
 
 
 # ---------------------------------------------------------------------------
@@ -4245,6 +4273,9 @@ def calendar_item_create():
                 owner=owner,
             )
         db_session.add(row)
+        db_session.flush()
+        if kind != "task":
+            lab_calendar.save_repeat(db_session, row, payload.get("repeat"))
         db_session.commit()
         if kind == "task":
             return jsonify({"ok": True, "item": _serialize_task(row)})
@@ -4254,10 +4285,11 @@ def calendar_item_create():
 @app.route("/calendar/items/<string:item_key>", methods=["POST"])
 @login_required
 def calendar_item_update(item_key: str):
-    """Update an existing event or task. item_key is `event-<id>` or `task-<id>`."""
+    """Update an existing event or task. item_key is `event-<id>` or `task-<id>`;
+    an occurrence of a repeating event (`event-<id>@<date>`) edits the series."""
     from datetime import datetime as _dt
     payload = request.get_json(silent=True) or {}
-    kind, _, raw_id = item_key.partition("-")
+    kind, _, raw_id = item_key.split("@")[0].partition("-")
     if not raw_id.isdigit():
         return jsonify({"ok": False, "error": "bad id"}), 400
     row_id = int(raw_id)
@@ -4306,6 +4338,8 @@ def calendar_item_update(item_key: str):
                 if is_all_day is not None: row.is_all_day = bool(is_all_day)
             if end is not None:
                 row.end_at = None if is_all_day else end
+            if "repeat" in payload:
+                lab_calendar.save_repeat(db_session, row, payload["repeat"])
             db_session.commit()
             return jsonify({"ok": True, "item": _serialize_calendar_event(row)})
         return jsonify({"ok": False, "error": "unknown kind"}), 400
@@ -4335,7 +4369,7 @@ def calendar_item_toggle(item_key: str):
 @app.route("/calendar/items/<string:item_key>/delete", methods=["POST"])
 @login_required
 def calendar_item_delete(item_key: str):
-    kind, _, raw_id = item_key.partition("-")
+    kind, _, raw_id = item_key.split("@")[0].partition("-")
     if not raw_id.isdigit():
         return jsonify({"ok": False, "error": "bad id"}), 400
     row_id = int(raw_id)
@@ -4343,6 +4377,8 @@ def calendar_item_delete(item_key: str):
         row = db_session.get(TaskItem if kind == "task" else CalendarEvent, row_id)
         if row is None:
             return jsonify({"ok": False}), 404
+        if kind != "task":
+            lab_calendar.delete_repeat(db_session, row_id)
         db_session.delete(row)
         db_session.commit()
         return jsonify({"ok": True})

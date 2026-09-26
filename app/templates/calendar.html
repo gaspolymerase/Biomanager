@@ -2,55 +2,393 @@
 
 {% block page_title %}Calendar{% endblock %}
 {% block page_heading %}Calendar{% endblock %}
-{% block page_subtitle %}Events, to-dos and colony dates on one timeline{% endblock %}
+{% block page_subtitle %}Experiments, colony dates, bookings and who's away, on one timeline{% endblock %}
 {% block page_shell_class %}shell-page-wide{% endblock %}
 
+{% block head_extra %}
+  {# TOAST UI Calendar's own stylesheet (npm run build:calendar), then ours. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/calendar-app.css') }}?v={{ asset_version('notebook-build/calendar-app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='calendar.css') }}?v={{ asset_version('calendar.css') }}">
+{% endblock %}
+
+{% set layers = [
+  ("events", "Events", "calendar", true),
+  ("tasks", "To-dos", "list-check", true),
+  ("auto", db_labels.get('colony', 'Mouse colony'), "mouse", true),
+  ("stocks", "Stocks & organisms", "vials", true),
+  ("supplies", "Supplies", "flask", true),
+  ("protocols", "Protocols", "protocol", true),
+  ("bookings", "Equipment", "calendar-clock", true),
+  ("away", "Away", "user", true),
+  ("subs", "Connected calendars", "rss", true),
+] %}
+
 {% block content %}
-{# TOAST UI Calendar's own stylesheet, copied into static by
-   `npm run build:calendar`. ?v=<mtime> busts the cache after a rebuild. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/calendar-app.css') }}?v={{ asset_version('notebook-build/calendar-app.css') }}">
+<div class="cal" id="cal">
 
-<section class="biocal-shell">
-  {# ====== Toolbar: range navigation, view switcher, filters, new ====== #}
-  <header class="biocal-toolbar">
-    <div class="biocal-nav">
-      <button type="button" class="btn btn-icon" id="biocal-prev" title="Previous" aria-label="Previous">{{ icon('chevron-left') }}</button>
-      <button type="button" class="btn" id="biocal-today">Today</button>
-      <button type="button" class="btn btn-icon" id="biocal-next" title="Next" aria-label="Next">{{ icon('chevron-right') }}</button>
-      <span class="biocal-title" id="biocal-title">—</span>
+  {# ================= Sidebar ================= #}
+  <aside class="cal-side" id="cal-side" aria-label="Calendar options">
+    <div class="cal-new">
+      <button type="button" class="btn btn-primary cal-new-main" data-new="event">{{ icon('plus') }} New event</button>
+      <button type="button" class="btn btn-primary cal-new-more" id="cal-new-more" aria-haspopup="menu"
+              aria-expanded="false" aria-label="Other kinds">{{ icon('chevron-down') }}</button>
+      <div class="menu cal-new-menu" id="cal-new-menu" role="menu" hidden>
+        <button type="button" class="menu-item" role="menuitem" data-new="event">{{ icon('calendar') }} Event</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="task">{{ icon('list-check') }} To-do</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="booking">{{ icon('calendar-clock') }} Book equipment</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="away">{{ icon('user') }} Time away</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="protocol">{{ icon('protocol') }} Start a protocol</button>
+      </div>
     </div>
 
-    <div class="seg" role="tablist" aria-label="View">
-      <button type="button" class="seg-item biocal-view-btn is-active" data-view="month">Month</button>
-      <button type="button" class="seg-item biocal-view-btn" data-view="week">Week</button>
-      <button type="button" class="seg-item biocal-view-btn" data-view="day">Day</button>
-      <button type="button" class="seg-item biocal-view-btn" data-view="list">List</button>
-    </div>
+    <section class="cal-mini" aria-label="Pick a day">
+      <header class="cal-mini-head">
+        <span class="cal-mini-title" id="cal-mini-title"></span>
+        <button type="button" class="cal-icon-btn" id="cal-mini-prev" aria-label="Previous month">{{ icon('chevron-left') }}</button>
+        <button type="button" class="cal-icon-btn" id="cal-mini-next" aria-label="Next month">{{ icon('chevron-right') }}</button>
+      </header>
+      <div class="cal-mini-grid" id="cal-mini-grid"></div>
+    </section>
 
-    <div class="biocal-filters" role="group" aria-label="Show">
-      {% for tone, label, checked in [("events", "Events", true), ("tasks", "To-dos", true), ("auto", "Colony", true), ("subs", "Subscriptions", true), ("done", "Completed", false)] %}
-        <label class="biocal-toggle" data-tone="{{ tone }}">
-          <input type="checkbox" id="biocal-show-{{ tone }}" {% if checked %}checked{% endif %}>
-          <span class="biocal-toggle-dot"></span>
-          <span class="biocal-toggle-label">{{ label }}</span>
+    <section class="cal-section">
+      <h3 class="cal-section-h">Show</h3>
+      <ul class="cal-layers">
+        {% for key, label, icon_name, on in layers %}
+          <li>
+            <label class="cal-layer" data-layer="{{ key }}">
+              <input type="checkbox" data-layer-toggle="{{ key }}" {% if on %}checked{% endif %}>
+              <span class="cal-layer-box" aria-hidden="true">{{ icon('check') }}</span>
+              <span class="cal-layer-name">{{ label }}</span>
+              <span class="cal-layer-count" data-layer-count="{{ key }}"></span>
+            </label>
+          </li>
+        {% endfor %}
+        <li>
+          <label class="cal-layer cal-layer-quiet" data-layer="done">
+            <input type="checkbox" data-layer-toggle="done">
+            <span class="cal-layer-box" aria-hidden="true">{{ icon('check') }}</span>
+            <span class="cal-layer-name">Finished to-dos</span>
+          </label>
+        </li>
+      </ul>
+    </section>
+
+    <section class="cal-section" id="cal-cover" hidden>
+      <h3 class="cal-section-h">Away soon</h3>
+      <div class="cal-cover-list" id="cal-cover-list"></div>
+    </section>
+
+    <section class="cal-section">
+      <h3 class="cal-section-h">Equipment
+        <button type="button" class="cal-link-btn" id="cal-equip-manage">Manage</button>
+      </h3>
+      <ul class="cal-equip-list" id="cal-equip-list"></ul>
+    </section>
+
+    <section class="cal-section">
+      <h3 class="cal-section-h">Protocols
+        <button type="button" class="cal-link-btn" id="cal-templates-btn">Edit</button>
+      </h3>
+      <ul class="cal-run-list" id="cal-run-list"><li class="cal-muted">Loading…</li></ul>
+    </section>
+
+    <footer class="cal-side-foot">
+      <button type="button" class="cal-foot-btn" id="cal-feed-btn">{{ icon('link') }} On your phone</button>
+      <button type="button" class="cal-foot-btn" id="biocal-subs-btn">{{ icon('rss') }} Connected calendars</button>
+    </footer>
+  </aside>
+
+  {# ================= Main ================= #}
+  <section class="cal-main">
+    <header class="cal-head">
+      <button type="button" class="btn btn-icon cal-side-toggle" id="cal-side-toggle"
+              aria-controls="cal-side" aria-expanded="false" aria-label="Show calendar options">{{ icon('sliders') }}</button>
+      <h2 class="cal-title" id="biocal-title">&nbsp;</h2>
+      <div class="cal-nav">
+        <button type="button" class="btn btn-icon" id="biocal-prev" aria-label="Previous">{{ icon('chevron-left') }}</button>
+        <button type="button" class="btn" id="biocal-today">Today</button>
+        <button type="button" class="btn btn-icon" id="biocal-next" aria-label="Next">{{ icon('chevron-right') }}</button>
+      </div>
+      <div class="seg cal-views" role="tablist" aria-label="View">
+        <button type="button" class="seg-item biocal-view-btn is-active" data-view="month">Month</button>
+        <button type="button" class="seg-item biocal-view-btn" data-view="week">Week</button>
+        <button type="button" class="seg-item biocal-view-btn" data-view="day">Day</button>
+        <button type="button" class="seg-item biocal-view-btn" data-view="list">List</button>
+      </div>
+    </header>
+    <div class="cal-body">
+      <div id="biocal-tui" class="cal-tui"></div>
+      <div id="biocal-list" class="cal-list" hidden></div>
+    </div>
+  </section>
+</div>
+
+{# ================= New / edit: event, to-do, booking, time away ================= #}
+<dialog id="biocal-modal" class="record-dialog cal-dialog" aria-labelledby="biocal-modal-title">
+  <form id="biocal-form" novalidate>
+    <header class="record-dialog-head">
+      <div><h3 id="biocal-modal-title">New event</h3></div>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="biocal-modal" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <input type="hidden" name="id" id="biocal-id">
+      <input type="hidden" name="occurrence" id="biocal-occurrence">
+
+      <div class="seg self-start cal-kinds" role="radiogroup" aria-label="Kind">
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="event" checked> Event</label>
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="task"> To-do</label>
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="booking"> Booking</label>
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="away"> Away</label>
+      </div>
+
+      <label data-for="event task">Title <input name="title" id="biocal-title-input" autocomplete="off"></label>
+
+      {# Event: a range or all day, and how it repeats. #}
+      <div class="record-group" data-for="event">
+        <label>Starts <input type="datetime-local" name="start"></label>
+        <label>Ends <input type="datetime-local" name="end"></label>
+        <label class="cal-check record-wide"><input type="checkbox" name="isAllday" checked> All day</label>
+      </div>
+      <fieldset class="cal-repeat" data-for="event">
+        <legend>Repeats</legend>
+        <div class="cal-repeat-row">
+          <select name="repeat_freq" id="cal-repeat-freq" aria-label="Repeats">
+            <option value="">Doesn't repeat</option>
+            <option value="daily">Every day</option>
+            <option value="weekly">Every week</option>
+            <option value="monthly">Every month</option>
+          </select>
+          <span class="cal-repeat-more" id="cal-repeat-more" hidden>
+            <span>every</span>
+            <input type="number" name="repeat_interval" min="1" max="99" value="1" aria-label="Interval">
+            <span id="cal-repeat-unit">weeks</span>
+            <span>until</span>
+            <input type="date" name="repeat_until" aria-label="Until">
+          </span>
+        </div>
+        <p class="cal-hint" id="cal-repeat-hint" hidden>Changes apply to every repeat. To take out one date, use Delete this one.</p>
+      </fieldset>
+
+      {# To-do: a due day from presets or a date. #}
+      <div data-for="task">
+        <span class="field-label">Due</span>
+        <div class="biocal-due-presets" id="biocal-due-presets">
+          <button type="button" class="biocal-due-btn is-active" data-due="today">Today</button>
+          <button type="button" class="biocal-due-btn" data-due="tomorrow">Tomorrow</button>
+          <button type="button" class="biocal-due-btn" data-due="next-week">Next week</button>
+          <button type="button" class="biocal-due-btn" data-due="custom">Pick a date</button>
+        </div>
+        <input type="date" name="due_custom" id="biocal-due-custom" class="field mt-2 w-auto" hidden aria-label="Due date">
+      </div>
+
+      {# Booking: an instrument and a slot. #}
+      <div class="record-group" data-for="booking">
+        <label class="record-wide">Instrument
+          <select name="equipment_id" id="cal-equipment-select"></select>
         </label>
-      {% endfor %}
-    </div>
+        <label>From <input type="datetime-local" name="booking_start"></label>
+        <label>To <input type="datetime-local" name="booking_end"></label>
+        <label class="record-wide">What for <input name="purpose" autocomplete="off" placeholder="e.g. Slice imaging, PV-Cre;Ai14"></label>
+      </div>
+      <p class="cal-hint" data-for="booking" id="cal-no-equipment" hidden>No instruments yet. Add one under Equipment → Manage.</p>
 
-    <div class="biocal-actions">
-      <button type="button" class="btn" id="biocal-subs-btn" title="Connected calendars">{{ icon('rss') }} Calendars</button>
-      <button type="button" class="btn btn-primary" id="biocal-new">{{ icon('plus') }} New</button>
-    </div>
-  </header>
+      {# Time away: who, when, and who covers. #}
+      <div class="record-group" data-for="away">
+        <label class="record-wide" id="cal-away-owner-wrap">Who
+          <select name="away_owner" id="cal-away-owner"></select>
+        </label>
+        <label>First day <input type="date" name="away_start"></label>
+        <label>Last day <input type="date" name="away_end"></label>
+        <label>Reason
+          <select name="away_kind">
+            <option value="leave">Leave</option>
+            <option value="conference">Conference</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Covered by
+          <select name="away_cover" id="cal-away-cover"></select>
+        </label>
+        <label class="record-wide">Note <input name="away_note" autocomplete="off" placeholder="e.g. SfN, Chicago"></label>
+      </div>
 
-  {# ====== TOAST UI mount + our own list view ====== #}
-  <div class="biocal-body">
-    <div id="biocal-tui" class="biocal-tui"></div>
-    <div id="biocal-list" class="biocal-list" hidden></div>
+      <div data-for="event task">
+        <span class="field-label">Colour</span>
+        <input type="hidden" name="color" id="biocal-color-val" value="#a4c8f0">
+        <div class="biocal-color-swatches" id="biocal-color-swatches">
+          {% for hex, name in [("#f9a8a8", "Rose"), ("#fcb77e", "Apricot"), ("#fbe89e", "Lemon"), ("#b6e2a1", "Pistachio"), ("#a3e0d8", "Mint"), ("#a4c8f0", "Sky"), ("#c4b5fd", "Lavender"), ("#f4b8d8", "Pink")] %}
+            <button type="button" class="biocal-color-swatch" data-color="{{ hex }}" style="background:{{ hex }}" aria-label="{{ name }}" title="{{ name }}"></button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <label data-for="event task">Notes <textarea name="body" rows="3"></textarea></label>
+      <p class="cal-error" id="cal-form-error" role="alert" hidden></p>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn btn-danger" id="biocal-delete" hidden>{{ icon('trash') }} Delete</button>
+      <button type="button" class="btn" id="cal-delete-one" hidden>Delete this one</button>
+      <span class="mr-auto"></span>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="biocal-modal">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </footer>
+  </form>
+</dialog>
+
+{# ================= Start or change a protocol run ================= #}
+<dialog id="cal-run-modal" class="record-dialog cal-dialog" aria-labelledby="cal-run-title">
+  <form id="cal-run-form" novalidate>
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="cal-run-title">Start a protocol</h3>
+        <p class="record-dialog-sub">Every step lands on the calendar, counted from day 0. Move day 0 and they all move.</p>
+      </div>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-run-modal" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <input type="hidden" name="id">
+      <div class="record-group">
+        <label class="record-wide" id="cal-run-template-wrap">Protocol
+          <select name="template_id" id="cal-run-template"></select>
+        </label>
+        <label>Day 0 <input type="date" name="start_date" required></label>
+        <label>For <input name="label" placeholder="e.g. Cohort B, 6 mice" autocomplete="off"></label>
+        <label class="record-wide">Experiment
+          <select name="experiment_id" id="cal-run-experiment"></select>
+        </label>
+      </div>
+      <div>
+        <span class="field-label">Steps</span>
+        <ol class="cal-steps-preview" id="cal-run-preview"></ol>
+      </div>
+      <label>Notes <textarea name="notes" rows="2"></textarea></label>
+      <p class="cal-error" id="cal-run-error" role="alert" hidden></p>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn btn-danger" id="cal-run-delete" hidden>{{ icon('trash') }} Remove</button>
+      <span class="mr-auto"></span>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-run-modal">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </footer>
+  </form>
+</dialog>
+
+{# ================= Write protocol templates ================= #}
+<dialog id="cal-tpl-modal" class="record-dialog cal-dialog cal-dialog-wide" aria-labelledby="cal-tpl-title">
+  <form id="cal-tpl-form" novalidate>
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="cal-tpl-title">Protocols</h3>
+        <p class="record-dialog-sub">A protocol is a list of steps counted in days from day 0. Runs already under way keep the steps they started with.</p>
+      </div>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-tpl-modal" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body cal-tpl-body">
+      <nav class="cal-tpl-nav" aria-label="Protocols">
+        <ul id="cal-tpl-list"></ul>
+        <button type="button" class="btn btn-sm" id="cal-tpl-new">{{ icon('plus') }} New protocol</button>
+      </nav>
+      <div class="cal-tpl-edit">
+        <input type="hidden" name="id">
+        <label>Name <input name="name" placeholder="e.g. Tamoxifen → photometry" autocomplete="off"></label>
+        <label>What it's for <input name="description" autocomplete="off"></label>
+        <div>
+          <span class="field-label">Steps</span>
+          <div class="cal-steps-head" aria-hidden="true"><span>From day</span><span>To day</span><span>Step</span></div>
+          <ol class="cal-steps" id="cal-tpl-steps"></ol>
+          <button type="button" class="btn btn-sm" id="cal-tpl-add-step">{{ icon('plus') }} Add a step</button>
+        </div>
+        <input type="hidden" name="color" id="cal-tpl-color">
+        <div>
+          <span class="field-label">Colour</span>
+          <div class="biocal-color-swatches" id="cal-tpl-swatches">
+            {% for hex in ["#5856d6", "#af52de", "#ff2d55", "#ff9500", "#34c759", "#30b0c7", "#007aff", "#8e8e93"] %}
+              <button type="button" class="biocal-color-swatch" data-color="{{ hex }}" style="background:{{ hex }}" aria-label="{{ hex }}"></button>
+            {% endfor %}
+          </div>
+        </div>
+        <p class="cal-error" id="cal-tpl-error" role="alert" hidden></p>
+      </div>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn btn-danger" id="cal-tpl-delete" hidden>{{ icon('trash') }} Delete protocol</button>
+      <span class="mr-auto"></span>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-tpl-modal">Close</button>
+      <button type="submit" class="btn btn-primary">Save protocol</button>
+    </footer>
+  </form>
+</dialog>
+
+{# ================= Equipment ================= #}
+<dialog id="cal-equip-modal" class="record-dialog record-dialog-narrow cal-dialog" aria-labelledby="cal-equip-title">
+  <form id="cal-equip-form" novalidate>
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="cal-equip-title">Equipment</h3>
+        <p class="record-dialog-sub">Shared instruments people book time on. Two bookings of one instrument can't overlap.</p>
+      </div>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-equip-modal" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <ul class="cal-equip-manage" id="cal-equip-manage-list"></ul>
+      <div class="record-group">
+        <label>Name <input name="name" placeholder="e.g. Confocal (LSM 900)" autocomplete="off"></label>
+        <label>Where <input name="location" placeholder="e.g. Room 4.12" autocomplete="off"></label>
+        <label class="cal-check">Colour <input type="color" name="color" value="#30b0c7"></label>
+      </div>
+      <p class="cal-error" id="cal-equip-error" role="alert" hidden></p>
+    </div>
+    <footer class="record-dialog-foot">
+      <span class="mr-auto"></span>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-equip-modal">Close</button>
+      <button type="submit" class="btn btn-primary">{{ icon('plus') }} Add instrument</button>
+    </footer>
+  </form>
+</dialog>
+
+{# ================= Phone feed ================= #}
+<dialog id="cal-feed-modal" class="record-dialog record-dialog-narrow cal-dialog" aria-labelledby="cal-feed-title">
+  <div class="cal-dialog-inner">
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="cal-feed-title">The calendar on your phone</h3>
+        <p class="record-dialog-sub">A private link that Apple, Google or Outlook Calendar subscribes to. It updates by itself, about every hour.</p>
+      </div>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-feed-modal" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <fieldset class="cal-feed-scope">
+        <legend class="field-label">What it shows</legend>
+        <label class="cal-radio"><input type="radio" name="feed_scope" value="mine" checked>
+          <span><b>Just mine</b><small>Your events, to-dos, animals, vials, protocols, bookings, and time away you cover</small></span></label>
+        <label class="cal-radio"><input type="radio" name="feed_scope" value="lab">
+          <span><b>The whole lab calendar</b><small>Everything on this page except calendars you connected</small></span></label>
+      </fieldset>
+      <div id="cal-feed-on" hidden>
+        <span class="field-label">Your link</span>
+        <div class="cal-feed-url">
+          <input type="text" id="cal-feed-url" readonly aria-label="Calendar link">
+          <button type="button" class="btn" id="cal-feed-copy">{{ icon('copy') }} Copy</button>
+        </div>
+        <ul class="cal-feed-how">
+          <li><b>iPhone:</b> Settings → Calendar → Calendar Accounts → Add Account → Other → Add Subscribed Calendar, then paste.</li>
+          <li><b>Google Calendar:</b> Other calendars → + → From URL. Google fetches it from the internet, so it works only when the server is open to the internet.</li>
+          <li><b>Outlook:</b> Add calendar → Subscribe from web.</li>
+        </ul>
+        <p class="cal-hint">Anyone with the link can read this calendar. If it ends up somewhere it shouldn't, make a new one and the old link stops working.</p>
+      </div>
+      <p class="cal-error" id="cal-feed-error" role="alert" hidden></p>
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn btn-danger" id="cal-feed-stop" hidden>Stop sharing</button>
+      <button type="button" class="btn" id="cal-feed-reset" hidden>Make a new link</button>
+      <span class="mr-auto"></span>
+      <button type="button" class="btn btn-primary" id="cal-feed-create">Make my link</button>
+    </footer>
   </div>
-</section>
+</dialog>
 
-{# ====== Connected calendars ====== #}
+{# ================= Connected calendars ================= #}
 <dialog id="biocal-subs-modal" class="record-dialog biocal-subs-modal" aria-labelledby="biocal-subs-title">
   <header class="record-dialog-head">
     <div>
@@ -66,7 +404,6 @@
         <span class="muted-inline">Loading…</span>
       </div>
     </section>
-
     <section class="biocal-subs-section">
       <h4>iCal subscriptions</h4>
       <p class="muted-inline">Paste a feed URL: Apple, Outlook, a university calendar, or Google's secret iCal address.</p>
@@ -83,884 +420,9 @@
   </div>
 </dialog>
 
-{# ====== New / edit item ====== #}
-<dialog id="biocal-modal" class="record-dialog biocal-modal" aria-labelledby="biocal-modal-title">
-  <form id="biocal-form" class="biocal-form">
-    <header class="record-dialog-head">
-      <div><h3 id="biocal-modal-title">New item</h3></div>
-      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="biocal-modal" aria-label="Close">{{ icon('close') }}</button>
-    </header>
-    <div class="record-dialog-body">
-      <input type="hidden" name="id" id="biocal-id">
-
-      <div class="seg self-start" role="radiogroup" aria-label="Kind">
-        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="event" checked> Event</label>
-        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="task"> To-do</label>
-      </div>
-
-      <label>Title <input name="title" required></label>
-
-      {# Event: a date-time range, or all day. #}
-      <div class="biocal-when biocal-when-event record-group">
-        <label>Starts <input type="datetime-local" name="start"></label>
-        <label>Ends <input type="datetime-local" name="end"></label>
-        <label class="col-span-full"><input type="checkbox" name="isAllday" checked> All day</label>
-      </div>
-
-      {# To-do: a due day from three presets or a custom date. #}
-      <div class="biocal-when biocal-when-task" hidden>
-        <span class="field-label">Due</span>
-        <div class="biocal-due-presets" id="biocal-due-presets">
-          <button type="button" class="biocal-due-btn is-active" data-due="today">Today</button>
-          <button type="button" class="biocal-due-btn" data-due="tomorrow">Tomorrow</button>
-          <button type="button" class="biocal-due-btn" data-due="next-week">Next week</button>
-          <button type="button" class="biocal-due-btn" data-due="custom">Pick a date</button>
-        </div>
-        <input type="date" name="due_custom" id="biocal-due-custom" class="field mt-2 w-auto" hidden aria-label="Due date">
-      </div>
-
-      {# Eight pastel tones that sit well on the calendar grid. The hidden
-         input is what the form submits; the swatches only show the choice. #}
-      <div>
-        <span class="field-label">Colour</span>
-        <input type="hidden" name="color" id="biocal-color-val" value="#c4b5fd">
-        <div class="biocal-color-swatches" id="biocal-color-swatches">
-          {% for hex, name in [("#f9a8a8", "Rose"), ("#fcb77e", "Apricot"), ("#fbe89e", "Lemon"), ("#b6e2a1", "Pistachio"), ("#a3e0d8", "Mint"), ("#a4c8f0", "Sky"), ("#c4b5fd", "Lavender"), ("#f4b8d8", "Pink")] %}
-            <button type="button" class="biocal-color-swatch" data-color="{{ hex }}" style="background:{{ hex }}" aria-label="{{ name }}" title="{{ name }}"></button>
-          {% endfor %}
-        </div>
-      </div>
-
-      <label>Notes <textarea name="body" rows="3"></textarea></label>
-    </div>
-    <footer class="record-dialog-foot">
-      <button type="button" class="btn btn-danger mr-auto" id="biocal-delete" hidden>{{ icon('trash') }} Delete</button>
-      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="biocal-modal">Cancel</button>
-      <button type="submit" class="btn btn-primary">Save</button>
-    </footer>
-  </form>
-</dialog>
-
-{# TOAST UI Calendar UMD bundle — exposes window.tui.Calendar. #}
+<script type="application/json" id="cal-data">{{ cal_data | tojson }}</script>
+{# TOAST UI Calendar's UMD bundle (window.tui.Calendar), then the page. #}
 <script src="{{ url_for('static', filename='notebook-build/calendar-app.js') }}?v={{ asset_version('notebook-build/calendar-app.js') }}" defer
-        data-loaded-flag="__tuiLoaded"
-        data-missing-flag="__tuiMissing"></script>
-
-<script nonce="{{ csp_nonce() }}">
-(function () {
-  const tuiHost = document.getElementById('biocal-tui');
-  const listHost = document.getElementById('biocal-list');
-  const titleEl = document.getElementById('biocal-title');
-  const viewBtns = document.querySelectorAll('.biocal-view-btn');
-  const fEvents = document.getElementById('biocal-show-events');
-  const fTasks = document.getElementById('biocal-show-tasks');
-  const fAuto = document.getElementById('biocal-show-auto');
-  const fSubs = document.getElementById('biocal-show-subs');
-  const fDone = document.getElementById('biocal-show-done');
-  const modal = document.getElementById('biocal-modal');
-  const subsModal = document.getElementById('biocal-subs-modal');
-  const subsBtn = document.getElementById('biocal-subs-btn');
-  const subsListEl = document.getElementById('biocal-subs-list');
-  const subsAddForm = document.getElementById('biocal-subs-add');
-  const googleStatusEl = document.getElementById('biocal-google-status');
-  const form = document.getElementById('biocal-form');
-  const delBtn = document.getElementById('biocal-delete');
-  const modalTitle = document.getElementById('biocal-modal-title');
-
-  let calendar = null;          // TOAST UI Calendar instance
-  let allItems = [];            // raw items from the feed (filters applied for rendering)
-  let currentView = 'month';
-
-  // ---- Bundle gate ------------------------------------------------------
-  function waitForTui() {
-    return new Promise((resolve) => {
-      const tick = () => {
-        if (window.tui && window.tui.Calendar) return resolve('ready');
-        if (window.__tuiMissing) return resolve('missing');
-        if (window.__tuiLoaded && !(window.tui && window.tui.Calendar)) {
-          return setTimeout(() => resolve(window.tui && window.tui.Calendar ? 'ready' : 'broken'), 200);
-        }
-        setTimeout(tick, 80);
-      };
-      tick();
-    });
-  }
-
-  /* TOAST UI's grid colours, taken from the app's tokens at runtime so the
-     calendar follows the theme (including dark mode) instead of TOAST UI's
-     own defaults. */
-  function biocalTheme() {
-    const css = getComputedStyle(document.documentElement);
-    const v = (name, fallback) => (css.getPropertyValue(name) || '').trim() || fallback;
-    const line = `1px solid ${v('--color-hairline', '#e5e5ea')}`;
-    const surface = v('--color-surface', '#ffffff');
-    const recess = v('--color-sand-50', '#f5f5f7');
-    const ink = v('--color-ink', '#1d1d1f');
-    const muted = v('--color-muted', '#86868b');
-    const brand = v('--color-brand-600', '#17a38f');
-    const brandTint = v('--color-brand-50', '#e9f8f5');
-    return {
-      common: {
-        backgroundColor: surface,
-        border: line,
-        gridSelection: { backgroundColor: brandTint, border: `1px solid ${brand}` },
-        dayName: { color: muted },
-        holiday: { color: v('--color-danger-600', '#ff3b30') },
-        saturday: { color: muted },
-        today: { color: brand },
-      },
-      month: {
-        dayName: { borderLeft: 'none', backgroundColor: recess },
-        dayExceptThisMonth: { color: v('--color-sand-300', '#c7c7cc') },
-        holidayExceptThisMonth: { color: v('--color-sand-300', '#c7c7cc') },
-        weekend: { backgroundColor: surface },
-        moreView: { backgroundColor: surface, border: line, boxShadow: v('--shadow-md', 'none') },
-        moreViewTitle: { backgroundColor: recess },
-      },
-      week: {
-        dayName: { borderLeft: 'none', borderTop: line, borderBottom: line, backgroundColor: recess },
-        dayGrid: { borderRight: line, backgroundColor: surface },
-        dayGridLeft: { borderRight: line, backgroundColor: recess },
-        timeGrid: { borderRight: line },
-        timeGridLeft: { borderRight: line, backgroundColor: recess },
-        timeGridHourLine: { borderBottom: line },
-        timeGridHalfHourLine: { borderBottom: `1px dotted ${v('--color-hairline', '#e5e5ea')}` },
-        today: { color: brand, backgroundColor: 'transparent' },
-        pastDay: { color: muted },
-        pastTime: { color: muted },
-        weekend: { backgroundColor: surface },
-        nowIndicatorLabel: { color: brand },
-        nowIndicatorPast: { border: `1px dashed ${brand}` },
-        nowIndicatorBullet: { backgroundColor: brand },
-        nowIndicatorToday: { border: `1px solid ${brand}` },
-        panelResizer: { border: line },
-        gridSelection: { color: ink },
-      },
-    };
-  }
-
-  // ---- Init -------------------------------------------------------------
-  waitForTui().then((status) => {
-    if (status !== 'ready') {
-      tuiHost.innerHTML = `<div class="biocal-empty">Calendar bundle didn't load (${status}). Run <code>npm run build:calendar</code> and hard-refresh.</div>`;
-      return;
-    }
-    const Calendar = window.tui.Calendar;
-    calendar = new Calendar('#biocal-tui', {
-      defaultView: 'month',
-      theme: biocalTheme(),
-      useFormPopup: false,    // we use our own dialog
-      useDetailPopup: false,  // we use our own hover card (see below)
-      isReadOnly: false,
-      // Don't hide events behind "+N more" — show every event in the cell.
-      // Without this, dragging into a busy day appears to "cover" existing
-      // items because they spill past the default 6-event limit.
-      month: { visibleEventCount: 99 },
-      calendars: [
-        { id: 'events', name: 'Events', backgroundColor: '#17a38f', borderColor: '#17a38f' },
-        { id: 'tasks', name: 'Tasks', backgroundColor: '#007aff', borderColor: '#007aff' },
-        { id: 'auto', name: 'Colony', backgroundColor: '#ff9500', borderColor: '#ff9500' },
-      ],
-      template: {
-        // All event templates embed the schedule id on a wrapping span so
-        // our hover-card listener can find the right item from the DOM.
-        allday: function (schedule) {
-          return `<span class="biocal-chip" data-item-id="${schedule.id}">${escapeHtml(schedule.title || '')}</span>`;
-        },
-        time: function (schedule) {
-          return `<span class="biocal-chip" data-item-id="${schedule.id}">${escapeHtml(schedule.title || '')}</span>`;
-        },
-        // Tasks render with an inline checkbox so the user can flip
-        // done/undone right from the calendar.
-        task: function (schedule) {
-          const done = schedule.raw && schedule.raw.done;
-          const t = escapeHtml(schedule.title || '');
-          return `
-            <span class="biocal-task ${done ? 'is-done' : ''}" data-item-id="${schedule.id}">
-              <input type="checkbox" class="biocal-task-cb" ${done ? 'checked' : ''} data-item-id="${schedule.id}">
-              <span class="biocal-task-title">${t}</span>
-            </span>`;
-        },
-      },
-    });
-
-    // Keep our title bar in sync with TOAST UI's current range.
-    function refreshTitle() {
-      const d = calendar.getDate();
-      const dt = d.toDate ? d.toDate() : new Date(d);
-      const fmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long' });
-      titleEl.textContent = fmt.format(dt);
-    }
-    refreshTitle();
-
-    // ---- Events ---------------------------------------------------------
-    // Clicking (or selecting a range on) a date cell opens the new-event dialog.
-    // TOAST UI fires `selectDateTime` for both single clicks and drag-selects;
-    // `beforeCreateEvent` is the post-popup hook, which we don't use because
-    // we have our own dialog (useFormPopup: false). Listening to both means
-    // we still respond to programmatic creates too.
-    function openCreateFromSelection(sel) {
-      openModal({
-        kind: 'event',
-        title: '',
-        start: toLocalInput(tuiToDate(sel.start)),
-        end: toLocalInput(tuiToDate(sel.end || sel.start)),
-        isAllday: !!sel.isAllday,
-        color: '#17a38f',
-        body: '',
-      });
-      try { calendar.clearGridSelections(); } catch (_) {}
-    }
-    calendar.on('selectDateTime', openCreateFromSelection);
-    calendar.on('beforeCreateEvent', openCreateFromSelection);
-    calendar.on('beforeUpdateEvent', ({ event, changes }) => {
-      // External + auto-derived calendars are read-only — ignore drag updates.
-      if (event.calendarId && (event.calendarId.startsWith('sub-') || event.calendarId === 'google' || event.calendarId === 'auto')) return;
-      // Apply the move locally FIRST so the calendar shows the new position
-      // immediately. Otherwise the drag "snaps back" until the server round-
-      // trip + fetchAndRender completes — which can look like the dragged
-      // event covered an existing one in the cell.
-      try { calendar.updateEvent(event.id, event.calendarId, changes); } catch (_) {}
-      const next = Object.assign({}, event, changes);
-      saveItem({
-        id: event.id,
-        kind: event.calendarId === 'tasks' ? 'task' : 'event',
-        title: next.title,
-        start: tuiToIso(next.start),
-        end: tuiToIso(next.end),
-        isAllday: !!next.isAllday,
-        backgroundColor: next.backgroundColor,
-        body: next.body,
-      }).then(() => fetchAndRender());
-    });
-    calendar.on('clickEvent', ({ event, nativeEvent }) => {
-      // If the user clicked the checkbox we render in template.task, toggle done.
-      const tgt = nativeEvent && nativeEvent.target;
-      if (tgt && tgt.classList && tgt.classList.contains('biocal-task-cb')) {
-        nativeEvent.stopPropagation();
-        nativeEvent.preventDefault();
-        toggleDone(event.id).then(() => fetchAndRender());
-        return;
-      }
-      // External (subscription / google) events are read-only — no edit dialog.
-      if (event.calendarId && (event.calendarId.startsWith('sub-') || event.calendarId === 'google')) {
-        return;
-      }
-      // Auto-derived items (litters, mice, experiments) → navigate to the
-      // source record rather than opening the edit dialog.
-      if (event.calendarId === 'auto' && event.raw && event.raw.href) {
-        window.location.href = event.raw.href;
-        return;
-      }
-      // Otherwise open the edit dialog.
-      openModal({
-        id: event.id,
-        kind: event.calendarId === 'tasks' ? 'task' : 'event',
-        title: event.title,
-        start: toLocalInput(tuiToDate(event.start)),
-        end: toLocalInput(tuiToDate(event.end)),
-        isAllday: !!event.isAllday,
-        color: event.backgroundColor || '#17a38f',
-        body: event.body || '',
-      });
-    });
-
-    // ---- Toolbar wiring -------------------------------------------------
-    document.getElementById('biocal-prev').addEventListener('click', () => { calendar.prev(); refreshTitle(); fetchAndRender(); });
-    document.getElementById('biocal-next').addEventListener('click', () => { calendar.next(); refreshTitle(); fetchAndRender(); });
-    document.getElementById('biocal-today').addEventListener('click', () => { calendar.today(); refreshTitle(); fetchAndRender(); });
-
-    viewBtns.forEach((btn) => btn.addEventListener('click', () => {
-      const v = btn.dataset.view;
-      viewBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
-      currentView = v;
-      if (v === 'list') {
-        tuiHost.hidden = true;
-        listHost.hidden = false;
-      } else {
-        tuiHost.hidden = false;
-        listHost.hidden = true;
-        calendar.changeView(v); // 'month' | 'week' | 'day'
-      }
-      renderAll();
-    }));
-
-    [fEvents, fTasks, fAuto, fSubs, fDone].forEach((cb) => cb.addEventListener('change', renderAll));
-
-    subsBtn.addEventListener('click', () => {
-      loadSubscriptions();
-      loadGoogleStatus();
-      subsModal.showModal();
-    });
-
-    subsAddForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const fd = new FormData(subsAddForm);
-      const payload = { name: fd.get('name'), url: fd.get('url'), color: fd.get('color') };
-      fetch('/calendar/subscriptions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).then((r) => r.json()).then((j) => {
-        if (j && j.ok) {
-          subsAddForm.reset();
-          loadSubscriptions();
-          fetchAndRender();
-        } else {
-          alert('Add failed: ' + (j && j.error || 'unknown'));
-        }
-      });
-    });
-
-    document.getElementById('biocal-new').addEventListener('click', () => {
-      openModal({
-        kind: 'event',
-        title: '',
-        start: toLocalInput(new Date()),
-        end: toLocalInput(new Date()),
-        isAllday: true,
-        color: '#17a38f',
-        body: '',
-      });
-    });
-
-    fetchAndRender();
-  });
-
-  // ---- Fetch + render ---------------------------------------------------
-  function fetchAndRender() {
-    fetch('/calendar/events.json').then((r) => r.ok ? r.json() : null).then((j) => {
-      if (!j || !j.ok) return;
-      allItems = j.items || [];
-      renderAll();
-    });
-  }
-
-  function renderAll() {
-    const wantEvents = fEvents.checked;
-    const wantTasks = fTasks.checked;
-    const wantDone = fDone.checked;
-    const wantAuto = fAuto.checked;
-    const wantSubs = fSubs.checked;
-    const filtered = allItems.filter((it) => {
-      if (it.kind === 'event' && !wantEvents) return false;
-      if (it.kind === 'task' && !wantTasks) return false;
-      if (it.kind === 'task' && it.raw && it.raw.done && !wantDone) return false;
-      if (it.kind === 'auto' && !wantAuto) return false;
-      if ((it.kind === 'subscription' || it.kind === 'google') && !wantSubs) return false;
-      return true;
-    });
-
-    if (calendar && currentView !== 'list') {
-      calendar.clear();
-      calendar.createEvents(filtered);
-    }
-    if (currentView === 'list') {
-      renderList(filtered);
-    }
-  }
-
-  // ---- Custom list view -------------------------------------------------
-  function renderList(items) {
-    if (!items.length) {
-      listHost.innerHTML = '<div class="biocal-empty">Nothing scheduled.</div>';
-      return;
-    }
-    // Group by date (yyyy-mm-dd).
-    const groups = new Map();
-    items.forEach((it) => {
-      const key = (it.start || '').slice(0, 10);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(it);
-    });
-    const sorted = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    const html = sorted.map(([day, rows]) => {
-      const niceDay = new Date(day + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
-      const rowsHtml = rows.map((it) => {
-        const isTask = it.kind === 'task';
-        const done = isTask && it.raw && it.raw.done;
-        const time = it.isAllday ? 'All day' : `${fmtTime(it.start)}–${fmtTime(it.end)}`;
-        const cb = isTask
-          ? `<input type="checkbox" class="biocal-list-cb" data-item-id="${it.id}" ${done ? 'checked' : ''}>`
-          : `<span class="biocal-list-dot" style="background:${it.backgroundColor}"></span>`;
-        return `
-          <li class="biocal-list-row ${done ? 'is-done' : ''}" data-item-id="${it.id}" data-kind="${it.kind}">
-            ${cb}
-            <span class="biocal-list-time">${time}</span>
-            <span class="biocal-list-title">${escapeHtml(it.title)}</span>
-            <span class="biocal-list-meta">${escapeHtml((it.body || '').slice(0, 80))}</span>
-          </li>`;
-      }).join('');
-      return `<section class="biocal-list-group">
-                <header class="biocal-list-day">${niceDay}</header>
-                <ul class="biocal-list-rows">${rowsHtml}</ul>
-              </section>`;
-    }).join('');
-    listHost.innerHTML = html;
-
-    // Wire checkbox + row click in list view.
-    listHost.querySelectorAll('.biocal-list-cb').forEach((cb) => {
-      cb.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleDone(cb.dataset.itemId).then(() => fetchAndRender());
-      });
-    });
-    listHost.querySelectorAll('.biocal-list-row').forEach((row) => {
-      row.addEventListener('click', (e) => {
-        if (e.target.classList.contains('biocal-list-cb')) return;
-        const it = allItems.find((x) => x.id === row.dataset.itemId);
-        if (!it) return;
-        // Auto-derived items: jump to source record. External feeds: do nothing.
-        if (it.kind === 'auto' && it.raw && it.raw.href) {
-          window.location.href = it.raw.href;
-          return;
-        }
-        if (it.kind === 'subscription' || it.kind === 'google') return;
-        openModal({
-          id: it.id,
-          kind: it.kind,
-          title: it.title,
-          start: toLocalInput(new Date(it.start)),
-          end: toLocalInput(new Date(it.end)),
-          isAllday: it.isAllday,
-          color: it.backgroundColor,
-          body: it.body,
-        });
-      });
-    });
-  }
-
-  // ---- Modal create/edit ------------------------------------------------
-  // Macaron palette — must match the swatch buttons in the template.
-  const MACARON = ['#f9a8a8', '#fcb77e', '#fbe89e', '#b6e2a1', '#a3e0d8', '#a4c8f0', '#c4b5fd', '#f4b8d8'];
-
-  function setSelectedSwatch(color) {
-    const target = (color || '').toLowerCase();
-    const swatches = form.querySelectorAll('.biocal-color-swatch');
-    let matched = false;
-    swatches.forEach((s) => {
-      const on = s.dataset.color.toLowerCase() === target;
-      s.classList.toggle('is-selected', on);
-      if (on) matched = true;
-    });
-    // If the saved color isn't in the palette (e.g. legacy events), default to
-    // the lavender swatch but keep the original color stored in the hidden
-    // input so save doesn't accidentally recolor.
-    if (!matched && swatches.length) {
-      const fallback = form.querySelector('.biocal-color-swatch[data-color="#c4b5fd"]') || swatches[0];
-      fallback.classList.add('is-selected');
-    }
-    form.querySelector('#biocal-color-val').value = color || '#c4b5fd';
-  }
-
-  // Wire one-time: clicking a swatch updates the hidden value + selection.
-  form.querySelectorAll('.biocal-color-swatch').forEach((s) => {
-    s.addEventListener('click', () => setSelectedSwatch(s.dataset.color));
-  });
-
-  // ---- Due-date presets (todos only) ------------------------------------
-  // Three quick options + Custom. Each writes a YYYY-MM-DD into a hidden
-  // "due_custom" input and is used at submit-time to derive start/end.
-  const whenEvent = form.querySelector('.biocal-when-event');
-  const whenTask = form.querySelector('.biocal-when-task');
-  const duePresets = form.querySelectorAll('.biocal-due-btn');
-  const dueCustom = form.querySelector('#biocal-due-custom');
-
-  function fmtDate(d) {
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  }
-  function dueFromPreset(name) {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    if (name === 'tomorrow') d.setDate(d.getDate() + 1);
-    else if (name === 'next-week') d.setDate(d.getDate() + 7);
-    return d;
-  }
-
-  function selectDuePreset(name) {
-    duePresets.forEach((b) => b.classList.toggle('is-active', b.dataset.due === name));
-    if (name === 'custom') {
-      dueCustom.hidden = false;
-      if (!dueCustom.value) dueCustom.value = fmtDate(new Date());
-      dueCustom.focus();
-    } else {
-      dueCustom.hidden = true;
-      dueCustom.value = fmtDate(dueFromPreset(name));
-    }
-  }
-  duePresets.forEach((b) => b.addEventListener('click', () => selectDuePreset(b.dataset.due)));
-  // If the user types a custom date directly, mark Custom as active.
-  dueCustom.addEventListener('change', () => {
-    duePresets.forEach((b) => b.classList.toggle('is-active', b.dataset.due === 'custom'));
-  });
-
-  // Match a saved YYYY-MM-DD against today/tomorrow/next-week.
-  function presetForDate(yyyymmdd) {
-    if (!yyyymmdd) return 'today';
-    const today = fmtDate(dueFromPreset('today'));
-    const tomorrow = fmtDate(dueFromPreset('tomorrow'));
-    const nextWeek = fmtDate(dueFromPreset('next-week'));
-    if (yyyymmdd === today) return 'today';
-    if (yyyymmdd === tomorrow) return 'tomorrow';
-    if (yyyymmdd === nextWeek) return 'next-week';
-    return 'custom';
-  }
-
-  // Show the right "when" panel for the active kind, and mirror the date
-  // across so the user's selection survives Event ↔ Todo toggles.
-  function applyKindMode(kind) {
-    const isTask = kind === 'task';
-    if (isTask) {
-      // Coming from event mode → seed the due date from the start input.
-      const startVal = form.querySelector('input[name="start"]').value;
-      if (startVal) {
-        const day = startVal.slice(0, 10);
-        dueCustom.value = day;
-        selectDuePreset(presetForDate(day));
-      } else if (!dueCustom.value) {
-        // Brand-new task with nothing seeded → default to today.
-        const today = fmtDate(new Date());
-        dueCustom.value = today;
-        selectDuePreset('today');
-      } else {
-        // Already-set due date: just re-highlight the matching preset.
-        selectDuePreset(presetForDate(dueCustom.value));
-      }
-    } else {
-      // Coming from task mode → keep the same day but give it a default time
-      // window in the event datetime inputs (only if event inputs are empty).
-      const startInput = form.querySelector('input[name="start"]');
-      const endInput = form.querySelector('input[name="end"]');
-      if (dueCustom.value && !startInput.value) {
-        startInput.value = `${dueCustom.value}T09:00`;
-        endInput.value = `${dueCustom.value}T10:00`;
-      }
-    }
-    whenEvent.hidden = isTask;
-    whenTask.hidden = !isTask;
-  }
-  form.querySelectorAll('input[name="kind"]').forEach((r) => {
-    r.addEventListener('change', () => applyKindMode(r.value));
-  });
-
-  function openModal(item) {
-    modalTitle.textContent = item.id ? 'Edit item' : 'New item';
-    form.querySelector('#biocal-id').value = item.id || '';
-    const kind = item.kind || 'event';
-    form.querySelector(`input[name="kind"][value="${kind}"]`).checked = true;
-
-    form.querySelector('input[name="title"]').value = item.title || '';
-
-    // Seed BOTH the event datetime fields AND the todo due date from the
-    // same starting datetime. This way the clicked date stays put when the
-    // user flips between Event and Todo radio.
-    const startStr = item.start || '';
-    form.querySelector('input[name="start"]').value = kind === 'event' ? startStr : '';
-    form.querySelector('input[name="end"]').value = kind === 'event' ? (item.end || '') : '';
-    form.querySelector('input[name="isAllday"]').checked = !!item.isAllday;
-
-    const day = startStr.slice(0, 10) || fmtDate(new Date());
-    dueCustom.value = day;
-    selectDuePreset(presetForDate(day));
-
-    // Show the right panel after seeding (don't trigger applyKindMode's
-    // mirror logic — we've already set both halves explicitly).
-    whenEvent.hidden = kind === 'task';
-    whenTask.hidden = kind !== 'task';
-
-    setSelectedSwatch(item.color || '#c4b5fd');
-    form.querySelector('textarea[name="body"]').value = item.body || '';
-    delBtn.hidden = !item.id;
-    modal.showModal();
-  }
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const kind = fd.get('kind');
-
-    // For todos we derive start/end from the preset/custom date — always
-    // all-day. For events we use the explicit datetime-local inputs.
-    let start, end, isAllday;
-    if (kind === 'task') {
-      const day = dueCustom.value || fmtDate(new Date());
-      start = `${day}T00:00:00`;
-      end = `${day}T23:59:59`;
-      isAllday = true;
-    } else {
-      // Local wall-clock — see comment elsewhere about avoiding toISOString().
-      start = fd.get('start') ? (fd.get('start') + ':00') : null;
-      end = fd.get('end') ? (fd.get('end') + ':00') : null;
-      isAllday = fd.get('isAllday') === 'on';
-    }
-
-    const payload = {
-      kind,
-      title: fd.get('title'),
-      start, end, isAllday,
-      backgroundColor: fd.get('color'),
-      body: fd.get('body'),
-    };
-    const id = fd.get('id');
-    // The update endpoint dispatches by the URL prefix (task-N → tasks,
-    // event-N → calendar_events) and ignores the body's `kind` field. So
-    // if the user flipped the radio on edit, we have to delete the old row
-    // and create a new one of the target kind to actually convert.
-    const savedKind = id ? String(id).split('-')[0] : null;
-    if (id && savedKind && savedKind !== kind) {
-      fetch(`/calendar/items/${id}/delete`, { method: 'POST' })
-        .then(() => fetch('/calendar/items', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }))
-        .then((r) => r.json()).then(() => { modal.close(); fetchAndRender(); });
-      return;
-    }
-    const url = id ? `/calendar/items/${id}` : '/calendar/items';
-    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      .then((r) => r.json()).then(() => { modal.close(); fetchAndRender(); });
-  });
-
-  delBtn.addEventListener('click', () => {
-    const id = form.querySelector('#biocal-id').value;
-    if (!id) return;
-    fetch(`/calendar/items/${id}/delete`, { method: 'POST' })
-      .then(() => { modal.close(); fetchAndRender(); });
-  });
-
-  function toggleDone(id) {
-    return fetch(`/calendar/items/${id}/toggle`, { method: 'POST' }).then((r) => r.json());
-  }
-
-  function saveItem(payload) {
-    return fetch(`/calendar/items/${payload.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  }
-
-  // ---- Helpers ----------------------------------------------------------
-  function toLocalInput(d) {
-    if (!d) return '';
-    const dt = d instanceof Date ? d : new Date(d);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-  }
-  function tuiToDate(v) {
-    if (!v) return new Date();
-    if (v instanceof Date) return v;
-    if (v.toDate) return v.toDate(); // TOAST UI TZDate
-    return new Date(v);
-  }
-  // Naive-local ISO string ("YYYY-MM-DDTHH:mm:ss") — keeps everything in
-  // user wall-clock time so drag-to-reschedule doesn't drift by TZ offset.
-  function tuiToIso(v) {
-    const dt = tuiToDate(v);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
-  }
-  function fmtTime(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  }
-  function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  }
-
-  // ---- Hover card -------------------------------------------------------
-  // TOAST UI has no hover event, so we delegate mouseover on the calendar
-  // container. Each chip's template wraps the title in a span with
-  // data-item-id; we look that up in our allItems array to populate the
-  // card. Show after a short delay; hide on leave with a tiny grace period
-  // so quick mouse jitter doesn't make it flicker.
-  const hoverCard = document.createElement('div');
-  hoverCard.className = 'biocal-hover-card';
-  hoverCard.hidden = true;
-  document.body.appendChild(hoverCard);
-
-  const CAL_TONES = {
-    events: { name: 'Events', color: '#17a38f' },
-    tasks: { name: 'Tasks', color: '#007aff' },
-    auto: { name: 'Colony', color: '#ff9500' },
-    google: { name: 'Google', color: '#ff3b30' },
-  };
-
-  let hoverShowTimer = null;
-  let hoverHideTimer = null;
-
-  function showHoverCard(item, anchorRect) {
-    clearTimeout(hoverHideTimer);
-    const cal = CAL_TONES[item.calendarId] || (item.calendarId && item.calendarId.startsWith('sub-')
-      ? { name: 'Subscription', color: item.backgroundColor || '#34c759' }
-      : { name: '', color: item.backgroundColor || '#17a38f' });
-    const dateRange = item.isAllday
-      ? new Date(item.start).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
-      : `${new Date(item.start).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} → ${new Date(item.end).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
-    hoverCard.innerHTML = `
-      <div class="biocal-hover-strip" style="background:${item.backgroundColor || cal.color}"></div>
-      <div class="biocal-hover-body">
-        <div class="biocal-hover-title">${escapeHtml(item.title || '(untitled)')}</div>
-        <div class="biocal-hover-date">${escapeHtml(dateRange)}</div>
-        <div class="biocal-hover-tag">
-          <span class="biocal-hover-dot" style="background:${cal.color}"></span>
-          ${escapeHtml(cal.name)}
-          ${item.isReadOnly ? '<span class="biocal-hover-readonly">· read-only</span>' : ''}
-        </div>
-        ${item.body ? `<div class="biocal-hover-notes">${escapeHtml(item.body)}</div>` : ''}
-      </div>`;
-
-    // Position: prefer right of the chip; flip left if it would overflow the viewport.
-    hoverCard.hidden = false;
-    const cardWidth = 320;
-    let left = anchorRect.right + 8;
-    let top = anchorRect.top;
-    if (left + cardWidth > window.innerWidth - 12) {
-      left = Math.max(8, anchorRect.left - cardWidth - 8);
-    }
-    if (top + 180 > window.innerHeight - 12) {
-      top = Math.max(8, window.innerHeight - 200);
-    }
-    hoverCard.style.left = `${left}px`;
-    hoverCard.style.top = `${top}px`;
-  }
-
-  function hideHoverCard() {
-    clearTimeout(hoverShowTimer);
-    hoverHideTimer = setTimeout(() => { hoverCard.hidden = true; }, 150);
-  }
-
-  // Delegate mouseover on the calendar container. We catch
-  // mouseenter on a [data-item-id] element by looking at mouseover targets.
-  tuiHost.addEventListener('mouseover', (e) => {
-    const el = e.target.closest('[data-item-id]');
-    if (!el || !tuiHost.contains(el)) return;
-    const id = el.dataset.itemId;
-    const item = allItems.find((it) => it.id === id);
-    if (!item) return;
-    clearTimeout(hoverShowTimer);
-    const rect = el.getBoundingClientRect();
-    hoverShowTimer = setTimeout(() => showHoverCard(item, rect), 120);
-  });
-  tuiHost.addEventListener('mouseout', (e) => {
-    const el = e.target.closest('[data-item-id]');
-    if (!el) return;
-    // If we moved to another item, the next mouseover will reset the timer.
-    hideHoverCard();
-  });
-  // Don't dismiss while the cursor is on the card itself.
-  hoverCard.addEventListener('mouseenter', () => clearTimeout(hoverHideTimer));
-  hoverCard.addEventListener('mouseleave', hideHoverCard);
-
-  // Same hover behavior in the list view.
-  listHost.addEventListener('mouseover', (e) => {
-    const el = e.target.closest('.biocal-list-row');
-    if (!el) return;
-    const item = allItems.find((it) => it.id === el.dataset.itemId);
-    if (!item) return;
-    clearTimeout(hoverShowTimer);
-    const rect = el.getBoundingClientRect();
-    hoverShowTimer = setTimeout(() => showHoverCard(item, rect), 120);
-  });
-  listHost.addEventListener('mouseout', (e) => {
-    if (e.target.closest('.biocal-list-row')) hideHoverCard();
-  });
-
-  // ---- Subscriptions panel ----------------------------------------------
-  function loadSubscriptions() {
-    if (!subsListEl) return;
-    fetch('/calendar/subscriptions').then((r) => r.json()).then((j) => {
-      const subs = (j && j.subscriptions) || [];
-      if (!subs.length) {
-        subsListEl.innerHTML = '<li class="biocal-subs-empty">No subscriptions yet. Paste an iCal URL above to add one.</li>';
-        return;
-      }
-      subsListEl.innerHTML = subs.map((s) => {
-        const fetched = s.last_fetched_at ? new Date(s.last_fetched_at).toLocaleString() : '—';
-        const err = s.last_error ? `<div class="biocal-sub-error">${escapeHtml(s.last_error)}</div>` : '';
-        return `
-          <li class="biocal-sub-row" data-id="${s.id}">
-            <span class="biocal-sub-swatch" style="background:${s.color}"></span>
-            <div class="biocal-sub-main">
-              <div class="biocal-sub-name">${escapeHtml(s.name)}</div>
-              <div class="biocal-sub-url">${escapeHtml(s.url)}</div>
-              <div class="biocal-sub-meta">Last fetched: ${fetched}</div>
-              ${err}
-            </div>
-            <label class="biocal-sub-toggle" title="Enable / disable">
-              <input type="checkbox" data-action="toggle" ${s.enabled ? 'checked' : ''}>
-            </label>
-            <button type="button" class="biocal-btn" data-action="refresh" title="Refresh now"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#refresh"></use></svg></button>
-            <button type="button" class="biocal-btn" data-action="delete" title="Remove"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#trash"></use></svg></button>
-          </li>`;
-      }).join('');
-      // Wire action buttons.
-      subsListEl.querySelectorAll('.biocal-sub-row').forEach((row) => {
-        const id = row.dataset.id;
-        row.querySelector('[data-action="toggle"]').addEventListener('change', (e) => {
-          fetch(`/calendar/subscriptions/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: e.target.checked }) })
-            .then(() => fetchAndRender());
-        });
-        row.querySelector('[data-action="refresh"]').addEventListener('click', () => {
-          fetch(`/calendar/subscriptions/${id}/refresh`, { method: 'POST' }).then((r) => r.json()).then(() => {
-            loadSubscriptions();
-            fetchAndRender();
-          });
-        });
-        row.querySelector('[data-action="delete"]').addEventListener('click', () => {
-          if (!confirm('Remove this subscription?')) return;
-          fetch(`/calendar/subscriptions/${id}/delete`, { method: 'POST' }).then(() => {
-            loadSubscriptions();
-            fetchAndRender();
-          });
-        });
-      });
-    });
-  }
-
-  // ---- Google Calendar (Pass 3) status / connect button -----------------
-  function loadGoogleStatus() {
-    if (!googleStatusEl) return;
-    fetch('/calendar/google/status').then((r) => r.ok ? r.json() : null).then((j) => {
-      if (!j) {
-        googleStatusEl.innerHTML = '<span class="muted-inline">Google Calendar integration not configured on this server.</span>';
-        return;
-      }
-      if (j.connected) {
-        const last = j.last_synced_at ? new Date(j.last_synced_at).toLocaleString() : '—';
-        googleStatusEl.innerHTML = `
-          <div class="biocal-google-connected">
-            <div>
-              <strong>Connected as ${escapeHtml(j.email || 'Google account')}</strong>
-              <div class="muted-inline">Last sync: ${last}</div>
-            </div>
-            <button type="button" class="biocal-btn" id="biocal-google-refresh">Refresh</button>
-            <button type="button" class="biocal-btn" id="biocal-google-disconnect">Disconnect</button>
-          </div>`;
-        document.getElementById('biocal-google-refresh').addEventListener('click', () => {
-          fetch('/calendar/google/refresh', { method: 'POST' }).then(() => { loadGoogleStatus(); fetchAndRender(); });
-        });
-        document.getElementById('biocal-google-disconnect').addEventListener('click', () => {
-          if (!confirm('Disconnect Google Calendar?')) return;
-          fetch('/calendar/google/disconnect', { method: 'POST' }).then(() => { loadGoogleStatus(); fetchAndRender(); });
-        });
-      } else if (j.configured) {
-        googleStatusEl.innerHTML = `
-          <a href="/calendar/google/connect" class="biocal-btn is-primary biocal-google-connect">
-            Connect Google Calendar
-          </a>
-          <div class="muted-inline" style="margin-top:6px;">We'll only request read access to your events.</div>`;
-      } else {
-        googleStatusEl.innerHTML = `
-          <div class="biocal-google-unconfigured">
-            Google Calendar integration isn't configured on this server yet. An admin needs to set <code>GOOGLE_OAUTH_CLIENT_ID</code> and <code>GOOGLE_OAUTH_CLIENT_SECRET</code> in <code>.env</code>.
-          </div>`;
-      }
-    });
-  }
-})();
-</script>
+        data-loaded-flag="__tuiLoaded" data-missing-flag="__tuiMissing"></script>
+<script src="{{ url_for('static', filename='calendar-page.js') }}?v={{ asset_version('calendar-page.js') }}" defer></script>
 {% endblock %}

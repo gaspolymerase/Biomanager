@@ -218,8 +218,21 @@ stock**, and statuses and categories can be renamed without losing items.
 ### 📅 Calendar and notebook
 
 - **Calendar** — experiments and to-dos, with colony dates (weanings,
-  genotyping, sac reminders) filled in for you. Shows your **Google
-  Calendar** and any **ICS subscription** alongside.
+  genotyping, sac reminders), fly and worm flips, organism schedules and
+  reagent expiry filled in for you. Shows your **Google Calendar** and any
+  **ICS subscription** alongside.
+  - **Repeating events**: every day, week or month, until a date, with
+    single dates taken out.
+  - **Protocol timelines**: write the steps once in days from day 0
+    (tamoxifen days 0–4, implant day 14, perfuse day 42), start them for an
+    experiment or cohort, and every step lands on the calendar. Move day 0
+    and they all move.
+  - **Equipment booking**: time on the confocal or a rig; double bookings
+    are refused, saying who has it.
+  - **Time away**: leave and conferences, with what falls due while you
+    are away and who covers it (they are told).
+  - **On your phone**: a private link that Apple, Google or Outlook
+    Calendar subscribes to, with just your things or the whole lab.
 - **Lab notebook** — pages in tabs, reusable templates, images and file
   attachments. A page links to animals and calendar events, so the record
   and the notes point at each other.
