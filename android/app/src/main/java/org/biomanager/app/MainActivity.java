@@ -108,9 +108,14 @@ public class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView v, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) {
+                if (!request.isForMainFrame()) return;
+                if (unreachable(error.getErrorCode())) {
                     offlineDetail.setText(getString(R.string.err_unreachable, server));
                     offline.setVisibility(View.VISIBLE);
+                } else {
+                    // Not a network problem: most often Back to a page that was the answer to a
+                    // form (it cannot be shown again without resending). Start over at home.
+                    v.loadUrl(server + "/");
                 }
             }
         });
@@ -170,6 +175,13 @@ public class MainActivity extends Activity {
             }
             button.setVisibility(typing ? View.GONE : View.VISIBLE);
         });
+    }
+
+    /** Errors that mean the server could not be reached at all. */
+    private static boolean unreachable(int code) {
+        return code == WebViewClient.ERROR_HOST_LOOKUP || code == WebViewClient.ERROR_CONNECT
+                || code == WebViewClient.ERROR_TIMEOUT || code == WebViewClient.ERROR_IO
+                || code == WebViewClient.ERROR_FAILED_SSL_HANDSHAKE || code == WebViewClient.ERROR_PROXY_AUTHENTICATION;
     }
 
     /** Read a cage card and open the record its QR code points to. */
