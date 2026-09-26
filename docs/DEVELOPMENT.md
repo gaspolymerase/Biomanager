@@ -1,0 +1,498 @@
+# BioManager — developer and operator notes
+
+How BioManager is built and how its internals behave. For what the app
+does and how to use it, see the [README](../README.md). For running it on a
+lab server, see [`deploy/README.md`](../deploy/README.md) and the
+[runbook](../deploy/RUNBOOK.md).
+
+## Stack
+
+- Python
+- Flask
+- SQLAlchemy
+- SQLite for local development
+- PostgreSQL for a shared lab server (the test suite runs on both in CI)
+- Tailwind CSS v4 for the interface (compiled, no CDN at runtime)
+
+## Interface design
+
+The interface follows Apple's macOS conventions: a translucent vibrant
+sidebar, a Finder-style tab strip, a unified toolbar whose separator only
+appears once content scrolls under it, 13px system type, AppKit control
+metrics (28px buttons, 6px radii) and Apple's system colour palette — with
+full dark mode.
+
+Two Apple things are deliberately **not** used, because their licences do
+not permit it outside Apple platforms:
+
+- **SF Symbols** — licensed for Apple-platform apps only, not web.
+- **Shipping SF Pro** — but the system font stack (`-apple-system`)
+  resolves to SF on Apple devices, which is both correct and allowed.
+
+### Icons
+
+One sprite, `app/static/icons.svg`, built by `scripts/build-icons.py`:
+
+```bash
+python scripts/build-icons.py path/to/fontawesome-free-6.7.2
+```
+
+Referenced as `{{ icon('mouse') }}` in templates, which emits
+`<svg class="icon"><use href="/static/icons.svg#mouse"></svg>` — one cached
+request, inherits `currentColor`, no JavaScript, works offline in the
+packaged app.
+
+Three sources, all permissively licensed:
+
+| Source | Licence | Covers |
+| --- | --- | --- |
+| [Font Awesome Free 6](https://fontawesome.com) | Icons CC BY 4.0 | the UI, plus `worm`, `mosquito`, `fish`, `frog`, `dna`, `vial`, `microscope`, `bacterium`, `virus`, `syringe` |
+| [game-icons.net](https://game-icons.net) by Delapouite | CC BY 3.0 | `mouse` (their *rat*) and `fly`, vendored in `scripts/icon-sources/` |
+| This project | — | `plasmid`, `petri`, `cage`, `tank`, `culture-vial` |
+
+Font Awesome has no laboratory mouse and no plasmid. The plasmid and the
+labware are drawn here; the mouse and the housefly are not, because both
+collapse into a blob below about 24px unless ears, snout, tail — or
+compound eyes and wings — are all resolved, which is more drawing than a
+16px mark can carry. Hand-drawn versions were tried three times and thrown
+away.
+
+Add an icon by adding a name to `FROM_FONTAWESOME`, `FROM_SOURCES` or
+`CUSTOM` in the build script and rebuilding. **Check any new icon at 15px**,
+not just large — that is where they fail.
+
+### App icon
+
+`app/static/icon.svg` is laid out on Apple's macOS icon grid — an 824×824
+rounded square inset in a 1024 canvas with a 185.4 corner radius — so it
+sits correctly beside native apps in the Dock. The mark is a double helix,
+the one symbol every organism in the app shares.
+
+## Interface
+
+The UI is a collapsible icon rail plus a persistent **workspace tab strip**:
+every page you open becomes a tab, tabs survive navigation (they live in
+`localStorage`), and they can be reordered by dragging, closed with middle
+click, and switched with `Alt+1…9` / `Alt+←` / `Alt+→` (`Alt+W` closes,
+`Cmd/Ctrl+B` collapses the rail, `Cmd/Ctrl+K` opens search).
+
+### Styling
+
+`frontend/src/tailwind.css` is the single source of truth: design tokens in
+`@theme`, composable primitives as `@utility` (`btn`, `field`, `card`,
+`badge`, …), and component classes for anything repeated or referenced by
+JavaScript (`dt-*` for data tables, `cmdk-*` for the command palette,
+`wtab*` for the tab strip, the `workbench` vocabulary for the dense module
+pages). It compiles to `app/static/tailwind.css`:
+
+```bash
+cd frontend
+npm install        # first time only
+npm run build:css  # one-off build
+npm run watch:css  # rebuild while editing templates
+```
+
+Rebuild after editing templates — Tailwind only emits the classes it finds in
+`app/templates/**/*.html` and `app/static/*.js`.
+
+Every page is on Tailwind; the old `styles.css` / `legacy.css` bridge has
+been removed. Three pages embed third-party widgets that bring their own
+stylesheet (Open Vector Editor on plasmid detail, TOAST UI on the calendar)
+and the notebook editor's own CSS lives in `frontend/src/styles.css`, built
+with `npm run build:notebook`. All three read the theme's colour tokens, so
+they follow the app's palette and dark mode.
+
+## Organism modules (configurable species databases)
+
+Mouse colony and zebrafish are hand-written modules with their own tables.
+Everything else is configurable: an **organism module** is a row in
+`organism_modules` that describes a species, and one generic engine serves it.
+
+A module declares:
+
+- **Vocabulary** — cage/tank/vial/plate, strain/line/stock, litter/clutch/progeny.
+  These are what the UI calls things, so a fly database says "vial" and "stock".
+- **Identity mode** — individuals (mice), groups with a headcount (flies, worms),
+  or hybrid (fish: groups that can resolve into named individuals).
+- **Capabilities** — 19 switches covering crosses, cohorts, a nursery stage,
+  genotyping, environment logs, cryo inventory, protocol/census, billing and more.
+  See `app/organisms.py`.
+- **Schedule rules** — `anchor date + offset`, optionally varying by rearing
+  temperature. One rule covers "flip flies every 14 days at 25 °C, 28 at 18 °C".
+- **Custom fields** — typed per-module columns stored in each row's `attrs`
+  JSON, which generate their own form inputs, table columns and validation.
+
+Drosophila and C. elegans are seeded automatically on first run
+(`organisms.AUTO_SEED_PRESETS`). Zebrafish and mouse exist as presets so the
+engine can be checked against the hand-written modules.
+
+Build a new one at **Add database** in the sidebar (`/organisms/new`): pick a
+preset or a blank sheet, name the nouns, choose the capabilities, done — no
+migration.
+
+### Shape of the schema
+
+| Table | Holds |
+| --- | --- |
+| `organism_modules` | one species database + its configuration |
+| `organism_module_fields` | user-defined fields per module and entity |
+| `organism_locations` | location tree: facility / room / system / rack / incubator |
+| `organism_lines` | strains, lines, stocks |
+| `organism_housing` | cages, tanks, vials, plates |
+| `organisms` | the tracked unit — one animal, or a group with `count` |
+| `organism_crosses` | matings and crosses |
+| `organism_cohorts` | litters, clutches, progeny batches |
+| `organism_events` | append-only lifecycle log |
+| `organism_due` | materialised schedule items |
+| `organism_measurements` | weights, water chemistry, temperatures |
+| `organism_genotypes` | genotyping calls |
+| `organism_preservation` | frozen lots, vials remaining, recovery tests |
+
+Every row carries `module_id_fk`, and every relation is resolved through
+`_ref()` in `app/organism_routes.py` so a reference can never cross modules.
+
+## Access control
+
+Who may change what lives in one place, `app/access.py`:
+
+- **You manage your own colony.** A record whose `owner` is you is yours to
+  edit or delete.
+- **Shared resources are everyone's.** Breeder cages are shared implicitly
+  (`purpose` of breeder/breeding), and any cage can be shared explicitly with
+  its `is_shared` flag. The whole lab can edit them and pick mice out of them.
+- **Unowned records stay open**, so records predating ownership don't lock
+  anyone out.
+- **Admins can do anything.**
+
+Visibility is deliberately *not* restricted — a census with holes is not a
+census. The **My colony / Shared / Everyone** switch on the colony page is a
+view filter; edit rights are per record and don't change with it.
+
+Admins get **Colony overview** (`/admin/colony`): every cage in the facility
+grouped by who manages it, with occupancy, shared-cage pooling, idle-time
+flags and a warning for living mice with no cage. That's the page for
+reassigning animals when someone leaves.
+
+Cage ownership is backfilled on first run from the mice each cage holds; a
+cage whose mice disagree is left unowned rather than guessed at.
+
+## Change history
+
+Every create, edit and delete on a tracked table writes an `audit_log` row
+with a field-level diff (`genotype: DBH-Cre → ∅`). This is done with a
+SQLAlchemy `before_flush` listener in `app/audit.py`, not per-route calls, so
+it covers the whole app including the organism engine, and the audit row is
+written in the same transaction as the change it describes. Passwords and
+tokens are redacted; high-churn tables are excluded. Admins read it at
+`/audit`.
+
+## Keeping the data safe
+
+**A SQLite file must not live in a cloud-synced folder.** OneDrive, Dropbox
+and Google Drive do not honour SQLite's file locking: a sync mid-write, or
+two machines with the folder open, corrupts the file outright. The app logs a
+loud warning at startup if it detects this.
+
+```bash
+python scripts/dbtool.py check                      # location, integrity, sync risk
+python scripts/dbtool.py backup                     # consistent snapshot, keeps 30
+python scripts/dbtool.py relocate ~/BioManagerData  # move it somewhere local
+python scripts/dbtool.py restore <file>
+```
+
+These are for a SQLite database on one machine. A server on PostgreSQL is
+backed up by the backup service in `deploy/` (`deploy/backup/backup.sh`
+runs without Docker too).
+
+`relocate` copies, verifies with an integrity check, and only then retires
+the original — then prints the `BIOMANAGER_DATA_DIR` to export. Backups use
+SQLite's backup API, so they are consistent even while the app is running.
+
+Schema changes go through **Alembic** (`migrations/`). Existing databases are
+stamped at `0001_baseline` automatically on boot:
+
+```bash
+alembic revision --autogenerate -m "describe the change"
+alembic upgrade head
+```
+
+The old hand-written ALTERs in `services.ensure_schema_updates()` still run
+for backwards compatibility, but new changes belong in a revision.
+
+## Cage cards and QR labels
+
+Printable, correctly-sized cards with a QR that opens the record — so someone
+at the rack scans instead of walking back to type an ID.
+
+- Mouse cages: **Print cage cards** on the Cages view, or `/labels/cards/cages`
+- Organism modules: **Labels** on the Housing view, or `/labels/cards/<module>`
+
+Cards are laid out in millimetres and print without any app chrome. QR
+payloads are absolute URLs built from the incoming request, so a card printed
+on the lab server scans to the lab server. Rendering uses `segno` (pure
+Python, no image libraries), and cards still print without it — just without
+the code.
+
+## Reminder emails
+
+A daily digest of what is overdue or imminent: module schedule items (flips,
+chunks, re-freezes), litters reaching weaning, breeders past 30 weeks, and
+personal tasks. Configure by environment:
+
+```bash
+export BIOMANAGER_SMTP_HOST=smtp.example.edu
+export BIOMANAGER_SMTP_PORT=587
+export BIOMANAGER_SMTP_USER=biomanager@example.edu
+export BIOMANAGER_SMTP_PASSWORD='an app password'
+export BIOMANAGER_BASE_URL=http://lab-server:5055
+```
+
+```bash
+scripts/send-reminders.py --dry-run     # print digests, send nothing
+scripts/send-reminders.py               # send
+```
+
+Daily, via cron:
+
+```
+0 8 * * *  cd /path/to/Biomanager && .venv/bin/python scripts/send-reminders.py
+```
+
+With SMTP unconfigured the digests are logged rather than sent, so the job is
+safe to schedule before a mail server exists. People with no email address on
+their account are skipped. Settings shows the current delivery status.
+
+## Batch operations
+
+Two directions of the same idea: one specification applied to many records.
+
+**Acting on records that exist** — tick rows in the mice table and a
+selection bar rises from the bottom of the viewport:
+
+- **Set** one field (owner, status, genotype, cage, note, date of death)
+  across the selection
+- **Add to experiment** with a shared treatment group — this is the "N mice
+  under the same manipulation" case
+- **Sac**, with a confirmation naming the count
+
+Shift-click extends a range, the header checkbox selects everything
+*visible* (never filtered-out rows), and each action applies only to records
+you may edit, reporting how many were skipped rather than failing outright.
+
+The bar is generic — `static/selection-bar.js` reads a markup contract, so
+another table gets batch actions by adding `data-selection-scope`, row
+checkboxes, and a form marked `data-selection-form`. No JavaScript changes.
+
+**Creating records** — **Add many** on the colony page
+(`/colony/mice/batch`) is a two-step flow: describe one mouse and say how
+many, or upload a CSV, then check and edit an editable preview grid before
+anything is written.
+
+- Counts can be split by sex (`4 females, 2 males`) — the usual shape of a
+  litter or an order.
+- **IDs are assigned in ascending order** and shown in the preview
+  (`IDs #25 – #30`). They are allocated again at save time, so a preview left
+  open while someone else adds mice cannot collide.
+- `new` in the cage field puts the whole batch in **one** freshly allocated
+  cage; type numbers per row in the preview to split them.
+- **Fill down** copies the first row's value into empty cells below — the
+  usual fix after a CSV that only filled the first line.
+- Tick **Skip** to leave a row out without deleting it.
+
+CSV headers are matched loosely: `sex`, `dob`, `cage`, `litter` and `notes`
+map onto the real columns, unknown columns are ignored, and `mouse_id` should
+be left out entirely so IDs are assigned for you.
+
+The older `/import/<entity>` endpoint still serves plasmid and order imports,
+and also assigns ascending mouse IDs from a single reserved block via
+`services.reserve_mouse_ids()`.
+
+> Previously this path was broken: `next_mouse_id()` was called per row, and
+> because the session runs with `autoflush=False` the `max()` query could not
+> see pending rows, so every row was handed the same ID and the import died
+> on the unique index. Any CSV without explicit `mouse_id` values failed
+> outright. The allocators now flush first, and batch paths reserve a
+> contiguous block up front.
+
+### Batches and undo
+
+Every bulk action is recorded as a **batch** — one row in `batches` saying
+who ran it, what it did and to how many records — and its audit entries
+point back at it. **Batches** in the sidebar (`/batches`) lists them with
+what undoing each would do.
+
+Undo reverses the recorded changes, newest first:
+
+| The batch | Undo does |
+| --- | --- |
+| created records | deletes them |
+| edited records | puts every column back to its previous value |
+| deleted records | re-inserts them from the stored snapshot |
+
+It refuses in two cases, loudly rather than silently: a batch already undone,
+and a record **changed again after the batch** — reverting then would discard
+whoever's later edit. That second case offers *Undo anyway*. The undo is
+itself recorded as a batch, so undoing an undo is a redo.
+
+This needed audit entries to carry a machine-readable diff, not just prose:
+`audit_log.changes_json` holds `{"changes": {field: [before, after]}}` for an
+edit and `{"snapshot": {...}}` for a delete. Parsing
+`genotype: ∅ → C57BL/6` back into a value would have been guesswork.
+
+Two ordering details worth knowing if you touch `app/audit.py`:
+
+- **Inserts are logged in `after_flush`, not `before_flush`.** A new row has
+  no primary key until the INSERT runs, so logging it earlier records
+  `record_id = 0` and undo has nothing to find.
+- **`audit.batch()` flushes on the way out**, so callers that commit after
+  the block still get their audit rows attached to the batch.
+
+## Run locally
+
+1. Create and activate a virtual environment.
+2. Install dependencies with `pip install -r requirements.txt`.
+3. Build the stylesheet once: `cd frontend && npm install && npm run build:css && cd ..`.
+4. Start the app with `python run.py`. On macOS port 5000 is taken by
+   AirPlay/Control Center, so use `PORT=5055 python run.py` if the page does
+   not load. `FLASK_DEBUG=1` turns on reloading and in-browser tracebacks;
+   `run.py` refuses it on anything but a loopback address.
+5. Open `http://127.0.0.1:5000` (or the port you set).
+6. Register the first user, who becomes `admin`. The page asks for the
+   **setup code** printed in the terminal when the app started (it is also
+   in `data/setup-code`, which is deleted once the admin exists). The desktop
+   app does not ask: only this machine can reach it.
+
+The SQLite database is created automatically at `data/biomanager.db`. No
+`SECRET_KEY` is needed: without one, a random key is made on first run and
+kept in `data/secret_key` (readable by you only).
+
+## Running the tests
+
+```bash
+scripts/test.sh
+# which is:
+.venv/bin/python -m unittest discover -s tests -t .
+```
+
+The suite in `tests/` uses only the standard library's `unittest` (it also
+runs under pytest, if you have it). It starts the app once on a fresh
+SQLite database in a temp folder — `data/` is never opened — and drives the
+real routes with Flask's test client, as an admin and as members, so
+permissions and validation are checked along with behaviour. One module per
+area (`test_mice.py`, `test_plasmids.py`, `test_stocks.py`, …); shared
+set-up and factories are in `tests/base.py`. Run one module, class or test
+with `scripts/test.sh tests.test_mice` (or `tests.test_mice.SomeClass`).
+
+The same suite runs on PostgreSQL, against an empty database it is allowed
+to wipe (its schema is dropped first):
+
+```bash
+BIOMANAGER_TEST_DATABASE_URL=postgresql://localhost/biomanager_test scripts/test.sh
+```
+
+Tests of SQLite-only machinery (`app/integrity.py`) skip there, and the
+SQLite → PostgreSQL migration tests only run there. CI runs both.
+
+Every test makes its own uniquely named records and must not depend on
+another test having run. A test marked `@unittest.expectedFailure`
+documents a known bug; when the bug is fixed it shows up as an "unexpected
+success" — remove the marker then. GitHub Actions runs the suite on every
+push (`.github/workflows/tests.yml`).
+
+## Desktop App
+
+Build a clickable native app (no terminal needed to launch):
+
+```bash
+./scripts/build-desktop.sh
+open dist/BioManager.app
+```
+
+The script installs `pywebview` + `pyinstaller`, ensures the frontend bundle is built, and produces `dist/BioManager.app` (macOS) or `dist/BioManager/` (Windows/Linux). The app's SQLite database and uploads live in `~/Library/Application Support/Biomanager/` so rebuilds don't wipe your data. To skip the bundling step and just run a desktop window from source: `python desktop.py`.
+
+## Shared Server Setup
+
+**The supported way is the Docker stack in [`deploy/`](../deploy/README.md)**:
+Caddy for HTTPS, the app under gunicorn, PostgreSQL 16, and a backup service
+that dumps, checks, prunes, copies off-site with restic and test-restores
+every week. `deploy/README.md` is the runbook: first start, moving a lab's
+SQLite database over (`scripts/migrate-to-postgres.py`), backups, restoring
+and updating.
+
+The rest of this section is for running it without Docker.
+
+Running BioManager for a whole lab means other people can send it requests,
+so it runs differently from a laptop. What decides which requests to trust is
+in `app/security.py`; its docstring explains each check.
+
+```bash
+pip install -r requirements.txt            # includes gunicorn
+export DATABASE_URL='postgresql://USERNAME:PASSWORD@localhost:5432/biomanager'
+export BIOMANAGER_PROXY_HOPS=1             # behind Caddy/nginx (below)
+gunicorn -c gunicorn.conf.py wsgi:app      # never python run.py
+```
+
+`wsgi.py` sets `BIOMANAGER_ENV=production`, refuses to start with debug on,
+and turns on Secure cookies — so the server **must be reached over HTTPS**.
+gunicorn listens on `127.0.0.1:8000` only; put a reverse proxy in front for
+TLS. With Caddy that is two lines:
+
+```
+lab-biomanager.example.edu {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+With nginx, pass the headers the app reads:
+
+```
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+client_max_body_size 64m;
+```
+
+Settings (environment variables, all optional):
+
+| Variable | Default | Does |
+| --- | --- | --- |
+| `SECRET_KEY` | kept in the data folder | signs session cookies; 32+ characters in production |
+| `BIOMANAGER_HTTPS` | on in production | Secure cookies; `0` only for a trusted plain-HTTP network |
+| `BIOMANAGER_PROXY_HOPS` | `0` | proxies in front whose `X-Forwarded-*` headers to trust |
+| `BIOMANAGER_TRUSTED_ORIGINS` | — | other origins allowed to post, comma separated |
+| `BIOMANAGER_SESSION_DAYS` | `7` | idle days before a sign-in expires |
+| `BIOMANAGER_MAX_UPLOAD_MB` | `64` | largest upload accepted |
+| `BIOMANAGER_UPLOADS_DIR` | `app/static/uploads` | where uploads are kept; put it next to the database |
+| `WEB_CONCURRENCY` | 1 on SQLite, 3 on Postgres | gunicorn worker processes |
+
+`gunicorn.conf.py` loads the app once before forking (`preload_app`), so the
+start-up schema updates and seeding run once, not in every worker at the
+same moment. On first start the log prints the setup code for the first
+admin account.
+
+Keep the server off the open internet: on the campus network or VPN, or a
+private network such as Tailscale.
+
+## Multi-User Notes
+
+- **The first account is the admin**, and on a server needs the setup code
+  from the log, so nobody else on the network can claim it first.
+- **Everyone after that waits for approval.** A sign-up is created as
+  *awaiting approval*; admins get a notification and approve it in
+  Settings → Manage users. `scripts/reset-password.py NAME --enable` does the
+  same from the command line on SQLite.
+- **Passwords are at least 12 characters.** Ten failed sign-ins in 15 minutes
+  lock out that username and that address for the rest of the window.
+- **Changing or resetting a password signs out every other session** of
+  that account — the fix for a lost laptop.
+- **Changes from other websites are refused.** Every POST is checked against
+  the browser's `Sec-Fetch-Site`/`Origin` headers, so a malicious page cannot
+  make a signed-in member's browser edit records. Sign out is a POST too.
+- **Uploads need a login**, get unguessable names, and are served so that an
+  uploaded HTML or SVG file downloads rather than running in the app.
+- **Google Calendar tokens are encrypted in the database** with a key
+  derived from the signing key. Tokens saved before are encrypted at the
+  next start. Losing or changing the key only means reconnecting Google
+  Calendar, which is why backups include the data folder's `secret_key`.
+
