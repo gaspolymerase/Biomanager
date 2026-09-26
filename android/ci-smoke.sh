@@ -51,11 +51,14 @@ adb shell input text "$(cat "$DEMO_DIR/demo-password")"
 adb shell input keyevent KEYCODE_ENTER
 for _ in $(seq 30); do grep -q "POST /login" "$SERVER_LOG" && break; sleep 2; done
 sleep 8
-# Close the keyboard if it is up (Back with no keyboard would go back a page).
-if adb shell dumpsys input_method | grep -q "mInputShown=true"; then adb shell input keyevent KEYCODE_BACK; fi
 sleep 2
 shot 3-signed-in
 grep -q "GET /home\|GET / " "$SERVER_LOG" && echo "signed in" || echo "(sign-in not confirmed; see screenshots)"
 adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q MainActivity \
   || { echo "the app left its main screen after signing in"; exit 1; }
+# Only one setup screen may ever have been opened, and none may be left behind.
+[ "$(adb logcat -d | grep -c 'START u0 {.*cmp=org.biomanager.app/.SetupActivity')" -le 1 ] \
+  || { echo "the setup screen was opened more than once"; exit 1; }
+adb shell dumpsys activity activities | grep -q "SetupActivity" \
+  && { echo "a setup screen was left behind the main screen"; exit 1; } || true
 echo "smoke test passed"
