@@ -15,6 +15,7 @@
   <img alt="SQLite or PostgreSQL" src="https://img.shields.io/badge/database-SQLite%20%7C%20PostgreSQL-4169E1?logo=postgresql&logoColor=white">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/runs%20on-macOS%20%7C%20Windows%20%7C%20Linux-555555">
   <img alt="Dark mode" src="https://img.shields.io/badge/dark%20mode-yes-1f2937">
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-2ea44f"></a>
 </p>
 
 <p align="center">
@@ -341,8 +342,9 @@ flowchart TB
 
 ### 💻 Desktop app
 
-1. Download BioManager for your system from the **Download** page, or
-   build it yourself (below).
+1. Download BioManager for your system from the
+   [**BioManager website**](https://gaspolymerase.github.io/biomanager-app/#download),
+   or build it yourself (below).
 2. **macOS:** open the download and drag BioManager into Applications.
    The first time, **right-click the app and choose Open** — macOS asks
    once because the app is not signed through the App Store.
@@ -570,7 +572,9 @@ Working on BioManager itself? Start with
 and PostgreSQL with `scripts/test.sh`, on every push. To refresh these
 screenshots, see `scripts/screenshots.py`.
 
-## 🙏 Credits
+## 🙏 Licence and credits
+
+BioManager is released under the [MIT licence](LICENSE).
 
 Built with Python, Flask, SQLAlchemy, PostgreSQL / SQLite and Tailwind CSS.
 Icons from [Font Awesome Free](https://fontawesome.com) (CC BY 4.0) and
