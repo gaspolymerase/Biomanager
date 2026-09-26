@@ -109,6 +109,36 @@
       this._applyHidden();
       this._applyResizedWidths();
       this.render();
+      this._revealHashTarget();
+      window.addEventListener('hashchange', () => this._revealHashTarget());
+    }
+
+    /* Bring a row into view: switch to the page it is on, first clearing a
+       search or quick filter that hides it. Used when a link or a QR code
+       names the row (…/colony?view=cages#cage-12). */
+    reveal(tr) {
+      if (!this.filtered.includes(tr)) {
+        this.query = '';
+        if (this.search) this.search.value = '';
+        const everything = this.card.querySelector('.dt-chip[data-dt-filter=""]');
+        if (everything) everything.click();   // also remembers "all" and repaints the chips
+        if (!this.filtered.includes(tr)) { this.quick = null; this._refilter(); }
+      }
+      const index = this.filtered.indexOf(tr);
+      if (index < 0) return false;
+      const size = this.pageSize ? parseInt(this.pageSize.value, 10) : 50;
+      this.page = Math.floor(index / size);
+      this.render();
+      return true;
+    }
+
+    _revealHashTarget() {
+      const id = decodeURIComponent(location.hash.slice(1));
+      const target = id && document.getElementById(id);
+      const row = target && target.closest('tr');
+      if (!row || !this.rows.includes(row) || !this.reveal(row)) return;
+      requestAnimationFrame(() => row.scrollIntoView({ block: 'center' }));
+      row.dispatchEvent(new CustomEvent('dt:revealed', { bubbles: true }));
     }
 
     _wireHeaderSort() {

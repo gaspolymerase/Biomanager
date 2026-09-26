@@ -106,7 +106,9 @@ def cage_cards():
         for cage in cages:
             living = [m for m in cage.mice if m.date_of_death is None]
             genotypes = sorted({(m.genotype or "").strip() for m in living if (m.genotype or "").strip()})
-            target = _absolute(url_for("colony", view="cages") + f"#cage-{cage.id}")
+            # scope=all: a card is scanned by whoever is at the rack, and the
+            # default "My colony" view would leave someone else's cage out.
+            target = _absolute(url_for("colony", view="cages", scope="all") + f"#cage-{cage.id}")
             cards.append({
                 "title": f"Cage {cage.cage_id}",
                 "qr": _qr_svg(target, scale=3),

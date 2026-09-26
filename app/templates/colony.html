@@ -1992,6 +1992,20 @@ function weanDue(born) {
     button.closest('tr').classList.toggle('is-expanded', !detail.hidden);
   });
 
+  // Arriving from a cage card's QR code (#cage-12): the table has already
+  // brought that cage onto the page (data-table.js reveal); open it, so its
+  // mice are what you see at the rack, and mark it.
+  sheet.addEventListener('dt:revealed', (event) => {
+    const row = event.target;
+    const match = (row.id || '').match(/^cage-(\d+)$/);
+    if (!match) return;
+    document.querySelectorAll('tr.is-scanned').forEach((other) => other.classList.remove('is-scanned'));
+    row.classList.add('is-scanned');
+    const detail = document.getElementById(`cage-detail-${match[1]}`);
+    const button = row.querySelector(`[data-cage-expand="${match[1]}"]`);
+    if (button && detail && detail.hidden) button.click();
+  });
+
   // Wean due follows the litter-born date as soon as it changes.
   sheet.addEventListener('sheet:change', (event) => {
     const { input, form } = event.detail || {};
