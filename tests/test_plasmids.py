@@ -366,7 +366,8 @@ class SequenceRouteTests(AppTestCase):
                 {"name": "ok", "start": 1, "end": 4, "forward": True},
                 {"name": "wrap", "start": 12, "end": 2, "forward": False},
                 {"name": "too far", "start": 3, "end": 99}]}})
-        self.assertEqual(r.get_json(), {"ok": True, "length": 16, "features": 2})
+        self.assertEqual(r.get_json(), {"ok": True, "length": 16, "features": 2, "counts": {
+            "features": 2, "primers": 0, "translations": 0, "parts": 0}})
         seq, feats = plasmid(self.rid, "full_sequence, features_json")
         self.assertEqual(seq, "ACGTRYKMACGTNNNN")
         self.assertEqual([(f["name"], f["start"], f["end"], f["direction"]) for f in json.loads(feats)],
@@ -434,6 +435,74 @@ class SequenceRouteTests(AppTestCase):
         self.assertEqual(self.seq(), "ACGTACGTACGT")
         self.post(self.a, f"/plasmids/{self.rid}/clear-sequence", {"confirm": "1"})
         self.assertEqual(plasmid(self.rid, "full_sequence, features_json"), ("", "[]"))
+
+
+
+class EditorAnnotationTests(AppTestCase):
+    """What the plasmid editor saves: it sends each annotation group as an
+    object keyed by id, and keeps primers, translations and parts as well as
+    features. Saving used to accept only a list of features, so any edit in
+    the editor erased every feature and nothing else was ever kept."""
+
+    SEQ = "ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAG"
+
+    def setUp(self):
+        self.rid = self.make_plasmid(self.a, sequence_text=self.SEQ)
+
+    def save(self, **groups):
+        return self.a.post(f"/plasmids/{self.rid}/sequence-save", json={"sequenceData": {
+            "sequence": self.SEQ, "circular": True, "name": "pTest", **groups}})
+
+    def stored(self):
+        return json.loads(plasmid(self.rid, "features_json")[0])
+
+    def test_features_sent_as_an_object_are_kept(self):
+        r = self.save(features={"f1": {"id": "f1", "name": "CMV", "start": 0, "end": 20, "forward": True},
+                                "f2": {"id": "f2", "name": "tag", "start": 30, "end": 40, "strand": -1}})
+        self.assertEqual(r.get_json()["features"], 2)
+        self.assertEqual([(f["name"], f["direction"]) for f in self.stored()], [("CMV", 1), ("tag", -1)])
+
+    def test_primers_translations_and_parts_are_kept_and_come_back_by_group(self):
+        r = self.save(
+            features={"f1": {"name": "CDS1", "type": "CDS", "start": 0, "end": 29, "forward": True}},
+            primers={"p1": {"name": "fwd", "start": 0, "end": 19, "forward": True}},
+            translations={"t1": {"name": "mine", "start": 3, "end": 32, "forward": True,
+                                 "translationType": "User Created"},
+                          # The editor also lists its own translation of every CDS feature.
+                          "t2": {"name": "CDS1", "start": 0, "end": 29, "translationType": "CDS Feature"}},
+            parts={"x1": {"name": "insert", "start": 40, "end": 60, "forward": False}})
+        self.assertEqual(r.get_json()["counts"], {"features": 1, "primers": 1, "translations": 1, "parts": 1})
+        data = self.a.get(f"/plasmids/{self.rid}/sequence.json").get_json()
+        self.assertEqual([f["name"] for f in data["features"]], ["CDS1"])
+        self.assertEqual([(p["name"], p["start"], p["end"], p["forward"]) for p in data["primers"]],
+                         [("fwd", 0, 19, True)])
+        self.assertEqual([t["name"] for t in data["translations"]], ["mine"])
+        self.assertEqual([(p["name"], p["strand"]) for p in data["parts"]], [("insert", -1)])
+        # The detail page counts features only.
+        self.assertIn("its 1 feature(s)", self.get_ok(self.a, f"/plasmids/{self.rid}"))
+
+    def test_notes_and_joined_features_survive_a_round_trip(self):
+        self.save(features=[{"name": "split", "start": 0, "end": 50, "forward": True,
+                             "locations": [{"start": 0, "end": 10}, {"start": 40, "end": 50}],
+                             "notes": {"gene": ["egfp"], "note": ["from pEGFP-N1"]}}])
+        data = self.a.get(f"/plasmids/{self.rid}/sequence.json").get_json()
+        split = data["features"][0]
+        self.assertEqual(split["locations"], [{"start": 0, "end": 10}, {"start": 40, "end": 50}])
+        self.assertEqual(split["notes"], {"gene": ["egfp"], "note": ["from pEGFP-N1"]})
+        # And the editor posting back what it was given changes nothing.
+        self.save(features=data["features"], primers=data["primers"])
+        self.assertEqual(self.a.get(f"/plasmids/{self.rid}/sequence.json").get_json()["features"][0]["notes"],
+                         {"gene": ["egfp"], "note": ["from pEGFP-N1"]})
+
+    def test_renaming_in_the_editor_renames_the_plasmid(self):
+        self.save(features=[])
+        self.assertEqual(plasmid(self.rid, "name")[0], "pTest")
+
+    def test_a_hand_edit_of_the_sequence_keeps_primers_and_parts(self):
+        self.save(primers={"p": {"name": "fwd", "start": 0, "end": 9, "forward": True}},
+                  parts={"x": {"name": "late", "start": 70, "end": 79, "forward": True}})
+        self.post(self.a, f"/plasmids/{self.rid}/edit-sequence", {"sequence_text": self.SEQ[:40], "is_circular": "1"})
+        self.assertEqual([(f.get("kind"), f["name"]) for f in self.stored()], [("primer", "fwd")])
 
 
 # ================================================================ boxes
