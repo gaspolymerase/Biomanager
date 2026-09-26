@@ -70,11 +70,12 @@ if one("select role from users where username=?", ADMIN) != "admin":
 
 # ------------------------------------------------------------------ people
 
-PEOPLE = [("ex-sam", "Sam Okafor (example)"), ("ex-jordan", "Jordan Lee (example)"),
-          ("ex-priya", "Priya Nair (example)")]
+# username, display name, short name (the owner badge; "ex-…" would read "EX-" for all)
+PEOPLE = [("ex-sam", "Sam Okafor (example)", "Sam"), ("ex-jordan", "Jordan Lee (example)", "Jor"),
+          ("ex-priya", "Priya Nair (example)", "Pri")]
 with SessionLocal() as s:
-    for username, name in PEOPLE:
-        s.add(UserAccount(username=username, display_name=name, role="member",
+    for username, name, short in PEOPLE:
+        s.add(UserAccount(username=username, display_name=name, short_name=short, role="member",
                           password_hash=security.NO_PASSWORD, welcomed_at=datetime.utcnow()))
     s.commit()
 
