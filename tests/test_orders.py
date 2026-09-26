@@ -227,9 +227,11 @@ class OrderAgainTests(OrdersCase):
     def test_reagents_and_antibodies_have_order_again(self):
         rid = self.make_item(self.a, self.reagents, uniq("PBS "))
         html = self.get_ok(self.m, f"/inventory/{self.reagents}")
-        self.assertIn(f"/inventory/{self.first_orders()}?reorder={self.reagents}:{rid}", htmllib.unescape(html))
+        # A button in a form that only opens the page, like the row's other actions.
+        self.assertIn(f'<form method="get" action="/inventory/{self.first_orders()}">', html)
+        self.assertIn(f'<input type="hidden" name="reorder" value="{self.reagents}:{rid}">', html)
         aid = self.make_item(self.a, self.antibodies, uniq("GFP "))
-        self.assertIn(f"reorder={self.antibodies}:{aid}", htmllib.unescape(self.get_ok(self.m, f"/inventory/{self.antibodies}")))
+        self.assertIn(f'name="reorder" value="{self.antibodies}:{aid}"', self.get_ok(self.m, f"/inventory/{self.antibodies}"))
 
     def first_orders(self) -> str:
         return one("select key from inventory_modules where kind='orders' and private_to='' and enabled "
@@ -326,6 +328,7 @@ class OfferStockTests(OrdersCase):
         self.assertIn(f'<option value="{self.reagents}" data-kind="reagents">', html)
         self.assertIn(f'<option value="{self.antibodies}" data-kind="antibodies">', html)
         self.assertIn('data-on-click="offer-stock"', html)
+        self.assertIn("To stock</button>", html)
 
     def test_stock_made_from_an_order_keeps_its_lot_and_expiry_and_opens(self):
         name = uniq("RNase ")

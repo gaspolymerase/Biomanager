@@ -191,7 +191,7 @@
                 <th class="dt-sortable" data-sort-key="expires_on" style="width: 136px;"><span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Expires<span class="dt-sort-indicator"></span></span></th>
               {% endif %}
               <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
-              {% set actions_width = 120 if (m.kind == 'orders' and stock_targets) or order_module else 96 %}
+              {% set actions_width = 170 if m.kind == 'orders' and stock_targets else (120 if order_module or m.kind == 'orders' else 96) %}
               <th class="sheet-pin sheet-pin-end" style="width: {{ actions_width }}px; min-width: {{ actions_width }}px;"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
@@ -283,12 +283,16 @@
                   <div class="sheet-actions">
                     {% if m.kind == 'orders' and stock_targets and not r.attrs.get('stocked_as') and not locked %}
                       {# Shown once the order is received (also after a board drag); gone once stocked. #}
-                      <button type="button" class="row-icon-btn" data-to-stock data-on-click="offer-stock" data-arg="{{ i.id }}"
-                              title="Add to stock as a new record" {% if i.status|lower != 'received' %}hidden{% endif %}>{{ icon('flask') }}</button>
+                      {# Labelled: on a touch screen there is no tooltip to say what a flask means. #}
+                      <button type="button" class="row-stock-btn" data-to-stock data-on-click="offer-stock" data-arg="{{ i.id }}"
+                              title="Add it to Reagents or Antibodies as a new record" {% if i.status|lower != 'received' %}hidden{% endif %}>{{ icon('flask') }}To stock</button>
                     {% endif %}
                     {% if order_module %}
-                      <a class="row-icon-btn" href="{{ url_for('inventory.module', key=order_module.key, reorder=key ~ ':' ~ i.id) }}"
-                         title="Order again: a new order in {{ order_module.label }} with these details">{{ icon('cart') }}</a>
+                      {# A button like its neighbours (a form that only opens a page), not a link. #}
+                      <form method="get" action="{{ url_for('inventory.module', key=order_module.key) }}">
+                        <input type="hidden" name="reorder" value="{{ key }}:{{ i.id }}">
+                        <button type="submit" class="row-icon-btn" title="Order again: a new order in {{ order_module.label }} with these details">{{ icon('cart') }}</button>
+                      </form>
                     {% endif %}
                     <button type="button" class="row-icon-btn" title="Open" data-record-edit="item-dialog" data-open-item
                             data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
