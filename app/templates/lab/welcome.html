@@ -52,7 +52,14 @@
 
   <section class="setup-step">
     <header class="setup-step-head"><span class="setup-step-num">{{ 4 if may_create else 3 }}</span><h3>At the rack, on your phone</h3></header>
-    <p class="setup-note">Open this same address on your phone and add it to your home screen.{% if lab_features.colony %} Scanning a cage card's QR code opens that cage, with its mice.{% endif %}</p>
+    <p class="setup-note">Open this same address on your phone and add it to your home screen, or install the
+      BioManager app for Android from the <a href="https://gaspolymerase.github.io/biomanager-app/#download" target="_blank" rel="noopener">download page</a>.{% if lab_features.colony %} Scanning a cage card's QR code opens that cage, with its mice.{% endif %}</p>
+  </section>
+
+  <section class="setup-step">
+    <header class="setup-step-head"><span class="setup-step-num">{{ icon('info') }}</span><h3>When you're stuck</h3></header>
+    <p class="setup-note">The <a href="{{ guide_url }}" target="_blank" rel="noopener" data-milestone="guide">user guide</a>
+      explains every part of BioManager, step by step. <strong>Help</strong> at the bottom of the sidebar opens it any time.</p>
   </section>
 
   <form method="post" class="setup-submit">

@@ -12,7 +12,7 @@
   {% endif %}
   {% if lab_features.colony %}
     <a class="btn btn-primary" href="{{ url_for('colony', view='mice') }}">
-      {{ icon('mouse') }} Open {{ db_labels.get('colony', 'Mouse colony')|lower }}
+      {{ icon('mouse') }} Open {{ db_labels.get('colony', 'Mouse colony') }}
     </a>
   {% endif %}
 {% endblock %}
@@ -26,6 +26,8 @@
     <span class="btn btn-sm btn-primary">Set up</span>
   </a>
 {% endif %}
+
+{% include "lab/_getting_started.html" %}
 
 {# ---- For you: unread notifications ------------------------------------- #}
 {% if for_you %}

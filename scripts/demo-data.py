@@ -30,6 +30,7 @@ DATA.mkdir(parents=True, exist_ok=True)
 os.environ["BIOMANAGER_DATA_DIR"] = str(DATA)
 os.environ["DATABASE_URL"] = f"sqlite:///{DATA / 'biomanager.db'}"
 os.environ.pop("BIOMANAGER_ENV", None)
+os.environ["BIOMANAGER_SEED_DEFAULTS"] = "1"  # every default database, as a set-up lab has
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))

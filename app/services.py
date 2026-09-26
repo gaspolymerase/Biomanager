@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import re
 import secrets
 from collections import defaultdict
@@ -84,7 +85,17 @@ def parse_date(raw_value: str | None) -> date | None:
 
 
 def init_database() -> None:
+    # A new installation starts empty: the first admin's setup survey decides
+    # which databases exist (app/lab.py). BIOMANAGER_SEED_DEFAULTS=1 keeps
+    # the old start with every default database, for the test suite and
+    # scripts/demo-data.py.
+    fresh = not inspect(engine).has_table("users")
     Base.metadata.create_all(bind=engine)
+    if fresh and os.environ.get("BIOMANAGER_SEED_DEFAULTS") != "1":
+        from . import lab
+        with SessionLocal() as session:
+            lab.start_empty(session)
+            session.commit()
     ensure_schema_updates()
     rebuild_samples_table()
     ensure_integrity()  # ids never reused, foreign keys enforced (app/integrity.py)

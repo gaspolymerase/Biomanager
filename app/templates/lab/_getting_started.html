@@ -1,0 +1,30 @@
+{# Getting started: the first steps for what the lab keeps (app/lab.py).
+   Shown on the home page until every step is done or the person hides it. #}
+{% set gs = getting_started_card() %}
+{% if gs %}
+  <section class="card mb-3 flex flex-col" aria-labelledby="getting-started-title">
+    <header class="card-head">
+      <h2 id="getting-started-title">{{ icon('sparkle') }} Getting started</h2>
+      <span class="card-head-link">{{ gs.done }} of {{ gs.total }} done</span>
+    </header>
+    <div class="flex flex-col">
+      {% for s in gs.steps %}
+        <a class="row-line" href="{{ s.url }}"{% if s.external %} target="_blank" rel="noopener" data-milestone="guide"{% endif %}
+           {% if s.done %}style="opacity: .55"{% endif %}>
+          <span class="shrink-0" style="width: 18px; color: var(--color-brand-600, #0f8f7c)">
+            {% if s.done %}{{ icon('check') }}{% else %}<span aria-hidden="true" style="display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; opacity: .6"></span>{% endif %}
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="font-medium text-ink"{% if s.done %} style="text-decoration: line-through"{% endif %}>{{ s.title }}</span>
+            {% if not s.done %}<span class="text-muted" style="display: block; font-size: 12px">{{ s.hint }}</span>{% endif %}
+          </span>
+          <span class="sr-only">{{ 'Done' if s.done else 'To do' }}</span>
+        </a>
+      {% endfor %}
+    </div>
+    <form method="post" action="{{ url_for('lab.hide_getting_started') }}" class="flex items-center gap-2" style="padding: 8px 12px">
+      <button type="submit" class="btn btn-sm btn-ghost">Hide this list</button>
+      <a class="text-muted" style="font-size: 12px" href="{{ guide_url }}" target="_blank" rel="noopener" data-milestone="guide">Open the user guide</a>
+    </form>
+  </section>
+{% endif %}
