@@ -385,6 +385,9 @@ class AppTestCase(unittest.TestCase):
     @staticmethod
     def make_item(client, key: str = "reagents", name: str | None = None, **fields) -> int:
         name = name or uniq("item")
+        if one("select kind from inventory_modules where key=?", key) == "orders":
+            # What an order needs before it can be placed (the preset's Required).
+            fields = {"vendor": "Acme", "catalog_number": "A-1", "quantity": "1", **fields}
         client.post(f"/inventory/{key}/items/save", data={"id": "", "name": name, **fields})
         found = one("select max(i.id) from inventory_items i join inventory_modules m on m.id=i.module_id_fk "
                     "where m.key=? and i.name=?", key, name)

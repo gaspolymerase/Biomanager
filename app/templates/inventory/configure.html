@@ -143,6 +143,28 @@
       </div>
     </section>
 
+    <section class="card">
+      <header class="card-head"><h2>{{ icon('check') }} Needed for a new {{ m.item_noun }}</h2></header>
+      <div class="p-4">
+        <p class="mb-3 text-[12.5px] leading-snug text-muted">
+          Nobody can add {{ 'an' if m.item_noun[:1] in 'aeiou' else 'a' }} {{ m.item_noun }} until these are filled in, and they can’t be emptied later.
+          {{ m.item_noun_plural|capitalize }} added before keep working as they are.
+        </p>
+        <input type="hidden" name="required_sent" value="1">
+        <div class="flex flex-wrap gap-2">
+          {% for key, label in m.requirable %}
+            {% set always = key == 'name' and m.kind == 'orders' %}
+            <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-hairline bg-sand-50 px-2.5 py-1.5 text-[12.5px]
+                          has-checked:border-brand-300 has-checked:bg-brand-50/50" {% if always %}title="An order always needs to say what it is"{% endif %}>
+              <input type="checkbox" name="required" value="{{ key }}" {% if key in m.required %}checked{% endif %} {% if always %}disabled{% endif %}>
+              {{ label }}
+            </label>
+          {% endfor %}
+        </div>
+        <span class="field-hint mt-2 block normal-case tracking-normal">A column added above can be ticked here once it is saved.</span>
+      </div>
+    </section>
+
     <div class="flex justify-end gap-2">
       <a class="btn" href="{{ url_for('inventory.module', key=m.key) }}">Cancel</a>
       <button type="submit" class="btn btn-primary">Save</button>

@@ -190,6 +190,20 @@ change:
 Each inventory can keep **your own stock** apart from **lab common
 stock**, and statuses and categories can be renamed without losing items.
 
+- **Filter orders by status** — one tap shows only what is requested,
+  ordered, received or cancelled.
+- **Nothing half-filled** — an order can't be placed without its item,
+  vendor, catalogue number and quantity. Configure chooses what any
+  inventory requires.
+- **Type it once** — every column suggests what the lab has typed before;
+  pick an earlier item or catalogue number and the vendor, price and grant
+  fill themselves in.
+- **Order again** — one click on a reagent or antibody starts a new order
+  with its details, and the quantity, price and grant of the last time.
+- **From the box to the shelf** — when an order is marked received,
+  BioManager offers to add it to Reagents or Antibodies with everything
+  already filled in.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/orders.webp" alt="The orders board with requested, ordered, received and cancelled columns"></td>

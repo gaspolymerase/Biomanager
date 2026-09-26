@@ -17,6 +17,12 @@
   {% endif %}
 {% endblock %}
 
+{# list="…" for a column whose earlier values are offered again as you type. #}
+{% macro rem(column) %}{% if remembered.suggest.get(column) %} list="inv-rem-{{ column }}"{% endif %}{% endmacro %}
+{# A dialog field that must be filled in (the dialog's script sets required). #}
+{% macro req(column) %}{% if column in module.required %} data-required="1"{% endif %}{% endmacro %}
+{% macro star(column) %}{% if column in module.required %}<span class="req-star" title="Required">*</span>{% endif %}{% endmacro %}
+
 {% macro field_cell(field, value, form_id, locked, src_label='', links={}) %}
   {% set name = 'attr_' ~ field.key %}
   {% if field.type == 'select' %}
@@ -36,7 +42,7 @@
     <a class="sheet-link font-normal" href="{{ value }}" target="_blank" rel="noopener">{{ value|replace('https://', '')|truncate(28) }}</a>
   {% else %}
     <input name="{{ name }}" form="{{ form_id }}" value="{{ value }}" {% if field.type == 'number' %}inputmode="decimal"{% endif %}
-           {% if field.type == 'user' %}list="inv-owner-options"{% endif %}
+           {% if field.type == 'user' %}list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}
            data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
   {% endif %}
 {% endmacro %}
@@ -72,6 +78,9 @@
 
 {% block content %}
 {{ sheet_ui.owners_list(usernames, 'inv-owner-options') }}
+{% for column, values in remembered.suggest.items() %}
+  <datalist id="inv-rem-{{ column }}">{% for v in values %}<option value="{{ v }}"></option>{% endfor %}</datalist>
+{% endfor %}
 {% for source in sources %}
   <datalist id="inv-src-{{ loop.index0 }}">{% for ref in source.refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
 {% endfor %}
@@ -99,7 +108,10 @@
             <button type="button" class="dt-chip" data-dt-filter="shared:true" aria-pressed="false">Lab common <span class="dt-chip-count">{{ counts.lab }}</span></button>
           {% endif %}
           {% if m.has('board') %}
-            <button type="button" class="dt-chip" data-dt-filter="open:true" aria-pressed="false">Open <span class="dt-chip-count">{{ counts.open }}</span></button>
+            <button type="button" class="dt-chip" data-dt-filter="open:true" aria-pressed="false" data-count-open>Open <span class="dt-chip-count">{{ counts.open }}</span></button>
+            {% for st in m.statuses %}
+              <button type="button" class="dt-chip" data-dt-filter="status:{{ st|lower }}" aria-pressed="false" data-count-status="{{ st|lower }}">{{ st|capitalize }} <span class="dt-chip-count">{{ counts.status[st] }}</span></button>
+            {% endfor %}
           {% endif %}
           {% if m.has('expiry') and counts.soon %}
             <button type="button" class="dt-chip" data-dt-filter="expiring:true" aria-pressed="false" title="Expires within 30 days">Expiring soon <span class="dt-chip-count">{{ counts.soon }}</span></button>
@@ -179,7 +191,8 @@
                 <th class="dt-sortable" data-sort-key="expires_on" style="width: 136px;"><span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Expires<span class="dt-sort-indicator"></span></span></th>
               {% endif %}
               <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
-              <th class="sheet-pin sheet-pin-end" style="width: {{ 120 if m.kind == 'orders' else 96 }}px; min-width: {{ 120 if m.kind == 'orders' else 96 }}px;"><span class="sr-only">Actions</span></th>
+              {% set actions_width = 120 if (m.kind == 'orders' and stock_targets) or order_module else 96 %}
+              <th class="sheet-pin sheet-pin-end" style="width: {{ actions_width }}px; min-width: {{ actions_width }}px;"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -190,7 +203,7 @@
               {% set fixed = locked or not r.manageable %}
               <tr data-id="{{ i.id }}" data-number="{{ i.number }}"
                   data-mine="{{ 'true' if r.mine else 'false' }}" data-shared="{{ 'true' if i.is_shared else 'false' }}"
-                  data-open="{{ 'true' if i.status in m.open_statuses else 'false' }}"
+                  data-open="{{ 'true' if i.status in m.open_statuses else 'false' }}" data-status="{{ (i.status or '')|lower }}"
                   data-active="{{ 'false' if r.available == false else 'true' }}"
                   data-expired="{{ 'true' if r.expiry == 'expired' else 'false' }}"
                   data-expiring="{{ 'true' if r.expiry == 'soon' else 'false' }}"
@@ -203,7 +216,7 @@
                                       alive_title=alive_title,
                                       dead_title=((i.status|capitalize) ~ ' since ' ~ r.ended_on) if r.ended_on else dead_title) }}
                 </td>
-                <td><input class="font-medium" name="name" form="{{ f }}" value="{{ i.name }}" title="{{ i.name }}" data-autosave="1" aria-label="{{ m.name_label }}" {% if m.kind == 'orders' %}required{% endif %} {% if locked %}disabled{% endif %}></td>
+                <td><input class="font-medium" name="name" form="{{ f }}" value="{{ i.name }}" title="{{ i.name }}"{{ rem('name') }} data-autosave="1" aria-label="{{ m.name_label }}" {% if m.kind == 'orders' %}required{% endif %} {% if locked %}disabled{% endif %}></td>
                 <td>
                   {% if m.categories %}
                     <select name="category" form="{{ f }}" data-autosave="1" aria-label="{{ m.category_label }}" {% if locked %}disabled{% endif %}>
@@ -212,7 +225,7 @@
                       {% if i.category and i.category not in m.categories %}<option value="{{ i.category }}" selected>{{ i.category }}</option>{% endif %}
                     </select>
                   {% else %}
-                    <input name="category" form="{{ f }}" value="{{ i.category }}" data-autosave="1" aria-label="{{ m.category_label }}" {% if locked %}disabled{% endif %}>
+                    <input name="category" form="{{ f }}" value="{{ i.category }}"{{ rem('category') }} data-autosave="1" aria-label="{{ m.category_label }}" {% if locked %}disabled{% endif %}>
                   {% endif %}
                 </td>
                 {% if m.statuses %}
@@ -238,13 +251,13 @@
                 {% endif %}
                 <td>{{ sheet_ui.owner_cell(i.owner, f, fixed, list_id='inv-owner-options', label='Requested by' if m.kind == 'orders' else 'Owner') }}</td>
                 {% if m.has('supplier') %}
-                  <td><input name="vendor" form="{{ f }}" value="{{ i.vendor }}" data-autosave="1" aria-label="Vendor" {% if locked %}disabled{% endif %}></td>
-                  <td><input class="ident" name="catalog_number" form="{{ f }}" value="{{ i.catalog_number }}" data-autosave="1" aria-label="Catalog number" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="vendor" form="{{ f }}" value="{{ i.vendor }}"{{ rem('vendor') }} data-autosave="1" aria-label="Vendor" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="ident" name="catalog_number" form="{{ f }}" value="{{ i.catalog_number }}"{{ rem('catalog_number') }} data-autosave="1" aria-label="Catalog number" {% if locked %}disabled{% endif %}></td>
                   <td><input class="ident" name="lot" form="{{ f }}" value="{{ i.lot }}" data-autosave="1" aria-label="Lot" {% if locked %}disabled{% endif %}></td>
                 {% endif %}
                 {% if m.has('quantity') %}
-                  <td><input name="quantity" form="{{ f }}" value="{{ i.quantity }}" data-autosave="1" aria-label="Quantity" {% if locked %}disabled{% endif %}></td>
-                  <td><input name="unit" form="{{ f }}" value="{{ i.unit }}" placeholder="–" data-autosave="1" aria-label="Unit" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="quantity" form="{{ f }}" value="{{ i.quantity }}"{{ rem('quantity') }} data-autosave="1" aria-label="Quantity" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="unit" form="{{ f }}" value="{{ i.unit }}" placeholder="–"{{ rem('unit') }} data-autosave="1" aria-label="Unit" {% if locked %}disabled{% endif %}></td>
                 {% endif %}
                 {% if m.has('storage') %}
                   <td>
@@ -255,7 +268,7 @@
                   </td>
                   <td><input class="ident" name="position" form="{{ f }}" value="{{ r.position }}" placeholder="–" data-autosave="1" aria-label="Position" {% if locked %}disabled{% endif %}></td>
                 {% else %}
-                  <td><input name="location_note" form="{{ f }}" value="{{ i.location_note }}" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="location_note" form="{{ f }}" value="{{ i.location_note }}"{{ rem('location_note') }} data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
                 {% endif %}
                 {% if m.has('received') %}
                   <td><input type="date" name="received_on" form="{{ f }}" value="{{ i.received_on or '' }}" data-empty="{{ '0' if i.received_on else '1' }}" data-autosave="1" aria-label="Received" {% if locked %}disabled{% endif %}></td>
@@ -268,13 +281,14 @@
                 <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ i.notes }}" title="{{ i.notes }}" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
                 <td class="sheet-pin sheet-pin-end">
                   <div class="sheet-actions">
-                    {% if m.kind == 'orders' and reagents_module and not r.attrs.get('stocked_as') and not locked %}
+                    {% if m.kind == 'orders' and stock_targets and not r.attrs.get('stocked_as') and not locked %}
                       {# Shown once the order is received (also after a board drag); gone once stocked. #}
-                      <form method="post" action="{{ url_for('inventory.order_to_reagents', key=key, item_id=i.id) }}" data-to-stock
-                            {% if i.status|lower != 'received' %}hidden{% endif %}>
-                        <input type="hidden" name="target" value="{{ reagents_module.key }}">
-                        <button type="submit" class="row-icon-btn" title="Add to {{ reagents_module.label }}">{{ icon('flask') }}</button>
-                      </form>
+                      <button type="button" class="row-icon-btn" data-to-stock data-on-click="offer-stock" data-arg="{{ i.id }}"
+                              title="Add to stock as a new record" {% if i.status|lower != 'received' %}hidden{% endif %}>{{ icon('flask') }}</button>
+                    {% endif %}
+                    {% if order_module %}
+                      <a class="row-icon-btn" href="{{ url_for('inventory.module', key=order_module.key, reorder=key ~ ':' ~ i.id) }}"
+                         title="Order again: a new order in {{ order_module.label }} with these details">{{ icon('cart') }}</a>
                     {% endif %}
                     <button type="button" class="row-icon-btn" title="Open" data-record-edit="item-dialog" data-open-item
                             data-record-payload="{{ r.payload | tojson | forceescape }}">{{ icon('edit') }}</button>
@@ -418,13 +432,14 @@
     <header class="record-dialog-head">
       <div>
         <h3 id="item-dialog-title" data-record-title>New {{ m.item_noun }}</h3>
-        <p class="record-dialog-sub" data-new-only data-next-number="{{ next_number }}">{{ m.label }} · a new {{ m.item_noun }} gets <span data-number-span>#{{ next_number }}</span>.</p>
+        <p class="record-dialog-sub" data-new-only data-next-number="{{ next_number }}">{{ m.label }} · a new {{ m.item_noun }} gets <span data-number-span>#{{ next_number }}</span>.{% if m.required %} Fields marked <span class="req-star">*</span> are needed.{% endif %}</p>
       </div>
       <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
-      <label class="record-wide" data-name-label>{{ m.name_label }} <input name="name" {% if m.kind == 'orders' %}required{% endif %} autocomplete="off"></label>
+      <label class="record-wide" data-name-label><span>{{ m.name_label }}{{ star('name') }}</span> <input name="name"{{ req('name') }}{{ rem('name') }} autocomplete="off" data-fill-key="name"></label>
+      <p class="record-wide record-fill-hint" data-fill-hint hidden></p>
       <fieldset class="record-group" data-new-only>
         <legend>How many</legend>
         <label>How many <input type="number" name="count" min="1" max="50" value="1" data-add-count></label>
@@ -436,10 +451,10 @@
       </fieldset>
       <fieldset class="record-group">
         <legend>{{ m.item_noun|capitalize }}</legend>
-        <label>{{ m.category_label }}
+        <label><span>{{ m.category_label }}{{ star('category') }}</span>
           {% if m.categories %}
-            <select name="category"><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}</select>
-          {% else %}<input name="category">{% endif %}
+            <select name="category"{{ req('category') }}><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}</select>
+          {% else %}<input name="category"{{ req('category') }}{{ rem('category') }}>{% endif %}
         </label>
         {% if m.statuses %}
           <label>Status <select name="status" data-dialog-status>{% for s in m.statuses %}<option value="{{ s }}">{{ s|capitalize }}</option>{% endfor %}</select></label>
@@ -456,13 +471,13 @@
         <fieldset class="record-group">
           <legend>Supply</legend>
           {% if m.has('supplier') %}
-            <label>Vendor <input name="vendor"></label>
-            <label>Catalog # <input name="catalog_number"></label>
-            <label>Lot <input name="lot"></label>
+            <label><span>Vendor{{ star('vendor') }}</span> <input name="vendor"{{ req('vendor') }}{{ rem('vendor') }}></label>
+            <label><span>Catalog #{{ star('catalog_number') }}</span> <input name="catalog_number"{{ req('catalog_number') }}{{ rem('catalog_number') }} autocomplete="off" data-fill-key="catalog_number"></label>
+            <label><span>Lot{{ star('lot') }}</span> <input name="lot"{{ req('lot') }}></label>
           {% endif %}
           {% if m.has('quantity') %}
-            <label>Quantity <input name="quantity"></label>
-            <label>Unit <input name="unit" placeholder="mL, mg, µL, kit…"></label>
+            <label><span>Quantity{{ star('quantity') }}</span> <input name="quantity"{{ req('quantity') }}{{ rem('quantity') }}></label>
+            <label><span>Unit{{ star('unit') }}</span> <input name="unit" placeholder="mL, mg, µL, kit…"{{ req('unit') }}{{ rem('unit') }}></label>
           {% endif %}
         </fieldset>
       {% endif %}
@@ -480,11 +495,11 @@
               </label>
               <label>ID in that colony <input name="{{ name }}_ref" data-source-ref autocomplete="off" placeholder="e.g. mouse 12, tank T004"></label>
             {% elif fd.type == 'select' %}
-              <label>{{ fd.label }} <select name="{{ name }}"><option value="">Not set</option>{% for o in fd.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
+              <label><span>{{ fd.label }}{{ star(name) }}</span> <select name="{{ name }}"{{ req(name) }}><option value="">Not set</option>{% for o in fd.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
             {% elif fd.type == 'textarea' %}
-              <label class="col-span-full">{{ fd.label }} <textarea name="{{ name }}" rows="2"></textarea></label>
+              <label class="col-span-full"><span>{{ fd.label }}{{ star(name) }}</span> <textarea name="{{ name }}" rows="2"{{ req(name) }}></textarea></label>
             {% else %}
-              <label>{{ fd.label }} <input name="{{ name }}" {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% endif %}></label>
+              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}" {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
             {% endif %}
           {% endfor %}
         </fieldset>
@@ -495,9 +510,9 @@
           <label>Box <select name="rack_id"><option value="">Not in a box</option>{% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select></label>
           <label>Position <input name="position" class="font-mono" placeholder="e.g. D7"></label>
         {% endif %}
-        <label {% if not m.has('storage') %}class="col-span-full"{% endif %}>Location note <input name="location_note" placeholder="freezer, shelf, room…"></label>
-        {% if m.has('received') %}<label>Received <input type="date" name="received_on"></label>{% endif %}
-        {% if m.has('expiry') %}<label>Expires <input type="date" name="expires_on"></label>{% endif %}
+        <label {% if not m.has('storage') %}class="col-span-full"{% endif %}><span>Location note{{ star('location_note') }}</span> <input name="location_note" placeholder="freezer, shelf, room…"{{ req('location_note') }}{{ rem('location_note') }}></label>
+        {% if m.has('received') %}<label><span>Received{{ star('received_on') }}</span> <input type="date" name="received_on"{{ req('received_on') }}></label>{% endif %}
+        {% if m.has('expiry') %}<label><span>Expires{{ star('expires_on') }}</span> <input type="date" name="expires_on"{{ req('expires_on') }}></label>{% endif %}
       </fieldset>
       <label class="record-wide">Notes <textarea name="notes" rows="3"></textarea></label>
     </div>
@@ -507,6 +522,45 @@
     </footer>
   </form>
 </dialog>
+
+{% if reorder %}
+  {# "Order again" from a reagent or antibody: the new-order dialog opens with it on load. #}
+  <button type="button" hidden data-record-edit="item-dialog" data-reorder-open
+          data-record-payload="{{ reorder | tojson | forceescape }}"></button>
+{% endif %}
+
+{% if m.kind == 'orders' and stock_targets %}
+  {# ============ A RECEIVED ORDER: ADD IT TO STOCK? ============ #}
+  <dialog id="stock-offer-dialog" class="record-dialog record-dialog-narrow" aria-labelledby="stock-offer-title">
+    <form method="post" data-action="{{ url_for('inventory.order_to_reagents', key=key, item_id=0) }}" data-stock-offer>
+      <header class="record-dialog-head">
+        <div>
+          <h3 id="stock-offer-title">Add it to stock?</h3>
+          <p class="record-dialog-sub"><span data-offer-name></span> has arrived.</p>
+        </div>
+        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+      </header>
+      <div class="record-dialog-body">
+        <p class="record-wide text-[12.5px] leading-snug text-muted">
+          A new record in stock, with its name, vendor, catalog #, lot and quantity already filled in.
+          Then add where it is kept.
+        </p>
+        <label>Add to
+          <select name="target" data-offer-target>
+            {% for t in stock_targets %}<option value="{{ t.key }}" data-kind="{{ t.kind }}">{{ t.label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Belongs to
+          <select name="shared"><option value="1">Lab common: anyone can use it</option><option value="0">Personal: mine</option></select>
+        </label>
+      </div>
+      <footer class="record-dialog-foot">
+        <button type="button" class="btn" data-on-click="close-dialog">Not now</button>
+        <button type="submit" class="btn btn-primary">{{ icon('flask') }} Add to stock</button>
+      </footer>
+    </form>
+  </dialog>
+{% endif %}
 
 {% if m.has('storage') %}
   {% call rack_dialog('inv-rack-dialog', url_for('inventory.save_rack', key=key), url_for('inventory.save_rack', key=key),
@@ -521,7 +575,9 @@
 {% endblock %}
 
 {% block body_end %}
-<script type="application/json" id="inv-page-data">{{ {"isAdmin": is_admin, "me": current_user.username} | tojson }}</script>
+<script type="application/json" id="inv-page-data">{{ {"isAdmin": is_admin, "me": current_user.username,
+                                                        "openStatuses": m.open_statuses | map('lower') | list} | tojson }}</script>
+<script type="application/json" id="inv-fill-data">{{ remembered.fill | tojson }}</script>
 <script nonce="{{ csp_nonce() }}">
   /* Keep everything that shows an item in step after a save, a board drag
      or a grid move: the row's cells and its "_was" copies, the dot, the
@@ -537,6 +593,40 @@
         col.querySelector('[data-board-count]').textContent = col.querySelectorAll('.board-card').length;
       });
     }
+
+    /* The Open and per-status chips count rows as they are now. */
+    function recountChips() {
+      const rows = Array.from(document.querySelectorAll('.data-table-card tbody tr[data-id]'));
+      const show = (chip, n) => { const count = chip.querySelector('.dt-chip-count'); if (count) count.textContent = n; };
+      document.querySelectorAll('[data-count-status]').forEach((chip) => {
+        show(chip, rows.filter((tr) => tr.dataset.status === chip.dataset.countStatus).length);
+      });
+      const open = document.querySelector('[data-count-open]');
+      if (open) show(open, rows.filter((tr) => tr.dataset.open === 'true').length);
+    }
+
+    function payloadOf(id) {
+      const open = document.querySelector(`tr[data-id="${id}"] [data-open-item]`)
+        || document.querySelector(`.board-card[data-id="${id}"]`);
+      try { return JSON.parse((open && open.dataset.recordPayload) || '{}'); } catch (_) { return {}; }
+    }
+
+    /* A received order: offer to make a reagent or antibody of it, in the
+       inventory its category points to. */
+    function offerStock(id) {
+      const dialog = document.getElementById('stock-offer-dialog');
+      if (!dialog) return;
+      const form = dialog.querySelector('form');
+      const item = payloadOf(id);
+      form.action = form.dataset.action.replace('/0/', `/${id}/`);
+      dialog.querySelector('[data-offer-name]').textContent = item.name || item._label || 'The order';
+      const want = String(item.category || '').toLowerCase() === 'antibody' ? 'antibodies' : 'reagents';
+      const target = dialog.querySelector('[data-offer-target]');
+      const option = Array.from(target.options).find((o) => o.dataset.kind === want);
+      if (option) target.value = option.value;
+      dialog.showModal();
+    }
+    BioActions.register({ 'offer-stock': offerStock });
 
     function setPayload(id, payload) {
       const json = JSON.stringify(payload);
@@ -580,6 +670,12 @@
         }
         if ('is_shared' in row.values) tr.dataset.shared = row.values.is_shared === '1' ? 'true' : 'false';
         if ('owner' in row.values) tr.dataset.mine = row.values.owner === page.me ? 'true' : 'false';
+        if ('status' in row.values) {
+          const status = String(row.values.status || '').toLowerCase();
+          tr.dataset.status = status;
+          tr.dataset.open = page.openStatuses.includes(status) ? 'true' : 'false';
+          recountChips();
+        }
       }
       if (answer.payload) {
         setPayload(id, answer.payload);
@@ -596,12 +692,14 @@
         if (col) { col.querySelector('[data-board-drop]').prepend(card); recount(); }
       }
     }
-    window.InventoryPage = { applyRow };
+    window.InventoryPage = { applyRow, offerStock };
 
     document.addEventListener('sheet:saved', (event) => {
       const { form, body } = event.detail || {};
       if (!form || !body) return;
-      applyRow(form.id.replace('inv-', ''), body);
+      const id = form.id.replace('inv-', '');
+      applyRow(id, body);
+      if (body.offer_stock) offerStock(id);
     });
 
     // A grid move changes the box and position of the item (and of the one
@@ -642,6 +740,7 @@
             return;
           }
           applyRow(card.dataset.id, result);
+          if (result.offer_stock) offerStock(card.dataset.id);
         });
       });
     }
@@ -696,7 +795,7 @@
     const span = dialog.querySelector('[data-number-span]');
     const submit = dialog.querySelector('[data-record-submit]');
     const noun = {{ m.item_noun | tojson }}, plural = {{ m.item_noun_plural | tojson }};
-    const nameRequired = name.required;
+    let nameRequired = false;
     let isNew = true;
     const sync = () => {
       const pasted = names.value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean).length;
@@ -713,11 +812,82 @@
     names.addEventListener('input', sync);
     dialog.addEventListener('record-dialog:open', (event) => {
       isNew = Boolean((event.detail || {}).isNew);
+      // Required to add one; an old one that never had it can still be saved.
+      form.querySelectorAll('[data-required]').forEach((el) => { el.required = isNew || el.value.trim() !== ''; });
+      nameRequired = name.required;
       form.querySelectorAll('[data-new-only]').forEach((el) => { el.hidden = !isNew; });
       dialog.querySelectorAll('.record-dialog-head [data-new-only]').forEach((el) => { el.hidden = !isNew; });
       sync();
     });
   })();
+
+  /* Item dialog, new only: pick a name or catalog # used before and the
+     empty fields fill in from that entry (the newest one), tinted until
+     edited. "Order again" opens with a hint of where it came from. */
+  (function () {
+    const dialog = document.getElementById('item-dialog');
+    const form = dialog.querySelector('form');
+    const hint = form.querySelector('[data-fill-hint]');
+    const fills = JSON.parse(document.getElementById('inv-fill-data').textContent || '{}');
+    let isNew = false;
+    const labelOf = (el) => {
+      // "Vendor", whether or not it is wrapped with a required star.
+      const label = el.closest('label');
+      const head = label && label.firstElementChild && label.firstElementChild.tagName === 'SPAN'
+        ? label.firstElementChild : label;
+      return ((head && head.firstChild && head.firstChild.textContent) || el.name).trim();
+    };
+    const say = (text) => { hint.textContent = text; hint.hidden = !text; };
+    function fillFrom(input) {
+      if (!isNew) return;
+      const found = (fills[input.dataset.fillKey] || {})[input.value.trim().toLowerCase()];
+      if (!found) return;
+      const filled = [];
+      Array.from(form.elements).forEach((el) => {   // in the order the form shows them
+        const value = el.name && !el.name.startsWith('_') ? found[el.name] : '';
+        if (!value || el === input || el.disabled || el.readOnly || el.value !== '') return;
+        if (el.tagName === 'SELECT' && !Array.from(el.options).some((o) => o.value === value)) return;
+        el.value = value;
+        el.classList.add('is-filled');
+        filled.push(labelOf(el));
+      });
+      if (!filled.length) return;
+      const list = filled.length > 1 ? `${filled.slice(0, -1).join(', ')} and ${filled[filled.length - 1]}` : filled[0];
+      say(`Filled ${list} from ${found._from}.`);
+    }
+    form.querySelectorAll('[data-fill-key]').forEach((input) => {
+      // A pick from the suggestions arrives as an input without a typed character.
+      input.addEventListener('input', (e) => { if (!e.inputType || e.inputType === 'insertReplacementText') fillFrom(input); });
+      input.addEventListener('change', () => fillFrom(input));
+    });
+    form.addEventListener('input', (e) => e.target.classList && e.target.classList.remove('is-filled'));
+    dialog.addEventListener('record-dialog:open', (event) => {
+      const { data, isNew: fresh } = event.detail || {};
+      isNew = Boolean(fresh);
+      form.querySelectorAll('.is-filled').forEach((el) => el.classList.remove('is-filled'));
+      say((data && data._hint) || '');
+    });
+  })();
+
+  /* Links that open something once: ?reorder= (a new order prefilled from
+     stock), ?offer= (add a received order to stock), ?open= (a record's
+     dialog, e.g. the reagent just made from an order). They leave the
+     address, so a reload or the next save does not open them again. */
+  window.addEventListener('load', () => {
+    const params = new URLSearchParams(window.location.search);
+    const once = {};
+    ['reorder', 'offer', 'open'].forEach((k) => { if (params.has(k)) { once[k] = params.get(k); params.delete(k); } });
+    if (!Object.keys(once).length) return;
+    const rest = params.toString();
+    history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : '') + window.location.hash);
+    const reorder = document.querySelector('[data-reorder-open]');
+    if (reorder) reorder.click();
+    else if (once.offer && /^\d+$/.test(once.offer)) window.InventoryPage.offerStock(once.offer);
+    else if (once.open && /^\d+$/.test(once.open)) {
+      const open = document.querySelector(`tr[data-id="${once.open}"] [data-open-item]`);
+      if (open) open.click();
+    }
+  });
 
   /* ?q=… (from global search or the home page) searches the sheet on load. */
   window.addEventListener('load', () => {

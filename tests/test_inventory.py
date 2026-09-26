@@ -476,8 +476,8 @@ class OrderToStockTests(InventoryCase):
     def test_a_received_order_becomes_a_reagent_with_its_details(self):
         oid = self.order(vendor="NEB", catalog_number="M0273", quantity="2", unit="kit", received_on=days_ago(2))
         r = self.stock(oid, self.reagents)
-        self.assertEqual(location(r), f"/inventory/{self.reagents}")
         [rid] = items_named(self.reagents, item(oid)["name"])
+        self.assertEqual(location(r), f"/inventory/{self.reagents}?open={rid}")  # its dialog opens there
         got = item(rid)
         self.assertEqual((got["vendor"], got["catalog_number"], got["quantity"], got["unit"], got["received_on"],
                           got["status"], got["owner"]), ("NEB", "M0273", "2", "kit", days_ago(2), "in stock", self.admin))
