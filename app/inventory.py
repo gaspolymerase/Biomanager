@@ -64,6 +64,8 @@ PRESETS: dict[str, dict] = {
         "category_label": "Category",
         "categories": ["reagent", "antibody", "consumable", "equipment", "service", "other"],
         "statuses": ["requested", "ordered", "received", "cancelled"],
+        # What has to be filled in before an order can be placed.
+        "required": ["name", "vendor", "catalog_number", "quantity"],
         "fields": [
             {"key": "price", "label": "Price", "type": "number", "icon": "receipt", "width": 96},
             {"key": "account", "label": "Account / grant", "type": "text", "icon": "barcode", "width": 140},
@@ -157,12 +159,27 @@ def normalise_settings(raw) -> dict:
         "categories": [str(c) for c in s.get("categories") or []],
         "statuses": [str(c) for c in s.get("statuses") or []],
         "fields": fields,
+        # None: never chosen, so the preset's list applies (ModuleView.required).
+        "required": ([str(k) for k in s["required"] if isinstance(k, str)]
+                     if isinstance(s.get("required"), list) else None),
     }
 
 
 def preset_settings(key: str) -> dict:
     preset = PRESETS.get(key) or PRESETS["custom"]
-    return normalise_settings({k: preset.get(k) for k in ("features", "category_label", "categories", "statuses", "fields")})
+    return normalise_settings({k: preset.get(k) for k in
+                               ("features", "category_label", "categories", "statuses", "fields", "required")})
+
+
+# Built-in columns that can be made required: (form name, feature it needs, label).
+# None as the label means the module's own name for it.
+REQUIRABLE = (
+    ("name", None, None), ("category", None, None),
+    ("vendor", "supplier", "Vendor"), ("catalog_number", "supplier", "Catalog #"), ("lot", "supplier", "Lot"),
+    ("quantity", "quantity", "Quantity"), ("unit", "quantity", "Unit"),
+    ("location_note", None, "Location note"),
+    ("received_on", "received", "Received"), ("expires_on", "expiry", "Expires"),
+)
 
 
 # Icon for a field type, used when a custom field has none.

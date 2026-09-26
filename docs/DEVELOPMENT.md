@@ -204,6 +204,30 @@ pages are in `app/lab_routes.py`.
   `members_share_databases` (default off; the test suite turns it on in
   `tests/base.py`, since most tests have members create shared databases).
 
+## Orders and stock
+
+- **Required columns:** `settings["required"]` lists form names (`vendor`,
+  `attr_price`…) a new item must have; `None` (never chosen) falls back to
+  the preset's list, so older orders inventories get name, vendor,
+  catalogue number and quantity. `ModuleView.required` / `requirable` in
+  `inventory_service.py`; `_item_from_form` refuses a new item missing one
+  and an edit that empties one, but an old item that never had it still
+  saves. An order always needs a name. CSV import is not held to it.
+- **Remembered values:** `inventory_service.remembered()` gives each text
+  column's earlier values (datalists `inv-rem-<column>`) and a fill map by
+  name and catalogue number. Inventories that track a supplier lend each
+  other name, vendor and catalogue number, never quantity.
+- **Order again:** a reagent or antibody row links to
+  `/inventory/<orders>?reorder=<key>:<id>`; `_reorder_payload()` builds the
+  new-order dialog, taking quantity, price and grant from the last order
+  of the same thing (by `stocked_as`, then catalogue number).
+- **Received → stock:** `_offers_stock()` is true when a save moved an
+  order to received and it is not stocked yet; autosave and board moves
+  answer `offer_stock`, the dialog redirects with `?offer=<id>`.
+  `order_to_reagents` redirects to the new record with `?open=<id>`. These
+  one-shot parameters are removed from the address on load and from the
+  referrer in `_back()`.
+
 ## Notifications
 
 `app/notify.py`. A `before_flush` listener looks at dirty records (mice,

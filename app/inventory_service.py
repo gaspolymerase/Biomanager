@@ -56,6 +56,30 @@ class ModuleView:
         return {"samples": "Sample ID", "orders": "Item", "antibodies": "Target"}.get(self.row.kind, "Name")
 
     @property
+    def requirable(self) -> list[tuple[str, str]]:
+        """(form name, label) of the columns that can be made required."""
+        names = {"name": self.name_label, "category": self.category_label}
+        out = [(key, label or names[key]) for key, feature, label in presets.REQUIRABLE
+               if feature is None or self.has(feature)]
+        return out + [(f"attr_{f['key']}", f["label"]) for f in self.fields if f["type"] != "source"]
+
+    @property
+    def required(self) -> list[str]:
+        """Columns a new entry must have filled in. An order always needs a name."""
+        chosen = self.settings.get("required")
+        if chosen is None:
+            chosen = (presets.PRESETS.get(self.row.kind) or {}).get("required", [])
+        if self.row.kind == "orders" and "name" not in chosen:
+            chosen = ["name", *chosen]
+        known = {key for key, _ in self.requirable}
+        return [key for key in chosen if key in known]
+
+    @property
+    def required_labels(self) -> dict[str, str]:
+        labels = dict(self.requirable)
+        return {key: labels[key] for key in self.required}
+
+    @property
     def open_statuses(self) -> list[str]:
         """Statuses that still need action (for an Open chip on boards)."""
         s = self.statuses
@@ -483,3 +507,96 @@ def migrate_legacy() -> int:
         set_setting(session, "legacy_inventory_migrated", "1")
         session.commit()
     return moved
+
+
+# ---------------------------------------------------------------------------
+# Values typed before
+# ---------------------------------------------------------------------------
+
+
+# Built-in columns whose earlier values are offered again as you type.
+REMEMBERED = ("name", "category", "vendor", "catalog_number", "unit", "quantity", "location_note")
+# Kinds of fields whose values are worth offering again.
+REMEMBERED_FIELD_TYPES = ("text", "number")
+# What picking an earlier name or catalogue number may fill in.
+FILLED = ("name", "category", "vendor", "catalog_number", "unit", "quantity")
+# What another inventory's entries lend: the thing itself, not how it is filed.
+SHARED_COLUMNS = ("name", "vendor", "catalog_number", "unit", "quantity")
+MAX_SUGGESTIONS = 300
+MAX_FILLS = 600
+
+
+def _shown(mv: ModuleView, column: str) -> bool:
+    need = {"vendor": "supplier", "catalog_number": "supplier", "unit": "quantity", "quantity": "quantity"}
+    if column == "name":
+        return mv.row.kind != "samples"   # sample IDs are one of a kind
+    if column == "category":
+        return not mv.categories          # a fixed list is a select already
+    if column == "location_note":
+        return not mv.has("storage")
+    return mv.has(need[column]) if column in need else True
+
+
+def remembered(session, mv: ModuleView, items: list[InventoryItem]) -> dict:
+    """What was typed before, so it can be picked instead of typed again.
+
+    "suggest": for each text column, the values used before, newest first.
+    "fill": an earlier entry's details by its name and by its catalogue
+    number (lower-cased), so choosing one fills in the rest.
+
+    Besides this inventory's own entries, the lab's other inventories that
+    track a supplier count too: an order suggests what is in Reagents, a
+    reagent what was ordered. Only the name, vendor and catalogue number
+    carry over from them (quantity and unit are suggested, never filled)."""
+    columns = [c for c in REMEMBERED if _shown(mv, c)]
+    fields = [f["key"] for f in mv.fields if f["type"] in REMEMBERED_FIELD_TYPES]
+    others: list[InventoryItem] = []
+    labels = {mv.id: mv.row.label}
+    if mv.has("supplier"):
+        related = [m for m in list_modules(session) if m.id != mv.id and "supplier" in view(m).settings["features"]]
+        labels.update({m.id: m.label for m in related})
+        if related:
+            others = list(session.scalars(
+                select(InventoryItem).where(InventoryItem.module_id_fk.in_([m.id for m in related]))
+                .order_by(InventoryItem.id.desc()).limit(2000)))
+    own = sorted(items, key=lambda i: i.id, reverse=True)
+
+    suggest: dict[str, list[str]] = {}
+    seen: dict[str, set[str]] = {}
+
+    def offer(column: str, value) -> None:
+        value = (value or "").strip() if isinstance(value, str) else ""
+        if not value or len(suggest.setdefault(column, [])) >= MAX_SUGGESTIONS:
+            return
+        folded = value.lower()
+        if folded not in seen.setdefault(column, set()):
+            seen[column].add(folded)
+            suggest[column].append(value)
+
+    fill: dict[str, dict[str, dict]] = {"name": {}, "catalog_number": {}}
+    categories = set(mv.categories)
+    for item in own + others:
+        mine = item.module_id_fk == mv.id
+        attrs = item.attrs_dict if mine else {}
+        for column in columns:
+            if mine or column in SHARED_COLUMNS:
+                offer(column, getattr(item, column))
+        for key in fields:
+            offer(f"attr_{key}", attrs.get(key) if isinstance(attrs.get(key), str) else "")
+        values = {c: getattr(item, c) for c in FILLED if getattr(item, c)}
+        if not mine:
+            # How much is on the shelf says nothing about how much to order.
+            values.pop("quantity", None)
+            values.pop("unit", None)
+            if values.get("category") not in categories:
+                values.pop("category", None)
+        if mine:
+            values.update({f"attr_{f['key']}": attrs[f["key"]] for f in mv.fields
+                           if f["type"] in ("text", "number", "select", "url") and attrs.get(f["key"])
+                           and isinstance(attrs[f["key"]], str)})
+        values["_from"] = f"{mv.item_noun if mine else labels.get(item.module_id_fk, '')} #{item.number}".strip()
+        for column in fill:
+            folded = (getattr(item, column) or "").strip().lower()
+            if folded and folded not in fill[column] and len(fill[column]) < MAX_FILLS:
+                fill[column][folded] = values
+    return {"suggest": suggest, "fill": fill}

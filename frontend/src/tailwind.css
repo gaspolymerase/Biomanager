@@ -929,7 +929,13 @@
 
   /* --- Quick filter chips ---------------------------------------------- */
 
-  .dt-chips { @apply inline-flex shrink-0 items-center gap-0.5 rounded-lg bg-sand-100 p-0.5; }
+  /* Wider than a phone (Orders' status chips): it scrolls sideways
+     instead of running off the card. */
+  .dt-chips {
+    @apply inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto rounded-lg bg-sand-100 p-0.5
+           [scrollbar-width:none];
+  }
+  .dt-chips > .dt-chip { @apply shrink-0; }
   .dt-chip {
     @apply inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border-0
            bg-transparent px-2.5 text-[12px] font-medium text-muted transition-colors;
@@ -1185,6 +1191,16 @@
            px-5 py-3;
   }
   .record-dialog-hint { @apply mr-auto text-[12px] text-muted; }
+  .record-dialog-narrow { @apply w-[min(460px,calc(100vw-2rem))]; }
+
+  /* A column that must be filled in before a new entry can be added. */
+  .req-star { @apply ml-0.5 font-bold normal-case text-danger-600; }
+  /* "Filled vendor and catalog # from order #12": fields taken from an
+     earlier entry are tinted until they are edited. */
+  .record-fill-hint {
+    @apply -mt-2 rounded-lg border border-brand-100 bg-brand-50 px-2.5 py-1.5 text-[12px] leading-snug text-brand-800;
+  }
+  .record-dialog-body label > .is-filled { @apply border-brand-200 bg-brand-50/60; }
 }
 
 /* ===========================================================================

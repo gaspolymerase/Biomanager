@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import zlib
 from datetime import date, datetime
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from flask import (
     Blueprint, abort, flash, g, jsonify, redirect, render_template, request, url_for,
@@ -95,8 +96,23 @@ def _done(key: str, message: str = "", error: str = ""):
         flash(error, "error")
     elif message:
         flash(message, "success")
+    return redirect(_back(key))
+
+
+# Query parameters that open something once when the page loads.
+ONE_SHOT_PARAMS = ("reorder", "offer", "open")
+
+
+def _back(key: str, **params) -> str:
+    """The page the form was on (without its one-shot parameters), or the
+    inventory; `params` are added."""
     referrer = request.referrer or ""
-    return redirect(referrer if referrer.startswith(request.host_url) else url_for("inventory.module", key=key))
+    if not referrer.startswith(request.host_url):
+        return url_for("inventory.module", key=key, **params)
+    parts = urlsplit(referrer)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k not in ONE_SHOT_PARAMS]
+    query += [(k, str(v)) for k, v in params.items()]
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 # ---------------------------------------------------------------------------
@@ -300,15 +316,18 @@ def module(key: str):
         # Saved column widths / hidden columns are by position, so a
         # reconfigured sheet starts fresh instead of hiding the wrong ones.
         layout = json.dumps([mv.settings["features"], [f["key"] for f in mv.table_fields], bool(mv.statuses), 2])
-        stock_targets = ([m for m in svc.list_modules(session) if m.kind in ("reagents", "antibodies")]
-                         if row.kind == "orders" else [])
+        stock_targets = _stock_targets(session) if row.kind == "orders" else []
+        order_module = _order_module(session) if row.kind in STOCK_KINDS else None
+        reorder = (_reorder_payload(session, mv, items, request.args.get("reorder", ""))
+                   if row.kind == "orders" and request.args.get("reorder") else None)
         context = {
             "module": mv, "rows": rows, "racks": racks, "col_sig": format(zlib.crc32(layout.encode()), "x"),
             "manageable_racks": {r.id for r in racks if _can_manage_rack(r)},
             "grid": _grid_payload(mv, racks, items) if mv.has("storage") else None,
             "usernames": current_lab_usernames(session), "sources": sources, "mouse_links": mouse_links,
             "next_number": svc.next_number(session, row.id),
-            "reagents_module": stock_targets[0] if stock_targets else None,
+            "stock_targets": stock_targets, "order_module": order_module, "reorder": reorder,
+            "remembered": svc.remembered(session, mv, items),
             "can_configure": _can_configure(row), "is_admin": access.is_admin(),
             "terminal_statuses": sorted(svc.TERMINAL_STATUSES),
             "counts": {
@@ -318,9 +337,49 @@ def module(key: str):
                 "open": sum(1 for i in items if i.status in mv.open_statuses),
                 "expired": sum(1 for r in rows if r["expiry"] == "expired"),
                 "soon": sum(1 for r in rows if r["expiry"] == "soon"),
+                "status": {st: sum(1 for i in items if (i.status or "").lower() == st.lower()) for st in mv.statuses},
             },
         }
     return render_template("inventory/module.html", **context)
+
+
+def _reorder_payload(session, mv, orders: list[InventoryItem], ref: str) -> dict | None:
+    """A new order for something in stock ("reagents:12"), for the dialog
+    to open with: what it is and who sells it, and how many, what it cost
+    and which grant paid the last time it was ordered."""
+    key, _, raw_id = ref.partition(":")
+    source = svc.get_module(session, key)
+    stock = session.get(InventoryItem, int(raw_id)) if raw_id.isdigit() else None
+    if (source is None or source.kind not in STOCK_KINDS or not source.enabled or not lab.can_see(source)
+            or stock is None or stock.module_id_fk != source.id):
+        flash("That record is gone, so there is nothing to order again.", "warning")
+        return None
+    payload = {"owner": g.user.username, "status": mv.statuses[0] if mv.statuses else "", "is_shared": "0",
+               "name": stock.name, "vendor": stock.vendor, "catalog_number": stock.catalog_number,
+               "notes": f"Reorder of {source.label} #{stock.number}"}
+    category = STOCK_CATEGORY[source.kind]
+    if category in mv.categories or not mv.categories:
+        payload["category"] = category
+
+    def same(order: InventoryItem, column: str) -> bool:
+        mine, theirs = (getattr(order, column) or "").strip().lower(), (getattr(stock, column) or "").strip().lower()
+        return bool(mine) and mine == theirs
+
+    stocked = f"{source.key}:{stock.number}"
+    last = (next((o for o in orders if o.attrs_dict.get("stocked_as") == stocked), None)
+            or next((o for o in orders if same(o, "catalog_number")), None)
+            or next((o for o in orders if same(o, "name") and not stock.catalog_number), None))
+    hint = f"Ordering {stock.name or 'it'} again from {source.label} #{stock.number}."
+    if last is not None:
+        payload.update(quantity=last.quantity, unit=last.unit)
+        attrs = last.attrs_dict
+        payload.update({f"attr_{f['key']}": attrs[f["key"]] for f in mv.fields
+                        if f["type"] != "source" and attrs.get(f["key"]) and f["key"] not in NOT_COPIED_ATTRS})
+        hint += f" Quantity and the rest come from {mv.item_noun} #{last.number}: check them."
+    else:
+        hint += " Say how many to order."
+    payload["_hint"] = hint
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +404,7 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
     notes: list[str] = []
     manage = creating or _can_manage(item)
     me = access.username()
+    was = {key: _column_value(item, key) for key in mv.required}
 
     def text(name, limit=200):
         if name in form:
@@ -404,6 +464,15 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
     if json.dumps(attrs, sort_keys=True) != before:
         item.attrs = json.dumps(attrs)
 
+    # A new entry needs every required column; an old one may not lose one
+    # (but one that never had it can still be saved).
+    missing = [label for key, label in mv.required_labels.items()
+               if not _column_value(item, key) and (creating or was[key])]
+    if missing:
+        if creating:
+            raise Refused(f"Fill in {_and(missing)} to add {'an' if mv.item_noun[:1] in 'aeiou' else 'a'} {mv.item_noun}.")
+        raise Refused(f"{_and(missing)} can’t be left empty.")
+
     # Status last: it may fill the received date or stamp a used-up date.
     if "status" in form and (creating or form_changed(form, "status")):
         problem = svc.apply_status(mv, item, form.get("status"))
@@ -413,6 +482,16 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
     if mv.has("storage") and "rack_id" in form and form_changed(form, "rack_id", "position"):
         return svc.apply_position(session, item, form.get("rack_id"), form.get("position")), notes
     return None, notes
+
+
+def _column_value(item: InventoryItem, key: str) -> str:
+    """A column as text, by its form name (attr_<key> for custom fields)."""
+    value = item.attrs_dict.get(key[5:]) if key.startswith("attr_") else getattr(item, key, "")
+    return "" if value is None else str(value).strip()
+
+
+def _and(words: list[str]) -> str:
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
 
 
 @bp.route("/<key>/items/save", methods=["POST"])
@@ -435,6 +514,7 @@ def save_item(key: str):
             item = InventoryItem(module_id_fk=row.id, number=svc.next_number(session, row.id),
                                  owner=g.user.username, status=mv.statuses[0] if mv.statuses else "")
             session.add(item)
+        status_was = "" if creating else item.status
         try:
             error, notes = _item_from_form(session, mv, item, request.form, creating=creating)
         except Refused as refused:
@@ -447,6 +527,9 @@ def save_item(key: str):
             flash(note, "warning")
         if error:
             return _done(key, error=f"Saved {label}, but: {error}")
+        if not _wants_json() and _offers_stock(session, mv, item, status_was):
+            flash(f"Saved {label}.", "success")
+            return redirect(_back(key, offer=item.id))
         return _done(key, message=f"Saved {label}.")
 
 
@@ -536,6 +619,7 @@ def update_item(key: str, item_id: int):
             return jsonify({"ok": False, "error": "That record no longer exists."}), 404
         if not _can_edit(item):
             return jsonify({"ok": False, "error": access.reason_denied(item, noun=mv.item_noun)}), 403
+        status_was = item.status
         try:
             error, notes = _item_from_form(session, mv, item, request.form)
         except Refused as refused:
@@ -549,6 +633,8 @@ def update_item(key: str, item_id: int):
         answer = _row_json(mv, item)
         if notes:
             answer["notes"] = notes
+        if _offers_stock(session, mv, item, status_was):
+            answer["offer_stock"] = True
         return jsonify(answer)
 
 
@@ -645,16 +731,43 @@ def set_status(key: str, item_id: int):
             return jsonify({"ok": False, "error": "That record no longer exists."}), 404
         if not _can_edit(item):
             return jsonify({"ok": False, "error": access.reason_denied(item, noun=mv.item_noun)}), 403
+        status_was = item.status
         problem = svc.apply_status(mv, item, request.form.get("status"))
         if problem:
             session.rollback()
             return jsonify({"ok": False, "error": problem}), 400
         item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
         session.commit()
-        return jsonify(_row_json(mv, item))
+        answer = _row_json(mv, item)
+        if _offers_stock(session, mv, item, status_was):
+            answer["offer_stock"] = True
+        return jsonify(answer)
 
 
 STOCK_KINDS = ("reagents", "antibodies")
+# The order category that belongs in each kind of stock, and back.
+STOCK_CATEGORY = {"reagents": "reagent", "antibodies": "antibody"}
+
+
+def _stock_targets(session) -> list[InventoryModule]:
+    """The reagent and antibody inventories this person can add to."""
+    return [m for m in svc.list_modules(session) if m.kind in STOCK_KINDS]
+
+
+def _order_module(session) -> InventoryModule | None:
+    """Where "Order again" puts an order: the lab's orders, else one's own."""
+    lab_orders = svc.first_of_kind(session, "orders")
+    if lab_orders is not None and lab_orders.enabled and lab.can_see(lab_orders):
+        return lab_orders
+    return next((m for m in svc.list_modules(session) if m.kind == "orders"), None)
+
+
+def _offers_stock(session, mv, item: InventoryItem, status_was: str) -> bool:
+    """This save is what marked an order received, it is not in stock yet,
+    and there is somewhere to put it: ask whether to add it."""
+    return (mv.row.kind == "orders" and (item.status or "").lower() == "received"
+            and (status_was or "").lower() != "received" and not item.attrs_dict.get("stocked_as")
+            and _can_edit(item) and bool(_stock_targets(session)))
 
 
 @bp.route("/<key>/items/<int:item_id>/to-reagents", methods=["POST"])
@@ -679,21 +792,26 @@ def order_to_reagents(key: str, item_id: int):
         if target is None or target.kind not in STOCK_KINDS or not lab.can_see(target):
             return _done(key, error="Pick a reagents or antibodies inventory to add it to.")
         tv = svc.view(target)
+        attrs = order.attrs_dict
         with audit.batch(session, "mixed", f"order #{order.number} to {target.label}", "inventory_items"):
             stock = InventoryItem(
                 module_id_fk=target.id, number=svc.next_number(session, target.id), name=order.name,
                 status=tv.statuses[0] if tv.statuses else "", owner=g.user.username,
                 is_shared=request.form.get("shared") == "1", quantity=order.quantity, unit=order.unit,
-                vendor=order.vendor, catalog_number=order.catalog_number,
-                received_on=order.received_on or date.today(),
+                vendor=order.vendor, catalog_number=order.catalog_number, lot=order.lot,
+                received_on=order.received_on or date.today(), expires_on=order.expires_on,
+                # Columns both inventories have (a custom one added to each) come along.
+                attrs=json.dumps({f["key"]: attrs[f["key"]] for f in tv.fields
+                                  if attrs.get(f["key"]) and f["key"] not in NOT_COPIED_ATTRS}),
                 notes=f"From {mv.item_noun} #{order.number}" + (f". {order.notes}" if order.notes else ""))
             session.add(stock)
-            attrs = order.attrs_dict
             attrs["stocked_as"] = f"{target.key}:{stock.number}"
             order.attrs = json.dumps(attrs)
         session.commit()
-        flash(f"Added {stock.name} to {target.label} as #{stock.number}.", "success")
-        return redirect(url_for("inventory.module", key=target.key))
+        flash(f"Added {stock.name} to {target.label} as #{stock.number}. "
+              f"Add where it is kept{' and when it expires' if tv.has('expiry') else ''}.", "success")
+        # Its dialog opens there, for the details only the shelf knows.
+        return redirect(url_for("inventory.module", key=target.key, open=stock.id))
 
 
 # ---------------------------------------------------------------------------
@@ -927,6 +1045,9 @@ def configure(key: str):
                 "features": form.getlist("features"),
                 "category_label": (form.get("category_label") or "Category").strip(),
                 "categories": choices["categories"], "statuses": choices["statuses"], "fields": _fields_from_form(form),
+                # An older form without the Required card keeps what was chosen.
+                "required": (form.getlist("required") if "required_sent" in form
+                             else presets.normalise_settings(row.settings)["required"]),
             }))
             category_label = presets.normalise_settings(settings)["category_label"]
             changes = []
