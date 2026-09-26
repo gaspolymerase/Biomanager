@@ -22,7 +22,7 @@
     <nav class="nav-links" aria-label="Sections">
       <a href="#tour">Tour</a>
       <a href="#features">Features</a>
-      <a href="#run">Ways to run it</a>
+      <a href="server.html">Run it for your lab</a>
       <a href="guide.html">User guide</a>
       <a href="#faq">FAQ</a>
     </nav>
@@ -44,7 +44,7 @@
         <a class="btn btn-primary btn-large" href="#download" id="hero-download">Download for free</a>
         <a class="btn btn-large" href="#tour">Take the tour</a>
       </div>
-      <p class="fine" id="hero-platform">macOS · Windows · Linux · Android &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; your data stays on your computer</p>
+      <p class="fine" id="hero-platform">macOS · Windows · Linux · Android · any browser &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; your data stays on your computer or your lab's own server</p>
 
       <div class="chips" aria-label="What it tracks">
         <span>🐭 Mice</span><span>🐟 Zebrafish</span><span>🪰 Flies</span><span>🪱 Worms</span>
@@ -234,16 +234,17 @@
         <div class="card big">
           <div class="emoji">💻</div>
           <h3>Desktop app</h3>
-          <p>For one person on one computer. Download, open, done. Your data is a SQLite file in your
-            user folder, and <code>dbtool.py backup</code> keeps snapshots.</p>
+          <p>For one person on one computer. Download, open, done. Your data is a file in your user
+            folder, private to that computer, and moves to a server later in one step.</p>
           <a class="btn btn-primary" href="#download">Download</a>
         </div>
         <div class="card big">
           <div class="emoji">🏫</div>
-          <h3>Lab server</h3>
-          <p>For the whole lab, from any browser or phone. Docker with HTTPS, PostgreSQL, and backups
-            that run nightly and are test-restored every week. Your desktop data moves across in one command.</p>
-          <a class="btn" href="https://github.com/gaspolymerase/biomanager-app/issues/new?title=Lab%20server%20set-up">Ask about a lab server</a>
+          <h3>Lab server — the web version</h3>
+          <p>For the whole lab, from any browser, the Android app, or an iPhone's home screen. HTTPS, PostgreSQL,
+            and backups that run nightly and are test-restored every week. Free on a cloud VM with Tailscale;
+            an hour to set up, with every step written down — or hand it to an AI assistant.</p>
+          <a class="btn" href="server.html">Run it for your lab</a>
         </div>
       </div>
     </div>
@@ -311,13 +312,18 @@
         <p>Please don't. Sync services corrupt database files mid-write. BioManager warns you if it finds
           itself in a synced folder. For a lab, run it on a server instead, which everyone can use at once.</p></details>
       <details><summary>Can the whole lab use it?</summary>
-        <p>Yes, on a lab server. New sign-ups wait for an admin's approval; you edit what you own, breeder and
-          shared cages belong to everyone, and every change is recorded. The server should sit on your campus
-          network, VPN or a private network such as Tailscale, not the open internet.</p></details>
+        <p>Yes, on a lab server: a lab computer on your network, a university VM, or a free cloud VM with Tailscale.
+          New sign-ups wait for an admin's approval; you edit what you own, breeder and shared cages belong to
+          everyone, and every change is recorded. <a href="server.html">Every option, its cost and the steps.</a></p></details>
+      <details><summary>How safe is our data?</summary>
+        <p>A server backs up every night, restores the newest backup every week to prove it works, and can keep
+          encrypted copies off-site and on your own computers. Bulk changes can be undone, and every edit is in the
+          history. <a href="server.html#safe">How the copies are kept.</a></p></details>
       <details><summary>Is there a phone app?</summary>
         <p>Yes, for a lab server: the Android app opens your lab's server full screen and scans cage cards. On an
-          iPhone (or without the app), open the server in the browser and add it to your home screen — it then opens
-          like an app. The desktop app on one computer is private to that computer, so phones can't reach it.</p></details>
+          iPhone or iPad, open the server in Safari and tap <b>Share → Add to Home Screen</b>: it gets its own icon and
+          opens full screen like an app. The desktop app on one computer is private to that computer, so phones can't
+          reach it.</p></details>
       <details><summary>Linux: the AppImage doesn't open.</summary>
         <p>Mark it executable first (right-click → Properties → Allow executing, or <code>chmod +x BioManager-Linux.AppImage</code>).
           If it still won't start, your system may lack FUSE: install <code>libfuse2</code>, or use the .tar.gz and run

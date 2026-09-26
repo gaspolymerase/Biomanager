@@ -285,3 +285,59 @@ details p { font-size: 16px; }
 .note.warn { background: rgba(255, 159, 10, 0.12); border-left-color: #ff9f0a; }
 .gshot { margin: 18px 0 8px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); }
 .nav-links a[aria-current="page"] { color: var(--fg); font-weight: 600; }
+
+/* ------------------------------------------------------------ guide extras */
+.guide-body pre {
+  margin: 10px 0 14px; padding: 12px 14px; overflow-x: auto;
+  background: var(--bg-band); border: 1px solid var(--line); border-radius: 10px;
+  font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--fg);
+}
+.guide-body pre code { background: none; padding: 0; font-size: inherit; }
+.guide-body li > pre { margin-top: 8px; }
+.fine-left { font-size: 14px; color: var(--fg-3); }
+.pill {
+  display: inline-block; vertical-align: middle; margin-left: 6px; padding: 2px 9px; border-radius: 980px;
+  font-size: 12px; font-weight: 650; letter-spacing: 0; background: var(--accent-soft); color: var(--accent);
+}
+.opt-grid { display: grid; gap: 14px; margin: 18px 0; }
+@media (min-width: 700px) { .opt-grid { grid-template-columns: 1fr 1fr; } }
+.opt { padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.opt h3 { margin: 2px 0 8px; font-size: 1.1rem; }
+.opt p { font-size: 15px; }
+.opt-kicker { font-size: 13px; font-weight: 650; color: var(--accent); margin: 0; }
+.opt-meta { font-size: 14px; color: var(--fg-3); margin-top: -4px; }
+.opt .opt-meta { margin: 0; }
+.table-scroll { overflow-x: auto; margin: 12px 0; }
+.gtable.compare { min-width: 640px; font-size: 14px; }
+.gtable.compare th { white-space: normal; width: auto; }
+.gtable.compare thead th { color: var(--fg-3); font-weight: 600; font-size: 13px; }
+.gtable.compare tbody th { min-width: 170px; }
+.gtable.compare tr.rec { background: var(--accent-soft); }
+.gtable.layers th { width: 150px; white-space: normal; }
+blockquote.req {
+  margin: 12px 0; padding: 12px 16px; border-left: 3px solid var(--line); background: var(--bg-band);
+  border-radius: 0 10px 10px 0; font-size: 15px; color: var(--fg-2);
+}
+.prompt {
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0 10px; padding: 14px 16px; border-radius: 12px;
+  border: 1px dashed var(--accent); background: var(--accent-soft);
+  font: 14px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--fg);
+}
+.copy-btn { cursor: pointer; border: 0; }
+/* Coming from Excel: the side-by-side map. */
+.gtable.map th { width: 42%; white-space: normal; }
+.map td b { color: var(--fg); }
+.part { margin: 48px 0 0; padding-top: 18px; border-top: 2px solid var(--accent); }
+.part-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; color: var(--accent); margin: 0; }
+.part h2 { margin-top: 4px; }
+.guide-body .part + section { border-top: 0; margin-top: 0; }
+.toc .toc-part { margin: 14px 0 4px; padding-left: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--fg-3); }
+.toc .toc-part:first-child { margin-top: 0; }
+.wow { display: grid; gap: 12px; margin: 16px 0; }
+@media (min-width: 700px) { .wow { grid-template-columns: 1fr 1fr; } }
+.wow div { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
+.wow b { display: block; color: var(--fg); margin-bottom: 4px; }
+.wow p { font-size: 15px; margin: 0; }
+/* Long commands and paths in running text wrap on a phone instead of widening the page. */
+.guide-body :not(pre) > code { overflow-wrap: anywhere; }
