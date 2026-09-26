@@ -6,10 +6,13 @@ import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.View;
+import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
@@ -61,7 +64,9 @@ public class MainActivity extends Activity {
             web.reload();
         });
         findViewById(R.id.change_server).setOnClickListener(v -> changeServer());
-        findViewById(R.id.scan).setOnClickListener(v -> scan());
+        View scanButton = findViewById(R.id.scan);
+        scanButton.setOnClickListener(v -> scan());
+        hideWhileTyping(scanButton);
 
         configure(web);
         if (savedInstanceState != null) {
@@ -147,6 +152,23 @@ public class MainActivity extends Activity {
                 downloads.enqueue(request);
                 Toast.makeText(this, getString(R.string.downloading, name), Toast.LENGTH_SHORT).show();
             }
+        });
+    }
+
+    /** The Scan button would cover form fields while the keyboard is up. */
+    private void hideWhileTyping(View button) {
+        View root = findViewById(android.R.id.content);
+        root.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            boolean typing;
+            WindowInsets insets = root.getRootWindowInsets();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && insets != null) {
+                typing = insets.isVisible(WindowInsets.Type.ime());
+            } else {
+                Rect visible = new Rect();
+                root.getWindowVisibleDisplayFrame(visible);
+                typing = visible.height() < root.getRootView().getHeight() * 0.75;
+            }
+            button.setVisibility(typing ? View.GONE : View.VISIBLE);
         });
     }
 

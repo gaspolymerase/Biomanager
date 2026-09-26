@@ -12,6 +12,11 @@ on:
   push:
     paths: ["android/**", ".github/workflows/android.yml"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag, e.g. v0.1.0 (blank for a dev build)"
+        type: string
+        required: false
   workflow_call:
     inputs:
       version:
@@ -73,6 +78,7 @@ jobs:
           python -m pip install -q -r "$RUNNER_TEMP/req.txt"
           python scripts/demo-data.py "$RUNNER_TEMP/demo"
           echo "SERVER_LOG=$RUNNER_TEMP/server.log" >> "$GITHUB_ENV"
+          echo "DEMO_DIR=$RUNNER_TEMP/demo" >> "$GITHUB_ENV"
           BIOMANAGER_DATA_DIR="$RUNNER_TEMP/demo" PORT=5077 nohup python run.py > "$RUNNER_TEMP/server.log" 2>&1 &
           for i in $(seq 30); do curl -fsS http://127.0.0.1:5077/healthz && break; sleep 1; done
       - name: Enable KVM
