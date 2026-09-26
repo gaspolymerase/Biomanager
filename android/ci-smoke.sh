@@ -57,7 +57,7 @@ grep -q "GET /home\|GET / " "$SERVER_LOG" && echo "signed in" || echo "(sign-in 
 adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q MainActivity \
   || { echo "the app left its main screen after signing in"; exit 1; }
 # Only one setup screen may ever have been opened, and none may be left behind.
-[ "$(adb logcat -d | grep -c 'START u0 {.*cmp=org.biomanager.app/.SetupActivity')" -le 1 ] \
+[ "$(adb logcat -b events -d | grep am_create_activity | grep -c 'org.biomanager.app/.SetupActivity')" -le 1 ] \
   || { echo "the setup screen was opened more than once"; exit 1; }
 adb shell dumpsys activity activities | grep -q "SetupActivity" \
   && { echo "a setup screen was left behind the main screen"; exit 1; } || true
