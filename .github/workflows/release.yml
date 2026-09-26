@@ -1,14 +1,15 @@
 name: release
 
 # Push a version tag (git tag v0.2.0 && git push origin v0.2.0) and this
-# builds the desktop app on macOS (Apple silicon and Intel) and Windows, then
-# publishes the files as a release of the public repository that hosts the
-# website, gaspolymerase/biomanager-app. The website's download buttons link
-# to .../releases/latest/download/<file>, so the file names below must not
-# change.
+# builds BioManager for macOS (Apple silicon and Intel), Windows, Linux and
+# Android, checks that each desktop build starts and answers, then publishes
+# the files as a release of the public repository that hosts the website,
+# gaspolymerase/biomanager-app. The website's download buttons link to
+# .../releases/latest/download/<file>, so the file names must not change.
 #
-# Needs one secret, PUBLIC_RELEASE_TOKEN: a fine-grained personal access
-# token with "Contents: read and write" on gaspolymerase/biomanager-app only.
+# Publishing needs a PUBLIC_RELEASE_TOKEN secret: a fine-grained personal
+# access token with "Contents: read and write" on biomanager-app only.
+# Without it everything is built and kept as workflow artifacts.
 
 on:
   push:
@@ -16,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version to publish, e.g. v0.1.0"
+        description: "Version to build, e.g. v0.1.0"
         required: true
 
 env:
@@ -24,19 +25,22 @@ env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  build:
+  desktop:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-14            # Apple silicon
-            asset: BioManager-macOS-AppleSilicon.zip
+            assets: BioManager-macOS-AppleSilicon.zip
           - os: macos-15-intel
-            asset: BioManager-macOS-Intel.zip
+            assets: BioManager-macOS-Intel.zip
           - os: windows-latest
-            asset: BioManager-Windows.zip
+            assets: BioManager-Windows.zip
+          # The oldest supported Ubuntu, so the build's glibc suits most distributions.
+          - os: ubuntu-22.04
+            assets: BioManager-Linux.AppImage BioManager-Linux.tar.gz
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -51,51 +55,120 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt pyinstaller
-      - name: Build
-        env:
-          BIOMANAGER_VERSION: ${{ env.TAG }}
+
+      - name: Linux libraries for Qt WebEngine
+        if: runner.os == 'Linux'
         run: |
-          export BIOMANAGER_VERSION="${BIOMANAGER_VERSION#v}"
-          ./scripts/build-desktop.sh
+          sudo apt-get update -q
+          sudo apt-get install -y -q xvfb libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 \
+            libxcb-image0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-randr0 libegl1 \
+            libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2 libfuse2
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt pyinstaller
+          # Linux has no system web view pywebview can rely on; bundle Qt's.
+          if [ "$RUNNER_OS" = "Linux" ]; then python -m pip install "pywebview[qt]==5.4"; fi
+
+      - name: Build
+        run: BIOMANAGER_VERSION="${TAG#v}" ./scripts/build-desktop.sh
+
       - name: Package (macOS)
         if: runner.os == 'macOS'
         # ditto keeps the bundle's symlinks and permissions, which zip does not.
-        run: ditto -c -k --keepParent dist/BioManager.app "${{ matrix.asset }}"
+        run: ditto -c -k --keepParent dist/BioManager.app "${{ matrix.assets }}"
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path dist/BioManager -DestinationPath "${{ matrix.asset }}"
+        run: Compress-Archive -Path dist/BioManager -DestinationPath "${{ matrix.assets }}"
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          tar -C dist -czf BioManager-Linux.tar.gz BioManager
+          # AppImage: one file people mark executable and double-click.
+          APPDIR="$RUNNER_TEMP/BioManager.AppDir"
+          mkdir -p "$APPDIR/usr/lib"
+          cp -a dist/BioManager "$APPDIR/usr/lib/BioManager"
+          cp desktop/BioManager.png "$APPDIR/biomanager.png"
+          cat > "$APPDIR/biomanager.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=BioManager
+          Comment=Lab colony, stock and inventory management
+          Exec=BioManager
+          Icon=biomanager
+          Categories=Science;Biology;Office;
+          EOF
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/lib/BioManager/BioManager" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" BioManager-Linux.AppImage
+
+      # Start what was just built, on a scratch data folder, and ask it for a page.
+      - name: Check the app starts
+        env:
+          BIOMANAGER_DATA_DIR: ${{ runner.temp }}/smoke-data
+          BIOMANAGER_PORT: "5099"
+          QTWEBENGINE_CHROMIUM_FLAGS: "--no-sandbox --disable-gpu"
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          case "$RUNNER_OS" in
+            macOS)   dist/BioManager.app/Contents/MacOS/BioManager > smoke.log 2>&1 & ;;
+            Windows) dist/BioManager/BioManager.exe > smoke.log 2>&1 & ;;
+            Linux)   xvfb-run -a ./BioManager-Linux.AppImage > smoke.log 2>&1 & ;;
+          esac
+          for i in $(seq 90); do
+            if curl -fsS -o /dev/null http://127.0.0.1:5099/register; then echo "the app answered"; exit 0; fi
+            sleep 2
+          done
+          echo "the app never answered"; cat smoke.log; exit 1
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
+          name: desktop-${{ matrix.os }}
+          path: BioManager-*.*
           if-no-files-found: error
 
+  android:
+    uses: ./.github/workflows/android.yml
+    with:
+      version: ${{ github.event.inputs.tag || github.ref_name }}
+    secrets: inherit
+
   publish:
-    needs: build
+    needs: [desktop, android]
     runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN != '' }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: assets
+          pattern: "{desktop-*,BioManager-Android.apk}"
           merge-multiple: true
+      - run: ls -la assets
       - name: Publish to ${{ env.PUBLIC_REPO }}
+        if: env.HAS_TOKEN == 'true'
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
         run: |
-          ls -la assets
           cat > notes.md <<'EOF'
-          **Download** the file for your computer below, or from the [website](https://gaspolymerase.github.io/biomanager-app/#download).
+          **Download** the file for your device below, or from the [website](https://gaspolymerase.github.io/biomanager-app/#download).
 
           | File | For |
           | --- | --- |
           | `BioManager-macOS-AppleSilicon.zip` | Macs with an M1 or later chip |
           | `BioManager-macOS-Intel.zip` | Macs with an Intel chip |
           | `BioManager-Windows.zip` | Windows 10 and 11, 64-bit |
+          | `BioManager-Linux.AppImage` | Linux, x86-64: mark it executable and open it |
+          | `BioManager-Linux.tar.gz` | Linux, the same app as a folder |
+          | `BioManager-Android.apk` | Android 7 and later: connects to your lab's BioManager server |
 
-          **First launch:** on a Mac, right-click BioManager and choose **Open**; on Windows, choose **More info → Run anyway**. The app is not signed by Apple or Microsoft, so the system asks once.
+          **First launch:** on a Mac, right-click BioManager and choose **Open**; on Windows, choose **More info → Run anyway**. The apps are not signed by Apple or Microsoft, so the system asks once. On Android, allow your browser to install apps when asked.
 
           Your data is kept outside the app, so updating never touches it.
           EOF
@@ -106,3 +179,6 @@ jobs:
           else
             gh release create "$TAG" assets/* --repo "$PUBLIC_REPO" --title "BioManager ${TAG#v}" --notes-file notes.md
           fi
+      - name: Not published
+        if: env.HAS_TOKEN != 'true'
+        run: echo "::notice::No PUBLIC_RELEASE_TOKEN secret, so nothing was published. The files are this run's artifacts."

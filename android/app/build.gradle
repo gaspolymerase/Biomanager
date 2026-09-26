@@ -1,0 +1,50 @@
+plugins {
+    id "com.android.application"
+}
+
+// Release builds are signed with the key in ANDROID_KEYSTORE (a path) when
+// the release workflow provides one, so installed copies update in place.
+// Without it they fall back to the debug key: fine for trying it out, but a
+// later properly signed version will not install over it.
+def keystore = System.getenv("ANDROID_KEYSTORE")
+
+android {
+    namespace "org.biomanager.app"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "org.biomanager.app"
+        minSdk 24
+        targetSdk 35
+        versionCode Integer.parseInt((project.findProperty("versionCode") ?: "1").toString())
+        versionName((project.findProperty("versionName") ?: "0.1.0").toString())
+    }
+
+    signingConfigs {
+        release {
+            if (keystore) {
+                storeFile file(keystore)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "biomanager"
+                keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Google's QR scanner: runs in Play services, so the app needs no camera permission.
+    implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
+}

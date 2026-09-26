@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lab servers are private, and not all of them have a public certificate.
+  Trusting certificates the user installed lets a lab that runs its own
+  certificate authority (deploy/README.md, TLS=internal) install its root on
+  the phone once. Plain http is allowed for a server on a trusted network
+  (BIOMANAGER_HTTPS=0); the setup screen warns when an address is not https.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

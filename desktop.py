@@ -6,6 +6,7 @@ Bundled app:       double-click Biomanager.app (built via Biomanager.spec)
 """
 from __future__ import annotations
 
+import os
 import socket
 import sys
 import threading
@@ -45,7 +46,9 @@ def _wait_until_ready(url: str, timeout_s: float = 8.0) -> None:
 
 
 def main() -> int:
-    port = _pick_free_port()
+    # BIOMANAGER_PORT pins the port, so the release workflow can check that a
+    # freshly built app answers; otherwise any free one.
+    port = int(os.environ.get("BIOMANAGER_PORT") or 0) or _pick_free_port()
     server_thread = threading.Thread(target=_run_flask, args=(port,), daemon=True)
     server_thread.start()
 

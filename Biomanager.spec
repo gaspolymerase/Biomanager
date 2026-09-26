@@ -27,6 +27,13 @@ hiddenimports = (
     + collect_submodules("sqlalchemy.dialects.sqlite")
     + ["psycopg"]
 )
+if sys.platform.startswith("linux"):
+    # On Linux the window is Qt WebEngine (pip install "pywebview[qt]"),
+    # which pywebview imports only once it has picked a backend.
+    hiddenimports += collect_submodules("qtpy") + [
+        "PyQt6.QtWebEngineWidgets", "PyQt6.QtWebEngineCore", "PyQt6.QtWebChannel",
+        "PyQt6.QtNetwork", "PyQt6.QtPrintSupport",
+    ]
 
 
 a = Analysis(

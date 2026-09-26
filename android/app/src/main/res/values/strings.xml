@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BioManager</string>
+    <string name="setup_title">Connect to your lab</string>
+    <string name="setup_body">BioManager on your phone opens your lab\'s BioManager server. Ask your lab\'s BioManager admin for its address.</string>
+    <string name="setup_hint">biomanager.example.edu</string>
+    <string name="setup_connect">Connect</string>
+    <string name="setup_checking">Checking…</string>
+    <string name="setup_footnote">Using the BioManager desktop app on your own computer? That copy only works on that computer. To use your phone too, your lab needs a BioManager server.</string>
+    <string name="err_empty">Type your lab server\'s address.</string>
+    <string name="err_not_biomanager">That address answered, but it isn\'t a BioManager server.</string>
+    <string name="err_unreachable">Couldn\'t reach %1$s. Check the address, and that your phone is on the lab\'s network or VPN.</string>
+    <string name="err_certificate">The server\'s certificate isn\'t trusted by this phone. If your lab uses its own certificate, install it in Settings → Security → Encryption &amp; credentials, then try again.</string>
+    <string name="warn_http">This address isn\'t https, so passwords are sent unencrypted. Use it only on a network you trust.</string>
+    <string name="offline_title">Can\'t reach the lab server</string>
+    <string name="retry">Try again</string>
+    <string name="change_server">Change server</string>
+    <string name="scan">Scan a cage card</string>
+    <string name="scan_unavailable">The QR scanner needs Google Play services, which this phone doesn\'t have. Your camera app can scan cage cards instead.</string>
+    <string name="scan_other_server">That code is for a different server: %1$s</string>
+    <string name="scan_not_link">That code isn\'t a BioManager link.</string>
+    <string name="downloading">Downloading %1$s…</string>
+</resources>
