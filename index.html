@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BioManager — lab colony, stock and inventory management</title>
-  <meta name="description" content="One place for a biology lab's mice, zebrafish, flies, worms, plasmids, samples, orders, reagents, calendar and notebook. Free desktop app for macOS, Windows and Linux.">
+  <meta name="description" content="One place for a biology lab's mice, zebrafish, flies, worms, plasmids, samples, orders, reagents, calendar and notebook. Free desktop app for macOS and Windows.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)">
@@ -43,7 +43,7 @@
         <a class="btn btn-primary btn-large" href="#download" id="hero-download">Download for free</a>
         <a class="btn btn-large" href="#tour">Take the tour</a>
       </div>
-      <p class="fine" id="hero-platform">macOS · Windows · Linux &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; your data stays on your computer</p>
+      <p class="fine" id="hero-platform">macOS · Windows &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; your data stays on your computer</p>
 
       <div class="chips" aria-label="What it tracks">
         <span>🐭 Mice</span><span>🐟 Zebrafish</span><span>🪰 Flies</span><span>🪱 Worms</span>
@@ -266,11 +266,9 @@
         <a class="dl" data-os="win" href="https://github.com/gaspolymerase/biomanager-app/releases/latest/download/BioManager-Windows.zip">
           <span class="dl-os">Windows</span><span class="dl-sub">10 and 11, 64-bit</span>
         </a>
-        <a class="dl" data-os="linux" href="https://github.com/gaspolymerase/biomanager-app/releases/latest/download/BioManager-Linux.tar.gz">
-          <span class="dl-os">Linux</span><span class="dl-sub">x86-64</span>
-        </a>
       </div>
-      <p class="fine center"><a href="https://github.com/gaspolymerase/biomanager-app/releases">All releases and what changed</a></p>
+      <p class="fine center"><a href="https://github.com/gaspolymerase/biomanager-app/releases">All releases and what changed</a>
+        &nbsp;·&nbsp; Linux desktop app coming later — <a href="https://github.com/gaspolymerase/biomanager-app/issues/new?title=Linux%20desktop%20app">tell us you'd use it</a></p>
 
       <div class="steps">
         <div class="step"><span>1</span><div><h4>Unzip and move it</h4><p>On a Mac, drag <b>BioManager</b> into Applications. On Windows, extract the folder and open <b>BioManager.exe</b>.</p></div></div>
@@ -288,7 +286,7 @@
       <details><summary>Where is my data kept?</summary>
         <p>On your computer, outside the app, so updating or reinstalling never touches it:
           <code>~/Library/Application Support/Biomanager/</code> on macOS, <code>%APPDATA%\Biomanager\</code>
-          on Windows and <code>~/.local/share/Biomanager/</code> on Linux. Settings → Export my data
+          on Windows. Settings → Export my data
           downloads your records as a zip at any time.</p></details>
       <details><summary>Can I keep the database in Dropbox, OneDrive or iCloud?</summary>
         <p>Please don't. Sync services corrupt database files mid-write. BioManager warns you if it finds
@@ -329,7 +327,6 @@
     var ua = navigator.userAgent, os = null, label = null;
     if (/Windows/.test(ua)) { os = 'win'; label = 'Download for Windows'; }
     else if (/Macintosh|Mac OS X/.test(ua) && !/iPhone|iPad/.test(ua)) { label = 'Download for Mac'; }
-    else if (/Linux/.test(ua) && !/Android/.test(ua)) { os = 'linux'; label = 'Download for Linux'; }
     var hero = document.getElementById('hero-download');
     if (label) hero.textContent = label;
     if (os) {

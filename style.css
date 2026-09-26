@@ -192,7 +192,7 @@ p { margin: 0 0 1em; color: var(--fg-2); }
 /* Downloads */
 .downloads { display: grid; gap: 12px; margin: 36px auto 8px; max-width: 900px; }
 @media (min-width: 560px) { .downloads { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 900px) { .downloads { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 900px) { .downloads { grid-template-columns: repeat(3, 1fr); } }
 .dl {
   display: flex; flex-direction: column; gap: 2px; padding: 18px 20px;
   border-radius: var(--radius); border: 1px solid var(--line); background: var(--card);
