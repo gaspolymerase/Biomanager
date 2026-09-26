@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BioManager — lab colony, stock and inventory management</title>
-  <meta name="description" content="One place for a biology lab's mice, zebrafish, flies, worms, plasmids, samples, orders, reagents, calendar and notebook. Free desktop app for macOS and Windows.">
+  <meta name="description" content="One place for a biology lab's mice, zebrafish, flies, worms, plasmids, samples, orders, reagents, calendar and notebook. Free apps for macOS, Windows, Linux and Android.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)">
@@ -23,6 +23,7 @@
       <a href="#tour">Tour</a>
       <a href="#features">Features</a>
       <a href="#run">Ways to run it</a>
+      <a href="guide.html">User guide</a>
       <a href="#faq">FAQ</a>
     </nav>
     <a class="btn btn-small btn-primary" href="#download">Download</a>
@@ -43,7 +44,7 @@
         <a class="btn btn-primary btn-large" href="#download" id="hero-download">Download for free</a>
         <a class="btn btn-large" href="#tour">Take the tour</a>
       </div>
-      <p class="fine" id="hero-platform">macOS · Windows &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; your data stays on your computer</p>
+      <p class="fine" id="hero-platform">macOS · Windows · Linux · Android &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; your data stays on your computer</p>
 
       <div class="chips" aria-label="What it tracks">
         <span>🐭 Mice</span><span>🐟 Zebrafish</span><span>🪰 Flies</span><span>🪱 Worms</span>
@@ -197,7 +198,7 @@
         <h2>Scan the cage card.<br>The cage opens.</h2>
         <p>Print correctly sized cards for cages, tanks and vials. Point any phone camera at the QR code
           and that record opens, ready to edit — nobody walks back to a computer to type an ID.</p>
-        <p class="fine">Phones need BioManager running on a lab server your phone can reach.</p>
+        <p class="fine">With a lab server, use the <a href="#download">Android app</a>'s Scan button or any phone camera.</p>
       </div>
       <div class="phones">
         <img class="card-sheet" src="assets/screenshots/cage-cards.webp" loading="lazy" width="2000" height="1250" alt="Printable cage cards with owner, purpose, genotype and a QR code">
@@ -266,14 +267,32 @@
         <a class="dl" data-os="win" href="https://github.com/gaspolymerase/biomanager-app/releases/latest/download/BioManager-Windows.zip">
           <span class="dl-os">Windows</span><span class="dl-sub">10 and 11, 64-bit</span>
         </a>
+        <a class="dl" data-os="linux" href="https://github.com/gaspolymerase/biomanager-app/releases/latest/download/BioManager-Linux.AppImage">
+          <span class="dl-os">Linux</span><span class="dl-sub">AppImage, x86-64 · <span class="dl-alt">or <u data-href="https://github.com/gaspolymerase/biomanager-app/releases/latest/download/BioManager-Linux.tar.gz">.tar.gz</u></span></span>
+        </a>
       </div>
-      <p class="fine center"><a href="https://github.com/gaspolymerase/biomanager-app/releases">All releases and what changed</a>
-        &nbsp;·&nbsp; Linux desktop app coming later — <a href="https://github.com/gaspolymerase/biomanager-app/issues/new?title=Linux%20desktop%20app">tell us you'd use it</a></p>
+      <p class="fine center"><a href="guide.html">Read the user guide</a> &nbsp;·&nbsp; <a href="https://github.com/gaspolymerase/biomanager-app/releases">All releases and what changed</a>
+</p>
+
+      <div class="mobile-dl">
+        <div class="card big">
+          <div class="emoji">📱</div>
+          <h3>On your phone</h3>
+          <p>The phone apps open your lab's BioManager server — the same data as everyone in the lab,
+            with a <b>Scan</b> button for cage cards. Ask your lab's admin for the server's address.</p>
+          <div class="cta left">
+            <a class="btn btn-primary" data-os="android" href="https://github.com/gaspolymerase/biomanager-app/releases/latest/download/BioManager-Android.apk">Android app (.apk)</a>
+          </div>
+          <p class="fine">iPhone, or no app: open the server in Safari or Chrome and choose
+            <b>Share → Add to Home Screen</b> (iPhone) or <b>⋮ → Install app</b> (Android).
+            On Android, allow your browser to install the .apk when it asks.</p>
+        </div>
+      </div>
 
       <div class="steps">
-        <div class="step"><span>1</span><div><h4>Unzip and move it</h4><p>On a Mac, drag <b>BioManager</b> into Applications. On Windows, extract the folder and open <b>BioManager.exe</b>.</p></div></div>
+        <div class="step"><span>1</span><div><h4>Unzip and move it</h4><p>On a Mac, drag <b>BioManager</b> into Applications. On Windows, extract the folder and open <b>BioManager.exe</b>. On Linux, mark the AppImage executable and open it.</p></div></div>
         <div class="step"><span>2</span><div><h4>Open it the first time</h4><p>macOS: <b>right-click → Open</b>, then Open. Windows: <b>More info → Run anyway</b>. They ask once, because the app isn't signed by Apple or Microsoft.</p></div></div>
-        <div class="step"><span>3</span><div><h4>Create your account</h4><p>The first account is the admin. Then add a rack, bring your mice in with <b>Add many</b>, and print cage cards.</p></div></div>
+        <div class="step"><span>3</span><div><h4>Set up your lab</h4><p>Create your account (the first is the admin) and tick what your lab keeps. BioManager makes just those databases, then <b>Getting started</b> walks you through the first steps. The <a href="guide.html">user guide</a> has the rest.</p></div></div>
       </div>
     </div>
   </section>
@@ -286,7 +305,7 @@
       <details><summary>Where is my data kept?</summary>
         <p>On your computer, outside the app, so updating or reinstalling never touches it:
           <code>~/Library/Application Support/Biomanager/</code> on macOS, <code>%APPDATA%\Biomanager\</code>
-          on Windows. Settings → Export my data
+          on Windows and <code>~/.local/share/Biomanager/</code> on Linux. Settings → Export my data
           downloads your records as a zip at any time.</p></details>
       <details><summary>Can I keep the database in Dropbox, OneDrive or iCloud?</summary>
         <p>Please don't. Sync services corrupt database files mid-write. BioManager warns you if it finds
@@ -295,6 +314,14 @@
         <p>Yes, on a lab server. New sign-ups wait for an admin's approval; you edit what you own, breeder and
           shared cages belong to everyone, and every change is recorded. The server should sit on your campus
           network, VPN or a private network such as Tailscale, not the open internet.</p></details>
+      <details><summary>Is there a phone app?</summary>
+        <p>Yes, for a lab server: the Android app opens your lab's server full screen and scans cage cards. On an
+          iPhone (or without the app), open the server in the browser and add it to your home screen — it then opens
+          like an app. The desktop app on one computer is private to that computer, so phones can't reach it.</p></details>
+      <details><summary>Linux: the AppImage doesn't open.</summary>
+        <p>Mark it executable first (right-click → Properties → Allow executing, or <code>chmod +x BioManager-Linux.AppImage</code>).
+          If it still won't start, your system may lack FUSE: install <code>libfuse2</code>, or use the .tar.gz and run
+          <code>BioManager/BioManager</code>.</p></details>
       <details><summary>Why does my computer warn me when I first open it?</summary>
         <p>BioManager isn't signed with an Apple or Microsoft developer certificate, so the system asks you to
           confirm once. On a Mac, right-click the app and choose Open; on Windows, choose More info, then Run anyway.</p></details>
@@ -325,15 +352,20 @@
   // Apple-silicon Mac from an Intel one reliably, so Macs get the section.
   (function () {
     var ua = navigator.userAgent, os = null, label = null;
-    if (/Windows/.test(ua)) { os = 'win'; label = 'Download for Windows'; }
+    if (/Android/.test(ua)) { os = 'android'; label = 'Get the Android app'; }
+    else if (/Windows/.test(ua)) { os = 'win'; label = 'Download for Windows'; }
     else if (/Macintosh|Mac OS X/.test(ua) && !/iPhone|iPad/.test(ua)) { label = 'Download for Mac'; }
+    else if (/Linux/.test(ua)) { os = 'linux'; label = 'Download for Linux'; }
     var hero = document.getElementById('hero-download');
     if (label) hero.textContent = label;
     if (os) {
-      var link = document.querySelector('.dl[data-os="' + os + '"]');
+      var link = document.querySelector('[data-os="' + os + '"]');
       if (link) { hero.href = link.href; link.classList.add('mine'); }
     }
   })();
+  document.querySelectorAll('u[data-href]').forEach(function (u) {
+    u.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); location.href = u.dataset.href; });
+  });
 </script>
 </body>
 </html>

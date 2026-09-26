@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User guide — BioManager</title>
+  <meta name="description" content="How to use BioManager: install it, set up your lab, and manage mice, fish, flies, worms, plasmids, samples, orders, reagents, the calendar and the notebook.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="guide-page">
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="./"><img src="assets/icon.svg" alt="" width="28" height="28">BioManager</a>
+    <nav class="nav-links" aria-label="Site">
+      <a href="./#tour">Tour</a>
+      <a href="guide.html" aria-current="page">User guide</a>
+      <a href="./#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-small btn-primary" href="./#download">Download</a>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <aside class="toc" aria-label="Contents">
+    <p class="toc-title">User guide</p>
+    <ol>
+      <li><a href="#start">Getting started</a>
+        <ol>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#first-run">Set up your lab</a></li>
+          <li><a href="#home">The Home page</a></li>
+        </ol>
+      </li>
+      <li><a href="#basics">Everyday basics</a></li>
+      <li><a href="#mice">Mouse colony</a></li>
+      <li><a href="#fish">Zebrafish</a></li>
+      <li><a href="#flies">Flies and worms</a></li>
+      <li><a href="#custom">Other organisms</a></li>
+      <li><a href="#plasmids">Plasmids</a></li>
+      <li><a href="#inventory">Samples, orders, reagents</a></li>
+      <li><a href="#calendar">Calendar and notebook</a></li>
+      <li><a href="#cards">Cage cards and phones</a></li>
+      <li><a href="#lab">Working as a lab</a></li>
+      <li><a href="#data">Your data and backups</a></li>
+      <li><a href="#trouble">Troubleshooting</a></li>
+    </ol>
+  </aside>
+
+  <main class="guide-body">
+    <p class="eyebrow">User guide</p>
+    <h1>Using BioManager</h1>
+    <p class="lede-left">Everything you need to get your lab into BioManager and keep it there — from the
+      first launch to a whole lab on a shared server. Read it top to bottom once, or jump to what you need.</p>
+
+    <!-- ======================================================= start -->
+    <section id="start">
+      <h2>1 · Getting started</h2>
+
+      <h3 id="install">Install</h3>
+      <p>Download BioManager for your computer from the <a href="./#download">download page</a>.</p>
+      <table class="gtable">
+        <tr><th>macOS</th><td>Unzip, drag <b>BioManager</b> into Applications. The first time, <b>right-click it → Open</b>, then Open.</td></tr>
+        <tr><th>Windows</th><td>Extract the zip, open the <b>BioManager</b> folder, run <b>BioManager.exe</b>. If Windows warns you, choose <b>More info → Run anyway</b>.</td></tr>
+        <tr><th>Linux</th><td>Mark <code>BioManager-Linux.AppImage</code> as executable (right-click → Properties, or <code>chmod +x</code>) and open it.</td></tr>
+        <tr><th>Android</th><td>The phone app connects to a <a href="#lab-server">lab server</a>. See <a href="#phones">Phones</a>.</td></tr>
+      </table>
+      <div class="note"><b>Why the warning?</b> BioManager isn't signed by Apple or Microsoft, so the system asks you to confirm
+        once. It never asks again for that version.</div>
+
+      <h3 id="first-run">Set up your lab</h3>
+      <p>The first time BioManager opens, you create your account — the first account is the <b>admin</b> — and
+        BioManager asks a few questions about your lab. Nothing is set up until you answer, so you only get the
+        databases you'll actually use.</p>
+      <ol class="steps-list">
+        <li><b>What does your lab keep?</b> Tick what you work with: mice, zebrafish, flies, worms, something else,
+          plasmids, samples, orders, reagents, antibodies.</li>
+        <li><b>A few details for each.</b> What to call it (e.g. <i>Mouse room B</i>); for the mouse colony, how many
+          racks the room has, their size and how positions are labelled (<code>A1</code>, <code>1-1</code> or 1, 2, 3…);
+          for flies and worms, which incubator temperatures you run. Leave anything blank for the usual — it can all
+          be changed later.</li>
+        <li><b>Which lab functions, and what members may do.</b> The calendar and notebook, and whether members may add
+          databases of their own.</li>
+        <li><b>Done.</b> BioManager creates exactly those databases — the racks and incubators too — and takes you Home,
+          where <b>Getting started</b> shows what to do next.</li>
+      </ol>
+      <p>Need something later? <b>Add database</b> in the sidebar adds another at any time. An admin switches databases
+        on or off under <b>Setup</b> in the sidebar; switching one off hides it without deleting anything.</p>
+      <p>People who join later get a one-page welcome tour of the lab's databases the first time they sign in.</p>
+
+      <h3 id="home">The Home page</h3>
+      <p>Home is where each day starts. It shows only what needs attention:</p>
+      <ul>
+        <li>mice older than 30 weeks, upcoming weanings and the genotyping queue;</li>
+        <li>fly vials and worm plates due to be flipped or chunked, and progeny to collect;</li>
+        <li>reagents that have expired, expire soon or are running low;</li>
+        <li>zebrafish mating tanks due back, the next 14 days of the calendar and recent orders.</li>
+      </ul>
+      <p>While you're new, Home also shows <b>Getting started</b>: the first steps for what your lab keeps — add a rack,
+        bring in your mice, print cage cards, set up your fly incubators, invite your lab. Each step ticks itself off
+        when it's done, and <b>Hide this list</b> puts it away. <b>Help</b> at the bottom of the sidebar opens this guide.</p>
+      <figure class="gshot"><img src="assets/screenshots/home.webp" alt="The Home page" loading="lazy" width="2000" height="1250"></figure>
+    </section>
+
+    <!-- ======================================================= basics -->
+    <section id="basics">
+      <h2>2 · Everyday basics</h2>
+      <p>Every database works the same way, so once you know one you know them all.</p>
+      <dl class="gdl">
+        <dt>Sheets you edit in place</dt>
+        <dd>Click a cell and type. It saves as you go — there is no Save button. A green dot at the start of a row
+          means the record is active (a living animal, a vial in use).</dd>
+        <dt>Find things</dt>
+        <dd>The search box above each sheet filters it; the chips beside it (<i>All</i>, <i>Alive</i>, <i>Mine</i>…)
+          narrow it further. <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd> searches everything, from anywhere.</dd>
+        <dt>Tabs</dt>
+        <dd>Every page you open becomes a tab along the top. Drag to reorder, middle-click to close,
+          <kbd>Alt</kbd> + <kbd>1</kbd>…<kbd>9</kbd> to switch.</dd>
+        <dt>Add many</dt>
+        <dd>Describe one record and say how many — <code>4 females, 2 males</code> — or upload a CSV. You get an
+          editable preview first, with the IDs that will be assigned. <b>Fill down</b> copies a value into the empty
+          cells below; <b>Skip</b> leaves a row out.</dd>
+        <dt>Act on many at once</dt>
+        <dd>Tick rows (shift-click selects a range) and a bar rises from the bottom: set a field, move, add to an
+          experiment, sac. Only records you may edit are changed; the rest are counted and skipped.</dd>
+        <dt>Undo</dt>
+        <dd>Every bulk action is listed under <b>Batches</b> in the sidebar and can be undone. If someone has
+          changed those records since, BioManager asks before overwriting their edit.</dd>
+        <dt>Export and print</dt>
+        <dd><b>Export</b> downloads what you see as CSV; <b>Print</b> gives a clean printout of the sheet.</dd>
+        <dt>History</dt>
+        <dd>Every change is recorded with who made it and what changed. Admins read it under <b>Audit log</b>.</dd>
+      </dl>
+    </section>
+
+    <!-- ======================================================= mice -->
+    <section id="mice">
+      <h2>3 · Mouse colony</h2>
+      <p>The colony has tabs across the top: <b>Mice</b>, <b>Cages</b>, <b>Litters</b>, <b>Breeders</b>,
+        <b>Experiments</b>, <b>Strains</b> and <b>Presets</b>.</p>
+
+      <h3>Racks first</h3>
+      <p>Open <b>Cages → Rack grid → New rack</b>. Give it rows and columns and choose how positions are labelled —
+        match the stickers on your real racks (<code>D7</code>, <code>4-7</code>, <code>7D</code>, or 1 to 80). Each rack
+        keeps its own scheme.</p>
+      <figure class="gshot"><img src="assets/screenshots/rack-grid.webp" alt="A rack grid" loading="lazy" width="2000" height="1250"></figure>
+
+      <h3>Add your mice</h3>
+      <ol class="steps-list">
+        <li>Add your lines under <b>Strains</b>.</li>
+        <li>On <b>Mice</b>, choose <b>Add many</b>. Describe a group, or upload your old spreadsheet as a CSV —
+          columns called <code>sex</code>, <code>dob</code>, <code>cage</code>, <code>litter</code> and <code>notes</code> are
+          recognised, anything else is ignored. Leave out mouse IDs: BioManager assigns them in order.</li>
+        <li>Type <code>new</code> in the cage column to put the whole group in one new cage.</li>
+        <li>Check the preview, then save. Give each cage a purpose (breeding, stock, experiments) and a rack position
+          on <b>Cages</b>, or drag it on the rack grid.</li>
+      </ol>
+
+      <h3>Litters and weaning</h3>
+      <p>When a litter is born, open the breeding cage and choose <b>Litter born</b>. BioManager works out the weaning
+        date (P21) and the genotyping date (about P28); both appear on Home and the calendar when they come due. At
+        weaning, use <b>Wean and distribute pups</b>, or add the pups with <b>Add many</b> and move them to their cages.</p>
+
+      <h3>Genotyping, experiments, sac</h3>
+      <ul>
+        <li>Mice with the status <i>geno</i> wait in the <b>genotyping queue</b> on Home. Enter results in the transgene columns.</li>
+        <li>To start an experiment, tick the mice, choose <b>Add to experiment</b> and name the treatment group.</li>
+        <li>Setting a date of death (or <b>Sac</b> from the selection bar) ends a mouse's record; it stays in the history.</li>
+        <li>Breeders older than 30 weeks are flagged on <b>Breeders</b> and Home.</li>
+      </ul>
+
+      <h3>Mine, shared, everyone</h3>
+      <p>The <b>My colony / Shared / Everyone</b> switch changes what you <i>see</i>. What you may <i>edit</i> doesn't change:
+        your own records, breeding cages and anything marked shared. See <a href="#lab">Working as a lab</a>.</p>
+    </section>
+
+    <!-- ======================================================= fish -->
+    <section id="fish">
+      <h2>4 · Zebrafish</h2>
+      <ul>
+        <li><b>Lines</b> — <b>New line</b> with its ZFIN name and owner.</li>
+        <li><b>Tanks</b> — <b>New tank</b>, then <b>New fish</b> to put a group in it with a headcount. A tank can later
+          be split into named individuals.</li>
+        <li><b>Systems</b> — <b>Add system</b> for each recirculating system, and <b>Log reading</b> for water quality.</li>
+        <li><b>Matings</b> — <b>Set up a mating</b>, say when the fish go back, and mark the tank <b>Returned</b>
+          afterwards. Mating tanks due back show on Home.</li>
+        <li><b>Clutches</b> — <b>New clutch</b> for each fertilisation; <b>Log sac</b> keeps the sac log.</li>
+      </ul>
+    </section>
+
+    <!-- ======================================================= flies -->
+    <section id="flies">
+      <h2>5 · Flies and worms</h2>
+      <p>Drosophila keeps <b>vials</b> in racks inside incubators; C. elegans keeps <b>plates</b> in boxes.</p>
+      <ol class="steps-list">
+        <li>Under <b>Incubators &amp; racks</b>, add your incubators with their temperatures, then racks inside them.</li>
+        <li>Add vials with <b>New vial</b>: genotype and purpose — <i>stock</i>, <i>experiment</i>, <i>cross</i> or
+          <i>progeny</i>.</li>
+        <li>For a cross, fill in both sides. BioManager schedules egg collections and tells you when progeny will be adults.</li>
+        <li>Flip (or chunk) schedules follow temperature: set the days per temperature in <b>Settings</b>, and a rack
+          moved from 25 °C to 18 °C changes its schedule by itself. What's due shows on Home and under <b>Schedule</b>.</li>
+        <li>Worms have a frozen-stock list: <b>New frozen lot</b> records a freeze and its thaw tests.</li>
+      </ol>
+      <figure class="gshot"><img src="assets/screenshots/fly-stocks.webp" alt="Fly vials" loading="lazy" width="2000" height="1250"></figure>
+    </section>
+
+    <!-- ======================================================= custom -->
+    <section id="custom">
+      <h2>6 · Other organisms</h2>
+      <p><b>Add database</b> in the sidebar builds a database for anything else you keep — Xenopus, axolotls, cell
+        lines, yeast. Start from a preset or a blank sheet and answer:</p>
+      <ul>
+        <li><b>The words it uses</b> — tank, vial or plate; strain, line or stock; litter, clutch or batch. The whole
+          interface then uses your words.</li>
+        <li><b>How it's counted</b> — one record per animal, groups with a headcount, or both.</li>
+        <li><b>What it needs</b> — crosses, cohorts, a nursery stage, genotyping, environment logs, frozen stocks, census…</li>
+        <li><b>Schedules</b> — e.g. "wean at P21", which may depend on temperature.</li>
+        <li><b>Your own columns</b> — text, numbers, dates, dropdowns, people or links.</li>
+      </ul>
+      <p>You can change any of it later under the database's <b>Settings</b>, without losing records.</p>
+    </section>
+
+    <!-- ======================================================= plasmids -->
+    <section id="plasmids">
+      <h2>7 · Plasmids</h2>
+      <ul>
+        <li>Add plasmids one at a time, or several with <b>Add many</b>.</li>
+        <li>Open a plasmid and upload a GenBank, FASTA or SnapGene file: the sequence and its features appear on an
+          interactive map you can edit.</li>
+        <li>Plasmid boxes live on the same rack grid as everything else, so every tube has a position.</li>
+      </ul>
+      <figure class="gshot"><img src="assets/screenshots/plasmid-map.webp" alt="A plasmid map" loading="lazy" width="2000" height="1250"></figure>
+    </section>
+
+    <!-- ======================================================= inventory -->
+    <section id="inventory">
+      <h2>8 · Samples, orders, reagents, antibodies</h2>
+      <dl class="gdl">
+        <dt>Samples</dt><dd>Tissue and material, linked to the animal it came from, with where it's stored and the box position.</dd>
+        <dt>Orders</dt><dd>Switch to <b>Board</b> and drag an order from <i>requested</i> to <i>ordered</i> to <i>received</i>.
+          Keep vendor, catalogue number, price and grant.</dd>
+        <dt>Reagents</dt><dd>Quantity, concentration, hazard, lot and expiry. Expired and expiring items show on Home.</dd>
+        <dt>Antibodies</dt><dd>Host, clone, conjugate, dilution, RRID and where each vial is.</dd>
+      </dl>
+      <p>Each inventory separates <b>your own stock</b> from the <b>lab's common shelf</b>. Admins change columns,
+        statuses and categories under <b>Configure</b>; renaming a status relabels its items.</p>
+    </section>
+
+    <!-- ======================================================= calendar -->
+    <section id="calendar">
+      <h2>9 · Calendar and notebook</h2>
+      <ul>
+        <li>The <b>calendar</b> shows your events and to-dos with colony dates — weanings, genotyping, sac reminders —
+          filled in for you. <b>Calendars</b> connects Google Calendar or any ICS feed.</li>
+        <li>The <b>notebook</b> keeps pages in tabs, with templates for pages you write often, images and attachments.
+          Link a page to animals and events so each points to the other.</li>
+        <li><b>Utilities</b> has molecular weights and a concentration-to-mass calculator.</li>
+      </ul>
+    </section>
+
+    <!-- ======================================================= cards -->
+    <section id="cards">
+      <h2>10 · Cage cards and phones</h2>
+      <h3>Cage cards</h3>
+      <p>On <b>Cages</b>, choose <b>Cage cards → Print</b>. Cards are sized for standard cage-card stock (vial and
+        tank labels too) and carry a QR code. On a lab server, scanning a card opens that cage — ready to edit.</p>
+
+      <h3 id="phones">Phones</h3>
+      <p>Phones connect to your lab's <a href="#lab-server">BioManager server</a>, so everyone sees the same data.</p>
+      <ul>
+        <li><b>Android app:</b> download <code>BioManager-Android.apk</code> from the <a href="./#download">download page</a>
+          and allow your browser to install it. Type your lab server's address once. The <b>Scan</b> button reads cage cards.</li>
+        <li><b>iPhone, or without the app:</b> open the server in Safari or Chrome and choose <b>Share → Add to Home
+          Screen</b> (iPhone) or <b>⋮ → Install app</b> (Android). It opens like an app; your phone camera scans cage cards.</li>
+      </ul>
+      <div class="note">The desktop app on one computer is private to that computer — phones can't reach it. For phones,
+        your lab needs a server.</div>
+    </section>
+
+    <!-- ======================================================= lab -->
+    <section id="lab">
+      <h2>11 · Working as a lab</h2>
+      <h3>Who can do what</h3>
+      <ul>
+        <li><b>You edit what you own</b> — your mice, cages, vials and items.</li>
+        <li><b>Breeding cages and anything marked shared</b> belong to the whole lab.</li>
+        <li><b>Admins</b> can change anything, approve new members, and read the audit log.</li>
+        <li><b>Everyone sees everything</b>, because a census with holes is not a census.</li>
+      </ul>
+      <h3>People joining and leaving</h3>
+      <p>New sign-ups wait until an admin approves them in <b>Settings → Manage users</b>. When someone leaves,
+        <b>Overview</b> lists every cage by owner, idle cages and living mice without a cage, and <b>Racks &amp; boxes</b>
+        hands their racks to someone else. Members can also sign in with Google or Microsoft if the server allows it.</p>
+      <h3 id="lab-server">A lab server</h3>
+      <p>For a whole lab, BioManager runs on one server (a department VM or a lab machine) that everyone opens in a
+        browser. It uses PostgreSQL, serves HTTPS, and backs itself up every night, testing a restore every week.
+        A desktop database can be moved onto it in one step. Keep the server on your campus network, VPN or a
+        private network such as Tailscale. <a href="https://github.com/gaspolymerase/biomanager-app/issues/new?title=Lab%20server%20set-up">Ask about setting one up.</a></p>
+    </section>
+
+    <!-- ======================================================= data -->
+    <section id="data">
+      <h2>12 · Your data and backups</h2>
+      <table class="gtable">
+        <tr><th>macOS</th><td><code>~/Library/Application Support/Biomanager/</code></td></tr>
+        <tr><th>Windows</th><td><code>%APPDATA%\Biomanager\</code></td></tr>
+        <tr><th>Linux</th><td><code>~/.local/share/Biomanager/</code></td></tr>
+      </table>
+      <ul>
+        <li>Your data lives outside the app, so updating or reinstalling never touches it.</li>
+        <li><b>Settings → Export my data</b> downloads your records as a zip at any time.</li>
+        <li>Back up that folder with your usual backup (Time Machine, File History). Copy it while BioManager is closed.</li>
+      </ul>
+      <div class="note warn"><b>Don't keep BioManager's data in Dropbox, OneDrive, Google Drive or iCloud Drive.</b>
+        Syncing corrupts database files. BioManager warns you if it finds itself in one.</div>
+    </section>
+
+    <!-- ======================================================= trouble -->
+    <section id="trouble">
+      <h2>13 · Troubleshooting</h2>
+      <dl class="gdl">
+        <dt>The app won't open on my Mac</dt><dd>Right-click it and choose <b>Open</b>. If macOS says it's damaged, move
+          it to Applications first, then try again.</dd>
+        <dt>Linux: the AppImage does nothing</dt><dd>Mark it executable. If it still won't start, install <code>libfuse2</code>,
+          or use the <code>.tar.gz</code> and run <code>BioManager/BioManager</code>.</dd>
+        <dt>Android: "Couldn't reach the server"</dt><dd>Check the address with your admin, and that your phone is on the
+          lab's network or VPN. If your lab uses its own certificate, install it under Settings → Security.</dd>
+        <dt>I can't edit a record</dt><dd>It belongs to someone else and isn't shared. Ask them, or an admin.</dd>
+        <dt>I made a mistake with a bulk change</dt><dd><b>Batches</b> in the sidebar → undo it.</dd>
+        <dt>Something else</dt><dd><a href="https://github.com/gaspolymerase/biomanager-app/issues">Open an issue</a> —
+          say which system you use and what you expected to happen.</dd>
+      </dl>
+    </section>
+  </main>
+</div>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="brand"><img src="assets/icon.svg" alt="" width="22" height="22">BioManager</div>
+    <p>Released under the <a href="LICENSE">MIT licence</a>. <a href="./">Home</a> · <a href="./#download">Download</a> ·
+      <a href="https://github.com/gaspolymerase/biomanager-app/issues">Report a problem</a></p>
+  </div>
+</footer>
+
+<script>
+  // Highlight the section being read in the contents.
+  (function () {
+    var links = {};
+    document.querySelectorAll('.toc a').forEach(function (a) { links[a.getAttribute('href').slice(1)] = a; });
+    if (!('IntersectionObserver' in window)) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting && links[e.target.id]) {
+          document.querySelectorAll('.toc a.on').forEach(function (a) { a.classList.remove('on'); });
+          links[e.target.id].classList.add('on');
+        }
+      });
+    }, { rootMargin: '-70px 0px -70% 0px' });
+    document.querySelectorAll('.guide-body section, .guide-body h3[id]').forEach(function (s) { io.observe(s); });
+  })();
+</script>
+</body>
+</html>
