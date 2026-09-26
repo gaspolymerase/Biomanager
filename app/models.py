@@ -1579,6 +1579,152 @@ class CalendarFeed(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+
+# ---------------------------------------------------------------------------
+# The lab notebook's own features (app/lab_notebook.py), beside the tabs,
+# pages and templates above. Each lives in its own table, so an existing
+# database needs no column changes. A page's rows here go when the page does
+# (lab_notebook.delete_page_rows).
+# ---------------------------------------------------------------------------
+
+
+class NotebookPageInfo(Base):
+    """What kind of page it is and where it stands: one row per page, made
+    the first time anything here is set."""
+    __tablename__ = "notebook_page_info"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id_fk: Mapped[int] = mapped_column(ForeignKey("notebook_pages.id"), unique=True, index=True)
+    # note | experiment | protocol | meeting | seminar | daily
+    kind: Mapped[str] = mapped_column(String(20), default="note", index=True)
+    # "" | planned | running | done | failed (experiments)
+    status: Mapped[str] = mapped_column(String(20), default="")
+    # Comma-wrapped, lower case: ",western,cloning," so one tag is one LIKE.
+    tags: Mapped[str] = mapped_column(String(500), default="")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # An experiment started from a protocol: which page, at which version.
+    protocol_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    protocol_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # A meeting note: its series and who presented.
+    series_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    presenter: Mapped[str] = mapped_column(String(80), default="")
+    # The day a daily log page is for.
+    day: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    edited_by: Mapped[str] = mapped_column(String(80), default="")
+    # Bumped when the body is replaced from outside the live editor (a
+    # restored version, the plain-text fallback): editors open on the old
+    # state start again from the saved text.
+    collab_generation: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class NotebookShare(Base):
+    """Someone else who may open a page. username "*" is the whole lab."""
+    __tablename__ = "notebook_shares"
+    __table_args__ = (UniqueConstraint("page_id_fk", "username", name="uq_notebook_share"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id_fk: Mapped[int] = mapped_column(ForeignKey("notebook_pages.id"), index=True)
+    username: Mapped[str] = mapped_column(String(80), index=True)
+    role: Mapped[str] = mapped_column(String(10), default="view")  # view | edit
+    shared_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class NotebookVersion(Base):
+    """A saved state of a page. Edits by one person within a few minutes
+    fold into one "auto" version; "manual" ones are saved on purpose,
+    "release" ones number a protocol (v1, v2, ...), "restore" marks a
+    return to an older one."""
+    __tablename__ = "notebook_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id_fk: Mapped[int] = mapped_column(ForeignKey("notebook_pages.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(10), default="auto")
+    label: Mapped[str] = mapped_column(String(160), default="")
+    number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    saved_by: Mapped[str] = mapped_column(String(80), default="")
+    saved_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    # When the editing session an "auto" version holds began.
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class NotebookSyncUpdate(Base):
+    """One change to a page's shared editing state (a Yjs update, base64),
+    kept so every open editor can catch up. The id orders them."""
+    __tablename__ = "notebook_sync_updates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id_fk: Mapped[int] = mapped_column(ForeignKey("notebook_pages.id"), index=True)
+    generation: Mapped[int] = mapped_column(Integer, default=0)
+    client_id: Mapped[str] = mapped_column(String(40), default="")
+    username: Mapped[str] = mapped_column(String(80), default="")
+    data: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class NotebookPresence(Base):
+    """Who has a page open, and where their cursor is (a Yjs awareness
+    update, base64). Rows older than a minute are ignored and cleared."""
+    __tablename__ = "notebook_presence"
+    __table_args__ = (UniqueConstraint("page_id_fk", "client_id", name="uq_notebook_presence"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id_fk: Mapped[int] = mapped_column(ForeignKey("notebook_pages.id"), index=True)
+    client_id: Mapped[str] = mapped_column(String(40))
+    username: Mapped[str] = mapped_column(String(80), default="")
+    state: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class NotebookComment(Base):
+    """A comment on a page, optionally on a quoted passage; replies point at
+    the first comment of their thread."""
+    __tablename__ = "notebook_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id_fk: Mapped[int] = mapped_column(ForeignKey("notebook_pages.id"), index=True)
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    author: Mapped[str] = mapped_column(String(80), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    quote: Mapped[str] = mapped_column(String(500), default="")
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    resolved_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class NotebookRecipe(Base):
+    """A buffer or media recipe in the lab's library. `data` is the recipe
+    block's JSON: {"volume", "volumeUnit", "components": [...], "notes"}."""
+    __tablename__ = "notebook_recipes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    owner: Mapped[str] = mapped_column(String(80), default="")
+    data: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class NotebookMeetingSeries(Base):
+    """A recurring meeting (lab meeting, journal club) and its rotation:
+    `members` is a JSON list of usernames in presenting order, and
+    `next_index` points at whoever presents next."""
+    __tablename__ = "notebook_meeting_series"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    owner: Mapped[str] = mapped_column(String(80), default="")
+    members: Mapped[str] = mapped_column(Text, default="[]")
+    next_index: Mapped[int] = mapped_column(Integer, default=0)
+    weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0 = Monday
+    time: Mapped[str] = mapped_column(String(5), default="")  # HH:MM
+    location: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 # ---------------------------------------------------------------------------
 # Model-wide table settings. Keep this block last in the file.
 #

@@ -1,0 +1,1018 @@
+/* The notebook page around the editor: saving, the page's kind, status and
+ * tags, and the side panels — sharing, comments, version history, search,
+ * meetings, recipes. The editor itself is the bundle in notebook-build/
+ * (frontend/src/main.js); without it the page falls back to a plain
+ * Markdown textarea so nothing is ever locked away.
+ */
+(function () {
+  'use strict';
+
+  var dataEl = document.getElementById('nb-data');
+  if (!dataEl) return;
+  var DATA = JSON.parse(dataEl.textContent || '{}');
+  var page = DATA.page;
+  var me = DATA.me || {};
+  var canEdit = !!page && (page.role === 'owner' || page.role === 'edit');
+  var isOwner = !!page && page.role === 'owner';
+  var nb = null; // the mounted editor (BiomanagerNotebook.mount)
+  var people = null;
+
+  // ------------------------------------------------------------ helpers
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function icon(name) { return '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#' + name + '"></use></svg>'; }
+  // Server times are UTC without a zone.
+  function when(iso) {
+    if (!iso) return null;
+    return new Date(/Z|[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z');
+  }
+  function timeText(iso) {
+    var d = when(iso);
+    if (!d || isNaN(d)) return '';
+    var now = new Date();
+    var same = d.toDateString() === now.toDateString();
+    var t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return same ? 'today ' + t : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' }) + ' ' + t;
+  }
+  function api(url, opts) {
+    opts = opts || {};
+    var init = { method: opts.method || (opts.body || opts.form ? 'POST' : 'GET'), headers: { Accept: 'application/json' } };
+    if (opts.form) init.body = opts.form;
+    else if (opts.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
+    return fetch(url, init).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok || data.ok === false) {
+          var err = new Error(data.error || ('HTTP ' + r.status));
+          err.status = r.status; err.data = data;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+  var toastTimer = null;
+  function toast(message, isError) {
+    var el = $('#nb-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'nb-toast';
+      el.className = 'nb-toast';
+      el.setAttribute('role', 'status');
+      document.body.appendChild(el);
+    }
+    el.innerHTML = message;
+    el.classList.toggle('is-error', !!isError);
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.hidden = true; }, 4200);
+  }
+  function debounce(fn, ms) {
+    var t = null;
+    return function () {
+      var args = arguments;
+      clearTimeout(t);
+      t = setTimeout(function () { fn.apply(null, args); }, ms);
+    };
+  }
+  function loadPeople() {
+    if (people) return Promise.resolve(people);
+    return api('/notebook/api/people').then(function (d) { people = d.people; return people; });
+  }
+  function initials(name) {
+    var parts = String(name || '?').trim().split(/\s+/);
+    return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+  }
+  var COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#c98500', '#d55181', '#008300', '#4a3aa7', '#e34948'];
+  function colorFor(name) {
+    var h = 0;
+    for (var i = 0; i < String(name).length; i++) h = (h * 31 + String(name).charCodeAt(i)) >>> 0;
+    return COLORS[h % COLORS.length];
+  }
+  function go(url) { window.location.href = url; }
+
+  // ------------------------------------------------------------ sidebar
+
+  var filter = $('#notebook-page-filter');
+  if (filter) {
+    filter.addEventListener('input', function () {
+      var q = filter.value.trim().toLowerCase();
+      $$('.notebook-page-item[data-page-title]').forEach(function (li) {
+        li.style.display = !q || (li.dataset.pageTitle || '').indexOf(q) >= 0 ? '' : 'none';
+      });
+      if (q) $$('.notebook-tab').forEach(function (tab) { tab.setAttribute('open', ''); });
+    });
+  }
+  var searchForm = $('#nb-search-form');
+  if (searchForm) {
+    searchForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      openPanel('search', { q: filter.value.trim() });
+    });
+  }
+  $$('.nb-tag[data-tag]').forEach(function (b) {
+    b.addEventListener('click', function () { openPanel('search', { tag: b.dataset.tag }); });
+  });
+  $$('[data-panel]').forEach(function (b) {
+    b.addEventListener('click', function () { openPanel(b.dataset.panel); });
+  });
+
+  var sideToggle = $('#nb-side-toggle');
+  if (sideToggle) sideToggle.addEventListener('click', function () {
+    var open = $('#nb-shell').classList.toggle('nb-side-open');
+    sideToggle.setAttribute('aria-expanded', String(open));
+  });
+
+  // ------------------------------------------------------------ new pages, templates, import
+
+  var modal = $('#notebook-template-modal');
+  function openNewPage() {
+    if (!modal) return;
+    modal.hidden = false;
+    loadTemplates();
+  }
+  function closeNewPage() { if (modal) modal.hidden = true; }
+  $$('[data-close-modal]').forEach(function (b) { b.addEventListener('click', closeNewPage); });
+  var newBtn = $('#nb-new-page');
+  if (newBtn) newBtn.addEventListener('click', openNewPage);
+
+  $$('[data-starter]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var body = { starter: b.dataset.starter };
+      api('/notebook/api/pages/new', { body: body }).then(function (d) { go(d.url); })
+        .catch(function (e) { toast('Could not make the page: ' + esc(e.message), true); });
+    });
+  });
+
+  function loadTemplates() {
+    var list = $('#notebook-template-list');
+    if (!list) return;
+    list.innerHTML = '<div class="notebook-template-loading">Loading…</div>';
+    api('/notebook/templates').then(function (d) {
+      if (!d.templates.length) {
+        list.innerHTML = '<div class="notebook-template-empty">None yet. Use “Save as template” on any page, or make one below.</div>';
+        return;
+      }
+      list.innerHTML = d.templates.map(function (t) {
+        return '<div class="notebook-template-row"><button type="button" class="notebook-template-pick" data-template="' + t.id + '">' +
+          '<span class="notebook-template-icon">' + (t.icon ? esc(t.icon) : icon('file')) + '</span>' +
+          '<span class="notebook-template-meta"><span class="notebook-template-title">' + esc(t.title) + '</span>' +
+          '<span class="notebook-template-preview">' + esc(t.body_preview || '') + '</span></span></button>' +
+          '<button type="button" class="notebook-template-del" title="Delete template" aria-label="Delete template" data-del-template="' + t.id + '">' + icon('trash') + '</button></div>';
+      }).join('');
+    }).catch(function () { list.innerHTML = '<div class="notebook-template-empty">Could not load templates.</div>'; });
+  }
+  if (modal) {
+    modal.addEventListener('click', function (event) {
+      var pick = event.target.closest('[data-template]');
+      var del = event.target.closest('[data-del-template]');
+      if (pick) {
+        api('/notebook/api/pages/new', { body: { template_id: Number(pick.dataset.template) } }).then(function (d) { go(d.url); });
+      } else if (del) {
+        if (!confirm('Delete this template?')) return;
+        fetch('/notebook/templates/' + del.dataset.delTemplate + '/delete', { method: 'POST' }).then(loadTemplates);
+      }
+    });
+    var tform = $('#notebook-template-form');
+    if (tform) tform.addEventListener('submit', function (event) {
+      event.preventDefault();
+      fetch('/notebook/templates/create', { method: 'POST', body: new FormData(tform) }).then(function (r) { return r.json(); })
+        .then(function (d) { if (d.ok) { tform.reset(); loadTemplates(); } });
+    });
+  }
+
+  function importMarkdown() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.md,.markdown,.txt,text/markdown,text/plain';
+    input.addEventListener('change', function () {
+      if (!input.files[0]) return;
+      var form = new FormData();
+      form.append('file', input.files[0]);
+      if (DATA.selectedTab) form.append('tab_id', DATA.selectedTab);
+      api('/notebook/api/import', { form: form }).then(function (d) { go(d.url); })
+        .catch(function (e) { toast('Could not import: ' + esc(e.message), true); });
+    });
+    input.click();
+  }
+  ['#nb-import', '#nb-import-2'].forEach(function (sel) { var b = $(sel); if (b) b.addEventListener('click', importMarkdown); });
+
+  // ------------------------------------------------------------ drawer
+
+  var drawer = $('#nb-drawer');
+  var drawerBody = $('#nb-drawer-body');
+  var drawerTitle = $('#nb-drawer-title');
+  var currentPanel = null;
+  function closePanel() {
+    if (drawer) drawer.hidden = true;
+    document.body.classList.remove('nb-drawer-open');
+    currentPanel = null;
+  }
+  if ($('#nb-drawer-close')) $('#nb-drawer-close').addEventListener('click', closePanel);
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && currentPanel && !document.querySelector('.nb-run')) closePanel();
+  });
+  function openPanel(name, opts) {
+    if (!drawer) return;
+    var panel = PANELS[name];
+    if (!panel) return;
+    currentPanel = name;
+    drawer.hidden = false;
+    drawer.dataset.panel = name;
+    document.body.classList.add('nb-drawer-open');
+    drawerTitle.textContent = panel.title;
+    // A fresh box each time: a slow answer for a panel already closed
+    // lands in a box no longer on the page, not in the one now open.
+    var box = document.createElement('div');
+    box.className = 'nb-panel';
+    box.innerHTML = '<p class="nb-muted">Loading…</p>';
+    drawerBody.innerHTML = '';
+    drawerBody.appendChild(box);
+    panel.render(box, opts || {});
+  }
+
+  var PANELS = {};
+
+  // ---- share
+  PANELS.share = {
+    title: 'Share',
+    render: function (box) {
+      Promise.all([api('/notebook/api/pages/' + page.id + '/shares'), loadPeople()]).then(function (res) {
+        var d = res[0];
+        var lab = d.shares.filter(function (s) { return s.username === '*'; })[0];
+        var shared = d.shares.filter(function (s) { return s.username !== '*'; });
+        var taken = {};
+        shared.forEach(function (s) { taken[s.username] = true; });
+        var options = d.people.filter(function (p) { return !taken[p.username]; })
+          .map(function (p) { return '<option value="' + esc(p.username) + '">' + esc(p.name) + (p.guest ? ' (guest)' : '') + '</option>'; }).join('');
+        box.innerHTML =
+          '<p class="nb-muted">People you share with see this page under <b>Shared with me</b>. Editors write in it with you, live.</p>' +
+          '<div class="nb-field-row"><label>Everyone in the lab <select id="nb-share-lab">' +
+          '<option value="">can’t see it</option><option value="view"' + (lab && lab.role === 'view' ? ' selected' : '') + '>can view</option>' +
+          '<option value="edit"' + (lab && lab.role === 'edit' ? ' selected' : '') + '>can edit</option></select></label></div>' +
+          '<form class="nb-field-row" id="nb-share-add"><select id="nb-share-who" aria-label="Person">' + (options || '<option value="">Everyone already has access</option>') + '</select>' +
+          '<select id="nb-share-role" aria-label="Role"><option value="edit">can edit</option><option value="view">can view</option></select>' +
+          '<button class="btn btn-primary" type="submit">Share</button></form>' +
+          '<ul class="nb-list">' + (shared.length ? shared.map(function (s) {
+            return '<li class="nb-list-row"><span class="nb-avatar" style="background:' + colorFor(s.username) + '">' + esc(initials(s.name)) + '</span><span class="nb-grow">' + esc(s.name) + '</span>' +
+              '<select data-share-role="' + esc(s.username) + '"><option value="edit"' + (s.role === 'edit' ? ' selected' : '') + '>can edit</option><option value="view"' + (s.role === 'view' ? ' selected' : '') + '>can view</option></select>' +
+              '<button type="button" class="nb-icon-btn" data-share-remove="' + esc(s.username) + '" aria-label="Stop sharing">' + icon('close') + '</button></li>';
+          }).join('') : '<li class="nb-muted">Not shared with anyone yet.</li>') + '</ul>';
+        var refresh = function () { PANELS.share.render(box); setSharedLabel(true); };
+        $('#nb-share-lab', box).addEventListener('change', function (e) {
+          var role = e.target.value;
+          (role ? api('/notebook/api/pages/' + page.id + '/shares', { body: { username: '*', role: role } })
+            : api('/notebook/api/pages/' + page.id + '/shares/remove', { body: { username: '*' } })).then(refresh);
+        });
+        $('#nb-share-add', box).addEventListener('submit', function (e) {
+          e.preventDefault();
+          var who = $('#nb-share-who', box).value;
+          if (!who) return;
+          api('/notebook/api/pages/' + page.id + '/shares', { body: { username: who, role: $('#nb-share-role', box).value } })
+            .then(function () { toast('Shared. They have been told.'); refresh(); })
+            .catch(function (err) { toast(esc(err.message), true); });
+        });
+        box.addEventListener('change', function (e) {
+          var u = e.target.dataset && e.target.dataset.shareRole;
+          if (u) api('/notebook/api/pages/' + page.id + '/shares', { body: { username: u, role: e.target.value } });
+        });
+        box.onclick = function (e) {
+          var b = e.target.closest('[data-share-remove]');
+          if (b) api('/notebook/api/pages/' + page.id + '/shares/remove', { body: { username: b.dataset.shareRemove } }).then(refresh);
+        };
+      }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
+    },
+  };
+  function setSharedLabel(shared) {
+    var b = $('.nb-tool[data-panel="share"] span');
+    if (b) b.textContent = shared ? 'Shared' : 'Share';
+  }
+
+  // ---- comments
+  var commentThreads = [];
+  function mentionize(text) {
+    return esc(text).replace(/(^|\s)@([A-Za-z0-9][\w.-]*)/g, '$1<span class="nb-mention">@$2</span>').replace(/\n/g, '<br>');
+  }
+  function attachMentions(textarea) {
+    var menu = document.createElement('div');
+    menu.className = 'nb-mention-menu';
+    menu.hidden = true;
+    textarea.parentNode.insertBefore(menu, textarea.nextSibling);
+    function word() {
+      var before = textarea.value.slice(0, textarea.selectionStart);
+      var m = /(^|\s)@([\w.-]*)$/.exec(before);
+      return m ? m[2] : null;
+    }
+    textarea.addEventListener('input', function () {
+      var w = word();
+      if (w === null) { menu.hidden = true; return; }
+      loadPeople().then(function (list) {
+        var q = w.toLowerCase();
+        var hits = list.filter(function (p) { return p.username !== me.username && (p.username.toLowerCase().indexOf(q) === 0 || p.name.toLowerCase().indexOf(q) >= 0); }).slice(0, 6);
+        menu.innerHTML = hits.map(function (p) { return '<button type="button" data-user="' + esc(p.username) + '"><b>' + esc(p.name) + '</b> <small>@' + esc(p.username) + '</small></button>'; }).join('');
+        menu.hidden = !hits.length;
+      });
+    });
+    menu.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    menu.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-user]');
+      if (!b) return;
+      var pos = textarea.selectionStart;
+      var before = textarea.value.slice(0, pos).replace(/@([\w.-]*)$/, '@' + b.dataset.user + ' ');
+      textarea.value = before + textarea.value.slice(pos);
+      textarea.selectionStart = textarea.selectionEnd = before.length;
+      menu.hidden = true;
+      textarea.focus();
+    });
+    textarea.addEventListener('blur', function () { setTimeout(function () { menu.hidden = true; }, 150); });
+  }
+  function refreshHighlights() {
+    if (!nb) return;
+    nb.setQuotes(commentThreads.filter(function (t) { return !t.resolved && t.quote; }).map(function (t) { return { id: t.id, quote: t.quote }; }));
+    var open = commentThreads.filter(function (t) { return !t.resolved; }).length;
+    var badge = $('#nb-comment-count');
+    var tool = $('.nb-tool[data-panel="comments"]');
+    if (!badge && open && tool) { badge = document.createElement('b'); badge.className = 'nb-badge'; badge.id = 'nb-comment-count'; tool.appendChild(badge); }
+    if (badge) { badge.textContent = open; badge.hidden = !open; }
+  }
+  function loadComments() {
+    return api('/notebook/api/pages/' + page.id + '/comments').then(function (d) {
+      commentThreads = d.threads;
+      refreshHighlights();
+      return d;
+    });
+  }
+  function commentHtml(c, isReply) {
+    return '<div class="nb-comment' + (isReply ? ' is-reply' : '') + '" id="comment-' + c.id + '">' +
+      '<div class="nb-comment-head"><span class="nb-avatar" style="background:' + colorFor(c.author) + '">' + esc(initials(c.author_name)) + '</span>' +
+      '<b>' + esc(c.author_name) + '</b><time>' + esc(timeText(c.created_at)) + (c.updated_at ? ' · edited' : '') + '</time>' +
+      (c.can_delete ? '<button type="button" class="nb-icon-btn" data-comment-delete="' + c.id + '" aria-label="Delete comment">' + icon('trash') + '</button>' : '') + '</div>' +
+      '<div class="nb-comment-body">' + mentionize(c.body) + '</div></div>';
+  }
+  PANELS.comments = {
+    title: 'Comments',
+    render: function (box, opts) {
+      var selected = nb ? nb.selectionText() : '';
+      loadComments().then(function () {
+        var open = commentThreads.filter(function (t) { return !t.resolved; });
+        var done = commentThreads.filter(function (t) { return t.resolved; });
+        var thread = function (t) {
+          return '<article class="nb-thread' + (t.resolved ? ' is-resolved' : '') + '" data-thread="' + t.id + '">' +
+            (t.quote ? '<button type="button" class="nb-thread-quote" data-quote="' + t.id + '">“' + esc(t.quote) + '”</button>' : '') +
+            commentHtml(t) + t.replies.map(function (r) { return commentHtml(r, true); }).join('') +
+            '<form class="nb-reply" data-reply="' + t.id + '"><textarea rows="1" placeholder="Reply… @name to tell someone"></textarea><button class="btn" type="submit">Reply</button></form>' +
+            '<button type="button" class="btn-link" data-resolve="' + t.id + '" data-to="' + (t.resolved ? '0' : '1') + '">' + (t.resolved ? 'Reopen' : 'Resolve') + '</button></article>';
+        };
+        box.innerHTML =
+          '<form class="nb-new-comment" id="nb-new-comment">' +
+          (selected ? '<div class="nb-thread-quote is-static">“' + esc(selected.slice(0, 300)) + '”</div>' : '<p class="nb-muted">Select text in the page first to comment on that passage.</p>') +
+          '<textarea rows="3" placeholder="Comment… type @ to mention a lab mate"></textarea>' +
+          '<div class="nb-field-row"><span class="nb-grow"></span><button class="btn btn-primary" type="submit">Comment</button></div></form>' +
+          (open.length ? open.map(thread).join('') : '<p class="nb-muted">No open comments.</p>') +
+          (done.length ? '<details class="nb-resolved"><summary>' + done.length + ' resolved</summary>' + done.map(thread).join('') + '</details>' : '');
+        $$('textarea', box).forEach(attachMentions);
+        var form = $('#nb-new-comment', box);
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var text = $('textarea', form).value.trim();
+          if (!text) return;
+          api('/notebook/api/pages/' + page.id + '/comments', { body: { body: text, quote: selected.slice(0, 500) } }).then(afterPost);
+        });
+        if (opts.focus && commentThreads.length) {
+          var target = $('#comment-' + opts.focus, box);
+          if (target) { target.scrollIntoView({ block: 'center' }); target.classList.add('is-flash'); }
+        } else {
+          $('textarea', form).focus();
+        }
+        box.onsubmit = function (e) {
+          var reply = e.target.closest('[data-reply]');
+          if (!reply) return;
+          e.preventDefault();
+          var text = $('textarea', reply).value.trim();
+          if (text) api('/notebook/api/pages/' + page.id + '/comments', { body: { body: text, parent_id: Number(reply.dataset.reply) } }).then(afterPost);
+        };
+        box.onclick = function (e) {
+          var q = e.target.closest('[data-quote]');
+          var r = e.target.closest('[data-resolve]');
+          var del = e.target.closest('[data-comment-delete]');
+          if (q && nb) nb.scrollToQuote(Number(q.dataset.quote));
+          if (r) api('/notebook/api/comments/' + r.dataset.resolve + '/resolve', { body: { resolved: r.dataset.to === '1' } }).then(function () { PANELS.comments.render(box, {}); });
+          if (del && confirm('Delete this comment?')) api('/notebook/api/comments/' + del.dataset.commentDelete + '/delete', { body: {} }).then(function () { PANELS.comments.render(box, {}); });
+        };
+      }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
+
+      function afterPost(d) {
+        if (d.no_access && d.no_access.length) {
+          var names = d.no_access_names.join(', ');
+          if (isOwner && confirm(names + ' cannot see this page, so was not told. Let them view it?')) {
+            Promise.all(d.no_access.map(function (u) { return api('/notebook/api/pages/' + page.id + '/shares', { body: { username: u, role: 'view' } }); }))
+              .then(function () { toast('Shared with ' + esc(names) + '.'); });
+          } else if (!isOwner) {
+            toast(esc(names) + ' cannot see this page, so was not told. Ask ' + esc(page.owner_name) + ' to share it.', true);
+          }
+        }
+        PANELS.comments.render(box, {});
+      }
+    },
+  };
+
+  // ---- history
+  function lineDiff(a, b) {
+    var x = String(a || '').split('\n');
+    var y = String(b || '').split('\n');
+    if (x.length * y.length > 4e6) return null;
+    var n = x.length, m = y.length;
+    var dp = [];
+    for (var i = 0; i <= n; i++) { dp.push(new Uint32Array(m + 1)); }
+    for (i = n - 1; i >= 0; i--) for (var j = m - 1; j >= 0; j--) dp[i][j] = x[i] === y[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    var out = [];
+    i = 0; j = 0;
+    while (i < n && j < m) {
+      if (x[i] === y[j]) { out.push([' ', x[i]]); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push(['-', x[i]]); i++; }
+      else { out.push(['+', y[j]]); j++; }
+    }
+    while (i < n) out.push(['-', x[i++]]);
+    while (j < m) out.push(['+', y[j++]]);
+    return out;
+  }
+  function diffHtml(ops) {
+    if (!ops) return '<p class="nb-muted">Too long to compare here.</p>';
+    var html = [];
+    var skipped = 0;
+    ops.forEach(function (op, idx) {
+      var near = ops.slice(Math.max(0, idx - 2), idx + 3).some(function (o) { return o[0] !== ' '; });
+      if (op[0] === ' ' && !near) { skipped++; return; }
+      if (skipped) { html.push('<div class="nb-diff-skip">⋯ ' + skipped + ' unchanged line' + (skipped > 1 ? 's' : '') + '</div>'); skipped = 0; }
+      html.push('<div class="nb-diff-' + (op[0] === '+' ? 'add' : op[0] === '-' ? 'del' : 'same') + '">' + esc(op[0] + ' ' + op[1]) + '</div>');
+    });
+    if (skipped) html.push('<div class="nb-diff-skip">⋯ ' + skipped + ' unchanged lines</div>');
+    var changes = ops.filter(function (o) { return o[0] !== ' '; }).length;
+    return changes ? '<div class="nb-diff">' + html.join('') + '</div>' : '<p class="nb-muted">No differences from the page as it is now.</p>';
+  }
+  PANELS.history = {
+    title: 'Version history',
+    render: function (box) {
+      api('/notebook/api/pages/' + page.id + '/versions').then(function (d) {
+        if (!d.versions.length) { box.innerHTML = '<p class="nb-muted">No versions yet: they are kept as the page is edited.</p>'; return; }
+        var lastDay = '';
+        box.innerHTML = (canEdit ? '<div class="nb-field-row"><button type="button" class="btn" id="nb-save-version">' + icon('success') + ' Save a named version</button></div>' : '') +
+          '<ul class="nb-list nb-versions">' + d.versions.map(function (v, i) {
+            var day = (when(v.saved_at) || new Date()).toDateString();
+            var head = day !== lastDay ? '<li class="nb-list-day">' + esc((when(v.saved_at) || new Date()).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })) + '</li>' : '';
+            lastDay = day;
+            var label = v.kind === 'release' ? '<b class="nb-pill">v' + v.number + '</b> ' : v.kind === 'manual' ? '<b class="nb-pill is-quiet">saved</b> ' : v.kind === 'restore' ? '<b class="nb-pill is-quiet">restored</b> ' : '';
+            return head + '<li class="nb-list-row nb-version" data-version="' + v.id + '"><span class="nb-avatar" style="background:' + colorFor(v.saved_by) + '">' + esc(initials(v.saved_by_name)) + '</span>' +
+              '<span class="nb-grow"><span>' + label + esc(v.label || (i === 0 ? 'Latest' : 'Edits')) + '</span><small>' + esc(v.saved_by_name) + ' · ' + esc((when(v.saved_at) || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</small></span></li>';
+          }).join('') + '</ul><div id="nb-version-view"></div>';
+        var save = $('#nb-save-version', box);
+        if (save) save.addEventListener('click', function () { saveNamedVersion().then(function () { PANELS.history.render(box); }); });
+        box.onclick = function (e) {
+          var row = e.target.closest('[data-version]');
+          if (row) showVersion(Number(row.dataset.version), box);
+          var restore = e.target.closest('[data-restore]');
+          if (restore && confirm('Put the page back as it was in this version? What is there now stays in the history.')) {
+            flushed().then(function () { return api('/notebook/api/versions/' + restore.dataset.restore + '/restore', { body: {} }); })
+              .then(function () { window.location.reload(); })
+              .catch(function (err) { toast(esc(err.message), true); });
+          }
+        };
+      }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
+    },
+  };
+  function showVersion(id, box) {
+    var view = $('#nb-version-view', box);
+    $$('.nb-version', box).forEach(function (r) { r.classList.toggle('is-active', Number(r.dataset.version) === id); });
+    view.innerHTML = '<p class="nb-muted">Loading…</p>';
+    api('/notebook/api/versions/' + id).then(function (d) {
+      var current = nb ? nb.getMarkdown() : ($('#initial-body') || {}).value;
+      view.innerHTML = '<div class="nb-version-head"><b>' + esc(d.version.title) + '</b> · ' + esc(timeText(d.version.saved_at)) +
+        (canEdit ? ' <button type="button" class="btn btn-primary" data-restore="' + id + '">Restore this version</button>' : '') + '</div>' +
+        '<div class="nb-seg"><button type="button" class="is-on" data-vmode="diff">Changes since</button><button type="button" data-vmode="text">Text</button></div>' +
+        '<div class="nb-version-body">' + diffHtml(lineDiff(d.version.body, current)) + '</div>';
+      view.onclick = function (e) {
+        var m = e.target.closest('[data-vmode]');
+        if (!m) return;
+        $$('[data-vmode]', view).forEach(function (b) { b.classList.toggle('is-on', b === m); });
+        $('.nb-version-body', view).innerHTML = m.dataset.vmode === 'diff' ? diffHtml(lineDiff(d.version.body, current)) : '<pre class="nb-version-text">' + esc(d.version.body) + '</pre>';
+      };
+    });
+  }
+  function saveNamedVersion() {
+    var label = prompt('Name this version (e.g. “before re-analysis”):', '');
+    if (label === null) return Promise.resolve();
+    return flushed()
+      .then(function () { return api('/notebook/api/pages/' + page.id + '/versions', { body: { label: label } }); })
+      .then(function () { toast('Version saved.'); });
+  }
+
+  // ---- search
+  PANELS.search = {
+    title: 'Search',
+    render: function (box, opts) {
+      var kinds = DATA.kinds || {};
+      var statuses = DATA.statuses || {};
+      box.innerHTML = '<form class="nb-search" id="nb-search">' +
+        '<input type="search" name="q" placeholder="Words in the title or text" value="' + esc(opts.q || '') + '" aria-label="Search">' +
+        '<div class="nb-field-row">' +
+        '<select name="kind" aria-label="Kind"><option value="">Any kind</option>' + Object.keys(kinds).map(function (k) { return '<option value="' + k + '">' + esc(kinds[k]) + '</option>'; }).join('') + '</select>' +
+        '<select name="status" aria-label="Status"><option value="">Any status</option>' + Object.keys(statuses).filter(Boolean).map(function (k) { return '<option value="' + k + '">' + esc(statuses[k]) + '</option>'; }).join('') + '</select>' +
+        '<select name="whose" aria-label="Whose"><option value="all">Mine & shared</option><option value="mine">Mine</option><option value="shared">Shared with me</option></select></div>' +
+        '<div class="nb-field-row"><select name="tag" aria-label="Tag"><option value="">Any tag</option></select>' +
+        '<label>From <input type="date" name="from"></label><label>To <input type="date" name="to"></label></div></form>' +
+        '<div id="nb-search-results"></div>';
+      var form = $('#nb-search', box);
+      api('/notebook/api/tags').then(function (d) {
+        form.tag.innerHTML = '<option value="">Any tag</option>' + d.tags.map(function (t) { return '<option value="' + esc(t.tag) + '"' + (t.tag === opts.tag ? ' selected' : '') + '>#' + esc(t.tag) + ' (' + t.count + ')</option>'; }).join('');
+        run();
+      });
+      var run = debounce(function () {
+        var params = new URLSearchParams(new FormData(form));
+        var out = $('#nb-search-results', box);
+        api('/notebook/api/search?' + params.toString()).then(function (d) {
+          out.innerHTML = d.results.length ? '<p class="nb-muted">' + d.results.length + (d.results.length === 100 ? '+' : '') + ' page' + (d.results.length === 1 ? '' : 's') + '</p><ul class="nb-list">' + d.results.map(function (r) {
+            return '<li><a class="nb-result" href="' + esc(r.url) + '"><b>' + esc(r.title) + '</b>' +
+              '<small>' + esc(kinds[r.kind] || 'Note') + (r.status ? ' · ' + esc(statuses[r.status]) : '') + ' · ' + esc(r.mine ? r.tab : 'by ' + r.owner_name) + ' · ' + esc(r.entry_date || timeText(r.updated_at)) + '</small>' +
+              (r.snippet ? '<span class="nb-snippet">' + esc(r.snippet) + '</span>' : '') +
+              (r.tags.length ? '<span class="nb-result-tags">' + r.tags.map(function (t) { return '#' + esc(t); }).join(' ') + '</span>' : '') + '</a></li>';
+          }).join('') + '</ul>' : '<p class="nb-muted">Nothing found.</p>';
+        }).catch(function (e) { out.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
+      }, 220);
+      form.addEventListener('input', run);
+      form.addEventListener('change', run);
+      form.addEventListener('submit', function (e) { e.preventDefault(); run(); });
+      form.q.focus();
+    },
+  };
+
+  // ---- meetings
+  PANELS.meetings = {
+    title: 'Meetings',
+    render: function (box) {
+      api('/notebook/api/meetings').then(function (d) {
+        var weekdays = d.weekdays;
+        var card = function (s) {
+          var next = s.next;
+          return '<article class="nb-series" data-series="' + s.id + '">' +
+            '<header><b>' + esc(s.name) + '</b><small>' + esc([s.weekday_name ? s.weekday_name + 's' : '', s.time, s.location].filter(Boolean).join(' · ')) + '</small></header>' +
+            (next ? '<div class="nb-next"><span class="nb-avatar is-lg" style="background:' + colorFor(next.presenter) + '">' + esc(initials(next.name)) + '</span><div><small>Next to present' + (next.date ? ' · ' + esc(new Date(next.date + 'T12:00').toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })) : '') + '</small><b>' + esc(next.name) + '</b></div></div>' : '<p class="nb-muted">No one in the rotation yet.</p>') +
+            (s.upcoming.length > 1 ? '<ol class="nb-rotation">' + s.upcoming.slice(1).map(function (u) { return '<li><span>' + esc(u.name) + '</span><small>' + esc(u.date ? new Date(u.date + 'T12:00').toLocaleDateString([], { day: 'numeric', month: 'short' }) : '') + '</small></li>'; }).join('') + '</ol>' : '') +
+            '<div class="nb-field-row">' +
+            '<button type="button" class="btn btn-primary" data-note="' + s.id + '">' + icon('note') + ' Notes for the next meeting</button>' +
+            (s.can_edit ? '<button type="button" class="btn" data-skip="' + s.id + '" title="Move the rotation on one person">Skip ›</button><button type="button" class="btn" data-back="' + s.id + '" title="Move the rotation back one">‹</button>' : '') + '</div>' +
+            (s.can_edit ? '<div class="nb-field-row"><button type="button" class="btn-link" data-cal="' + s.id + '">Put the next meetings on the calendar</button><button type="button" class="btn-link" data-edit="' + s.id + '">Edit</button></div>' : '') +
+            (s.notes.length ? '<details><summary>Past notes (' + s.notes.length + ')</summary><ul class="nb-list">' + s.notes.map(function (n) { return '<li><a href="' + esc(n.url) + '">' + esc(n.title) + '</a></li>'; }).join('') + '</ul></details>' : '') +
+            '</article>';
+        };
+        box.innerHTML = (d.series.length ? d.series.map(card).join('') : '<p class="nb-muted">No meetings yet. Set one up and the notebook keeps track of who presents next.</p>') +
+          '<button type="button" class="btn" id="nb-series-new">' + icon('plus') + ' New meeting series</button><div id="nb-series-form"></div>';
+        var byId = {};
+        d.series.forEach(function (s) { byId[s.id] = s; });
+        $('#nb-series-new', box).addEventListener('click', function () { seriesForm(box, null, d.people, weekdays); });
+        box.onclick = function (e) {
+          var b = e.target.closest('button');
+          if (!b) return;
+          if (b.dataset.note) api('/notebook/api/meetings/' + b.dataset.note + '/note', { body: {} }).then(function (r) { go(r.url); });
+          if (b.dataset.skip) api('/notebook/api/meetings/' + b.dataset.skip + '/advance', { body: { step: 1 } }).then(function () { PANELS.meetings.render(box); });
+          if (b.dataset.back) api('/notebook/api/meetings/' + b.dataset.back + '/advance', { body: { step: -1 } }).then(function () { PANELS.meetings.render(box); });
+          if (b.dataset.edit) seriesForm(box, byId[b.dataset.edit], d.people, weekdays);
+          if (b.dataset.cal) {
+            var n = prompt('How many of the coming meetings?', String(Math.max(4, byId[b.dataset.cal].members.length)));
+            if (!n) return;
+            api('/notebook/api/meetings/' + b.dataset.cal + '/calendar', { body: { count: Number(n) } })
+              .then(function (r) { toast(r.made ? r.made + ' meeting' + (r.made > 1 ? 's' : '') + ' added to the calendar, each naming its presenter.' : 'They are on the calendar already.'); })
+              .catch(function (err) { toast(esc(err.message), true); });
+          }
+        };
+      }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
+    },
+  };
+  function seriesForm(box, s, list, weekdays) {
+    var holder = $('#nb-series-form', box);
+    var members = s ? s.members.map(function (m) { return m.username; }) : [me.username];
+    var fields = { name: s ? s.name : 'Lab meeting', weekday: s && s.weekday !== null ? String(s.weekday) : '', time: s ? s.time : '', location: s ? s.location : '' };
+    function draw() {
+      // Keep what has been typed when the rotation list is redrawn.
+      var old = $('form', holder);
+      if (old) ['name', 'weekday', 'time', 'location'].forEach(function (k) { fields[k] = old.elements[k].value; });
+      var names = {};
+      list.forEach(function (p) { names[p.username] = p.name; });
+      holder.innerHTML = '<form class="nb-series-form"><h4>' + (s ? 'Edit ' + esc(s.name) : 'New meeting series') + '</h4>' +
+        '<label>Name <input name="name" required value="' + esc(fields.name) + '"></label>' +
+        '<div class="nb-field-row"><label>Every <select name="weekday"><option value="">— day —</option>' + weekdays.map(function (w, i) { return '<option value="' + i + '"' + (fields.weekday === String(i) ? ' selected' : '') + '>' + w + '</option>'; }).join('') + '</select></label>' +
+        '<label>at <input type="time" name="time" value="' + esc(fields.time) + '"></label></div>' +
+        '<label>Where <input name="location" value="' + esc(fields.location) + '" placeholder="Room, or a video link"></label>' +
+        '<div class="nb-label">Presenting order</div><ol class="nb-order">' + members.map(function (u, i) {
+          return '<li><span class="nb-grow">' + esc(names[u] || u) + '</span><button type="button" class="nb-icon-btn" data-up="' + i + '" aria-label="Earlier">↑</button><button type="button" class="nb-icon-btn" data-down="' + i + '" aria-label="Later">↓</button><button type="button" class="nb-icon-btn" data-out="' + i + '" aria-label="Remove">×</button></li>';
+        }).join('') + '</ol>' +
+        '<div class="nb-field-row"><select id="nb-series-add"><option value="">Add someone…</option>' + list.filter(function (p) { return members.indexOf(p.username) < 0; }).map(function (p) { return '<option value="' + esc(p.username) + '">' + esc(p.name) + '</option>'; }).join('') + '</select>' +
+        '<button type="button" class="btn-link" id="nb-series-all">Add everyone</button></div>' +
+        '<div class="nb-field-row"><button class="btn btn-primary" type="submit">Save</button><button type="button" class="btn" data-cancel>Cancel</button>' +
+        (s && (s.owner === me.username) ? '<span class="nb-grow"></span><button type="button" class="btn-link is-danger" data-delete-series>Delete</button>' : '') + '</div></form>';
+      var form = $('form', holder);
+      form.scrollIntoView({ block: 'nearest' });
+      $('#nb-series-add', holder).addEventListener('change', function (e) { if (e.target.value) { members.push(e.target.value); draw(); } });
+      $('#nb-series-all', holder).addEventListener('click', function () {
+        list.forEach(function (p) { if (!p.guest && members.indexOf(p.username) < 0) members.push(p.username); });
+        draw();
+      });
+      form.onclick = function (e) {
+        var b = e.target.closest('button');
+        if (!b) return;
+        var i;
+        if (b.dataset.up !== undefined) { i = Number(b.dataset.up); if (i > 0) { members.splice(i - 1, 0, members.splice(i, 1)[0]); draw(); } }
+        if (b.dataset.down !== undefined) { i = Number(b.dataset.down); if (i < members.length - 1) { members.splice(i + 1, 0, members.splice(i, 1)[0]); draw(); } }
+        if (b.dataset.out !== undefined) { members.splice(Number(b.dataset.out), 1); draw(); }
+        if (b.dataset.cancel !== undefined) holder.innerHTML = '';
+        if (b.dataset.deleteSeries !== undefined && confirm('Delete ' + s.name + '? Its notes stay.')) api('/notebook/api/meetings/' + s.id + '/delete', { body: {} }).then(function () { PANELS.meetings.render(box); });
+      };
+      form.onsubmit = function (e) {
+        e.preventDefault();
+        var el = form.elements;
+        var body = { name: el.name.value, weekday: el.weekday.value, time: el.time.value, location: el.location.value, members: members };
+        api(s ? '/notebook/api/meetings/' + s.id : '/notebook/api/meetings', { body: body }).then(function () { PANELS.meetings.render(box); })
+          .catch(function (err) { toast(esc(err.message), true); });
+      };
+    }
+    draw();
+  }
+
+  // ---- recipes
+  PANELS.recipes = {
+    title: 'Recipe library',
+    render: function (box) {
+      api('/notebook/api/recipes').then(function (d) {
+        var insertable = !!(nb && canEdit);
+        var row = function (r, mine) {
+          var comps = (r.data.components || []).map(function (c) { return esc(c.name); }).join(', ');
+          return '<li class="nb-list-row nb-recipe-row"><span class="nb-grow"><b>' + esc(r.name) + '</b><small>' + esc(r.data.volume || '') + ' ' + esc(r.data.volumeUnit || '') + ' · ' + comps + '</small></span>' +
+            (insertable ? '<button type="button" class="btn" data-insert="' + esc(r.id) + '">Insert</button>' : '') +
+            (mine && r.can_edit ? '<button type="button" class="nb-icon-btn" data-del-recipe="' + r.id + '" aria-label="Delete">' + icon('trash') + '</button>' : '') + '</li>';
+        };
+        box.innerHTML = '<p class="nb-muted">' + (insertable ? 'Insert one into this page, then change the volume and every amount follows.' : 'Open a page you can edit to insert a recipe.') + ' Save your own from any recipe block.</p>' +
+          (d.recipes.length ? '<div class="notebook-section-label">Saved by the lab</div><ul class="nb-list">' + d.recipes.map(function (r) { return row(r, true); }).join('') + '</ul>' : '') +
+          '<div class="notebook-section-label">Common recipes</div><ul class="nb-list">' + d.presets.map(function (r) { return row(r, false); }).join('') + '</ul>';
+        var all = d.recipes.concat(d.presets);
+        box.onclick = function (e) {
+          var ins = e.target.closest('[data-insert]');
+          var del = e.target.closest('[data-del-recipe]');
+          if (ins && nb) {
+            var r = all.filter(function (x) { return String(x.id) === ins.dataset.insert; })[0];
+            var value = JSON.parse(JSON.stringify(r.data));
+            value.name = value.name || r.name;
+            nb.editor.chain().focus().insertLabBlock('recipe', value).run();
+            toast('Inserted ' + esc(r.name) + '.');
+          }
+          if (del && confirm('Delete this recipe from the library?')) api('/notebook/api/recipes/' + del.dataset.delRecipe + '/delete', { body: {} }).then(function () { PANELS.recipes.render(box); });
+        };
+      }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
+    },
+  };
+
+  // ---- experiments that followed a protocol
+  PANELS.experiments = {
+    title: 'Experiments from this protocol',
+    render: function (box) {
+      api('/notebook/api/pages/' + page.id + '/experiments').then(function (d) {
+        box.innerHTML = d.experiments.length ? '<ul class="nb-list">' + d.experiments.map(function (x) {
+          return '<li><a class="nb-result" href="/notebook?page=' + x.id + '"><b>' + esc(x.title) + '</b><small>' + esc(x.owner_name) + (x.version ? ' · v' + x.version : '') + ' · ' + esc(timeText(x.started_at)) + (x.status ? ' · ' + esc((DATA.statuses || {})[x.status] || x.status) : '') + '</small></a></li>';
+        }).join('') + '</ul>' : '<p class="nb-muted">None yet. “Start an experiment from it” makes one with these steps as a checklist.</p>';
+      });
+    },
+  };
+
+  if (!page) return;
+
+  // ------------------------------------------------------------ the page
+
+  var saveState = $('#page-saved-state');
+  function setSaved(text, isError) {
+    if (!saveState) return;
+    saveState.textContent = text;
+    saveState.classList.toggle('is-error', !!isError);
+  }
+
+  function post(fields, headers) {
+    var body = new URLSearchParams();
+    Object.keys(fields).forEach(function (k) { body.set(k, fields[k]); });
+    var h = { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Autosave': '1' };
+    Object.keys(headers || {}).forEach(function (k) { h[k] = headers[k]; });
+    return fetch('/notebook/pages/' + page.id + '/update', { method: 'POST', headers: h, body: body.toString(), keepalive: true });
+  }
+
+  function saveField(field, value) {
+    if (!canEdit) return;
+    var f = {};
+    f[field] = value;
+    return post(f).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok) setSaved('Saved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      else setSaved('Not saved', true);
+    }).catch(function () { setSaved('Offline — not saved yet', true); });
+  }
+
+  // Wait for the editor's latest text to be saved before asking the server
+  // to act on it (a version, a protocol's steps, action items).
+  function flushed() {
+    return nb ? Promise.resolve(nb.flush()) : Promise.resolve();
+  }
+
+  function saveBody(markdown, meta) {
+    var headers = meta && meta.gen !== undefined ? { 'X-Collab-Gen': String(meta.gen) } : {};
+    return post({ body: markdown }, headers).then(function (r) {
+      if (r.status === 409) { restartEditor(); return; }
+      return r.json().then(function (d) {
+        if (d.ok) setSaved('Saved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        else setSaved('Not saved', true);
+      });
+    }).catch(function () { setSaved('Offline — will save with the next change', true); });
+  }
+
+  // Title, date, topic.
+  var title = $('#page-title');
+  if (title && canEdit) {
+    var saveTitle = debounce(function () {
+      saveField('title', title.value);
+      $$('.notebook-page-item[data-page-id="' + page.id + '"] .page-title-label').forEach(function (el) { el.textContent = title.value || 'Untitled page'; });
+      document.title = (title.value || 'Untitled page') + document.title.replace(/^[^·|—-]*/, ' ');
+    }, 400);
+    title.addEventListener('input', saveTitle);
+    title.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); if (nb) nb.editor.commands.focus('start'); }
+    });
+  }
+  var dateInput = $('#page-entry-date');
+  if (dateInput && canEdit) dateInput.addEventListener('change', function () { saveField('entry_date', dateInput.value); });
+  var topic = $('#page-topic-select');
+  if (topic) topic.addEventListener('change', function () {
+    var f = new FormData();
+    f.append('tab_id', topic.value);
+    fetch('/notebook/pages/' + page.id + '/move', { method: 'POST', body: f }).then(function (r) { return r.json(); })
+      .then(function (d) { if (d.ok) go('/notebook?page=' + d.page_id); });
+  });
+
+  // Kind, status, start / finish.
+  function meta(body) {
+    return api('/notebook/api/pages/' + page.id + '/meta', { body: body }).then(function (d) {
+      page = Object.assign(page, d.page);
+      drawStamps();
+      return d;
+    });
+  }
+  var kindSel = $('#nb-kind');
+  if (kindSel) kindSel.addEventListener('change', function () { meta({ kind: kindSel.value }).then(function () { window.location.reload(); }); });
+  var statusSel = $('#nb-status');
+  if (statusSel) statusSel.addEventListener('change', function () {
+    meta({ status: statusSel.value }).then(function () { statusSel.parentNode.dataset.status = statusSel.value; });
+  });
+  $$('[data-action]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var action = b.dataset.action;
+      if (action === 'start') {
+        meta({ action: 'start' }).then(function () { window.location.reload(); });
+      } else if (action === 'finish') {
+        meta({ action: 'finish', outcome: b.dataset.outcome }).then(function () { window.location.reload(); });
+      } else if (action === 'start-experiment') {
+        var name = prompt('Name the experiment:', page.title + ' — ' + new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }));
+        if (name === null) return;
+        flushed().then(function () {
+          return api('/notebook/api/pages/' + page.id + '/start-experiment', { body: { title: name } });
+        }).then(function (d) { go(d.url); }).catch(function (e) { toast(esc(e.message), true); });
+      } else if (action === 'release') {
+        flushed().then(function () {
+          return api('/notebook/api/pages/' + page.id + '/versions', { body: { release: true } });
+        }).then(function (d) {
+          toast('Saved as v' + d.number + '. Experiments started from now on follow this version.');
+          setTimeout(function () { window.location.reload(); }, 900);
+        });
+      } else if (action === 'action-items') {
+        flushed().then(function () {
+          return api('/notebook/api/pages/' + page.id + '/action-items', { body: {} });
+        }).then(function (d) {
+            if (!d.made.length) {
+              toast(d.skipped ? 'Those action items were sent already.' : 'No open tasks name anyone. Write them like “- [ ] @name order primers, due 2026-10-01”.');
+              return;
+            }
+            toast('Sent ' + d.made.length + ' to-do' + (d.made.length > 1 ? 's' : '') + ': ' + d.made.map(function (m) { return esc(m.name); }).join(', ') + '.');
+        }).catch(function (e) { toast(esc(e.message), true); });
+      }
+    });
+  });
+
+  function drawStamps() {
+    var box = $('#nb-stamps');
+    if (!box) return;
+    var parts = [];
+    if (page.started_at) parts.push('<span title="' + esc(when(page.started_at).toLocaleString()) + '">' + icon('clock') + ' started ' + esc(timeText(page.started_at)) + '</span>');
+    if (page.finished_at) parts.push('<span title="' + esc(when(page.finished_at).toLocaleString()) + '">finished ' + esc(timeText(page.finished_at)) + '</span>');
+    if (page.edited_by_name && page.edited_by !== me.username) parts.push('<span>last edited by ' + esc(page.edited_by_name) + '</span>');
+    box.innerHTML = parts.length ? '<span class="meta-sep">·</span>' + parts.join(' · ') : '';
+    var started = $('#nb-started');
+    if (started && page.started_at) started.textContent = when(page.started_at).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+  drawStamps();
+
+  // Tags.
+  var tagsBox = $('#nb-tags');
+  function drawTags() {
+    if (!tagsBox) return;
+    tagsBox.innerHTML = (page.tags || []).map(function (t) {
+      return '<span class="nb-tag is-chip">#' + esc(t) + (canEdit ? '<button type="button" data-untag="' + esc(t) + '" aria-label="Remove tag ' + esc(t) + '">×</button>' : '') + '</span>';
+    }).join('') + (canEdit ? '<input class="nb-tag-input" placeholder="' + ((page.tags || []).length ? '+ tag' : 'Add tags…') + '" aria-label="Add a tag" list="nb-tag-list"><datalist id="nb-tag-list"></datalist>' : (page.tags || []).length ? '' : '<span class="nb-muted">no tags</span>');
+    var input = $('.nb-tag-input', tagsBox);
+    if (!input) return;
+    input.addEventListener('focus', function () {
+      api('/notebook/api/tags').then(function (d) {
+        $('#nb-tag-list', tagsBox).innerHTML = d.tags.map(function (t) { return '<option value="' + esc(t.tag) + '">'; }).join('');
+      });
+    }, { once: true });
+    input.addEventListener('keydown', function (e) {
+      if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) {
+        e.preventDefault();
+        var next = (page.tags || []).concat(input.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean));
+        meta({ tags: next }).then(function () { drawTags(); $('.nb-tag-input', tagsBox).focus(); });
+      } else if (e.key === 'Backspace' && !input.value && (page.tags || []).length) {
+        meta({ tags: page.tags.slice(0, -1) }).then(drawTags);
+      }
+    });
+  }
+  if (tagsBox) {
+    tagsBox.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-untag]');
+      if (b) meta({ tags: page.tags.filter(function (t) { return t !== b.dataset.untag; }) }).then(drawTags);
+    });
+    drawTags();
+  }
+
+  // More menu.
+  var moreBtn = $('#nb-more-btn');
+  var moreMenu = $('#nb-more-menu');
+  if (moreBtn) {
+    moreBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      moreMenu.hidden = !moreMenu.hidden;
+      moreBtn.setAttribute('aria-expanded', String(!moreMenu.hidden));
+    });
+    document.addEventListener('click', function (e) { if (!moreMenu.hidden && !moreMenu.contains(e.target)) moreMenu.hidden = true; });
+    moreMenu.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-more]');
+      if (!b) return;
+      moreMenu.hidden = true;
+      var what = b.dataset.more;
+      if (what === 'print') window.print();
+      if (what === 'source') openSource();
+      if (what === 'version') saveNamedVersion();
+      if (what === 'template') {
+        var name = prompt('Save this page as a template named:', page.title || 'Untitled template');
+        if (!name) return;
+        var f = new FormData();
+        f.append('title', name);
+        f.append('from_page_id', page.id);
+        flushed().then(function () {
+          return fetch('/notebook/templates/create', { method: 'POST', body: f });
+        }).then(function (r) { return r.json(); })
+          .then(function (d) { if (d.ok) toast('Saved as the template “' + esc(name) + '”.'); });
+      }
+      if (what === 'delete') {
+        if (!confirm('Delete “' + (page.title || 'Untitled page') + '”? Its history and comments go with it.')) return;
+        fetch('/notebook/pages/' + page.id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } })
+          .then(function (r) { return r.json(); }).then(function (d) { go('/notebook?tab=' + d.tab_id); });
+      }
+    });
+  }
+
+  // Markdown source.
+  function openSource() {
+    var md = nb ? nb.getMarkdown() : $('#initial-body').value;
+    var overlay = document.createElement('div');
+    overlay.className = 'notebook-modal';
+    overlay.innerHTML = '<div class="notebook-modal-backdrop" data-x></div><div class="notebook-modal-card nb-source-card" role="dialog" aria-label="Markdown">' +
+      '<header class="notebook-modal-head"><h3>Markdown</h3><button type="button" class="modal-close" data-x aria-label="Close">' + icon('close') + '</button></header>' +
+      '<div class="notebook-modal-body"><p class="nb-muted">The page as Markdown: sheets, recipes and diagrams are the fenced blocks. ' + (canEdit ? 'Edit and apply, or paste Markdown from elsewhere.' : '') + '</p>' +
+      '<textarea class="nb-source" spellcheck="false"' + (canEdit ? '' : ' readonly') + '></textarea>' +
+      '<div class="nb-field-row"><button type="button" class="btn" data-copy>Copy</button><span class="nb-grow"></span>' + (canEdit ? '<button type="button" class="btn btn-primary" data-apply>Apply</button>' : '') + '</div></div></div>';
+    document.body.appendChild(overlay);
+    var ta = $('textarea', overlay);
+    ta.value = md;
+    ta.focus();
+    overlay.addEventListener('click', function (e) {
+      if (e.target.closest('[data-x]')) overlay.remove();
+      if (e.target.closest('[data-copy]')) { ta.select(); try { navigator.clipboard.writeText(ta.value); } catch (_e) { document.execCommand('copy'); } toast('Copied.'); }
+      if (e.target.closest('[data-apply]')) {
+        if (nb) nb.setContent(ta.value);
+        else { $('.notebook-fallback').value = ta.value; saveBody(ta.value); }
+        overlay.remove();
+      }
+    });
+  }
+
+  // Presence.
+  function drawPeers(peers) {
+    var box = $('#nb-presence');
+    if (!box) return;
+    // Your own other tabs are not company.
+    peers = peers.filter(function (p) { return p.username !== me.username; });
+    box.innerHTML = peers.map(function (p) {
+      return '<span class="nb-avatar" style="background:' + colorFor(p.username) + '" title="' + esc(p.name) + ' is here">' + esc(initials(p.name)) + '</span>';
+    }).join('');
+    box.title = peers.length ? peers.map(function (p) { return p.name; }).join(', ') + (peers.length > 1 ? ' are' : ' is') + ' on this page' : '';
+  }
+
+  // Daily log quick entry.
+  var quick = $('#nb-quicklog');
+  if (quick) quick.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var input = $('#nb-quicklog-input');
+    var text = input.value.trim();
+    if (!text || !nb) return;
+    nb.addLog(text);
+    input.value = '';
+    input.focus();
+  });
+
+  // Run mode button.
+  var runBtn = $('#nb-run');
+  function updateRun() { if (runBtn && nb) runBtn.hidden = !nb.hasSteps(); }
+  if (runBtn) runBtn.addEventListener('click', function () { if (nb) nb.runMode(); });
+
+  // ------------------------------------------------------------ the editor
+
+  var mountEl = $('#editor-mount');
+  var initialBody = $('#initial-body');
+
+  function fallback() {
+    var banner = document.createElement('div');
+    banner.className = 'notebook-banner';
+    banner.innerHTML = '<strong>The editor isn’t built yet.</strong> Run this once in a terminal, then refresh. Until then you can write in plain Markdown below.<pre>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>';
+    mountEl.parentNode.insertBefore(banner, mountEl);
+    var ta = document.createElement('textarea');
+    ta.value = initialBody.value;
+    ta.spellcheck = false;
+    ta.className = 'notebook-fallback';
+    ta.readOnly = !canEdit;
+    mountEl.replaceWith(ta);
+    // No X-Collab-Gen: the server starts live editors again from this text.
+    ta.addEventListener('input', debounce(function () { saveBody(ta.value); }, 600));
+  }
+
+  function mount(body) {
+    return window.BiomanagerNotebook.mount({
+      element: mountEl,
+      page: Object.assign({}, page, { body: body }),
+      me: me,
+      getTitle: function () { return title ? title.value : page.title; },
+      onSave: saveBody,
+      onPeers: drawPeers,
+      onChange: debounce(updateRun, 400),
+      onStatus: function (s) { if (s === 'offline') setSaved('Offline — changes will be sent when back', true); },
+      onMeta: function (m) {
+        if (m.title && title && document.activeElement !== title && title.value !== m.title) title.value = m.title;
+      },
+      onReset: restartEditor,
+      onCommentOpen: function (id) { openPanel('comments', { focus: id }); },
+    }).then(function (api_) {
+      nb = api_;
+      updateRun();
+      if (page.open_comments || location.hash.indexOf('#comment-') === 0) loadComments().then(function () {
+        var m = /^#comment-(\d+)/.exec(location.hash);
+        if (m) openPanel('comments', { focus: Number(m[1]) });
+      });
+      return nb;
+    });
+  }
+
+  var restarting = false;
+  function restartEditor() {
+    if (restarting) return;
+    restarting = true;
+    setSaved('Updating to the latest version…');
+    api('/notebook/api/pages/' + page.id).then(function (d) {
+      page = Object.assign(page, d.page);
+      if (nb) { try { nb.destroy(); } catch (_e) { /* already gone */ } nb = null; }
+      mountEl.innerHTML = '';
+      return mount(d.page.body);
+    }).then(function () {
+      restarting = false;
+      setSaved('Up to date');
+      refreshHighlights();
+    }).catch(function () { restarting = false; setSaved('Could not reload the page — refresh to continue', true); });
+  }
+
+  window.addEventListener('DOMContentLoaded', function () {
+    if (!mountEl || !initialBody) return;
+    if (window.__notebookBundleMissing || !window.BiomanagerNotebook || typeof window.BiomanagerNotebook.mount !== 'function') {
+      fallback();
+      return;
+    }
+    mount(initialBody.value).catch(function (e) {
+      console.error(e);
+      toast('The live editor could not start (' + esc(e.message) + '). Showing the plain text instead.', true);
+      mountEl.innerHTML = '';
+      fallback();
+    });
+  });
+})();

@@ -98,8 +98,8 @@ Rebuild after editing templates — Tailwind only emits the classes it finds in
 Every page is on Tailwind; the old `styles.css` / `legacy.css` bridge has
 been removed. Three pages embed third-party widgets that bring their own
 stylesheet (Open Vector Editor on plasmid detail, TOAST UI on the calendar)
-and the notebook editor's own CSS lives in `frontend/src/styles.css`, built
-with `npm run build:notebook`. All three read the theme's colour tokens, so
+and the notebook editor's own CSS lives in `frontend/src/styles.css` and
+`frontend/src/blocks.css`, built with `npm run build:notebook`. All three read the theme's colour tokens, so
 they follow the app's palette and dark mode.
 
 ## Organism modules (configurable species databases)
@@ -244,6 +244,63 @@ The header bell (`base.html`, `static/shell.js`) polls
 `/notifications/panel` when opened; `/notifications/<id>/open` marks one read
 and redirects only to a path in this app. The daily "waiting for genotyping"
 reminder is made on a user's first page of the day.
+
+## The lab notebook
+
+Pages are `notebook_pages` inside a person's `notebook_tabs` (topics);
+everything added in the rebuild lives beside them, in its own tables
+(`app/models.py`, below the lab calendar's), so existing databases need no
+column changes. `app/lab_notebook.py` has the routes (`/notebook/api/…`) and
+the rules; the editor is `frontend/src/` and the page around it is
+`app/static/notebook-page.js` and `app/static/notebook.css`.
+
+| Table | Holds |
+| --- | --- |
+| `notebook_page_info` | kind (note, experiment, protocol, meeting, seminar, daily), status, tags, start/finish, the protocol an experiment follows, a meeting's series and presenter, the live-editing generation |
+| `notebook_shares` | who else may open a page, and whether to view or edit (`*` is the whole lab, guests excepted) |
+| `notebook_versions` | the page's history: `auto` (one person's edits within 10 minutes, up to an hour, fold into one), `manual`, `release` (a protocol's v1, v2 …), `restore` |
+| `notebook_sync_updates`, `notebook_presence` | live editing: Yjs updates and cursors (below) |
+| `notebook_comments` | comments on a page or a quoted passage, and replies |
+| `notebook_recipes` | the lab's buffer library (the built-in ones are `PRESET_RECIPES`) |
+| `notebook_meeting_series` | a meeting's rotation (`members` in order, `next_index`), day and time |
+
+**Who may do what** is `lab_notebook.role_for()`: `owner`, `edit`, `view` or
+nothing. Viewers read and comment; editors also write; only the owner
+shares, moves or deletes. Search, backlinks and the global search use
+`accessible_filter()`, so a shared page is found wherever the owner's is.
+
+**Live editing** needs no websocket: each open editor holds the page as a
+Yjs document (`frontend/src/collab.js`), posts its updates (base64) to
+`/notebook/api/pages/<id>/sync` and polls the same address for everyone
+else's, every 1.2 s while someone else is on the page and every 4 s
+alone. Yjs merges updates in any order, so two people typing in one
+paragraph both keep their words. The first editor to open a page seeds it
+from the saved Markdown (`init`, refused if someone else got there first).
+Cursors travel as Yjs awareness updates in `notebook_presence`. When the
+log grows past a few hundred updates, one editor replaces it with a single
+snapshot (`/sync/compact`).
+
+The Markdown in `notebook_pages.body` stays the source for search,
+history and export: editors save it after their changes (with
+`X-Collab-Gen`), and a version is credited to whoever last typed. Anything
+that replaces the text from outside the editor (restoring a version, the
+plain-text fallback) bumps `collab_generation` and clears the log; open
+editors are told to start again from the saved text.
+
+**Blocks** (data sheets, recipes, calculators, plates, qPCR, diagrams,
+equations) are one TipTap node, `labBlock` (`frontend/src/blocks/`). In
+Markdown each is a fenced block named by its kind (```` ```sheet ````,
+```` ```recipe ````, ```` ```mermaid ```` …) holding JSON or the source, so a
+page reads anywhere and GitHub draws the diagrams and maths itself. In the
+editor the data is one node attribute rather than text: Yjs merges text
+character by character, which would splice two people's JSON, while an
+attribute is replaced whole. Statistics (`blocks/stats.js`) and formula
+columns (`blocks/formula.js`) are computed in the browser; formulas are
+parsed by hand because the security policy forbids `eval`.
+
+Mermaid and KaTeX are large and most pages use neither: `npm run
+build:vendor` copies them to `app/static/notebook-build/vendor/`, and they
+load the first time a page shows a diagram or an equation.
 
 ## Change history
 
