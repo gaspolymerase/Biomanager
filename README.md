@@ -277,7 +277,8 @@ stock**, and statuses and categories can be renamed without losing items.
   - **Working together**: share a page with lab mates (or the whole lab)
     to read or to edit. Editors write in it at the same time and see each
     other's cursors. Comments sit on a passage of text, and an `@name`
-    tells that person.
+    tells that person. Anyone can turn these notebook notices off under
+    **Settings → Notifications**.
   - **Version history**: every editing session is kept, compared line by
     line with the page now, and any version can be restored.
   - **Tags and search** across every page you own or that is shared with

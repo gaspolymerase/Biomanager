@@ -10,7 +10,7 @@ import io
 import json
 from datetime import date, timedelta
 
-from tests.base import AppTestCase, TODAY, client_for, count, make_user, one, rows, uniq  # first: points the app at a test database
+from tests.base import AppTestCase, TODAY, client_for, count, make_user, one, only_sqlite, rows, uniq  # first: points the app at a test database
 from app import lab_notebook  # noqa: E402
 
 
@@ -432,3 +432,35 @@ class RecipeAndMarkdownTests(Notebook):
         self.m.post("/notebook/templates/create", data={"title": uniq("tpl"), "body": body})
         tid = one("select id from notebook_templates where owner_username=? order by id desc limit 1", self.member)
         self.assertEqual(self.m.get(f"/notebook/templates/{tid}").get_json()["template"]["body"], body)
+
+
+class NotificationSwitchTests(Notebook):
+    def test_turning_notebook_notifications_off_in_settings_silences_them(self):
+        mate = make_user()
+        c = client_for(mate)
+        r = c.post("/settings", data={"action": "notifications", "notify_lab": "1"})  # every box but Notebook
+        self.assertIn(r.status_code, (200, 302))
+        self.assertEqual(one("select notify_notebook from users where username=?", mate), 0)
+        page = self.new_page(self.m, title=uniq("quiet"))
+        self.share(self.m, page, mate)
+        self.post_json(self.m, f"/notebook/api/pages/{page}/comments", {"body": f"@{mate} look"})
+        self.assertEqual(count("notifications", "recipient_username=?", mate), 0)
+        # On again: they hear of the next one, filed under Notebook.
+        c.post("/settings", data={"action": "notifications", "notify_notebook": "1"})
+        self.post_json(self.m, f"/notebook/api/pages/{page}/comments", {"body": f"@{mate} again"})
+        self.assertEqual(count("notifications", "recipient_username=? and category='notebook'", mate), 1)
+
+    def test_settings_shows_the_notebook_switch(self):
+        html = self.m.get("/settings").get_data(as_text=True)
+        self.assertIn('name="notify_notebook"', html)
+
+    @only_sqlite
+    def test_an_existing_database_gets_the_column_on_start(self):
+        from app import services
+        from app.db import engine
+        with engine.begin() as con:
+            con.exec_driver_sql("ALTER TABLE users DROP COLUMN notify_notebook")
+        services.ensure_schema_updates()
+        with engine.connect() as con:
+            cols = [r[1] for r in con.exec_driver_sql("PRAGMA table_info(users)")]
+        self.assertIn("notify_notebook", cols)
