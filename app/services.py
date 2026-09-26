@@ -217,7 +217,7 @@ def ensure_schema_updates() -> None:
             alter_statements.append("ALTER TABLE users ADD COLUMN notify_picked BOOLEAN DEFAULT TRUE")
         if "notify_breeder_aging" not in existing:
             alter_statements.append("ALTER TABLE users ADD COLUMN notify_breeder_aging BOOLEAN DEFAULT TRUE")
-        for column in ("notify_genotyping", "notify_orders", "notify_lab"):
+        for column in ("notify_genotyping", "notify_orders", "notify_lab", "notify_notebook"):
             if column not in existing:
                 alter_statements.append(f"ALTER TABLE users ADD COLUMN {column} BOOLEAN DEFAULT TRUE")
         if "welcomed_at" not in existing:

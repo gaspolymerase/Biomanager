@@ -334,6 +334,8 @@ class UserAccount(Base):
     notify_genotyping: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_orders: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_lab: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Notebook pages shared with them, comments and @mentions, meeting notes and action items.
+    notify_notebook: Mapped[bool] = mapped_column(Boolean, default=True)
     # When they finished (or skipped) the welcome tour; None shows it once.
     welcomed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # A temporary account (a guest pass, app/guests.py) stops working then.
