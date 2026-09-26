@@ -7,6 +7,13 @@ APK="$1"
 OUT="${2:-smoke}"
 mkdir -p "$OUT"
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
+# Whatever happens, keep the device log and what the server saw.
+keep_logs() {
+  adb logcat -d > "$OUT/logcat.txt" 2>&1 || true
+  cp "$SERVER_LOG" "$OUT/server.log" 2>/dev/null || true
+}
+trap keep_logs EXIT
+adb logcat -c || true
 
 adb install -r "$APK"
 adb shell am start -W -n org.biomanager.app/.MainActivity
