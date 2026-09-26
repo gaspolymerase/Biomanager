@@ -1118,6 +1118,13 @@
   .sheet-actions { @apply flex items-center justify-end gap-0.5 pr-1; }
   .sheet-actions form { @apply m-0; }
   .sheet-actions .row-icon-btn:disabled { @apply cursor-not-allowed opacity-30; }
+  /* A received order's "To stock": labelled, so it says what it does. */
+  .row-stock-btn {
+    @apply inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border-0 bg-brand-50 px-2
+           text-[11.5px] font-semibold whitespace-nowrap text-brand-700 transition-colors hover:bg-brand-100;
+  }
+  .row-stock-btn[hidden] { @apply hidden; }
+  .row-stock-btn svg { @apply size-3; }
   @media (hover: hover) {
     .sheet-table tbody tr .sheet-actions { @apply opacity-40 transition-opacity; }
     .sheet-table tbody tr:hover .sheet-actions,
@@ -2900,6 +2907,7 @@
     min-width: 36px;
     min-height: 36px;
   }
+  .row-stock-btn { min-height: 32px; }
   select, .status-pill, .sex-pill, .scope-pill {
     min-height: 32px;
   }
