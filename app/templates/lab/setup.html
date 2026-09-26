@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block page_title %}{{ 'Set up your lab' if first_run else 'Lab setup' }}{% endblock %}
+{% block page_heading %}{{ 'Set up your lab' if first_run else 'Lab setup' }}{% endblock %}
+{% block page_subtitle %}{{ 'Four questions, then BioManager shows your lab only what it uses' if first_run else 'What the lab uses, what members may do, and who looks after it' }}{% endblock %}
+
+{% macro choice(name, checked, label, blurb, icon_name) %}
+  <label class="choice-card">
+    <input type="checkbox" name="{{ name }}" value="1" {% if checked %}checked{% endif %}>
+    <span class="choice-icon">{{ icon(icon_name) }}</span>
+    <span class="choice-text">
+      <span class="choice-title">{{ label }}</span>
+      <span class="choice-blurb">{{ blurb }}</span>
+    </span>
+    <span class="choice-check" aria-hidden="true">{{ icon('check') }}</span>
+  </label>
+{% endmacro %}
+
+{% block content %}
+<div class="setup-page">
+  {% if first_run %}
+    <section class="setup-intro">
+      <h2>Welcome, {{ current_user.display_name or current_user.username }}</h2>
+      <p>You're the lab's first admin. Tell BioManager what your lab keeps, and everyone who joins
+        gets exactly those databases: in their sidebar, on their home page, in search. Nothing here
+        is permanent. Change any of it later under <strong>Lab setup</strong>, and anyone can still
+        add a database of their own.</p>
+    </section>
+  {% endif %}
+
+  <form method="post" class="setup-form" id="setup-form">
+    <section class="setup-step">
+      <header class="setup-step-head"><span class="setup-step-num">1</span><h3>Your lab</h3></header>
+      <label class="field-label max-w-[420px]">Lab name
+        <input name="lab_name" value="{{ state.lab_name }}" maxlength="80" placeholder="e.g. McClintock Lab" autocomplete="organization">
+        <span class="field-hint normal-case tracking-normal">Shown to members when they first sign in. Optional.</span>
+      </label>
+    </section>
+
+    <section class="setup-step" id="databases">
+      <header class="setup-step-head"><span class="setup-step-num">2</span><h3>What does your lab keep?</h3></header>
+      <p class="setup-note">Tick everything the lab works with. Unticked databases are hidden, not deleted: tick one again and its records are back.</p>
+      <p class="setup-group-label">Animals and stocks</p>
+      <div class="choice-grid">
+        {% for key in ('colony', 'zebrafish') %}{% set f = features[key] %}
+          {{ choice('feature:' ~ key, state.features[key], f.label, f.blurb, f.icon) }}
+        {% endfor %}
+        {% for kind, (label, blurb, icon_name) in stock_choices.items() %}
+          {{ choice('stock:' ~ kind, state.stocks[kind], label, blurb, icon_name) }}
+        {% endfor %}
+      </div>
+      <p class="setup-group-label">Molecular biology and supplies</p>
+      <div class="choice-grid">
+        {% set f = features['plasmids'] %}
+        {{ choice('feature:plasmids', state.features['plasmids'], f.label, f.blurb, f.icon) }}
+        {% for kind, (label, blurb, icon_name) in inventory_choices.items() %}
+          {{ choice('inventory:' ~ kind, state.inventories[kind], label, blurb, icon_name) }}
+        {% endfor %}
+      </div>
+      <p class="setup-note">Another species (Xenopus, rats, cell lines…)? After this, <strong>Add database</strong> in the sidebar builds one to your lab's vocabulary.</p>
+    </section>
+
+    <section class="setup-step">
+      <header class="setup-step-head"><span class="setup-step-num">3</span><h3>Which lab functions?</h3></header>
+      <div class="choice-grid">
+        {% for key in ('calendar', 'notebook') %}{% set f = features[key] %}
+          {{ choice('feature:' ~ key, state.features[key], f.label, f.blurb, f.icon) }}
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="setup-step">
+      <header class="setup-step-head"><span class="setup-step-num">4</span><h3>What may members do?</h3></header>
+      <div class="choice-grid">
+        {% for key, (label, blurb, _default) in permissions.items() %}
+          {{ choice(key, state.permissions[key], label, blurb, 'user' if key == 'members_create_databases' else 'users') }}
+        {% endfor %}
+      </div>
+      <p class="setup-note">Admins can always add databases for the whole lab. Everyone sees every lab database's records; each person edits what they own, and shared cages are everyone's.</p>
+    </section>
+
+    <div class="setup-submit">
+      <button type="submit" class="btn btn-primary btn-lg">{{ icon('check') }} {{ 'Set up the lab' if first_run else 'Save lab setup' }}</button>
+      {% if first_run %}<span class="text-[12.5px] text-muted">You can change every answer later.</span>{% endif %}
+    </div>
+  </form>
+
+  {% if not first_run %}
+    <section class="setup-step">
+      <header class="setup-step-head"><span class="setup-step-num">{{ icon('database') }}</span><h3>Other databases</h3></header>
+      <p class="setup-note">Databases built with <strong>Add database</strong>, and members' own. Switch one off to hide it for everyone.</p>
+      {% if custom %}
+        <div class="setup-list">
+          {% for d in custom %}
+            <div class="setup-row">
+              <div class="min-w-0">
+                <span class="font-medium text-ink">{{ d.label }}</span>
+                <span class="text-[12px] text-muted">{{ d.kind_label }}{% if d.created_by and d.created_by != 'system' %} · added by {{ d.created_by }}{% endif %}</span>
+                {% if d.private_to %}<span class="badge badge-brand">Personal · {{ d.private_to }}</span>{% endif %}
+              </div>
+              <form method="post" action="{{ url_for('lab.setup') }}">
+                <input type="hidden" name="action" value="module">
+                <input type="hidden" name="kind" value="{{ d.kind }}">
+                <input type="hidden" name="key" value="{{ d.key }}">
+                <input type="hidden" name="enabled" value="{{ '0' if d.enabled else '1' }}">
+                <button type="submit" class="btn btn-sm{% if d.enabled %} btn-ghost{% endif %}">{{ 'Switch off' if d.enabled else 'Switch on' }}</button>
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-[12.5px] text-muted">None yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="setup-step">
+      <header class="setup-step-head"><span class="setup-step-num">{{ icon('shield') }}</span><h3>Who looks after the lab</h3></header>
+      <p class="setup-note">Admins can change this page, approve new accounts, reset passwords and edit any record. Keep at least two, so nobody is locked out when one is away.</p>
+      <div class="setup-list">
+        {% for a in admins %}
+          <div class="setup-row">
+            <div class="flex min-w-0 items-center gap-2">{{ a.username | owner_badge }} <span class="font-medium text-ink">{{ a.name }}</span>
+              {% if a.id == current_user.id %}<span class="text-[12px] text-muted">you</span>{% endif %}</div>
+            <span class="badge badge-brand">admin</span>
+          </div>
+        {% endfor %}
+        {% for m in members %}
+          <div class="setup-row">
+            <div class="flex min-w-0 items-center gap-2">{{ m.username | owner_badge }} <span class="text-ink">{{ m.name }}</span></div>
+            <form method="post" action="{{ url_for('admin_toggle_role', user_id=m.id) }}"
+                  data-confirm="Make {{ m.name }} a lab admin?">
+              <button type="submit" class="btn btn-sm">{{ icon('shield') }} Make admin</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+      <p class="setup-note"><a href="{{ url_for('admin_users') }}">Manage users</a> for approving sign-ups, removing admin rights and disabling accounts.</p>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

@@ -2,13 +2,35 @@
 
 {% block page_title %}Databases{% endblock %}
 {% block page_heading %}Databases{% endblock %}
-{% block page_subtitle %}Every database in the lab. Open one, rename or configure it, or add as many organism databases or inventories as you need.{% endblock %}
+{% block page_subtitle %}The lab's databases and your own. Open one, configure it, or add one: for the whole lab, or just for you.{% endblock %}
 
 {% block page_actions %}
+  {% if current_user.role == 'admin' %}
+    <a class="btn" href="{{ url_for('lab.setup') }}">{{ icon('sliders') }} Lab setup</a>
+  {% endif %}
   <a class="btn btn-primary" href="{{ url_for('organisms.new_module') }}">
     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> New database
   </a>
 {% endblock %}
+
+{# Personal databases (app/lab.py): a badge in the card header, and the
+   share button in its footer for whoever may share it. #}
+{% macro audience_badge(row) %}
+  {% if row.private_to %}
+    <span class="badge badge-brand whitespace-nowrap" title="Only {{ 'you' if row.private_to == current_user.username else row.private_to }} and lab admins see it">
+      {{ 'Just you' if row.private_to == current_user.username else 'Personal · ' ~ row.private_to }}
+    </span>
+  {% endif %}
+{% endmacro %}
+{% macro audience(kind, row, can_share) %}
+  {% if row.private_to and can_share %}
+    <form method="post" action="{{ url_for('lab.audience', kind=kind, key=row.key) }}" class="ml-auto"
+          data-confirm="Share {{ row.label }} with the whole lab? Everyone will see it in their sidebar.">
+      <input type="hidden" name="to" value="lab">
+      <button type="submit" class="btn btn-sm btn-ghost whitespace-nowrap">{{ icon('users') }} Share with the lab</button>
+    </form>
+  {% endif %}
+{% endmacro %}
 
 {% block content %}
 <h2 class="mb-2 mt-1 flex items-center gap-2">{{ icon('database') }} Built in</h2>
@@ -17,7 +39,7 @@
     <article class="card flex flex-col">
       <header class="card-head">
         <h2>{{ icon(b.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ b.url }}">{{ b.label }}</a></h2>
-        <span class="badge badge-quiet">{{ b.count }} {{ b.noun }}</span>
+        {% if b.on %}<span class="badge badge-quiet">{{ b.count }} {{ b.noun }}</span>{% else %}<span class="badge badge-quiet">switched off</span>{% endif %}
       </header>
       <div class="flex flex-col gap-3 p-4">
         <p class="text-[12.5px] leading-snug text-muted">The lab's built-in {{ b.default|lower }} page{% if b.label != b.default %}, shown here as {{ b.label }}{% endif %}.</p>
@@ -48,14 +70,15 @@
     <article class="card flex flex-col">
       <header class="card-head">
         <h2>{{ icon(m.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ url_for('stocks.module', key=m.key) }}">{{ m.label }}</a></h2>
-        {% if not m.enabled %}<span class="badge badge-quiet">hidden</span>{% else %}<span class="badge badge-quiet">{{ c.count }} {{ m.unit if c.count == 1 else m.units }}</span>{% endif %}
+        <span class="flex items-center gap-1.5">{{ audience_badge(c.row) }}{% if not m.enabled %}<span class="badge badge-quiet">hidden</span>{% else %}<span class="badge badge-quiet">{{ c.count }} {{ m.unit if c.count == 1 else m.units }}</span>{% endif %}</span>
       </header>
       <div class="flex flex-col gap-3 p-4">
         {% if m.blurb %}<p class="text-[12.5px] leading-snug text-muted">{{ m.blurb }}</p>{% endif %}
       </div>
-      <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
+      <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
         <a class="btn btn-sm" href="{{ url_for('stocks.module', key=m.key) }}">Open</a>
         <a class="btn btn-sm btn-ghost" href="{{ url_for('stocks.module', key=m.key, view='settings') }}">{{ icon('settings') }} Rename / configure</a>
+        {{ audience('stocks', c.row, c.can_share) }}
       </footer>
     </article>
   {% else %}
@@ -73,7 +96,7 @@
     <article class="card flex flex-col">
       <header class="card-head">
         <h2>{{ icon(m.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ url_for('inventory.module', key=m.key) }}">{{ m.label }}</a></h2>
-        {% if not m.enabled %}<span class="badge badge-quiet">hidden</span>{% else %}<span class="badge badge-quiet">{{ c.count }} {{ m.item_noun if c.count == 1 else m.item_noun_plural }}</span>{% endif %}
+        <span class="flex items-center gap-1.5">{{ audience_badge(c.row) }}{% if not m.enabled %}<span class="badge badge-quiet">hidden</span>{% else %}<span class="badge badge-quiet">{{ c.count }} {{ m.item_noun if c.count == 1 else m.item_noun_plural }}</span>{% endif %}</span>
       </header>
       <div class="flex flex-col gap-3 p-4">
         {% if m.blurb %}<p class="text-[12.5px] leading-snug text-muted">{{ m.blurb }}</p>{% endif %}
@@ -81,11 +104,12 @@
           {% for f in m.settings.features %}<span class="badge badge-quiet">{{ {'storage': 'boxes', 'board': 'board', 'sharing': 'mine / lab', 'quantity': 'quantity', 'supplier': 'vendor', 'expiry': 'expiry', 'received': 'received'}[f] }}</span>{% endfor %}
         </div>
       </div>
-      <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
+      <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
         <a class="btn btn-sm" href="{{ url_for('inventory.module', key=m.key) }}">Open</a>
         {% if current_user.role == 'admin' or m.created_by == current_user.username %}
           <a class="btn btn-sm btn-ghost" href="{{ url_for('inventory.configure', key=m.key) }}">{{ icon('settings') }} Rename / configure</a>
         {% endif %}
+        {{ audience('inventory', c.row, c.can_share) }}
       </footer>
     </article>
   {% else %}
@@ -108,6 +132,7 @@
             <a class="text-ink no-underline hover:text-brand-700"
                href="{{ url_for('organisms.module', key=m.key) }}">{{ m.label }}</a>
           </h2>
+          {{ audience_badge(card.row) }}
           {% if not card.module.row.enabled %}
             <span class="badge badge-quiet">hidden</span>
           {% else %}
@@ -152,11 +177,12 @@
           </div>
         </div>
 
-        <footer class="mt-auto flex items-center gap-2 border-t border-sand-100 px-4 py-3">
+        <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
           <a class="btn btn-sm" href="{{ url_for('organisms.module', key=m.key) }}">Open</a>
           <a class="btn btn-sm btn-ghost" href="{{ url_for('organisms.module', key=m.key, view='settings') }}">
             {{ icon('settings') }} {{ 'Rename / configure' if card.can_configure else 'Setup' }}
           </a>
+          {{ audience('organisms', card.row, card.can_share) }}
         </footer>
       </article>
     {% endfor %}

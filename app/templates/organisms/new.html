@@ -249,6 +249,9 @@
         </div>
       {% endfor %}
     </div>
+    <div class="px-4 pt-3">
+      {% include "lab/_audience_field.html" %}
+    </div>
     <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-sand-100 bg-sand-50/60 px-4 py-3">
       <p class="text-[12px] text-muted">
         {% if preset_key and prefill.get('schedule_rules') %}

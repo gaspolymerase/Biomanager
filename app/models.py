@@ -331,6 +331,11 @@ class UserAccount(Base):
     notify_transfer: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_picked: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_breeder_aging: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_genotyping: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_orders: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_lab: Mapped[bool] = mapped_column(Boolean, default=True)
+    # When they finished (or skipped) the welcome tour; None shows it once.
+    welcomed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -509,6 +514,10 @@ class NotificationRecord(Base):
     recipient_username: Mapped[str] = mapped_column(String(80), index=True)
     title: Mapped[str] = mapped_column(String(200))
     message: Mapped[str] = mapped_column(Text, default="")
+    # transfer | picked | genotyping | orders | lab | account | general (app/notify.py)
+    category: Mapped[str] = mapped_column(String(40), default="general")
+    link: Mapped[str] = mapped_column(String(300), default="")    # a path in this app
+    actor: Mapped[str] = mapped_column(String(80), default="")    # who caused it
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -830,6 +839,8 @@ class OrganismModule(Base):
     preset_key: Mapped[str] = mapped_column(String(60), default="")
     position: Mapped[int] = mapped_column(Integer, default=100)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A personal database: only this user (and admins) see it. Empty: the lab's.
+    private_to: Mapped[str] = mapped_column(String(80), default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -1220,6 +1231,8 @@ class InventoryModule(Base):
     settings: Mapped[str] = mapped_column(Text, default="{}")
     position: Mapped[int] = mapped_column(Integer, default=100)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A personal database: only this user (and admins) see it. Empty: the lab's.
+    private_to: Mapped[str] = mapped_column(String(80), default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -1308,6 +1321,8 @@ class StockModule(Base):
     settings: Mapped[str] = mapped_column(Text, default="{}")
     position: Mapped[int] = mapped_column(Integer, default=200)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A personal database: only this user (and admins) see it. Empty: the lab's.
+    private_to: Mapped[str] = mapped_column(String(80), default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

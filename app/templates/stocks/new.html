@@ -34,6 +34,7 @@
       <label class="field-label">Name
         <input name="label" required autofocus data-label-input value="{{ presets[chosen].label }}">
       </label>
+      {% include "lab/_audience_field.html" %}
     </div>
     <footer class="flex items-center justify-end gap-2 border-t border-sand-100 px-4 py-3">
       <a class="btn" href="{{ url_for('organisms.index') }}">Cancel</a>

@@ -383,7 +383,9 @@ docker compose logs app | grep "setup code"
 ```
 
 Open `https://<your domain>/register` and create the first account with
-the **setup code** from the log. That account is the admin.
+the **setup code** from the log. That account is the admin; signing in,
+it answers four questions about what the lab keeps, and BioManager sets
+itself up to match.
 
 > [!IMPORTANT]
 > Keep the server off the open internet: on the campus network, a VPN, or
@@ -507,9 +509,21 @@ track.
 - **You edit what you own.** Your mice, cages and records are yours.
   **Breeder cages and anything marked shared belong to the whole lab.**
   Admins can change anything.
-- **Everyone sees everything** — a census with holes is not a census. The
-  **My colony / Shared / Everyone** switch filters the view without
-  changing who may edit what.
+- **Everyone sees every lab database** — a census with holes is not a
+  census. The **My colony / Shared / Everyone** switch filters the view
+  without changing who may edit what.
+- **The lab sees only what it uses.** On first sign-in the admin answers
+  four questions: which databases the lab keeps and which functions it
+  uses. Everyone then gets exactly those, in the sidebar and on their home
+  page. **Lab setup** changes it any time, switches things off (hidden,
+  never deleted) and makes someone else an admin.
+- **Your own databases.** Anyone can add a database **just for them**, which
+  only they and the admins see, and share it with the lab later. Admins add
+  databases for the whole lab, and decide whether members may too.
+- **Notifications.** The bell tells you when someone moves or gives you
+  animals, records a genotype for yours, or when an order you placed is
+  ordered, received or cancelled; you choose which kinds in Settings. New
+  members get a short welcome tour.
 - **When someone leaves,** the admin's **Overview** shows every cage by
   owner, idle cages and living mice without a cage, and **Racks & boxes**
   hands their racks to someone else.

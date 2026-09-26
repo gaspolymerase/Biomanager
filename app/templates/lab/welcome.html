@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block page_title %}Welcome{% endblock %}
+{% block page_heading %}Welcome{% endblock %}
+{% block page_subtitle %}A minute on how BioManager works for you{% endblock %}
+
+{% block content %}
+{% set lab_databases = [] %}
+{% for section in nav_sections if section.label == 'Databases' %}
+  {% for link in section.links if link.key != 'new-db' %}{% set _ = lab_databases.append(link) %}{% endfor %}
+{% endfor %}
+<div class="setup-page">
+  <section class="setup-intro">
+    <h2>Welcome{% if lab_name %} to {{ lab_name }}{% endif %}, {{ current_user.display_name or current_user.username }}</h2>
+    <p>BioManager is the lab's shared database. Everyone sees the same records, and you edit the ones you own.</p>
+  </section>
+
+  <section class="setup-step">
+    <header class="setup-step-head"><span class="setup-step-num">1</span><h3>Your lab's databases</h3></header>
+    {% if lab_databases %}
+      <p class="setup-note">These are in your sidebar, and their news is on your home page.</p>
+      <div class="tour-dbs">
+        {% for link in lab_databases %}
+          <a class="tour-db" href="{{ link.url }}">{{ icon(link.icon) }} <span>{{ link.label }}</span>{% if link.personal %}<span class="badge badge-brand">Just you</span>{% endif %}</a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="setup-note">The lab hasn't added any databases yet. An admin sets them up under Lab setup.</p>
+    {% endif %}
+  </section>
+
+  {% if may_create %}
+    <section class="setup-step">
+      <header class="setup-step-head"><span class="setup-step-num">2</span><h3>Keep something of your own</h3></header>
+      <p class="setup-note">Need a list the lab doesn't have, like your own antibodies, a side project's fly stocks, or a
+        species only you work on? <strong>Add database</strong> in the sidebar makes one. Choose <strong>Just me</strong> and
+        only you, and lab admins, see it.{% if may_share %} Choose <strong>The whole lab</strong> to give it to everyone.{% else %} If it turns out useful to everyone, an admin can share it with the lab.{% endif %}</p>
+    </section>
+  {% endif %}
+
+  <section class="setup-step">
+    <header class="setup-step-head"><span class="setup-step-num">{{ 3 if may_create else 2 }}</span><h3>You'll be told when it matters</h3></header>
+    <p class="setup-note">The {{ icon('bell') }} at the top shows what happened while you were away:</p>
+    <ul class="tour-list">
+      <li><strong>Transfers:</strong> someone moved your animals or vials, gave you some, or put an animal in your cage or tank.</li>
+      <li><strong>Genotyping:</strong> a genotype was recorded for your animals, or they were marked for genotyping. Once a day you also see what of yours is still waiting.</li>
+      <li><strong>Orders:</strong> an order you placed was ordered, arrived or was cancelled.</li>
+      <li><strong>Lab news:</strong> a database was added for the lab.</li>
+    </ul>
+    <p class="setup-note">Turn any of them off in <a href="{{ url_for('settings') }}#notifications">Settings</a>.</p>
+  </section>
+
+  <section class="setup-step">
+    <header class="setup-step-head"><span class="setup-step-num">{{ 4 if may_create else 3 }}</span><h3>At the rack, on your phone</h3></header>
+    <p class="setup-note">Open this same address on your phone and add it to your home screen.{% if lab_features.colony %} Scanning a cage card's QR code opens that cage, with its mice.{% endif %}</p>
+  </section>
+
+  <form method="post" class="setup-submit">
+    <button type="submit" class="btn btn-primary btn-lg">{{ icon('check') }} Get started</button>
+    <span class="text-[12.5px] text-muted">You can see this again from Settings.</span>
+  </form>
+</div>
+{% endblock %}

@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import SessionLocal
-from . import access, positions, security
+from . import access, lab, positions, security
 from .formutil import form_changed
 # Importing this registers the SQLAlchemy flush listener that writes
 # audit_log rows for every tracked change; nothing here calls into it.
@@ -140,6 +140,9 @@ app.register_blueprint(admin_racks_bp)
 from . import oidc  # noqa: E402
 
 app.register_blueprint(oidc.bp)
+
+# Importing app.notify registers the listener that sends notifications.
+from . import lab_routes, notify  # noqa: E402,F401
 
 with SessionLocal() as _db_session:
     if _db_session.scalar(select(func.count(UserAccount.id))) == 0:
@@ -270,6 +273,11 @@ def load_current_user():
 # load_current_user: the uploads check needs g.user.
 security.init_app(app)
 
+# Lab setup survey, welcome tour and notifications (app/lab_routes.py).
+# Registered after load_current_user too: its checks (a switched-off
+# function, the daily reminder) need to know who is signed in.
+app.register_blueprint(lab_routes.bp)
+
 
 @app.errorhandler(IntegrityError)
 def handle_integrity_error(error: IntegrityError):
@@ -338,8 +346,14 @@ def inject_icon():
 
 @app.context_processor
 def inject_user():
-    return {"current_user": g.get("user"), "min_password_length": security.MIN_PASSWORD_LENGTH,
-            "sign_in_providers": oidc.provider_choices()}
+    user = g.get("user")
+    unread = 0
+    if user is not None:
+        with SessionLocal() as db_session:
+            unread = notify.unread_count(db_session, user.username)
+    return {"current_user": user, "min_password_length": security.MIN_PASSWORD_LENGTH,
+            "sign_in_providers": oidc.provider_choices(), "notification_unread": unread,
+            "lab_features": lab.request_features() if user is not None else {}}
 
 
 # ---------------------------------------------------------------------------
@@ -358,8 +372,8 @@ NAV_SECTIONS: list[dict] = [
             {"key": "home", "label": "Home", "icon": "home",
              "endpoint": "home_dashboard", "match": ("home_dashboard", "index")},
             {"key": "calendar", "label": "Calendar", "icon": "calendar",
-             "endpoint": "calendar"},
-            {"key": "notebook", "label": "Notebook", "icon": "notebook",
+             "endpoint": "calendar", "feature": "calendar"},
+            {"key": "notebook", "label": "Notebook", "icon": "notebook", "feature": "notebook",
              "endpoint": "notebook", "match": ("notebook", "notebook_templates")},
         ],
     },
@@ -367,13 +381,13 @@ NAV_SECTIONS: list[dict] = [
         "label": "Databases",
         "links": [
             {"key": "colony", "label": "Mouse colony", "short": "Mouse", "icon": "mouse",
-             "endpoint": "colony", "args": {"view": "mice"},
+             "endpoint": "colony", "args": {"view": "mice"}, "feature": "colony",
              "match": ("colony", "experiment_detail")},
             {"key": "zebrafish", "label": "Zebrafish", "short": "Fish", "icon": "fish",
-             "endpoint": "zebrafish", "match": ("zebrafish", "zebrafish_line_detail")},
-            {"key": "plasmids", "label": "Plasmids", "icon": "plasmid",
+             "endpoint": "zebrafish", "feature": "zebrafish", "match": ("zebrafish", "zebrafish_line_detail")},
+            {"key": "plasmids", "label": "Plasmids", "icon": "plasmid", "feature": "plasmids",
              "endpoint": "plasmids", "match": ("plasmids", "plasmid_detail")},
-            {"key": "new-db", "label": "Add database", "icon": "plus",
+            {"key": "new-db", "label": "Add database", "icon": "plus", "needs": "create_db",
              "endpoint": "organisms.new_module", "match": ("organisms.new_module",)},
         ],
     },
@@ -382,10 +396,12 @@ NAV_SECTIONS: list[dict] = [
 NAV_FOOTER: list[dict] = [
     {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities"},
     {"key": "admin-colony", "label": "Colony overview", "short": "Overview",
-     "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True},
+     "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True, "feature": "colony"},
     {"key": "batches", "label": "Batches", "icon": "layers", "endpoint": "batches_view"},
     {"key": "audit", "label": "Audit log", "icon": "history", "endpoint": "audit_log_view",
      "admin_only": True},
+    {"key": "lab-setup", "label": "Lab setup", "short": "Setup", "icon": "sliders",
+     "endpoint": "lab.setup", "admin_only": True},
     {"key": "settings", "label": "Settings", "icon": "settings", "endpoint": "settings",
      "match": ("settings", "admin_users")},
 ]
@@ -437,6 +453,10 @@ def _resolve_nav_item(item: dict, active_endpoint: str) -> dict | None:
     None when the current user may not see it."""
     if item.get("admin_only") and getattr(g.get("user"), "role", None) != "admin":
         return None
+    if item.get("feature") and not lab.request_features().get(item["feature"], True):
+        return None
+    if item.get("needs") == "create_db" and not _may_create_db():
+        return None
 
     resolved = {
         "key": item["key"],
@@ -452,6 +472,13 @@ def _resolve_nav_item(item: dict, active_endpoint: str) -> dict | None:
         resolved["url"] = url_for(endpoint, **item.get("args", {}))
         resolved["active"] = active_endpoint in item.get("match", (endpoint,))
     return resolved
+
+
+def _may_create_db() -> bool:
+    if "may_create_db" not in g:
+        with SessionLocal() as db_session:
+            g.may_create_db = lab.may_create_database(db_session)
+    return g.may_create_db
 
 
 def builtin_labels() -> dict[str, str]:
@@ -475,11 +502,14 @@ def _inventory_module_links() -> list[dict]:
     try:
         with SessionLocal() as db_session:
             for module in inventories.list_modules(db_session):
+                if not lab.in_sidebar(module):
+                    continue
                 links.append({
                     "key": f"inventory:{module.key}", "label": module.label, "short": module.label,
                     "icon": resolve_icon(module.icon), "soon": None,
                     "url": url_for("inventory.module", key=module.key),
                     "active": on_inventory and current_key == module.key,
+                    "personal": lab.is_personal(module),
                 })
     except Exception:
         return []
@@ -497,11 +527,14 @@ def _stock_module_links() -> list[dict]:
     try:
         with SessionLocal() as db_session:
             for module in stocks.list_modules(db_session):
+                if not lab.in_sidebar(module):
+                    continue
                 links.append({
                     "key": f"stock:{module.key}", "label": module.label, "short": module.label,
                     "icon": resolve_icon(module.icon), "soon": None,
                     "url": url_for("stocks.module", key=module.key),
                     "active": on_stocks and current_key == module.key,
+                    "personal": lab.is_personal(module),
                 })
     except Exception:
         return []
@@ -523,6 +556,8 @@ def _organism_module_links() -> list[dict]:
     try:
         with SessionLocal() as db_session:
             for module in organisms.list_modules(db_session):
+                if not lab.in_sidebar(module):
+                    continue
                 links.append({
                     "key": f"organism:{module.key}",
                     "label": module.label,
@@ -531,6 +566,7 @@ def _organism_module_links() -> list[dict]:
                     "soon": None,
                     "url": url_for("organisms.module", key=module.key),
                     "active": on_organisms and current_key == module.key,
+                    "personal": lab.is_personal(module),
                 })
     except Exception:
         # A brand-new database may not have the tables yet; the rail should
@@ -819,6 +855,8 @@ def create_transfer_copy(db_session, source_mouse: MouseRecord, recipient_userna
         title="Mouse transfer received",
         message=f"Mouse {source_mouse.mouse_id} was transferred to you. A new record {copied_mouse.mouse_id} was created in your colony.",
         category="transfer",
+        link=url_for("colony", view="mice", scope="mine"),
+        actor=sender_username or "",
     )
     return copied_mouse
 
@@ -1121,7 +1159,8 @@ def index():
     # If the user picked a default landing page (settings → default_landing),
     # honor it. Otherwise show the dashboard.
     default_landing = (g.user.default_landing or "").strip()
-    if default_landing and default_landing in ALLOWED_LANDING_ENDPOINTS:
+    if default_landing and default_landing in ALLOWED_LANDING_ENDPOINTS \
+            and lab.request_features().get(LANDING_FEATURES.get(default_landing, ""), True):
         return redirect(url_for(default_landing))
     return redirect(url_for("home_dashboard"))
 
@@ -1147,8 +1186,8 @@ def home_dashboard():
         my_mice = db_session.scalar(
             select(func.count(MouseRecord.id)).where(MouseRecord.owner == g.user.username)
         ) or 0
-        order_modules = [m.id for m in db_session.scalars(
-            select(InventoryModule).where(InventoryModule.kind == "orders"))]
+        from . import inventory_service as _inv
+        order_modules = [m.id for m in _inv.list_modules(db_session) if m.kind == "orders"]
         # Each orders inventory's own open statuses, not a hard-coded pair.
         from . import inventory_service as inventories
         pending_orders = inventories.open_order_count(db_session)
@@ -1278,8 +1317,25 @@ def home_dashboard():
     hour = datetime.now().hour
     greeting = "Good morning" if hour < 12 else ("Good afternoon" if hour < 18 else "Good evening")
 
+    # Which cards the lab's databases call for (app/lab.py): only what the
+    # lab uses, plus this person's own databases.
+    from . import inventory_service as _inv
+    with SessionLocal() as db_session:
+        visible_inventories = _inv.list_modules(db_session)
+        has_orders = any(m.kind == "orders" for m in visible_inventories)
+        has_restock = any(m.kind in ("reagents", "antibodies") for m in visible_inventories)
+        has_stocks = bool(stock_service.list_modules(db_session))
+        setup_needed = g.user.role == "admin" and not lab.setup_done(db_session)
+        for_you = [{"id": n.id, "title": n.title, "created_at": n.created_at}
+                   for n in notify.recent(db_session, g.user.username, limit=5, unread_only=True)]
+
     return render_template(
         "home.html",
+        has_orders=has_orders,
+        has_restock=has_restock,
+        has_stocks=has_stocks,
+        setup_needed=setup_needed,
+        for_you=for_you,
         zebrafish_due=zebrafish_home_summary(),
         stock_due=stock_due[:12],
         stock_due_total=len(stock_due),
@@ -1338,10 +1394,26 @@ def login():
     return render_template("auth.html", mode="login")
 
 
-def landing_url(user) -> str:
-    """Where someone lands after signing in: their chosen start page."""
+LANDING_FEATURES = {"colony": "colony", "calendar": "calendar", "notebook": "notebook", "plasmids": "plasmids"}
+
+
+def landing_url(user, after_welcome: bool = False) -> str:
+    """Where someone lands after signing in. The first admin goes to the
+    setup survey until the lab is set up, anyone new to the welcome tour
+    once, then their chosen start page (or home, if that page's function
+    is switched off)."""
+    with SessionLocal() as db_session:
+        if user.role == "admin" and not lab.setup_done(db_session):
+            return url_for("lab.setup")
+        features = lab.features_on(db_session)
+    if getattr(user, "welcomed_at", None) is None and not after_welcome:
+        return url_for("lab.welcome")
     landing = (user.default_landing or "").strip()
-    return url_for(landing if landing in ALLOWED_LANDING_ENDPOINTS else "colony")
+    if landing not in ALLOWED_LANDING_ENDPOINTS:
+        landing = "colony"
+    if not features.get(LANDING_FEATURES.get(landing, ""), True):
+        landing = "home_dashboard"
+    return url_for(landing)
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -1366,9 +1438,8 @@ def settings():
                 db_session.commit()
                 flash("Profile updated.", "success")
             elif action == "notifications":
-                user.notify_transfer = request.form.get("notify_transfer") == "1"
-                user.notify_picked = request.form.get("notify_picked") == "1"
-                user.notify_breeder_aging = request.form.get("notify_breeder_aging") == "1"
+                for category in notify.CATEGORIES:
+                    setattr(user, f"notify_{category}", request.form.get(f"notify_{category}") == "1")
                 db_session.commit()
                 flash("Notification preferences updated.", "success")
             elif action == "password":
@@ -1403,6 +1474,7 @@ def settings():
             "notify_transfer": user.notify_transfer,
             "notify_picked": user.notify_picked,
             "notify_breeder_aging": user.notify_breeder_aging,
+            **{f"notify_{c}": getattr(user, f"notify_{c}", True) for c in notify.CATEGORIES},
             "has_password": security.has_password(user),
         }
         linked = db_session.scalars(select(UserIdentity).where(UserIdentity.user_id_fk == user.id)
@@ -1420,6 +1492,7 @@ def settings():
         mail_status=mailer.status_line(),
         mail_configured=mailer.is_configured(),
         identities=identities,
+        notification_categories=notify.CATEGORIES,
     )
 
 
@@ -1618,9 +1691,15 @@ def admin_toggle_role(user_id: int):
             flash(f"Approve {target.username} before changing their role.", "error")
             return redirect(url_for("admin_users"))
         target.role = "member" if target.role == "admin" else "admin"
+        if target.role == "admin":
+            notify.send(db_session, target.username,
+                        f"{g.user.display_name or g.user.username} made you a lab admin",
+                        "You can now change Lab setup, approve sign-ups and edit any record.",
+                        category="lab", link=url_for("lab.setup"), actor=g.user.username)
         db_session.commit()
         flash(f"{target.username} is now {target.role}.", "success")
-    return redirect(url_for("admin_users"))
+    referrer = request.referrer or ""
+    return redirect(referrer if referrer.startswith(request.host_url) else url_for("admin_users"))
 
 
 @app.route("/admin/users/<int:user_id>/disable", methods=["POST"])
@@ -1708,7 +1787,8 @@ def register():
                         admins = db_session.scalars(select(UserAccount.username).where(
                             UserAccount.role == "admin", UserAccount.disabled.is_(False))).all()
                         for admin_name in admins:
-                            add_notification(db_session, admin_name, "Account waiting for approval",
+                            add_notification(db_session, admin_name, "Account waiting for approval", category="account",
+                                             link=url_for("admin_users"), message=
                                              f"{display_name or username} signed up as {username}. "
                                              "Approve them in Settings → Manage users.")
                     db_session.commit()
@@ -1736,10 +1816,10 @@ def mark_notifications_read():
         for row in rows:
             row.is_read = True
         db_session.commit()
-    view = request.form.get("view", "mice")
-    if view not in COLONY_VIEW_META:
-        view = "mice"
-    return redirect(url_for("colony", view=view, scope=access.resolve_scope(request.form.get("scope"))))
+    if request.headers.get("X-Autosave") == "1" or request.accept_mimetypes.best == "application/json":
+        return jsonify({"ok": True, "unread": 0})
+    referrer = request.referrer or ""
+    return redirect(referrer if referrer.startswith(request.host_url) else url_for("lab.notifications"))
 
 
 @app.route("/colony")
@@ -2256,16 +2336,8 @@ def pick_mouse(mouse_row_id: int):
         blocked = deny(mouse, "breeders")
         if blocked:
             return blocked
-        previous_owner = mouse.owner
+        # The previous owner is told by app/notify.py ("… took mouse #12 from you").
         mouse.owner = g.user.username
-        if previous_owner and previous_owner != g.user.username:
-            add_notification(
-                db_session,
-                previous_owner,
-                title="Mouse picked from breeder cage",
-                message=f"Mouse {mouse.mouse_id} was picked by {g.user.username}.",
-                category="picked",
-            )
         db_session.commit()
     return redirect(url_for("colony", view="breeders"))
 
@@ -4463,7 +4535,9 @@ def global_search():
 
         # Every lab inventory: samples, orders, reagents, antibodies, custom.
         kind_type = {"orders": "order", "samples": "sample", "reagents": "reagent", "antibodies": "antibody"}
-        modules = {m.id: m for m in db_session.scalars(select(InventoryModule))}
+        # Only databases this person sees: the lab's and their own (app/lab.py).
+        from . import inventory_service as inventories
+        modules = {m.id: m for m in inventories.list_modules(db_session)}
         item_stmt = select(InventoryItem)
         if is_digit:
             item_stmt = item_stmt.where(InventoryItem.number == int(q))
@@ -4491,7 +4565,7 @@ def global_search():
         # Fly vials and worm plates, by genotype (or either cross parent).
         from . import stock_service
         from .models import StockModule, StockUnit
-        stock_modules = {m.id: stock_service.view(m) for m in db_session.scalars(select(StockModule))}
+        stock_modules = {m.id: stock_service.view(m) for m in stock_service.list_modules(db_session)}
         unit_stmt = select(StockUnit).where(StockUnit.active.is_(True))
         if is_digit:
             unit_stmt = unit_stmt.where(StockUnit.number == int(q))
@@ -4563,6 +4637,18 @@ def global_search():
                 "url": url_for("notebook") + f"?tab={page.tab_id_fk}&page={page.id}",
             })
 
+    # Nothing from a function the lab switched off (app/lab.py).
+    features = lab.request_features()
+    off_types = set()
+    if not features.get("colony", True):
+        off_types |= {"mouse", "cage", "litter", "experiment", "strain"}
+    if not features.get("zebrafish", True):
+        off_types |= {"tank", "clutch", "fish-line", "fish"}
+    if not features.get("plasmids", True):
+        off_types |= {"plasmid"}
+    if not features.get("notebook", True):
+        off_types |= {"notebook", "page", "notebook-page"}
+    results = [r for r in results if r.get("type") not in off_types]
     return jsonify({"ok": True, "results": results, "query": q})
 
 

@@ -381,7 +381,8 @@ def _request_account(db_session, provider: Provider, claims: dict):
     for admin_name in admins:
         add_notification(db_session, admin_name, "Account waiting for approval",
                          f"{display_name or username} asked to join with {provider.label} "
-                         f"as {username}. Approve them in Settings → Manage users.")
+                         f"as {username}. Approve them in Settings → Manage users.",
+                         category="account", link=url_for("admin_users"))
     db_session.commit()
     flash(f"Account requested as {username}. A lab admin needs to approve it before you can sign in.",
           "success")

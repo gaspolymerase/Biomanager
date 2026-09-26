@@ -114,7 +114,11 @@ class PagesRender(AppTestCase):
         urls = [f"/inventory/{k}" for k in keys] + [f"/inventory/{k}?scope=mine" for k in keys]
         self.assertAllRender(self.a, urls + [f"/inventory/{k}/configure" for k in keys],
                              ok=lambda code: code == 200)
-        self.assertAllRender(self.m, urls, ok=lambda code: code == 200)
+        # A member opens the lab's inventories and their own, not other
+        # people's personal ones (those are not found, by design).
+        mine = [k for (k,) in rows("select key from inventory_modules where private_to in ('', ?)", self.member)]
+        self.assertAllRender(self.m, [f"/inventory/{k}" for k in mine] + [f"/inventory/{k}?scope=mine" for k in mine],
+                             ok=lambda code: code == 200)
 
     def test_the_add_a_database_pages_render_for_each_preset(self):
         urls = ["/organisms/new", "/organisms/new?preset=custom", "/organisms/new?preset=mouse",

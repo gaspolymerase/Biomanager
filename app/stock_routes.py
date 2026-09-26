@@ -20,6 +20,8 @@ from . import access, audit, positions
 from . import stock_service as svc
 from . import stocks as presets
 from .db import SessionLocal
+from . import lab, notify
+from .lab import lab_audience
 from .formutil import form_changed
 from .models import (
     StockFrozen, StockGenotype, StockIncubator, StockModule, StockRack, StockUnit,
@@ -53,7 +55,9 @@ def _int(raw, default: int = 0) -> int:
 
 def _module_or_404(session, key: str) -> StockModule:
     module = svc.get_module(session, key)
-    if module is None:
+    # Someone else's personal database does not exist, as far as this
+    # person can tell (app/lab.py).
+    if module is None or not lab.can_see(module):
         abort(404)
     return module
 
@@ -129,6 +133,9 @@ UNIT_FIELDS = ("genotype", "purpose", "female_genotype", "male_genotype", "owner
 @bp.route("/new", methods=["GET", "POST"])
 def new_module():
     with SessionLocal() as session:
+        if not lab.may_create_database(session):
+            flash("An admin has turned off adding databases for members. Ask a lab admin.", "error")
+            return redirect(url_for("organisms.index"))
         if request.method == "POST":
             kind = request.form.get("kind", "fly")
             label = (request.form.get("label") or "").strip()
@@ -136,11 +143,18 @@ def new_module():
                 flash("Give the database a name.", "error")
                 return redirect(url_for("stocks.new_module", kind=kind))
             module = svc.create_module(session, kind, label, created_by=g.user.username)
+            module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
+            if module.private_to and request.form.get("audience") == "lab":
+                flash("It is yours for now: only lab admins add databases for everyone. "
+                      "Ask one to share it with the lab.", "info")
+            if not module.private_to:
+                notify.tell_lab(session, g.user.username,
+                                f"{g.user.display_name or g.user.username} added {module.label} for the lab")
             session.commit()
             flash(f"Created {module.label}. Add an incubator and a rack to start.", "success")
             return redirect(url_for("stocks.module", key=module.key, view="setup"))
         return render_template("stocks/new.html", presets=presets.PRESETS,
-                               kind=request.args.get("kind", "fly"))
+                               kind=request.args.get("kind", "fly"), audience=lab_audience(session))
 
 
 # ---------------------------------------------------------------------------
