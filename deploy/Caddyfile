@@ -39,5 +39,33 @@
 		-Server
 	}
 
-	reverse_proxy app:8000
+	reverse_proxy app:8000 {
+		# Only the internet-facing site below may say a request came from the internet.
+		header_up -X-BioManager-Entry
+	}
+}
+
+# Internet access (deploy/host/internet-access.sh): Tailscale Funnel takes
+# HTTPS on {$DOMAIN}:8443 from anywhere and forwards it here, on a port only
+# the host can reach (compose.yaml publishes it on 127.0.0.1). Every request
+# is marked as coming from the internet, and the app shows anyone not signed
+# in only its guest-code page (app/guests.py).
+http://:8081 {
+	encode zstd gzip
+
+	request_body {
+		max_size 64MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	reverse_proxy app:8000 {
+		header_up X-BioManager-Entry internet
+		header_up Host {$DOMAIN}:8443
+		header_up X-Forwarded-Host {$DOMAIN}:8443
+		header_up X-Forwarded-Proto https
+	}
 }

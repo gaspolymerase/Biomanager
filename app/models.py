@@ -336,6 +336,26 @@ class UserAccount(Base):
     notify_lab: Mapped[bool] = mapped_column(Boolean, default=True)
     # When they finished (or skipped) the welcome tour; None shows it once.
     welcomed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # A temporary account (a guest pass, app/guests.py) stops working then.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GuestPass(Base):
+    """A code that signs someone outside the lab in as a temporary member
+    (app/guests.py). Only a hash of the code is kept; the admin sees the
+    code once, when it is made."""
+    __tablename__ = "guest_passes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(80))            # who it is for
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id_fk: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)   # ended early by an admin
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

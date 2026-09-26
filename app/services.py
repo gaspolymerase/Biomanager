@@ -222,6 +222,8 @@ def ensure_schema_updates() -> None:
                 alter_statements.append(f"ALTER TABLE users ADD COLUMN {column} BOOLEAN DEFAULT TRUE")
         if "welcomed_at" not in existing:
             alter_statements.append(f"ALTER TABLE users ADD COLUMN welcomed_at {timestamp}")
+        if "expires_at" not in existing:
+            alter_statements.append(f"ALTER TABLE users ADD COLUMN expires_at {timestamp}")
 
     # In-app notifications: what kind, where it points, who caused it (app/notify.py).
     if "notifications" in table_columns:

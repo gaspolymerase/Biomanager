@@ -189,6 +189,33 @@ git revert <bad commit> && git push server master     # Mac
 docker compose up -d --build                          # server
 ```
 
+## Letting a guest in from the internet
+
+For someone outside the lab (a collaborator, a friend taking a look), for a
+few days:
+
+1. In BioManager: account menu → **Guests**. Enter who it is for and how
+   long, then **Make a code**. The code is shown once; the guest gets a
+   member account of their own that stops working when the pass ends.
+2. On the server, put BioManager on the internet (Tailscale Funnel):
+
+   ```bash
+   ssh -t biomanager sudo /opt/biomanager/Biomanager/deploy/host/internet-access.sh on
+   ```
+
+   The first time, Tailscale prints a link to allow Funnel for this machine:
+   open it, allow it, run the command again.
+3. Send the guest `https://biomanager.tail99374b.ts.net:8443/guest` and the
+   code. From the internet, anyone not signed in sees only that code page:
+   no sign-in or sign-up form.
+4. When they are done: **End now** on the Guests page, and
+
+   ```bash
+   ssh -t biomanager sudo /opt/biomanager/Biomanager/deploy/host/internet-access.sh off
+   ```
+
+What a guest adds stays, under their `guest-…` account.
+
 ## Rotating secrets
 
 | Secret | How | What people notice |

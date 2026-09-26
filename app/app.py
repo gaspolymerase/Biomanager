@@ -142,7 +142,7 @@ from . import oidc  # noqa: E402
 app.register_blueprint(oidc.bp)
 
 # Importing app.notify registers the listener that sends notifications.
-from . import lab_routes, notify  # noqa: E402,F401
+from . import guests, lab_routes, notify  # noqa: E402,F401
 from . import home_layouts  # noqa: E402
 
 with SessionLocal() as _db_session:
@@ -262,7 +262,9 @@ def load_current_user():
         user = db_session.get(UserAccount, user_id)
         # A password change or reset ends every session signed in with the
         # old password (see security.session_stamp).
+        # So does the end of a temporary account (a guest pass, app/guests.py).
         if (user is None or getattr(user, "disabled", False)
+                or (user.expires_at is not None and user.expires_at <= datetime.utcnow())
                 or not security.session_matches(session.get("auth"), user)):
             session.clear()
             g.user = None
@@ -278,6 +280,9 @@ security.init_app(app)
 # Registered after load_current_user too: its checks (a switched-off
 # function, the daily reminder) need to know who is signed in.
 app.register_blueprint(lab_routes.bp)
+
+# Guest passes and the gate in front of internet access (app/guests.py).
+app.register_blueprint(guests.bp)
 
 
 @app.errorhandler(IntegrityError)
@@ -1712,6 +1717,9 @@ def admin_users():
                 "role": u.role,
                 "disabled": u.disabled,
                 "created_at": u.created_at.strftime("%Y-%m-%d") if u.created_at else "",
+                # A guest's account (app/guests.py): when it stops working.
+                "expires_at": u.expires_at,
+                "expired": u.expires_at is not None and u.expires_at <= datetime.utcnow(),
             }
             for u in users
         ]
