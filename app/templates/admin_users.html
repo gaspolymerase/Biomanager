@@ -5,6 +5,7 @@
 {% block page_subtitle %}Promote, disable and reset passwords for everyone in the lab · {{ users|length }} account{{ '' if users|length == 1 else 's' }}{% endblock %}
 
 {% block page_actions %}
+  <a class="btn" href="{{ url_for('guests.admin') }}">{{ icon('user') }} Guests</a>
   <a class="btn" href="{{ url_for('settings') }}">
     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Back to settings
   </a>
@@ -31,7 +32,7 @@
       </thead>
       <tbody>
         {% for u in users %}
-          <tr class="{% if u.disabled %}opacity-55{% endif %}">
+          <tr class="{% if u.disabled or u.expired %}opacity-55{% endif %}">
             <td>{{ u.username | owner_badge }}</td>
             <td><span class="font-medium text-ink">{{ u.username }}</span></td>
             <td>{{ u.display_name }}</td>
@@ -46,6 +47,10 @@
                 <span class="badge badge-brand">awaiting approval</span>
               {% elif u.disabled %}
                 <span class="badge badge-danger">disabled</span>
+              {% elif u.expired %}
+                <span class="badge badge-quiet">guest, ended</span>
+              {% elif u.expires_at %}
+                <span class="badge badge-brand" title="Until {{ u.expires_at.strftime('%Y-%m-%d %H:%M') }} UTC">guest</span>
               {% else %}
                 <span class="dt-status" data-status="active">active</span>
               {% endif %}

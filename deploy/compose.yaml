@@ -48,6 +48,9 @@ services:
       BIOMANAGER_MICROSOFT_CLIENT_ID: ${BIOMANAGER_MICROSOFT_CLIENT_ID:-}
       BIOMANAGER_MICROSOFT_CLIENT_SECRET: ${BIOMANAGER_MICROSOFT_CLIENT_SECRET:-}
       BIOMANAGER_MICROSOFT_TENANT: ${BIOMANAGER_MICROSOFT_TENANT:-common}
+      # Set by deploy/host/internet-access.sh while guests can come in from
+      # the internet (app/guests.py); empty means lab network only.
+      BIOMANAGER_PUBLIC_URL: ${BIOMANAGER_PUBLIC_URL:-}
     volumes:
       - appdata:/data
     depends_on:
@@ -61,6 +64,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # The internet-facing site, for Tailscale Funnel on this host only.
+      - "127.0.0.1:8081:8081"
     environment:
       DOMAIN: ${DOMAIN}
       TLS: ${TLS:-internal}
