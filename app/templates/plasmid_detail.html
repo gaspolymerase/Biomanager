@@ -50,16 +50,26 @@
 
 {# ============ Sequence — Open Vector Editor ============ #}
 <section class="plasmid-tab-panel is-active" data-panel="sequence">
-  <div class="ove-bar">
-    <span class="text-[12px] text-muted">
-      {% if locked %}Read only.{% else %}Edits save as you make them. An empty sequence is never saved; use <strong>Clear sequence</strong> below.{% endif %}
-    </span>
-    <span class="sheet-save" id="ove-status" aria-live="polite"></span>
-  </div>
-  <div id="ove-root" class="ove-root" data-plasmid-id="{{ plasmid.row_id }}"
-       data-plasmid-name="{{ plasmid.name or ('Plasmid #' ~ plasmid.plasmid_id) }}"
-       data-locked="{{ '1' if locked else '0' }}">
-    <div class="ove-loading">Loading the sequence editor…</div>
+  {# Full screen shows the bar and the editor filling the screen. #}
+  <style>
+    #ove-shell:fullscreen { background: var(--color-surface, #fff); padding: 12px 16px; display: flex; flex-direction: column; }
+    #ove-shell:fullscreen .ove-root { flex: 1; height: auto; }
+  </style>
+  <div id="ove-shell">
+    <div class="ove-bar">
+      <span class="text-[12px] text-muted">
+        {% if locked %}Read only.{% else %}Edits save as you make them. Select bases, then <strong>Edit → Create</strong> for a feature, primer or translation. An empty sequence is never saved; use <strong>Clear sequence</strong> below.{% endif %}
+      </span>
+      <span class="flex items-center gap-3">
+        <span class="sheet-save" id="ove-status" aria-live="polite"></span>
+        <button type="button" class="btn btn-sm" id="ove-fullscreen" hidden><span>Full screen</span></button>
+      </span>
+    </div>
+    <div id="ove-root" class="ove-root" data-plasmid-id="{{ plasmid.row_id }}"
+         data-plasmid-name="{{ plasmid.name or ('Plasmid #' ~ plasmid.plasmid_id) }}"
+         data-locked="{{ '1' if locked else '0' }}">
+      <div class="ove-loading">Loading the sequence editor…</div>
+    </div>
   </div>
 
   {% if not locked %}
@@ -173,6 +183,23 @@
     if (state === 'saved') status._clear = setTimeout(() => { status.textContent = ''; status.dataset.state = ''; }, 2400);
   }
 
+  // Full screen: the whole editor, map and sequence, filling the screen.
+  const shell = document.getElementById('ove-shell');
+  const fsButton = document.getElementById('ove-fullscreen');
+  if (fsButton && shell && shell.requestFullscreen) {
+    fsButton.hidden = false;
+    fsButton.addEventListener('click', () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else shell.requestFullscreen().catch((err) => say('error', `Full screen is not available: ${err.message}`));
+    });
+    document.addEventListener('fullscreenchange', () => {
+      const on = document.fullscreenElement === shell;
+      fsButton.querySelector('span').textContent = on ? 'Exit full screen' : 'Full screen';
+      // The editor sizes itself on resize; nudge it when the frame changes.
+      window.dispatchEvent(new Event('resize'));
+    });
+  }
+
   // Wait for the deferred UMD bundle to register window.createVectorEditor.
   function waitForOve() {
     return new Promise((resolve) => {
@@ -224,7 +251,12 @@
           .then((r) => r.json().catch(() => ({ ok: false, error: `The server answered ${r.status}.` })))
           .then((j) => {
             if (j && j.ok) {
-              say('saved', `Saved · ${j.length} bp · ${j.features} feature${j.features === 1 ? '' : 's'}`);
+              const c = j.counts || { features: j.features };
+              const parts = [`${c.features} feature${c.features === 1 ? '' : 's'}`];
+              if (c.primers) parts.push(`${c.primers} primer${c.primers === 1 ? '' : 's'}`);
+              if (c.translations) parts.push(`${c.translations} translation${c.translations === 1 ? '' : 's'}`);
+              if (c.parts) parts.push(`${c.parts} part${c.parts === 1 ? '' : 's'}`);
+              say('saved', `Saved · ${j.length} bp · ${parts.join(' · ')}`);
               if (onSuccess) onSuccess();
             } else {
               say('error', `Not saved: ${(j && j.error) || 'unknown error'}`);
@@ -242,6 +274,9 @@
           sequence: data.sequence || '',
           circular: !!data.circular,
           features: data.features || [],
+          primers: data.primers || [],
+          translations: data.translations || [],
+          parts: data.parts || [],
         },
       });
     } else {

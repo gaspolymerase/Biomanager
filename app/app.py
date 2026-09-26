@@ -6122,7 +6122,7 @@ def plasmid_detail(row_id: int):
             "stored": pbox.is_stored(p),
             "sequence": p.full_sequence or "",
             "is_circular": bool(p.is_circular),
-            "features": features,
+            "features": _features_only(features),
             "sequence_format": p.sequence_format or "",
             "sequence_uploaded_at": p.sequence_uploaded_at.strftime("%b %d, %Y %H:%M") if p.sequence_uploaded_at else "",
             "length_bp": len(p.full_sequence or ""),
@@ -6244,11 +6244,26 @@ def plasmid_move_in_box(row_id: int):
         return jsonify({"ok": True, "moved": moved})
 
 
-def _clean_features(raw_features, length: int) -> list[dict]:
-    """Stored features from the editor's, dropping any outside the sequence.
-    A feature crossing the origin keeps start > end."""
+# What the plasmid editor annotates, as stored in features_json. Each entry
+# carries its "kind"; an entry without one is a feature (how every stored
+# annotation looked before primers, translations and parts were kept).
+ANNOTATION_KINDS = {"features": "feature", "primers": "primer", "translations": "translation", "parts": "part"}
+
+
+def _annotation_list(raw) -> list:
+    """The editor sends each annotation group as an object keyed by id;
+    older callers and GenBank uploads send a list. Either way, a list."""
+    if isinstance(raw, dict):
+        return list(raw.values())
+    return raw if isinstance(raw, list) else []
+
+
+def _clean_features(raw_features, length: int, kind: str = "feature") -> list[dict]:
+    """Stored annotations from the editor's, dropping any outside the
+    sequence. An annotation crossing the origin keeps start > end; a joined
+    feature keeps its pieces in `locations`."""
     translated = []
-    for f in raw_features if isinstance(raw_features, list) else []:
+    for f in _annotation_list(raw_features):
         if not isinstance(f, dict):
             continue
         try:
@@ -6266,16 +6281,86 @@ def _clean_features(raw_features, length: int) -> list[dict]:
             except (TypeError, ValueError):
                 direction = 1
         notes = f.get("notes")
-        translated.append({
+        if isinstance(notes, dict):  # the editor's {key: [values]}
+            notes = {str(k)[:60]: [str(v)[:400] for v in (vals if isinstance(vals, list) else [vals])][:20]
+                     for k, vals in list(notes.items())[:30]}
+        elif isinstance(notes, str):
+            notes = notes[:400]
+        else:
+            notes = ""
+        item_kind = f.get("kind") if f.get("kind") in ANNOTATION_KINDS.values() else kind
+        # The editor lists a translation for every CDS feature (and ORF) as
+        # well; those follow their feature, so only translations a person
+        # made are kept.
+        if item_kind == "translation" and f.get("translationType") not in (None, "", "User Created"):
+            continue
+        entry = {
             "name": str(f.get("name") or "")[:120],
-            "type": str(f.get("type") or "misc_feature")[:40],
+            "type": str(f.get("type") or ("primer_bind" if item_kind == "primer" else "misc_feature"))[:40],
             "start": start,
             "end": end,
             "direction": direction,
             "color": str(f.get("color") or "#cbd5e1")[:20],
-            "notes": notes[:400] if isinstance(notes, str) else "",
-        })
+            "notes": notes,
+        }
+        if item_kind != "feature":
+            entry["kind"] = item_kind
+        locations = []
+        for loc in f.get("locations") or []:
+            try:
+                ls, le = int(loc.get("start")), int(loc.get("end"))
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if 0 <= ls < length and 0 <= le < length:
+                locations.append({"start": ls, "end": le})
+        if len(locations) > 1:
+            entry["locations"] = locations
+        if item_kind == "primer" and isinstance(f.get("bases"), str) and f["bases"].strip():
+            entry["bases"] = re.sub(r"[^A-Za-z]", "", f["bases"])[:500]
+        if item_kind == "translation" and isinstance(f.get("translationType"), str):
+            entry["translationType"] = f["translationType"][:40]
+        translated.append(entry)
     return translated
+
+
+def _clean_annotations(sequence_data: dict, length: int) -> list[dict]:
+    """Every annotation group the editor keeps, cleaned, in one list."""
+    out = []
+    for group, kind in ANNOTATION_KINDS.items():
+        out.extend(_clean_features(sequence_data.get(group), length, kind))
+    return out
+
+
+def _editor_annotations(stored: list) -> dict[str, list]:
+    """Stored annotations in the editor's shape, by group: forward and
+    strand for direction, and a stable id so the editor can diff renders."""
+    groups = {group: [] for group in ANNOTATION_KINDS}
+    for i, f in enumerate(stored if isinstance(stored, list) else []):
+        if not isinstance(f, dict):
+            continue
+        kind = f.get("kind") or "feature"
+        group = next((g for g, k in ANNOTATION_KINDS.items() if k == kind), "features")
+        forward = int(f.get("direction", 1) or 1) >= 0
+        item = {
+            "id": f.get("id") or f"{kind}-{i}",
+            "name": f.get("name") or "",
+            "type": f.get("type") or "misc_feature",
+            "start": int(f.get("start", 0) or 0),
+            "end": int(f.get("end", 0) or 0),
+            "forward": forward,
+            "strand": 1 if forward else -1,
+            "color": f.get("color") or "#cbd5e1",
+            "notes": f.get("notes") or "",
+        }
+        for extra in ("locations", "bases", "translationType"):
+            if f.get(extra):
+                item[extra] = f[extra]
+        groups[group].append(item)
+    return groups
+
+
+def _features_only(stored: list) -> list:
+    return [f for f in stored if isinstance(f, dict) and (f.get("kind") or "feature") == "feature"]
 
 
 @app.route("/plasmids/<int:row_id>/edit-sequence", methods=["POST"])
@@ -6349,7 +6434,7 @@ def plasmid_sequence_save_json(row_id: int):
     if not looks_like_bases(raw_sequence):
         return jsonify({"ok": False, "error": "The sequence has letters that are not IUPAC nucleotide codes."}), 400
     sequence = re.sub(r"\s+", "", raw_sequence).upper()
-    translated = _clean_features(sd.get("features") or [], len(sequence))
+    translated = _clean_annotations(sd, len(sequence))
 
     with SessionLocal() as db_session:
         p = db_session.get(PlasmidRecord, row_id)
@@ -6362,12 +6447,15 @@ def plasmid_sequence_save_json(row_id: int):
         p.features_json = json.dumps(translated)
         if not p.sequence_format:
             p.sequence_format = "ove"
-        if sd.get("name") and not p.name:
-            p.name = str(sd["name"])[:200]
+        # File > Rename Sequence in the editor renames the plasmid.
+        if isinstance(sd.get("name"), str) and sd["name"].strip() and sd["name"].strip() != (p.name or ""):
+            p.name = sd["name"].strip()[:200]
         p.sequence_uploaded_at = datetime.utcnow()
         stamp_updated(p)
         db_session.commit()
-    return jsonify({"ok": True, "length": len(sequence), "features": len(translated)})
+    counts = {group: sum(1 for f in translated if (f.get("kind") or "feature") == kind)
+              for group, kind in ANNOTATION_KINDS.items()}
+    return jsonify({"ok": True, "length": len(sequence), "features": counts["features"], "counts": counts})
 
 
 @app.route("/plasmids/<int:row_id>/sequence.json")
@@ -6382,27 +6470,17 @@ def plasmid_sequence_json(row_id: int):
             features = json.loads(p.features_json) if p.features_json else []
         except json.JSONDecodeError:
             features = []
-        # Translate stored features (direction +1/-1) into OVE's shape
-        # (forward bool, plus stable `id`s so OVE can diff its render).
-        ove_features = []
-        for i, f in enumerate(features):
-            ove_features.append({
-                "id": f.get("id") or f"feat-{i}",
-                "name": f.get("name") or "",
-                "type": f.get("type") or "misc_feature",
-                "start": int(f.get("start", 0) or 0),
-                "end": int(f.get("end", 0) or 0),
-                "forward": int(f.get("direction", 1) or 1) >= 0,
-                "color": f.get("color") or "#cbd5e1",
-                "notes": f.get("notes") or "",
-            })
+        groups = _editor_annotations(features)
         return jsonify({
             "ok": True,
             "name": p.name or f"Plasmid #{p.plasmid_id}",
             "sequence": p.full_sequence or "",
             "is_circular": bool(p.is_circular),
             "circular": bool(p.is_circular),  # OVE uses this key
-            "features": ove_features,
+            "features": groups["features"],
+            "primers": groups["primers"],
+            "translations": groups["translations"],
+            "parts": groups["parts"],
             "locked": not access.can_edit(p),
         })
 
