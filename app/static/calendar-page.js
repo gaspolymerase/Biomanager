@@ -137,8 +137,19 @@
     return '';
   }
 
+  /* TOAST UI sanitises what its templates return and drops <use>, so icons
+     are drawn from the sprite's own paths, read once. */
+  const sprite = {};
+  const spriteReady = fetch('/static/icons.svg').then((r) => (r.ok ? r.text() : '')).then((text) => {
+    const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+    doc.querySelectorAll('symbol').forEach((sym) => {
+      sprite[sym.id] = { box: sym.getAttribute('viewBox') || '0 0 512 512', body: sym.innerHTML };
+    });
+  }).catch(() => {});
+
   function svgIcon(name) {
-    return name ? `<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#${name}"></use></svg>` : '';
+    const sym = name && sprite[name];
+    return sym ? `<svg class="icon" viewBox="${sym.box}" aria-hidden="true">${sym.body}</svg>` : '';
   }
 
   // ================================================================ TOAST UI
@@ -222,7 +233,15 @@
       week: { taskView: false, eventView: ['allday', 'time'], hourStart: 0, hourEnd: 24 },
       template: {
         allday: chip,
-        time: chip,
+        time(ev) {
+          if (currentView !== 'month') return chip(ev);
+          // In the month grid a timed item is a dot, its start and its title.
+          const item = findItem(ev.id) || ev;
+          return `<span class="cal-chip cal-chip-timed" data-item-id="${ev.id}">
+              <i class="cal-chip-dot" style="background:${paint(item).borderColor}"></i>
+              <span class="cal-chip-time">${fmtTime(item.start)}</span>
+              <span class="cal-chip-t">${escapeHtml(ev.title || '')}</span></span>`;
+        },
         task(ev) {
           const done = ev.raw && ev.raw.done;
           return `<span class="cal-chip cal-chip-task ${done ? 'is-done' : ''}" data-item-id="${ev.id}">
@@ -284,6 +303,7 @@
     setView(initial, false);
     fetchAndRender();
     loadProtocols();
+    spriteReady.then(() => { if (allItems.length) renderAll(); });
   });
 
   // ================================================================ navigation
