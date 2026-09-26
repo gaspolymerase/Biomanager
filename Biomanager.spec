@@ -7,6 +7,9 @@
 # DB and user uploads land in ~/Library/Application Support/Biomanager/ at
 # runtime (see app/paths.py).
 
+import os
+import sys
+
 # noinspection PyUnresolvedReferences
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -40,6 +43,11 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+# app/static/uploads/ holds the lab's own uploaded files on a machine that has
+# run the app from source. It is data, not part of the app: never ship it.
+_uploads = os.path.join("app", "static", "uploads")
+a.datas = [entry for entry in a.datas if not entry[0].startswith(_uploads)]
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -58,6 +66,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="desktop/BioManager.ico" if sys.platform == "win32" else None,
 )
 coll = COLLECT(
     exe,
@@ -72,11 +81,12 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="BioManager.app",
-    icon=None,
+    icon="desktop/BioManager.icns",
     bundle_identifier="org.biomanager.desktop",
     info_plist={
         "NSHighResolutionCapable": "True",
         "LSBackgroundOnly": "False",
-        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleShortVersionString": os.environ.get("BIOMANAGER_VERSION", "0.1.0"),
+        "CFBundleVersion": os.environ.get("BIOMANAGER_VERSION", "0.1.0"),
     },
 )
