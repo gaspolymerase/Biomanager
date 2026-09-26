@@ -1,0 +1,434 @@
+"""The notebook's own features (app/lab_notebook.py): sharing and who may
+see or change a page, live-editing sync, version history, comments with
+@mentions, tags and search, the daily log, protocols and the experiments
+started from them, meeting rotations and action items, recipes, and
+Markdown import and export."""
+from __future__ import annotations
+
+import base64
+import io
+import json
+from datetime import date, timedelta
+
+from tests.base import AppTestCase, TODAY, client_for, count, make_user, one, rows, uniq  # first: points the app at a test database
+from app import lab_notebook  # noqa: E402
+
+
+def b64(raw: bytes) -> str:
+    return base64.b64encode(raw).decode()
+
+
+class Notebook(AppTestCase):
+    def post_json(self, client, url, body=None):
+        return client.post(url, data=json.dumps(body or {}), content_type="application/json")
+
+    def new_page(self, client, **body):
+        r = self.post_json(client, "/notebook/api/pages/new", body)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        return r.get_json()["page_id"]
+
+    def save(self, client, page_id, headers=None, **fields):
+        return client.post(f"/notebook/pages/{page_id}/update", data=fields, headers=headers or {})
+
+    def share(self, owner_client, page_id, username, role="view"):
+        r = self.post_json(owner_client, f"/notebook/api/pages/{page_id}/shares", {"username": username, "role": role})
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+
+
+class SharingTests(Notebook):
+    def test_a_page_is_its_owners_until_shared(self):
+        page = self.new_page(self.m, title=uniq("private"))
+        other = client_for(make_user())
+        self.assertEqual(other.get(f"/notebook/api/pages/{page}").status_code, 404)
+        self.assertEqual(self.save(other, page, body="mine now").status_code, 404)
+        self.assertNotIn("mine now", one("select body from notebook_pages where id=?", page) or "")
+
+    def test_a_viewer_reads_and_comments_but_cannot_edit(self):
+        viewer = make_user()
+        page = self.new_page(self.m, title=uniq("shared"))
+        self.share(self.m, page, viewer, "view")
+        v = client_for(viewer)
+        self.assertEqual(v.get(f"/notebook/api/pages/{page}").get_json()["page"]["role"], "view")
+        self.assertEqual(self.save(v, page, body="changed").status_code, 403)
+        r = self.post_json(v, f"/notebook/api/pages/{page}/comments", {"body": "Looks good"})
+        self.assertEqual(r.status_code, 200)
+        # Only the owner changes who it is shared with.
+        r = self.post_json(v, f"/notebook/api/pages/{page}/shares", {"username": viewer, "role": "edit"})
+        self.assertEqual(r.status_code, 403)
+
+    def test_an_editor_saves_and_the_page_lists_under_shared_with_me(self):
+        editor = make_user()
+        title = uniq("together")
+        page = self.new_page(self.m, title=title)
+        self.share(self.m, page, editor, "edit")
+        e = client_for(editor)
+        self.assertEqual(self.save(e, page, body="Added by a lab mate").status_code, 200)
+        self.assertEqual(one("select body from notebook_pages where id=?", page), "Added by a lab mate")
+        html = e.get("/notebook").get_data(as_text=True)
+        self.assertIn("Shared with me", html)
+        self.assertIn(title, html)
+        # They were told.
+        self.assertEqual(count("notifications", "recipient_username=? and link like ?", editor, f"%page={page}%"), 1)
+
+    def test_sharing_with_the_whole_lab_leaves_guests_out(self):
+        page = self.new_page(self.m, title=uniq("lab-wide"))
+        self.share(self.m, page, "*", "view")
+        colleague = client_for(make_user())
+        self.assertEqual(colleague.get(f"/notebook/api/pages/{page}").status_code, 200)
+        guest = make_user()
+        from app.db import SessionLocal
+        from app.models import UserAccount
+        from datetime import datetime
+        with SessionLocal() as s:
+            u = s.query(UserAccount).filter_by(username=guest).one()
+            u.expires_at = datetime.utcnow() + timedelta(days=1)
+            s.commit()
+        self.assertEqual(client_for(guest).get(f"/notebook/api/pages/{page}").status_code, 404)
+
+    def test_the_notebook_opens_a_shared_page_by_its_id(self):
+        viewer = make_user()
+        title = uniq("open me")
+        page = self.new_page(self.m, title=title)
+        self.share(self.m, page, viewer)
+        html = client_for(viewer).get(f"/notebook?page={page}").get_data(as_text=True)
+        self.assertIn(f'data-page-id="{page}"', html)
+        self.assertIn("view only", html)
+
+    def test_global_search_finds_shared_pages(self):
+        viewer = make_user()
+        word = uniq("zebrablot")
+        page = self.new_page(self.m, title=word)
+        self.share(self.m, page, viewer)
+        r = client_for(viewer).get(f"/search?q={word}")
+        self.assertIn(word, r.get_data(as_text=True))
+
+    def test_deleting_a_page_takes_its_history_comments_and_shares(self):
+        page = self.new_page(self.m, title=uniq("gone"))
+        self.save(self.m, page, body="v1")
+        self.share(self.m, page, make_user())
+        self.post_json(self.m, f"/notebook/api/pages/{page}/comments", {"body": "note"})
+        r = self.m.post(f"/notebook/pages/{page}/delete", headers={"X-Requested-With": "fetch"})
+        self.assertTrue(r.get_json()["ok"])
+        for table in ("notebook_versions", "notebook_shares", "notebook_comments", "notebook_page_info"):
+            self.assertEqual(count(table, "page_id_fk=?", page), 0, table)
+
+
+class SyncTests(Notebook):
+    def test_editors_exchange_updates_and_the_first_state_is_seeded_once(self):
+        editor = make_user()
+        page = self.new_page(self.m, title=uniq("live"))
+        self.share(self.m, page, editor, "edit")
+        e = client_for(editor)
+        first = self.m.get(f"/notebook/api/pages/{page}/sync?since=0&gen=-1&client=a").get_json()
+        self.assertTrue(first["empty"])
+        gen = first["gen"]
+        r = self.post_json(self.m, f"/notebook/api/pages/{page}/sync", {"client": "a", "gen": gen, "init": True, "updates": [b64(b"state")]})
+        self.assertTrue(r.get_json()["ok"])
+        # A second editor seeding at the same moment is turned away.
+        r = self.post_json(e, f"/notebook/api/pages/{page}/sync", {"client": "b", "gen": gen, "init": True, "updates": [b64(b"other")]})
+        self.assertEqual(r.status_code, 409)
+        got = e.get(f"/notebook/api/pages/{page}/sync?since=0&gen=-1&client=b").get_json()
+        self.assertEqual([u["data"] for u in got["updates"]], [b64(b"state")])
+        self.post_json(e, f"/notebook/api/pages/{page}/sync", {"client": "b", "gen": gen, "updates": [b64(b"typed")], "awareness": b64(b"cursor")})
+        mine = self.m.get(f"/notebook/api/pages/{page}/sync?since={got['last']}&gen={gen}&client=a").get_json()
+        self.assertEqual([u["data"] for u in mine["updates"]], [b64(b"typed")])
+        self.assertEqual([p["username"] for p in mine["peers"]], [editor])
+
+    def test_viewers_cannot_send_changes(self):
+        viewer = make_user()
+        page = self.new_page(self.m, title=uniq("look"))
+        self.share(self.m, page, viewer)
+        r = self.post_json(client_for(viewer), f"/notebook/api/pages/{page}/sync", {"client": "v", "gen": 0, "updates": [b64(b"x")]})
+        self.assertEqual(r.status_code, 403)
+
+    def test_a_save_from_outside_the_live_editor_starts_editors_again(self):
+        page = self.new_page(self.m, title=uniq("reset"))
+        self.post_json(self.m, f"/notebook/api/pages/{page}/sync", {"client": "a", "gen": 0, "init": True, "updates": [b64(b"s")]})
+        # The live editor's own saves carry its generation…
+        self.assertEqual(self.save(self.m, page, headers={"X-Collab-Gen": "0"}, body="from the editor").status_code, 200)
+        self.assertEqual(lab_notebook_gen(page), 0)
+        # …the plain-text fallback's do not: editing state is dropped.
+        self.assertEqual(self.save(self.m, page, body="from the textarea").status_code, 200)
+        self.assertEqual(lab_notebook_gen(page), 1)
+        self.assertEqual(count("notebook_sync_updates", "page_id_fk=?", page), 0)
+        # An editor still on the old state is told to start again.
+        r = self.save(self.m, page, headers={"X-Collab-Gen": "0"}, body="stale")
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(one("select body from notebook_pages where id=?", page), "from the textarea")
+        pull = self.m.get(f"/notebook/api/pages/{page}/sync?since=5&gen=0&client=a").get_json()
+        self.assertTrue(pull["reset"])
+
+    def test_compaction_replaces_old_updates_with_one_state(self):
+        page = self.new_page(self.m, title=uniq("compact"))
+        for i in range(3):
+            self.post_json(self.m, f"/notebook/api/pages/{page}/sync", {"client": "a", "gen": 0, "updates": [b64(bytes([i]))]})
+        last = one("select max(id) from notebook_sync_updates where page_id_fk=?", page)
+        r = self.post_json(self.m, f"/notebook/api/pages/{page}/sync/compact", {"client": "a", "gen": 0, "upto": last, "state": b64(b"all")})
+        self.assertTrue(r.get_json()["ok"])
+        self.assertEqual([r[0] for r in rows("select data from notebook_sync_updates where page_id_fk=?", page)], [b64(b"all")])
+
+
+def lab_notebook_gen(page_id):
+    return one("select collab_generation from notebook_page_info where page_id_fk=?", page_id)
+
+
+class VersionTests(Notebook):
+    def test_quick_edits_fold_into_one_version_and_another_person_starts_a_new_one(self):
+        editor = make_user()
+        page = self.new_page(self.m, title=uniq("hist"))
+        self.share(self.m, page, editor, "edit")
+        self.save(self.m, page, body="one")
+        self.save(self.m, page, body="one two")
+        self.assertEqual(count("notebook_versions", "page_id_fk=?", page), 1)
+        self.save(client_for(editor), page, body="one two three")
+        self.assertEqual(count("notebook_versions", "page_id_fk=?", page), 2)
+        versions = self.m.get(f"/notebook/api/pages/{page}/versions").get_json()["versions"]
+        self.assertEqual([v["saved_by"] for v in versions], [editor, self.member])
+
+    def test_restoring_brings_back_the_text_and_keeps_what_was_there(self):
+        page = self.new_page(self.m, title=uniq("restore"))
+        self.save(self.m, page, body="original")
+        first = self.post_json(self.m, f"/notebook/api/pages/{page}/versions", {"label": "before"}).get_json()["id"]
+        self.save(self.m, page, body="rewritten")
+        r = self.post_json(self.m, f"/notebook/api/versions/{first}/restore")
+        self.assertTrue(r.get_json()["ok"])
+        self.assertEqual(one("select body from notebook_pages where id=?", page), "original")
+        bodies = [r[0] for r in rows("select body from notebook_versions where page_id_fk=? order by id", page)]
+        self.assertIn("rewritten", bodies)
+        self.assertEqual(one("select kind from notebook_versions where page_id_fk=? order by id desc limit 1", page), "restore")
+
+    def test_versions_of_a_page_you_cannot_see_stay_hidden(self):
+        page = self.new_page(self.m, title=uniq("secret"))
+        self.save(self.m, page, body="secret text")
+        vid = one("select id from notebook_versions where page_id_fk=?", page)
+        self.assertEqual(client_for(make_user()).get(f"/notebook/api/versions/{vid}").status_code, 404)
+
+
+class CommentTests(Notebook):
+    def test_mentioning_someone_who_can_see_the_page_tells_them(self):
+        mate = make_user()
+        page = self.new_page(self.m, title=uniq("review"))
+        self.share(self.m, page, mate)
+        r = self.post_json(self.m, f"/notebook/api/pages/{page}/comments", {"body": f"@{mate} can you check the lot?", "quote": "lot 42"})
+        self.assertEqual(r.get_json()["no_access"], [])
+        self.assertEqual(count("notifications", "recipient_username=? and title like ?", mate, "%mentioned you%"), 1)
+        threads = self.m.get(f"/notebook/api/pages/{page}/comments").get_json()["threads"]
+        self.assertEqual(threads[0]["quote"], "lot 42")
+
+    def test_mentioning_someone_without_access_names_them_instead(self):
+        outsider = make_user()
+        page = self.new_page(self.m, title=uniq("closed"))
+        r = self.post_json(self.m, f"/notebook/api/pages/{page}/comments", {"body": f"@{outsider} look"})
+        self.assertEqual(r.get_json()["no_access"], [outsider])
+        self.assertEqual(count("notifications", "recipient_username=?", outsider), 0)
+
+    def test_replies_resolve_and_the_owner_hears_of_comments(self):
+        mate = make_user()
+        page = self.new_page(self.m, title=uniq("thread"))
+        self.share(self.m, page, mate)
+        mc = client_for(mate)
+        cid = self.post_json(mc, f"/notebook/api/pages/{page}/comments", {"body": "Why 37 °C?"}).get_json()["id"]
+        self.assertEqual(count("notifications", "recipient_username=? and title like ?", self.member, "%commented%"), 1)
+        self.post_json(self.m, f"/notebook/api/pages/{page}/comments", {"body": "Per the kit", "parent_id": cid})
+        self.post_json(self.m, f"/notebook/api/comments/{cid}/resolve", {"resolved": True})
+        thread = self.m.get(f"/notebook/api/pages/{page}/comments").get_json()["threads"][0]
+        self.assertTrue(thread["resolved"])
+        self.assertEqual([r["body"] for r in thread["replies"]], ["Per the kit"])
+        # Someone else's comment is theirs to delete (or the page owner's).
+        self.assertEqual(self.post_json(client_for(make_user()), f"/notebook/api/comments/{cid}/delete").status_code, 404)
+
+
+class TagsAndSearchTests(Notebook):
+    def test_tags_are_normalised_and_filter_the_search(self):
+        page = self.new_page(self.m, title=uniq("tagged"))
+        r = self.post_json(self.m, f"/notebook/api/pages/{page}/meta", {"tags": ["Western", " #western ", "Cell Culture"]})
+        self.assertEqual(r.get_json()["page"]["tags"], ["western", "cell culture"])
+        found = self.m.get("/notebook/api/search?tag=cell culture").get_json()["results"]
+        self.assertIn(page, [x["id"] for x in found])
+
+    def test_search_matches_every_word_and_shows_a_snippet(self):
+        word = uniq("uniqword")
+        page = self.new_page(self.m, title="Assay")
+        self.save(self.m, page, body=f"The {word} sample was spun at 4 °C for 10 min.")
+        found = self.m.get(f"/notebook/api/search?q={word} spun").get_json()["results"]
+        self.assertEqual([x["id"] for x in found], [page])
+        self.assertIn(word, found[0]["snippet"])
+        self.assertEqual(self.m.get(f"/notebook/api/search?q={word} centrifuge").get_json()["results"], [])
+
+    def test_search_filters_by_kind_and_status(self):
+        page = self.new_page(self.m, starter="experiment", title=uniq("exp"))
+        self.post_json(self.m, f"/notebook/api/pages/{page}/meta", {"action": "start"})
+        ids = [x["id"] for x in self.m.get("/notebook/api/search?kind=experiment&status=running").get_json()["results"]]
+        self.assertIn(page, ids)
+        ids = [x["id"] for x in self.m.get("/notebook/api/search?kind=protocol").get_json()["results"]]
+        self.assertNotIn(page, ids)
+
+
+class PageKindTests(Notebook):
+    def test_starting_and_finishing_an_experiment_stamps_the_times(self):
+        page = self.new_page(self.m, starter="experiment", title=uniq("run"))
+        info = self.m.get(f"/notebook/api/pages/{page}").get_json()["page"]
+        self.assertEqual((info["kind"], info["status"], info["started_at"]), ("experiment", "planned", ""))
+        started = self.post_json(self.m, f"/notebook/api/pages/{page}/meta", {"action": "start"}).get_json()["page"]
+        self.assertEqual(started["status"], "running")
+        self.assertTrue(started["started_at"])
+        done = self.post_json(self.m, f"/notebook/api/pages/{page}/meta", {"action": "finish", "outcome": "failed"}).get_json()["page"]
+        self.assertEqual(done["status"], "failed")
+        self.assertTrue(done["finished_at"])
+
+    def test_today_makes_one_daily_page_per_day(self):
+        user = make_user()
+        c = client_for(user)
+        first = c.get("/notebook/today")
+        second = c.get("/notebook/today")
+        self.assertEqual(first.headers["Location"], second.headers["Location"])
+        self.assertEqual(one("select count(*) from notebook_page_info i join notebook_pages p on p.id=i.page_id_fk "
+                             "join notebook_tabs t on t.id=p.tab_id_fk where t.owner_username=? and i.kind='daily'", user), 1)
+        self.assertEqual(one("select title from notebook_tabs where owner_username=?", user), "Daily log")
+
+    def test_starters_fill_the_page_and_file_it_in_a_topic(self):
+        user = make_user()
+        c = client_for(user)
+        page = self.new_page(c, starter="qpcr")
+        body = one("select body from notebook_pages where id=?", page)
+        self.assertIn("```qpcr", body)
+        self.assertIn("```calc", body)
+        self.assertEqual(one("select t.title from notebook_tabs t join notebook_pages p on p.tab_id_fk=t.id where p.id=?", page), "Experiments")
+
+    def test_the_notebook_page_renders_every_kind(self):
+        for starter in ("blank", "experiment", "protocol", "meeting", "seminar", "daily", "cloning", "western"):
+            page = self.new_page(self.m, starter=starter)
+            r = self.m.get(f"/notebook?page={page}")
+            self.assertEqual(r.status_code, 200, starter)
+            self.assertIn(f'data-page-id="{page}"', r.get_data(as_text=True))
+
+
+class ProtocolTests(Notebook):
+    def test_steps_become_a_checklist(self):
+        body = "# PCR\n\n## Steps\n\n1. Thaw primers\n2. Mix 10 min\n   1. Nested\n\n```calc\n1. not a step\n```\n"
+        out = lab_notebook.steps_as_checklist(body, "PCR")
+        self.assertIn("- [ ] Thaw primers", out)
+        self.assertIn("   - [ ] Nested", out)
+        self.assertIn("### Steps", out)
+        self.assertNotIn("# PCR", out.split("\n")[0])
+        self.assertIn("1. not a step", out)
+
+    def test_bullets_under_a_steps_heading_count_when_nothing_is_numbered(self):
+        out = lab_notebook.steps_as_checklist("## Materials\n\n- Tris\n\n## Procedure\n\n- Lyse cells\n- Spin\n")
+        self.assertIn("- Tris", out)
+        self.assertIn("- [ ] Lyse cells", out)
+
+    def test_an_experiment_from_a_protocol_follows_its_numbered_version(self):
+        mate = make_user()
+        protocol = self.new_page(self.m, starter="protocol", title=uniq("Miniprep"))
+        self.save(self.m, protocol, body="## Steps\n\n1. Pellet cells\n2. Resuspend\n")
+        self.share(self.m, protocol, "*", "view")
+        # The first experiment numbers the protocol v1.
+        c = client_for(mate)
+        r = self.post_json(c, f"/notebook/api/pages/{protocol}/start-experiment", {"title": "Prep 1"})
+        # A viewer cannot number it, so theirs follows the text as it is.
+        self.assertEqual(r.status_code, 200)
+        v = self.post_json(self.m, f"/notebook/api/pages/{protocol}/versions", {"release": True}).get_json()
+        self.assertEqual(v["number"], 1)
+        self.save(self.m, protocol, body="## Steps\n\n1. Pellet cells\n2. Resuspend in P1\n")
+        exp = self.post_json(self.m, f"/notebook/api/pages/{protocol}/start-experiment", {}).get_json()["page_id"]
+        body = one("select body from notebook_pages where id=?", exp)
+        self.assertIn("- [ ] Resuspend", body)
+        self.assertNotIn("in P1", body)  # v1, not the unnumbered edit
+        info = self.m.get(f"/notebook/api/pages/{exp}").get_json()["page"]
+        self.assertEqual((info["kind"], info["status"], info["protocol"]["version"]), ("experiment", "running", 1))
+        listed = self.m.get(f"/notebook/api/pages/{protocol}/experiments").get_json()["experiments"]
+        self.assertIn(exp, [x["id"] for x in listed])
+
+
+class MeetingTests(Notebook):
+    def make_series(self, members, **extra):
+        body = {"name": uniq("Lab meeting"), "members": members, "weekday": TODAY.weekday(), "time": "16:00", **extra}
+        r = self.post_json(self.m, "/notebook/api/meetings", body)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        return r.get_json()["series"]
+
+    def test_notes_name_the_presenter_share_with_everyone_and_move_the_rotation_on(self):
+        a, b = make_user(), make_user()
+        series = self.make_series([a, b, self.member])
+        self.assertEqual(series["next"]["presenter"], a)
+        r = self.post_json(self.m, f"/notebook/api/meetings/{series['id']}/note")
+        page = r.get_json()["page_id"]
+        info = self.m.get(f"/notebook/api/pages/{page}").get_json()["page"]
+        self.assertEqual((info["kind"], info["presenter"]), ("meeting", a))
+        self.assertEqual(client_for(b).get(f"/notebook/api/pages/{page}").get_json()["page"]["role"], "edit")
+        after = self.m.get("/notebook/api/meetings").get_json()["series"]
+        self.assertEqual([s for s in after if s["id"] == series["id"]][0]["next"]["presenter"], b)
+
+    def test_the_rotation_can_be_skipped_and_dates_follow_the_weekday(self):
+        a, b = make_user(), make_user()
+        series = self.make_series([a, b])
+        self.assertEqual(series["upcoming"][0]["date"], TODAY.isoformat())
+        self.assertEqual(series["upcoming"][1]["date"], (TODAY + timedelta(days=7)).isoformat())
+        skipped = self.post_json(self.m, f"/notebook/api/meetings/{series['id']}/advance", {"step": 1}).get_json()["series"]
+        self.assertEqual(skipped["next"]["presenter"], b)
+
+    def test_meetings_go_on_the_calendar_and_open_their_notes(self):
+        a = make_user()
+        series = self.make_series([a, self.member])
+        made = self.post_json(self.m, f"/notebook/api/meetings/{series['id']}/calendar", {"count": 2}).get_json()["made"]
+        self.assertEqual(made, 2)
+        again = self.post_json(self.m, f"/notebook/api/meetings/{series['id']}/calendar", {"count": 2}).get_json()["made"]
+        self.assertEqual(again, 0)
+        self.assertEqual(count("calendar_events", "title like ? and event_type='meeting'", series["name"] + "%"), 2)
+        # The second meeting's notes (from its calendar event) name its own presenter.
+        day = (TODAY + timedelta(days=7)).isoformat()
+        r = self.m.get(f"/notebook/meetings/{series['id']}/open?date={day}")
+        page = int(r.headers["Location"].split("page=")[1])
+        self.assertEqual(self.m.get(f"/notebook/api/pages/{page}").get_json()["page"]["presenter"], self.member)
+        # Opening it again finds the same page, and the rotation did not move.
+        self.assertEqual(self.m.get(f"/notebook/meetings/{series['id']}/open?date={day}").headers["Location"], r.headers["Location"])
+        current = [s for s in self.m.get("/notebook/api/meetings").get_json()["series"] if s["id"] == series["id"]][0]
+        self.assertEqual(current["next"]["presenter"], a)
+
+    def test_action_items_become_to_dos_once(self):
+        a = make_user()
+        page = self.new_page(self.m, starter="meeting", title=uniq("minutes"))
+        self.save(self.m, page, body=f"## Action items\n\n- [ ] @{a} order primers, due {TODAY.isoformat()}\n- [ ] @nobody-here skip me\n- [x] @{a} already done\n")
+        r = self.post_json(self.m, f"/notebook/api/pages/{page}/action-items").get_json()
+        self.assertEqual([(m["username"], m["due"]) for m in r["made"]], [(a, TODAY.isoformat())])
+        self.assertEqual(count("tasks", "owner=? and title like ?", a, "%order primers%"), 1)
+        again = self.post_json(self.m, f"/notebook/api/pages/{page}/action-items").get_json()
+        self.assertEqual((again["made"], again["skipped"]), ([], 1))
+
+
+class RecipeAndMarkdownTests(Notebook):
+    def test_recipes_are_saved_to_the_lab_library_beside_the_built_in_ones(self):
+        name = uniq("HEPES buffer")
+        r = self.post_json(self.m, "/notebook/api/recipes", {"name": name, "data": {"volume": 1, "volumeUnit": "L", "components": [{"name": "HEPES", "conc": 20, "unit": "mM", "mw": 238.3}]}})
+        rid = r.get_json()["id"]
+        lib = client_for(make_user()).get("/notebook/api/recipes").get_json()
+        self.assertIn(name, [x["name"] for x in lib["recipes"]])
+        self.assertIn("PBS, 10×", [x["name"] for x in lib["presets"]])
+        # Someone else's recipe is not theirs to delete.
+        self.assertEqual(self.post_json(client_for(make_user()), f"/notebook/api/recipes/{rid}/delete").status_code, 403)
+
+    def test_export_writes_front_matter_and_import_reads_it_back(self):
+        page = self.new_page(self.m, title="Cloning log")
+        self.save(self.m, page, body="# Cloning log\n\nSome text")
+        self.post_json(self.m, f"/notebook/api/pages/{page}/meta", {"tags": ["cloning"]})
+        md = self.m.get(f"/notebook/api/pages/{page}/export.md").get_data(as_text=True)
+        self.assertTrue(md.startswith("---\ntitle: \"Cloning log\""))
+        self.assertIn('tags: ["cloning"]', md)
+        r = self.m.post("/notebook/api/import", data={"file": (io.BytesIO(md.encode()), "log.md")},
+                        content_type="multipart/form-data")
+        new = r.get_json()["page_id"]
+        self.assertEqual(one("select title from notebook_pages where id=?", new), "Cloning log")
+        self.assertTrue(one("select body from notebook_pages where id=?", new).startswith("# Cloning log"))
+        self.assertEqual(self.m.get(f"/notebook/api/pages/{new}").get_json()["page"]["tags"], ["cloning"])
+
+    def test_the_order_lookup_answers(self):
+        # It used to be registered on the wrong function and answered 500.
+        r = self.m.get("/notebook/lookup/order/987654")
+        self.assertEqual(r.status_code, 404)
+
+    def test_a_template_is_fetched_whole(self):
+        body = "x" * 400
+        self.m.post("/notebook/templates/create", data={"title": uniq("tpl"), "body": body})
+        tid = one("select id from notebook_templates where owner_username=? order by id desc limit 1", self.member)
+        self.assertEqual(self.m.get(f"/notebook/templates/{tid}").get_json()["template"]["body"], body)

@@ -4,18 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build:css && npm run build:notebook && npm run build:plasmid && npm run build:calendar",
+    "build": "npm run build:css && npm run build:notebook && npm run build:vendor && npm run build:plasmid && npm run build:calendar",
     "build:notebook": "BUILD_TARGET=notebook vite build",
     "build:plasmid": "cp node_modules/@deltablot/tg-oss-ove-umd/index.umd.js ../app/static/notebook-build/plasmid-app.js && cp node_modules/@deltablot/tg-oss-ove-umd/style.css ../app/static/notebook-build/plasmid-app.css",
     "build:calendar": "cp node_modules/@toast-ui/calendar/dist/toastui-calendar.min.js ../app/static/notebook-build/calendar-app.js && cp node_modules/@toast-ui/calendar/dist/toastui-calendar.min.css ../app/static/notebook-build/calendar-app.css",
     "watch": "BUILD_TARGET=notebook vite build --watch",
     "dev": "vite",
     "build:css": "tailwindcss -i src/tailwind.css -o ../app/static/tailwind.css --minify",
-    "watch:css": "tailwindcss -i src/tailwind.css -o ../app/static/tailwind.css --watch"
+    "watch:css": "tailwindcss -i src/tailwind.css -o ../app/static/tailwind.css --watch",
+    "build:vendor": "rm -rf ../app/static/notebook-build/vendor && mkdir -p ../app/static/notebook-build/vendor/katex/fonts && cp node_modules/mermaid/dist/mermaid.min.js ../app/static/notebook-build/vendor/ && cp node_modules/katex/dist/katex.min.js node_modules/katex/dist/katex.min.css ../app/static/notebook-build/vendor/katex/ && cp node_modules/katex/dist/fonts/*.woff2 ../app/static/notebook-build/vendor/katex/fonts/"
   },
   "dependencies": {
     "@deltablot/tg-oss-ove-umd": "^0.4.1",
     "@tiptap/core": "^2.10.4",
+    "@tiptap/extension-collaboration": "^2.27.3",
+    "@tiptap/extension-collaboration-cursor": "^2.27.3",
     "@tiptap/extension-image": "^2.10.4",
     "@tiptap/extension-link": "^2.10.4",
     "@tiptap/extension-placeholder": "^2.10.4",
@@ -29,7 +32,12 @@
     "@tiptap/starter-kit": "^2.10.4",
     "@tiptap/suggestion": "^2.10.4",
     "@toast-ui/calendar": "^2.1.3",
-    "tiptap-markdown": "^0.8.10"
+    "katex": "^0.16.47",
+    "mermaid": "^11.17.2",
+    "tiptap-markdown": "^0.8.10",
+    "y-prosemirror": "^1.3.7",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
