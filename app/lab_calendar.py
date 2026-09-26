@@ -771,4 +771,10 @@ def feed_ics(token: str):
         name = f"BioManager · {user.display_name or user.username}" if scope == "mine" else "BioManager · lab"
         s.commit()
     body = render_ics(items, name, request.host_url)
-    return Response(body, mimetype="text/calendar", headers={"Cache-Control": "private, max-age=900"})
+    # The link is the key: keep it out of search engines, shared caches and
+    # the Referer header of anything the calendar app opens from it.
+    return Response(body, mimetype="text/calendar", headers={
+        "Cache-Control": "private, max-age=900",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Referrer-Policy": "no-referrer",
+    })

@@ -244,6 +244,20 @@ class FeedTests(Calendar):
         body = self.app_client().get("/" + url.split("/", 3)[3]).get_data(as_text=True)
         self.assertIn(theirs, body)
 
+    def test_the_feed_passes_the_internet_gate_but_nothing_else_does(self):
+        url = self.post_json(self.m, "/calendar/phone-feed", {"action": "create"}).get_json()["url"]
+        internet = {"X-BioManager-Entry": "internet"}
+        r = self.app_client().get("/" + url.split("/", 3)[3], headers=internet)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.headers["X-Robots-Tag"], "noindex, nofollow")
+        self.assertEqual(r.headers["Referrer-Policy"], "no-referrer")
+        self.assertIn("private", r.headers["Cache-Control"])
+        # Settings for the link, and the calendar itself, still need a session.
+        for path in ("/calendar/phone-feed", "/calendar", "/calendar/events.json"):
+            r = self.app_client().get(path, headers=internet)
+            self.assertIn(r.status_code, (302, 401), path)
+            self.assertNotIn(b"BEGIN:VCALENDAR", r.data)
+
     def test_an_unknown_token_is_not_found(self):
         self.assertEqual(self.app_client().get("/calendar/feed/nonsense.ics").status_code, 404)
 
@@ -254,6 +268,18 @@ class FeedTests(Calendar):
 
 
 class PageTests(Calendar):
+    def test_the_calendar_sends_nothing_to_other_sites(self):
+        """TOAST UI reports usage to Google Analytics unless told not to. It is
+        told not to, and the policy only lets the page reach this server, so
+        a future bundle that phones home is blocked (and logged) anyway."""
+        from pathlib import Path
+        page_js = (Path(__file__).resolve().parent.parent / "app" / "static" / "calendar-page.js").read_text()
+        self.assertIn("usageStatistics: false", page_js)
+        policy = self.m.get("/calendar").headers["Content-Security-Policy"]
+        for directive in ("default-src 'self'", "img-src 'self' data: blob:", "connect-src 'self'"):
+            self.assertIn(directive, policy)
+        self.assertNotIn("google", policy)
+
     def test_the_calendar_page_renders_with_its_sidebar(self):
         html = self.get_ok(self.m, "/calendar")
         for text in ("New event", "Stocks &amp; organisms", "Away soon", "On your phone", "calendar-page.js"):
