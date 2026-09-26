@@ -49,7 +49,8 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         server = Server.get(this);
         if (server == null) {
-            startActivity(new Intent(this, SetupActivity.class));
+            startActivity(new Intent(this, SetupActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             finish();
             return;
         }

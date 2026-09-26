@@ -79,8 +79,10 @@ public class SetupActivity extends Activity {
                 if (address.startsWith("http://")) {
                     Toast.makeText(this, R.string.warn_http, Toast.LENGTH_LONG).show();
                 }
+                // A fresh task holding only the main screen: nothing (an earlier setup
+                // screen, the old server's page) is left underneath for Back to reveal.
                 startActivity(new Intent(this, MainActivity.class)
-                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK));
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
                 finish();
             });
         });
