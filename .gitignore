@@ -19,7 +19,9 @@ node_modules/
 
 # macOS
 .DS_Store
-.claude/worktrees/
+
+# Claude Code: local settings, preview config and agent worktrees
+.claude/
 
 # Deployment secrets and data (deploy/README.md)
 deploy/.env
