@@ -198,3 +198,26 @@ class MigrateToPostgres(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ServerBundle(unittest.TestCase):
+    """scripts/make-server-bundle.sh: deploy/ for a server without the
+    source, running the published image of the release."""
+
+    def test_the_bundle_runs_the_release_image_and_holds_no_secrets(self):
+        import tarfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "bundle.tar.gz"
+            r = run(["bash", "scripts/make-server-bundle.sh", "v1.2.3", str(out)])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with tarfile.open(out) as tar:
+                names = tar.getnames()
+                compose = tar.extractfile("Biomanager/deploy/compose.yaml").read().decode()
+            self.assertIn("Biomanager/deploy/BUNDLE.md", names)
+            self.assertIn("Biomanager/deploy/host/internet-access.sh", names)
+            self.assertIn("image: ${BIOMANAGER_IMAGE:-ghcr.io/gaspolymerase/biomanager:1.2.3}", compose)
+            self.assertNotIn("context: ..", compose)          # nothing to build the app from
+            self.assertIn("build: ./backup", compose)          # the backup image is built from the bundle
+            self.assertFalse([n for n in names if n.endswith("/.env") or "/backups/" in n], names)
+            self.assertFalse([n for n in names if n != "Biomanager" and not n.startswith("Biomanager/deploy")], names)
+            self.assertFalse([n for n in names if "/._" in n or n.startswith("._")], names)
