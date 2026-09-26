@@ -240,7 +240,10 @@ stock**, and statuses and categories can be renamed without losing items.
       <h4>☀️ A home page that tells you what to do</h4>
       Mice older than 30 weeks, upcoming weanings, the genotyping queue,
       vials due for flipping, expiring stock, zebrafish tasks, the next
-      14 days and recent orders.
+      14 days and recent orders. Three layouts, switched on Home:
+      <b>Classic</b> cards, <b>Tracks</b> (the coming weeks on one day
+      ruler, a track per kind of work) and <b>Freezer</b> (your racks from
+      above, with a pull list in the order you'd walk the room).
     </td>
     <td width="50%" valign="top">
       <h4>📊 Spreadsheet-style editing</h4>

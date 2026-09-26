@@ -17,7 +17,22 @@
   {% endif %}
 {% endblock %}
 
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='home-layouts.css') }}?v={{ asset_version('home-layouts.css') }}">
+{% endblock %}
+
 {% block content %}
+
+{# ---- Layout: Classic, Tracks or Freezer (app/home_layouts.py) ---------- #}
+<form class="home-layout-bar" method="post" action="{{ url_for('set_home_layout') }}">
+  <span class="home-layout-label">Layout</span>
+  <div class="dt-chips" role="group" aria-label="Home layout">
+    {% for key, (label, icon_name) in layout_choices.items() %}
+      <button type="submit" name="layout" value="{{ key }}" class="dt-chip"
+              aria-pressed="{{ 'true' if home_layout == key else 'false' }}">{{ icon(icon_name) }}{{ label }}</button>
+    {% endfor %}
+  </div>
+</form>
 
 {% if setup_needed %}
   <a class="setup-banner" href="{{ url_for('lab.setup') }}">
@@ -46,6 +61,12 @@
     </div>
   </section>
 {% endif %}
+
+{% if home_layout == 'tracks' %}
+  {% include "home/_tracks.html" %}
+{% elif home_layout == 'freezer' %}
+  {% include "home/_freezer.html" %}
+{% else %}
 
 {# ---- Your databases: the lab's, and your own ---------------------------- #}
 {% set db_links = [] %}
@@ -361,4 +382,5 @@
   </article>
 </section>
 {% endif %}
+{% endif %}{# classic #}
 {% endblock %}

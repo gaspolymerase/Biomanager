@@ -143,6 +143,7 @@ app.register_blueprint(oidc.bp)
 
 # Importing app.notify registers the listener that sends notifications.
 from . import lab_routes, notify  # noqa: E402,F401
+from . import home_layouts  # noqa: E402
 
 with SessionLocal() as _db_session:
     if _db_session.scalar(select(func.count(UserAccount.id))) == 0:
@@ -1329,14 +1330,35 @@ def home_dashboard():
         for_you = [{"id": n.id, "title": n.title, "created_at": n.created_at}
                    for n in notify.recent(db_session, g.user.username, limit=5, unread_only=True)]
 
+    # Classic (the cards above) or one of the other layouts (app/home_layouts.py),
+    # which draw the same work from one agenda.
+    zebrafish_due = zebrafish_home_summary()
+    with SessionLocal() as db_session:
+        home_layout = home_layouts.get_layout(db_session, g.user.username)
+        layout_view = None
+        if home_layout != "classic":
+            span = home_layouts.span_arg(request.args.get("span"))
+            horizon = span if home_layout == "tracks" else home_layouts.PULL_DAYS
+            agenda, track_meta = home_layouts.build_agenda(
+                db_session, today, horizon, lab.request_features(), zebrafish_due,
+                colony_label=builtin_labels().get("colony", "Mouse colony"))
+            if home_layout == "tracks":
+                layout_view = home_layouts.tracks_view(agenda, track_meta, today, span)
+            else:
+                layout_view = home_layouts.freezer_view(db_session, agenda, today, g.user.username)
+            db_session.commit()
+
     return render_template(
         "home.html",
+        home_layout=home_layout,
+        layout_choices=home_layouts.LAYOUTS,
+        layout_view=layout_view,
         has_orders=has_orders,
         has_restock=has_restock,
         has_stocks=has_stocks,
         setup_needed=setup_needed,
         for_you=for_you,
-        zebrafish_due=zebrafish_home_summary(),
+        zebrafish_due=zebrafish_due,
         stock_due=stock_due[:12],
         stock_due_total=len(stock_due),
         organism_due=organism_due[:12],
@@ -1361,6 +1383,16 @@ def home_dashboard():
 
 
 ALLOWED_LANDING_ENDPOINTS = {"colony", "notebook", "calendar", "orders", "samples", "plasmids"}
+
+
+@app.route("/home/layout", methods=["POST"])
+@login_required
+def set_home_layout():
+    """Switch Home between Classic, Tracks and Freezer; kept per person."""
+    with SessionLocal() as db_session:
+        home_layouts.set_layout(db_session, g.user.username, request.form.get("layout", ""))
+        db_session.commit()
+    return redirect(url_for("home_dashboard"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1441,6 +1473,8 @@ def settings():
                 user.role_title = request.form.get("role_title", "").strip()
                 landing = request.form.get("default_landing", "").strip()
                 user.default_landing = landing if landing in ALLOWED_LANDING_ENDPOINTS else ""
+                if "home_layout" in request.form:
+                    home_layouts.set_layout(db_session, user.username, request.form.get("home_layout", ""))
                 db_session.commit()
                 flash("Profile updated.", "success")
             elif action == "notifications":
@@ -1475,6 +1509,7 @@ def settings():
             "email": user.email,
             "role_title": user.role_title,
             "default_landing": user.default_landing,
+            "home_layout": home_layouts.get_layout(db_session, user.username),
             "role": user.role,
             "created_at": user.created_at.strftime("%Y-%m-%d") if user.created_at else "",
             "notify_transfer": user.notify_transfer,
@@ -1495,6 +1530,7 @@ def settings():
         "settings.html",
         user_settings=user_data,
         landing_choices=sorted(ALLOWED_LANDING_ENDPOINTS),
+        home_layout_choices=home_layouts.LAYOUTS,
         mail_status=mailer.status_line(),
         mail_configured=mailer.is_configured(),
         identities=identities,
