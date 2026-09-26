@@ -3,9 +3,10 @@
 Each person picks a picture (the double helix, a mouse, a zebrafish…) and one
 of six macaron colours in Settings. The picture is drawn here as SVG on
 Apple's macOS icon grid: a 1024 canvas with the rounded square inset to
-824 × 824 and a 185.4 corner radius. The style is Apple's: one white subject
-lit from above, frosted-glass layers for depth, and details in a deeper shade
-of the background rather than a second colour.
+824 × 824 and a 185.4 corner radius. The style is Apple's Liquid Glass: flat
+shapes in two layers, solid white in front and translucent glass behind with
+a bright rim, lit from above. Details are cut out of the white so the
+background shows through; there is never a second colour.
 
 The colour also becomes the app's accent (`--color-brand-*`), so buttons,
 links and selections match the icon. Mint is the default and matches the
@@ -76,18 +77,17 @@ class Palette:
     label: str
     top: str      # icon background, top of the gradient
     bottom: str   # icon background, bottom
-    deep: str     # details drawn on the white subject
     shade: str    # colour of the shadows
     accent: str   # the app's brand-600 in light mode
 
 
 PALETTES: dict[str, Palette] = {
-    "mint":     Palette("Mint",     "#3FD6BC", "#0B8C7E", "#0A7C70", "#03453E", "#17A38F"),
-    "rose":     Palette("Rose",     "#FFA6C1", "#E0527F", "#C23A68", "#5C0F2A", "#DC4478"),
-    "lavender": Palette("Lavender", "#C4AEFF", "#7B5CE0", "#6446D0", "#241060", "#7457DB"),
-    "sky":      Palette("Sky",      "#94D7FF", "#2F86E0", "#2170C8", "#0A2C5E", "#2A7FDB"),
-    "lemon":    Palette("Lemon",    "#FFDD73", "#EBA313", "#C98200", "#5C3A00", "#B97A00"),
-    "peach":    Palette("Peach",    "#FFC19C", "#EE7446", "#D65A2C", "#5E220A", "#DC5F2D"),
+    "mint":     Palette("Mint",     "#3FD6BC", "#0B8C7E", "#03453E", "#17A38F"),
+    "rose":     Palette("Rose",     "#FFA6C1", "#E0527F", "#5C0F2A", "#DC4478"),
+    "lavender": Palette("Lavender", "#C4AEFF", "#7B5CE0", "#241060", "#7457DB"),
+    "sky":      Palette("Sky",      "#94D7FF", "#2F86E0", "#0A2C5E", "#2A7FDB"),
+    "lemon":    Palette("Lemon",    "#FFDD73", "#EBA313", "#5C3A00", "#B97A00"),
+    "peach":    Palette("Peach",    "#FFC19C", "#EE7446", "#5E220A", "#DC5F2D"),
 }
 
 # What tailwind.css already ships; mint must not override it.
@@ -124,16 +124,13 @@ def _defs(pal: Palette) -> str:
       <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF2F6"/>
     </linearGradient>
     <linearGradient id="bm-glass" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fff" stop-opacity="0.50"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0.16"/>
+      <stop offset="0" stop-color="#fff" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.22"/>
     </linearGradient>
     <linearGradient id="bm-rim" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#fff" stop-opacity="0.95"/>
       <stop offset="0.5" stop-color="#fff" stop-opacity="0.25"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0.55"/>
-    </linearGradient>
-    <linearGradient id="bm-deep" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="{_mix(pal.deep, pal.top, 0.35)}"/><stop offset="1" stop-color="{pal.deep}"/>
     </linearGradient>
     <filter id="bm-drop" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="{pal.shade}" flood-opacity="0.30"/>
@@ -178,150 +175,145 @@ def _helix(pal: Palette) -> tuple[str, str]:
   </g>''', ""
 
 
+# Every picture below is built like the helix: a solid white layer in front,
+# a glass layer behind it (translucent, with a bright rim where light catches
+# the edge), and details cut out of the white so the background shows
+# through. No second colour, no painted detail.
+
+def _cut(mask_id: str, holes: str) -> str:
+    """A mask that punches `holes` (black shapes) out of whatever uses it."""
+    return (f'<mask id="{mask_id}" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">'
+            f'<rect width="1024" height="1024" fill="#fff"/><g fill="#000" stroke="#000">{holes}</g></mask>')
+
+
+GLASS = 'fill="url(#bm-glass)" stroke="url(#bm-rim)" stroke-width="4"'
+GLASS_LINE = 'fill="none" stroke="#fff" stroke-opacity="0.38" stroke-linecap="round"'
+
+
 def _mouse(pal: Palette) -> tuple[str, str]:
-    body = ("M772 590 C762 538 704 486 632 468 C562 418 424 410 342 470 "
-            "C282 514 270 610 322 652 C362 684 424 690 474 688 L690 670 "
-            "C742 662 782 632 772 590 Z")
-    return f'''<g transform="translate(512 512) scale(1.12) translate(-492 -576)">
-    <path d="M326 648 C246 694 214 770 282 796 C338 816 394 786 430 756" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="20" stroke-linecap="round"/>
-    <g filter="url(#bm-soft)">
-      <path d="{body}" fill="url(#bm-white)"/>
-      <circle cx="598" cy="428" r="76" fill="url(#bm-white)"/>
-    </g>
-    <circle cx="602" cy="432" r="46" fill="#FFC2CC"/>
-    <circle cx="700" cy="540" r="15" fill="#2C2226"/>
-    <circle cx="770" cy="584" r="13" fill="#FF8FA3"/>
-  </g>''', ""
+    body = ("M318 648 C298 540 382 432 518 432 C630 432 708 506 760 592 "
+            "C770 610 762 628 742 632 L338 654 C326 654 320 652 318 648 Z")
+    extra = _cut("bm-mouse", '<circle cx="682" cy="538" r="17"/>')
+    return f"""<g transform="translate(512 512) scale(1.16) translate(-494 -560)">
+    <path d="M324 632 C250 640 218 706 268 744 C318 782 404 764 456 742" {GLASS_LINE} stroke-width="28"/>
+    <circle cx="552" cy="404" r="90" {GLASS}/>
+    <g filter="url(#bm-soft)"><path d="{body}" fill="url(#bm-white)" mask="url(#bm-mouse)"/></g>
+  </g>""", extra
 
 
 def _zebrafish(pal: Palette) -> tuple[str, str]:
-    body = ("M776 506 C748 438 626 414 506 420 C420 425 350 452 304 484 "
-            "C286 464 262 428 230 410 C248 450 256 484 262 512 C256 540 248 574 230 614 "
-            "C262 596 286 560 304 540 C350 572 420 600 506 604 C626 610 748 586 776 518 "
-            "Q782 512 776 506 Z")
-    extra = f'<clipPath id="bm-fish"><path d="{body}"/></clipPath>'
-    stripes = "".join(
-        f'<path d="M230 {y} C400 {y - 10} 560 {y + 10} 740 {y - 4}"/>' for y in (470, 512, 554))
-    return f'''<g transform="translate(512 512) scale(1.14) translate(-506 -512)">
-    <g filter="url(#bm-soft)">
-      <path d="M440 428 Q490 352 566 422 Z" fill="url(#bm-white)"/>
-      <path d="M458 598 Q510 662 576 600 Z" fill="url(#bm-white)"/>
-      <path d="{body}" fill="url(#bm-white)"/>
-    </g>
-    <g clip-path="url(#bm-fish)" fill="none" stroke="url(#bm-deep)" stroke-width="17" stroke-linecap="round" stroke-opacity="0.9">{stripes}</g>
-    <circle cx="714" cy="496" r="19" fill="#1F2330"/>
-    <circle cx="720" cy="490" r="6" fill="#fff"/>
-  </g>''', extra
+    body = "M300 512 C372 404 604 386 762 498 C776 508 776 516 762 526 C604 638 372 620 300 512 Z"
+    stripes = "".join(f'<line x1="330" y1="{y}" x2="680" y2="{y}" stroke-width="20" stroke-linecap="round"/>'
+                      for y in (490, 538))
+    extra = _cut("bm-fish", stripes + '<circle cx="714" cy="494" r="16" stroke="none"/>')
+    return f"""<g transform="translate(512 512) scale(1.16) translate(-500 -512)">
+    <path d="M344 512 L230 404 C262 462 270 488 274 512 C270 536 262 562 230 620 Z" {GLASS}/>
+    <path d="M458 432 Q514 348 598 426 Z" {GLASS}/>
+    <path d="M492 596 Q540 668 612 598 Z" {GLASS}/>
+    <g filter="url(#bm-soft)"><path d="{body}" fill="url(#bm-white)" mask="url(#bm-fish)"/></g>
+  </g>""", extra
 
 
-def _worm(pal: Palette) -> tuple[str, str]:
-    """C. elegans: a sinuous body, a pointed tail, the pharynx near the head."""
-    (ax, ay), (bx, by) = (286, 716), (712, 352)
+def _worm_outline():
+    """A C. elegans body along an S curve: round head, long pointed tail."""
+    (ax, ay), (bx, by) = (292, 716), (716, 350)
     dx, dy = bx - ax, by - ay
     length = math.hypot(dx, dy)
-    ux, uy = dx / length, dy / length
-    nx, ny = -uy, ux
-    width, amp, n = 48, 70, 160
+    nx, ny = -dy / length, dx / length
+    width, amp, n = 50, 72, 160
 
     def centre(t: float):
-        off = amp * math.sin(2 * math.pi * 1.2 * t - 0.5)
+        off = amp * math.sin(2 * math.pi * 1.15 * t - 0.45)
         return ax + dx * t + nx * off, ay + dy * t + ny * off
-
-    def half(t: float) -> float:
-        tail = min(1.0, t / 0.42) ** 0.9
-        return max(3.0, width * tail)
 
     left, right = [], []
     for i in range(n + 1):
         t = i / n
         x, y = centre(t)
-        x2, y2 = centre(min(1, t + 1e-3)) if t < 1 else centre(t)
-        x1, y1 = centre(max(0, t - 1e-3))
-        tx, ty = x2 - x1, y2 - y1
-        tl = math.hypot(tx, ty) or 1
-        px, py = -ty / tl, tx / tl
-        w = half(t)
+        x1, y1 = centre(max(0.0, t - 1e-3))
+        x2, y2 = centre(min(1.0, t + 1e-3))
+        tl = math.hypot(x2 - x1, y2 - y1) or 1
+        px, py = -(y2 - y1) / tl, (x2 - x1) / tl
+        w = max(2.5, width * min(1.0, t / 0.45) ** 0.9)
         left.append((x + px * w, y + py * w))
         right.append((x - px * w, y - py * w))
-    hx, hy = centre(1)
-    outline = ("M" + " L".join(f"{_f(x)} {_f(y)}" for x, y in left) + " L"
-               + " L".join(f"{_f(x)} {_f(y)}" for x, y in reversed(right)) + " Z")
-    gut = "M" + " L".join(f"{_f(x)} {_f(y)}" for x, y in (centre(i / 60) for i in range(12, 50)))
-    px_, py_ = centre(0.9)
-    return f'''<g filter="url(#bm-soft)"><path d="{outline}" fill="url(#bm-white)"/><circle cx="{_f(hx)}" cy="{_f(hy)}" r="{width}" fill="url(#bm-white)"/></g>
-  <path d="{gut}" fill="none" stroke="url(#bm-deep)" stroke-opacity="0.35" stroke-width="12" stroke-linecap="round"/>
-  <circle cx="{_f(px_)}" cy="{_f(py_)}" r="20" fill="url(#bm-deep)" fill-opacity="0.75"/>''', ""
+    d = ("M" + " L".join(f"{_f(x)} {_f(y)}" for x, y in left) + " L"
+         + " L".join(f"{_f(x)} {_f(y)}" for x, y in reversed(right)) + " Z")
+    return d, centre(1.0), width
+
+
+def _worm(pal: Palette) -> tuple[str, str]:
+    """C. elegans in white, crawling across a glass plate."""
+    body, (hx, hy), width = _worm_outline()
+    return f"""<circle cx="512" cy="530" r="236" {GLASS}/>
+  <g filter="url(#bm-soft)" fill="url(#bm-white)"><path d="{body}"/><circle cx="{_f(hx)}" cy="{_f(hy)}" r="{width}"/></g>""", ""
 
 
 def _fly(pal: Palette) -> tuple[str, str]:
-    """Drosophila from above: red eyes, a banded abdomen, glass wings at rest."""
-    extra = '<clipPath id="bm-abdomen"><ellipse cx="512" cy="600" rx="80" ry="138"/></clipPath>'
-    wing = ('<ellipse cx="{cx}" cy="628" rx="70" ry="186" transform="rotate({r} {cx} 628)" '
-            'fill="url(#bm-glass)" stroke="url(#bm-rim)" stroke-width="4"/>')
-    return f'''<g transform="translate(512 512) scale(1.1) translate(-512 -500)"><g filter="url(#bm-soft)">
-    <ellipse cx="512" cy="600" rx="80" ry="138" fill="url(#bm-white)"/>
-    <ellipse cx="512" cy="436" rx="94" ry="84" fill="url(#bm-white)"/>
-    <circle cx="512" cy="326" r="60" fill="url(#bm-white)"/>
-  </g>
-  <g clip-path="url(#bm-abdomen)" fill="url(#bm-deep)" fill-opacity="0.85">
-    <rect x="400" y="566" width="224" height="24"/><rect x="400" y="618" width="224" height="24"/>
-    <rect x="400" y="670" width="224" height="24"/>
-  </g>
-  <ellipse cx="466" cy="316" rx="30" ry="38" fill="#E5484D"/>
-  <ellipse cx="558" cy="316" rx="30" ry="38" fill="#E5484D"/>
-  {wing.format(cx=630, r=-26)}
-  {wing.format(cx=394, r=26)}</g>''', extra
+    """Drosophila from above: glass wings folded back, a banded abdomen."""
+    gap = 'fill="none" stroke-width="14"'
+    extra = (
+        _cut("bm-abdomen",
+             f'<ellipse cx="512" cy="446" rx="92" ry="82" {gap}/>'
+             + "".join(f'<rect x="400" y="{y}" width="224" height="20" stroke="none"/>' for y in (592, 640, 688)))
+        + _cut("bm-head",
+               f'<ellipse cx="512" cy="446" rx="92" ry="82" {gap}/>'
+               f'<circle cx="460" cy="322" r="32" {gap}/><circle cx="564" cy="322" r="32" {gap}/>'))
+    wing = '<ellipse cx="{cx}" cy="606" rx="70" ry="182" transform="rotate({r} {cx} 606)" ' + GLASS + '/>'
+    return f"""<g transform="translate(512 512) scale(1.08) translate(-512 -506)">
+    {wing.format(cx=622, r=-24)}
+    {wing.format(cx=402, r=24)}
+    <g filter="url(#bm-soft)" fill="url(#bm-white)">
+      <ellipse cx="512" cy="604" rx="78" ry="134" mask="url(#bm-abdomen)"/>
+      <ellipse cx="512" cy="446" rx="92" ry="82"/>
+      <circle cx="512" cy="330" r="52" mask="url(#bm-head)"/>
+      <circle cx="460" cy="322" r="32"/><circle cx="564" cy="322" r="32"/>
+    </g>
+  </g>""", extra
 
 
 def _cryobox(pal: Palette) -> tuple[str, str]:
-    step, r = 150, 52
-    caps = []
+    """A freezer box from above: eight caps and the slot one was taken from."""
+    step, r = 150, 50
+    caps, rings, slot = [], [], ""
     for row in range(3):
         for col in range(3):
             cx, cy = 512 + (col - 1) * step, 512 + (row - 1) * step
             if (row, col) == (1, 2):
-                caps.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="url(#bm-deep)"/>'
-                            f'<circle cx="{cx}" cy="{cy}" r="22" fill="#fff" fill-opacity="0.35"/>')
-            else:
-                caps.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="url(#bm-white)"/>'
-                            f'<circle cx="{cx}" cy="{cy}" r="22" fill="#DDE6F0"/>')
-    return f'''<rect x="262" y="262" width="500" height="500" rx="96" fill="url(#bm-glass)"/>
-  <rect x="262" y="262" width="500" height="500" rx="96" fill="none" stroke="url(#bm-rim)" stroke-width="4"/>
-  <g filter="url(#bm-soft)">{"".join(caps)}</g>''', ""
+                slot = (f'<circle cx="{cx}" cy="{cy}" r="{r - 6}" fill="none" '
+                        f'stroke="#fff" stroke-opacity="0.6" stroke-width="8"/>')
+                continue
+            caps.append(f'<circle cx="{cx}" cy="{cy}" r="{r}"/>')
+            rings.append(f'<circle cx="{cx}" cy="{cy}" r="24" fill="none" stroke-width="8"/>')
+    extra = _cut("bm-caps", "".join(rings))
+    return f"""<rect x="262" y="262" width="500" height="500" rx="100" {GLASS}/>
+  {slot}
+  <g filter="url(#bm-soft)"><g fill="url(#bm-white)" mask="url(#bm-caps)">{"".join(caps)}</g></g>""", extra
 
 
 def _microtube(pal: Palette) -> tuple[str, str]:
-    tube = ("M-104 -214 L-104 40 C-104 100 -30 296 -14 322 Q0 342 14 322 "
-            "C30 296 104 100 104 40 L104 -214 Z")
+    """A microcentrifuge tube: white cap, glass body, the sample in white."""
+    tube = ("M406 356 L406 560 C406 622 480 758 496 784 Q512 806 528 784 "
+            "C544 758 618 622 618 560 L618 356 Z")
     extra = f'<clipPath id="bm-tube"><path d="{tube}"/></clipPath>'
-    return f'''<g transform="translate(512 548) rotate(-14)">
-    <g filter="url(#bm-soft)">
-      <path d="{tube}" fill="url(#bm-glass)"/>
-      <g clip-path="url(#bm-tube)">
-        <path d="M-120 60 Q0 84 120 60 L120 400 L-120 400 Z" fill="url(#bm-deep)"/>
-      </g>
+    return f"""<g transform="translate(0 -6)">
+    <path d="{tube}" {GLASS}/>
+    <g filter="url(#bm-soft)" fill="url(#bm-white)">
+      <g clip-path="url(#bm-tube)"><path d="M380 600 Q512 624 644 600 L644 820 L380 820 Z"/></g>
+      <rect x="378" y="304" width="268" height="52" rx="18"/>
+      <rect x="394" y="238" width="236" height="56" rx="22"/>
     </g>
-    <path d="{tube}" fill="none" stroke="url(#bm-rim)" stroke-width="4"/>
-    <rect x="-66" y="-196" width="18" height="206" rx="9" fill="#fff" fill-opacity="0.45"/>
-    <g filter="url(#bm-soft)">
-      <rect x="-128" y="-262" width="256" height="56" rx="20" fill="url(#bm-white)"/>
-      <rect x="-114" y="-326" width="228" height="58" rx="22" fill="url(#bm-white)"/>
-    </g>
-  </g>''', extra
+  </g>""", extra
 
 
 def _petri(pal: Palette) -> tuple[str, str]:
-    colonies = [(438, 452, 46), (596, 418, 26), (604, 602, 36), (470, 610, 16)]
-    cols = "".join(f'<circle cx="{x}" cy="{y}" r="{r}" fill="url(#bm-deep)"/>'
-                   f'<circle cx="{x - r * 0.25:.0f}" cy="{y - r * 0.3:.0f}" r="{r * 0.35:.0f}" fill="#fff" fill-opacity="0.35"/>'
-                   for x, y, r in colonies)
-    return f'''<g filter="url(#bm-soft)">
-    <circle cx="512" cy="512" r="300" fill="url(#bm-glass)"/>
-    <circle cx="512" cy="512" r="262" fill="url(#bm-white)"/>
-  </g>
-  <circle cx="512" cy="512" r="299" fill="none" stroke="url(#bm-rim)" stroke-width="4"/>
-  {cols}
-  <path d="M300 372 A262 262 0 0 1 410 270" fill="none" stroke="#fff" stroke-opacity="0.8" stroke-width="12" stroke-linecap="round"/>''', ""
+    """A glass dish, the agar's edge, and white colonies growing on it."""
+    colonies = [(432, 440, 60), (604, 414, 34), (606, 604, 50), (446, 626, 26), (528, 520, 16)]
+    dots = "".join(f'<circle cx="{x}" cy="{y}" r="{r}"/>' for x, y, r in colonies)
+    return f"""<circle cx="512" cy="512" r="300" {GLASS}/>
+  <circle cx="512" cy="512" r="250" fill="#fff" fill-opacity="0.16" stroke="#fff" stroke-opacity="0.5" stroke-width="4"/>
+  <g filter="url(#bm-soft)" fill="url(#bm-white)">{dots}</g>
+  <path d="M288 392 A274 274 0 0 1 392 288" fill="none" stroke="#fff" stroke-opacity="0.9" stroke-width="10" stroke-linecap="round"/>""", ""
 
 
 GLYPHS = {
