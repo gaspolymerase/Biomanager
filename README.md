@@ -317,6 +317,11 @@ nobody walks back to a computer to type an ID.
 The interface follows macOS conventions and has a full dark mode. It works
 in any modern browser on Windows and Linux too.
 
+Each person can pick their own app icon in **Settings**: a double helix,
+mouse, zebrafish, *C. elegans*, *Drosophila*, cryobox, microtube or petri
+dish, in one of six macaron colours. The browser tab and sidebar show it,
+and the app's accent colour follows it.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/home.webp" alt="Home in light mode"></td>
