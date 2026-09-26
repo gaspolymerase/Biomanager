@@ -68,6 +68,7 @@
     button.addEventListener('click', (event) => {
       event.stopPropagation();
       const opening = menu.hidden;
+      document.querySelectorAll('[data-bell-menu]').forEach((other) => { other.hidden = true; });
       menu.hidden = !opening;
       button.setAttribute('aria-expanded', String(opening));
     });
@@ -78,6 +79,85 @@
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') close();
     });
+  }
+
+  /* --------------------------------------------------------- notifications */
+
+  // The bell (app/notify.py). The list is rendered by the server and fetched
+  // when the bell opens; the unread count refreshes every minute while the
+  // tab is visible, so a transfer or a finished order shows up by itself.
+  function initBell() {
+    const root = document.querySelector('[data-bell]');
+    if (!root) return;
+    const button = root.querySelector('[data-bell-toggle]');
+    const menu = root.querySelector('[data-bell-menu]');
+    const badge = root.querySelector('[data-bell-count]');
+
+    const setCount = (n) => {
+      badge.textContent = n > 99 ? '99+' : String(n);
+      badge.hidden = !n;
+      button.setAttribute('aria-label', n ? `Notifications: ${n} unread` : 'Notifications');
+    };
+    const load = async () => {
+      try {
+        const response = await fetch(root.dataset.panelUrl, { credentials: 'same-origin' });
+        if (response.ok) menu.innerHTML = await response.text();   // our own escaped template
+      } catch (_) {
+        menu.textContent = 'Could not load notifications.';
+      }
+    };
+    const close = () => {
+      menu.hidden = true;
+      button.setAttribute('aria-expanded', 'false');
+    };
+    // On a phone the bell is not at the screen's edge, so a menu hung from
+    // it would run off the left side: pin it under the header instead.
+    const place = () => {
+      if (window.innerWidth > 480) {
+        menu.style.cssText = '';
+        return;
+      }
+      const below = Math.round(button.getBoundingClientRect().bottom + 6);
+      menu.style.cssText = `position: fixed; top: ${below}px; left: 8px; right: 8px; width: auto; max-width: none;`;
+    };
+
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const opening = menu.hidden;
+      document.querySelectorAll('[data-account-menu]').forEach((other) => { other.hidden = true; });
+      menu.hidden = !opening;
+      button.setAttribute('aria-expanded', String(opening));
+      if (opening) {
+        place();
+        load();
+      }
+    });
+    window.addEventListener('resize', () => { if (!menu.hidden) place(); });
+    document.addEventListener('click', (event) => {
+      if (!menu.hidden && !root.contains(event.target)) close();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') close();
+    });
+    menu.addEventListener('submit', async (event) => {
+      const form = event.target.closest('form[data-mark-read]');
+      if (!form) return;
+      event.preventDefault();
+      await fetch(form.action, { method: 'POST', credentials: 'same-origin',
+                                 headers: { Accept: 'application/json' } });
+      setCount(0);
+      load();
+    });
+
+    const poll = async () => {
+      if (document.hidden) return;
+      try {
+        const response = await fetch(root.dataset.countUrl, { credentials: 'same-origin' });
+        if (response.ok) setCount((await response.json()).unread || 0);
+      } catch (_) { /* offline for a moment: try again next minute */ }
+    };
+    setInterval(poll, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
   }
 
   /* ------------------------------------------------------------- shortcuts */
@@ -173,6 +253,7 @@
     }
 
     initAccountMenu();
+    initBell();
     initShortcuts();
   }
 

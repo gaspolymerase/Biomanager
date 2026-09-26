@@ -126,11 +126,15 @@ def view(module: StockModule) -> ModuleView:
     return ModuleView(module, presets.settings_for(module.kind, module.settings))
 
 
-def list_modules(session, include_disabled: bool = False) -> list[StockModule]:
+def list_modules(session, include_disabled: bool = False, everyone: bool = False) -> list[StockModule]:
+    """In a request: the lab's databases and the signed-in person's own
+    (app/lab.py). `everyone`, or outside a request: every database."""
     stmt = select(StockModule).order_by(StockModule.position, StockModule.label)
     if not include_disabled:
         stmt = stmt.where(StockModule.enabled.is_(True))
-    return list(session.scalars(stmt))
+    modules = list(session.scalars(stmt))
+    from .lab import visible_list
+    return modules if everyone else visible_list(modules)
 
 
 def get_module(session, key: str) -> StockModule | None:

@@ -90,30 +90,7 @@
       {% endfor %}
     </datalist>
 
-    {% if notifications %}
-      <section class="panel notice-panel">
-        <div class="section-head compact-head">
-          <div>
-            <h2>Notifications</h2>
-            <p>Recent updates for your account.</p>
-          </div>
-          <form method="post" action="{{ url_for('mark_notifications_read') }}">
-            <input type="hidden" name="view" value="{{ active_view }}">
-            <input type="hidden" name="scope" value="{{ scope }}">
-            <button type="submit">Mark all read</button>
-          </form>
-        </div>
-        <div class="notice-list">
-          {% for item in notifications %}
-            <div class="notice-item {% if not item.is_read %}unread{% endif %}">
-              <strong>{{ item.title }}</strong>
-              <p>{{ item.message }}</p>
-              <small>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
-            </div>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
+    {# Notifications live under the bell in the header (app/notify.py). #}
 
     {% if active_view == "mice" %}
       {% set sheet = mouse_sheet %}

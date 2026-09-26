@@ -71,7 +71,14 @@ password = secrets.token_urlsafe(12)
 with SessionLocal() as s:
     for username, name, role in PEOPLE:
         s.add(UserAccount(username=username, display_name=name, role=role,
-                          password_hash=generate_password_hash(password)))
+                          password_hash=generate_password_hash(password),
+                          welcomed_at=__import__("datetime").datetime.utcnow()))
+    # A lab that has already answered the setup survey (app/lab.py), so the
+    # screenshots show the app in use rather than its first-run pages.
+    from app import lab
+    lab.mark_setup_done(s)
+    from app.inventory_service import set_setting
+    set_setting(s, "lab_name", "Rivera Lab")
     s.commit()
 pw_file = DATA / "demo-password"
 pw_file.write_text(password + "\n")
@@ -226,7 +233,7 @@ jordan.post("/zebrafish/clutches/create", data={"clutch_id": "CL-0412", "date_fe
 
 fly = one("select key from stock_modules where kind='fly' order by id limit 1")
 if not fly:
-    r = priya.post("/stocks/new", data={"kind": "fly", "label": "Drosophila"})
+    r = alex.post("/stocks/new", data={"kind": "fly", "label": "Drosophila", "audience": "lab"})
     fly = r.headers.get("Location", "").split("?")[0].rsplit("/", 1)[-1]
 fly_id = one("select id from stock_modules where key=?", fly)
 for inc, temp in (("Incubator 25 °C", "25"), ("Incubator 18 °C", "18")):
@@ -296,7 +303,7 @@ sam.post(f"/plasmids/{pcag}/upload-sequence", data={"sequence_text": genbank()})
 
 
 def module(preset: str, label: str) -> str:
-    r = alex.post("/inventory/new", data={"preset": preset, "label": label})
+    r = alex.post("/inventory/new", data={"preset": preset, "label": label, "audience": "lab"})
     return r.headers.get("Location", "").split("?")[0].rstrip("/").rsplit("/", 1)[-1]
 
 

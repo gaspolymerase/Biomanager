@@ -1,0 +1,26 @@
+{# The bell's dropdown (fetched by shell.js). #}
+<div class="notif-head">
+  <span class="notif-heading">Notifications</span>
+  {% if unread %}
+    <form method="post" action="{{ url_for('mark_notifications_read') }}" data-mark-read>
+      <button type="submit" class="btn btn-sm btn-ghost">Mark all read</button>
+    </form>
+  {% endif %}
+</div>
+<div class="notif-scroll">
+  {% for n in rows %}
+    <a class="notif-item{% if not n.is_read %} is-unread{% endif %}" href="{{ url_for('lab.open_notification', note_id=n.id) }}">
+      <span class="notif-dot" aria-hidden="true"></span>
+      <span class="notif-body">
+        <span class="notif-text">{{ n.title }}</span>
+        {% if n.message %}<span class="notif-sub">{{ n.message }}</span>{% endif %}
+        <span class="notif-meta">{{ notification_labels.get(n.category, 'General') }} · {{ n.created_at|when }}</span>
+      </span>
+    </a>
+  {% else %}
+    <div class="notif-empty">
+      Nothing yet. You'll be told here when someone moves your animals, records a genotype, or your order arrives.
+    </div>
+  {% endfor %}
+</div>
+<a class="notif-all" href="{{ url_for('lab.notifications') }}">All notifications</a>

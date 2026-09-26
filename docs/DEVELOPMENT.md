@@ -176,6 +176,51 @@ reassigning animals when someone leaves.
 Cage ownership is backfilled on first run from the mice each cage holds; a
 cage whose mice disagree is left unowned rather than guessed at.
 
+## Lab setup and personal databases
+
+`app/lab.py` decides what the lab uses and who sees which database; the
+pages are in `app/lab_routes.py`.
+
+- **Switchable functions.** The hand-written databases (mouse colony,
+  zebrafish, plasmids) and the calendar and notebook are on unless
+  `feature:<key>` in `app_settings` is `off`. A switched-off function leaves
+  the sidebar, home and search, and its URL prefixes are refused by a
+  before-request hook (a flash and home for a page, 403 for a write); its
+  data is untouched. Configurable databases use their own `enabled` flag.
+- **The survey** (`/setup`, admins) sets those flags, enables, disables or
+  creates the fly/worm and inventory databases by kind, and the member
+  permissions, then stamps `lab_setup_done`. `landing_url()` sends an admin
+  there until it is done, and anyone with no `users.welcomed_at` to the
+  welcome tour (`/welcome`) once.
+- **Personal databases.** `private_to` on `organism_modules`,
+  `stock_modules` and `inventory_modules` names the one user a database is
+  for; empty is the lab's. Each blueprint's `_module_or_404` 404s someone
+  else's personal database (admins may open it). In a request, the services'
+  `list_modules()` return the lab's databases plus the user's own, which is
+  what the sidebar, home, search and the Databases page show; pass
+  `everyone=True` for admin views. `first_of_kind()` only ever returns a lab
+  database.
+- **Member permissions:** `members_create_databases` (default on) and
+  `members_share_databases` (default off; the test suite turns it on in
+  `tests/base.py`, since most tests have members create shared databases).
+
+## Notifications
+
+`app/notify.py`. A `before_flush` listener looks at dirty records (mice,
+cages, tanks, fish, organisms, housing, vials, inventory items) and new
+organism genotype calls, and notes who should hear what: an owner change,
+a move to another cage/tank, a genotype recorded, an order status. Notes are
+turned into `notifications` rows in `before_commit`, grouped per recipient,
+category and kind of change (twenty mice moved: one row listing them), never
+to the actor, and dropped on rollback. `send()` respects the
+`users.notify_<category>` switches and skips disabled accounts.
+
+The header bell (`base.html`, `static/shell.js`) polls
+`/notifications/count` every minute while the tab is visible and fetches
+`/notifications/panel` when opened; `/notifications/<id>/open` marks one read
+and redirects only to a path in this app. The daily "waiting for genotyping"
+reminder is made on a user's first page of the day.
+
 ## Change history
 
 Every create, edit and delete on a tracked table writes an `audit_log` row

@@ -59,44 +59,28 @@
     </form>
   </article>
 
-  {# ---- Notifications ---- #}
-  <article class="card">
+  {# ---- Notifications (app/notify.py) ---- #}
+  <article class="card" id="notifications">
     <header class="card-head">
       <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#bell"></use></svg> Notifications</h2>
+      <a class="card-head-link" href="{{ url_for('lab.notifications') }}">See them</a>
     </header>
     <form method="post" class="flex flex-col gap-2 p-4">
       <input type="hidden" name="action" value="notifications">
-
-      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-sand-50 px-3.5 py-3 transition-colors hover:border-sand-300">
-        <input type="checkbox" name="notify_transfer" value="1" class="mt-0.5 size-3.5 accent-brand-600"
-               {% if user_settings.notify_transfer %}checked{% endif %}>
-        <span class="min-w-0">
-          <span class="block text-[13px] font-semibold text-ink">Mouse transfers</span>
-          <span class="block text-[12px] leading-snug text-muted">When someone transfers a mouse to you, get a copy in your colony with a notification.</span>
-        </span>
-      </label>
-
-      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-sand-50 px-3.5 py-3 transition-colors hover:border-sand-300">
-        <input type="checkbox" name="notify_picked" value="1" class="mt-0.5 size-3.5 accent-brand-600"
-               {% if user_settings.notify_picked %}checked{% endif %}>
-        <span class="min-w-0">
-          <span class="block text-[13px] font-semibold text-ink">Picks from your breeder cages</span>
-          <span class="block text-[12px] leading-snug text-muted">Alert when another lab member picks a mouse out of a breeder cage you own.</span>
-        </span>
-      </label>
-
-      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-sand-50 px-3.5 py-3 transition-colors hover:border-sand-300">
-        <input type="checkbox" name="notify_breeder_aging" value="1" class="mt-0.5 size-3.5 accent-brand-600"
-               {% if user_settings.notify_breeder_aging %}checked{% endif %}>
-        <span class="min-w-0">
-          <span class="block text-[13px] font-semibold text-ink">Breeder aging reminders
-            <span class="badge badge-quiet ml-1 align-middle">planned</span></span>
-          <span class="block text-[12px] leading-snug text-muted">A heads-up when a breeder cage's oldest mouse crosses 30 weeks.</span>
-        </span>
-      </label>
-
-      <div class="mt-1">
+      <p class="text-[12.5px] leading-snug text-muted">Shown under the {{ icon('bell') }} at the top. You're never told about changes you made yourself.</p>
+      {% for key, (label, hint) in notification_categories.items() %}
+        <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-hairline bg-sand-50 px-3.5 py-3 transition-colors hover:border-sand-300">
+          <input type="checkbox" name="notify_{{ key }}" value="1" class="mt-0.5 size-3.5 accent-brand-600"
+                 {% if user_settings['notify_' ~ key] %}checked{% endif %}>
+          <span class="min-w-0">
+            <span class="block text-[13px] font-semibold text-ink">{{ label }}</span>
+            <span class="block text-[12px] leading-snug text-muted">{{ hint }}.</span>
+          </span>
+        </label>
+      {% endfor %}
+      <div class="mt-1 flex flex-wrap items-center gap-2">
         <button type="submit" class="btn btn-primary">Save notifications</button>
+        <a class="btn btn-ghost" href="{{ url_for('lab.welcome') }}">See the welcome tour again</a>
       </div>
     </form>
   </article>

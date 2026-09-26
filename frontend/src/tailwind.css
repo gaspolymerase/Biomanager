@@ -2739,6 +2739,128 @@
   box-shadow: none;
 }
 
+/* --- Lab setup, welcome tour, notifications (app/lab_routes.py) ---------- */
+@layer components {
+  .setup-page { @apply mx-auto flex max-w-[860px] flex-col gap-4; }
+  .setup-intro { @apply rounded-2xl border border-brand-100 bg-brand-50/60 px-5 py-4; }
+  .setup-intro h2 { @apply m-0 text-[19px] font-semibold text-ink; text-wrap: balance; }
+  .setup-intro p { @apply mt-1.5 mb-0 max-w-[68ch] text-[13.5px] leading-relaxed text-ink-soft; }
+  .setup-form { @apply flex flex-col gap-4; }
+  .setup-step { @apply rounded-2xl border border-hairline bg-surface px-5 py-4; }
+  .setup-step-head { @apply mb-2 flex items-center gap-2.5; }
+  .setup-step-head h3 { @apply m-0 text-[15px] font-semibold text-ink; }
+  .setup-step-num {
+    @apply inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-100
+           text-[12px] font-bold text-brand-700;
+  }
+  .setup-step-num .icon { @apply size-3.5; }
+  .setup-note { @apply my-2 max-w-[70ch] text-[12.5px] leading-snug text-muted; }
+  .setup-group-label { @apply mt-3 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-sand-500; }
+  .setup-submit { @apply flex flex-wrap items-center gap-3; }
+  .setup-list { @apply flex flex-col divide-y divide-hairline rounded-xl border border-hairline; }
+  .setup-row { @apply flex flex-wrap items-center justify-between gap-2 px-3 py-2; }
+  .setup-row > div { @apply flex flex-wrap items-center gap-x-2 gap-y-0.5; }
+  .setup-banner {
+    @apply mb-3 flex items-center gap-3 rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3
+           text-[13px] text-ink no-underline;
+  }
+  .setup-banner > span:nth-child(2) { @apply min-w-0 flex-1; }
+  .setup-banner .icon { @apply size-4 text-brand-700; }
+
+  /* A tickable card: the whole card is the checkbox's label. */
+  .choice-grid { @apply grid grid-cols-1 gap-2 sm:grid-cols-2; }
+  .choice-card {
+    @apply relative flex cursor-pointer items-start gap-3 rounded-xl border border-hairline
+           bg-sand-50 px-3.5 py-3 transition-colors duration-100;
+  }
+  .choice-card:hover { @apply border-sand-300; }
+  .choice-card input { @apply absolute size-0 opacity-0; }
+  .choice-card:has(input:checked) { @apply border-brand-600 bg-brand-50/70; }
+  .choice-card:has(input:focus-visible) { @apply ring-2 ring-brand-600/40; }
+  .choice-icon {
+    @apply inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface text-muted;
+  }
+  .choice-card:has(input:checked) .choice-icon { @apply text-brand-700; }
+  .choice-icon .icon { @apply size-4; }
+  .choice-text { @apply flex min-w-0 flex-1 flex-col; }
+  .choice-title { @apply text-[13.5px] font-semibold text-ink; }
+  .choice-blurb { @apply text-[12px] leading-snug text-muted; }
+  .choice-check {
+    @apply inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-sand-300
+           text-transparent;
+  }
+  .choice-check .icon { @apply size-3; }
+  .choice-card:has(input:checked) .choice-check { @apply border-brand-600 bg-brand-600 text-white; }
+
+  .tour-dbs { @apply flex flex-wrap gap-2; }
+  .tour-db {
+    @apply inline-flex items-center gap-2 rounded-lg border border-hairline bg-sand-50 px-3 py-2
+           text-[13px] font-medium text-ink no-underline;
+  }
+  .tour-db:hover { @apply border-brand-600 no-underline; }
+  .tour-db .icon { @apply size-4 text-brand-700; }
+  .tour-list { @apply my-2 flex max-w-[70ch] flex-col gap-1.5 pl-5 text-[13px] leading-snug text-ink-soft; }
+
+  /* The databases row on the home page. */
+  .home-dbs { @apply flex gap-2 overflow-x-auto pb-1; scrollbar-width: none; }
+  .home-db {
+    @apply inline-flex shrink-0 items-center gap-2 rounded-xl border border-hairline bg-surface px-3.5 py-2.5
+           text-[13px] font-medium text-ink no-underline shadow-xs;
+  }
+  .home-db:hover { @apply border-brand-600 no-underline; }
+  .home-db .icon { @apply size-4 text-brand-700; }
+  .home-db.is-add { @apply border-dashed bg-transparent text-muted shadow-none; }
+  .home-db.is-add .icon { @apply text-muted; }
+
+  /* "Who is it for?" on a new database. */
+  .audience-choice { @apply m-0 flex flex-col gap-1.5 border-0 p-0; }
+  .audience-choice legend { @apply mb-1 p-0; }
+  .audience-option {
+    @apply flex cursor-pointer items-start gap-2.5 rounded-xl border border-hairline bg-sand-50 px-3 py-2.5
+           text-[13px] text-ink;
+  }
+  .audience-option:has(input:checked) { @apply border-brand-600 bg-brand-50/70; }
+  .audience-option.is-disabled { @apply cursor-not-allowed opacity-60; }
+  .audience-option input { @apply mt-0.5 accent-brand-600; }
+  .audience-hint { @apply block text-[12px] leading-snug text-muted; }
+
+  /* The bell and its list. */
+  .bell { @apply relative shrink-0; }
+  .bell-btn {
+    @apply relative flex size-7 cursor-pointer items-center justify-center rounded-md text-muted
+           transition-colors duration-75;
+  }
+  .bell-btn:hover { @apply bg-sand-300/50 text-ink; }
+  .bell-btn .icon { @apply size-[15px]; }
+  .bell-badge {
+    @apply absolute -right-1 -top-1 min-w-[16px] rounded-full bg-danger-600 px-1 text-center
+           text-[10px] font-bold leading-4 text-white;
+  }
+  .bell-badge[hidden] { display: none; }
+  .notif-menu { @apply w-[340px] max-w-[calc(100vw-16px)] p-0; }
+  .notif-head { @apply flex items-center justify-between gap-2 border-b border-hairline px-3 py-2; }
+  .notif-heading { @apply text-[13px] font-semibold text-ink; }
+  .notif-scroll { @apply max-h-[60vh] overflow-y-auto; }
+  .notif-item {
+    @apply flex items-start gap-2.5 border-b border-hairline/70 px-3 py-2.5 text-ink no-underline
+           transition-colors duration-75;
+  }
+  .notif-item:hover { @apply bg-sand-100 no-underline; }
+  .notif-dot { @apply mt-1.5 size-2 shrink-0 rounded-full bg-transparent; }
+  .notif-item.is-unread .notif-dot { @apply bg-brand-600; }
+  .notif-body { @apply flex min-w-0 flex-col gap-0.5; }
+  .notif-text { @apply text-[13px] leading-snug text-ink; }
+  .notif-item.is-unread .notif-text { @apply font-semibold; }
+  .notif-sub { @apply text-[12px] leading-snug text-muted; }
+  .notif-meta { @apply text-[11px] text-sand-500; }
+  .notif-empty, .notif-loading { @apply px-4 py-6 text-center text-[12.5px] leading-snug text-muted; }
+  .notif-all { @apply block px-3 py-2 text-center text-[12.5px] font-medium text-brand-700 no-underline; }
+  .notif-all:hover { @apply bg-sand-100 no-underline; }
+  .notif-list { @apply overflow-hidden p-0; }
+  .notif-list .notif-item:last-child { @apply border-b-0; }
+  .dt-chip[aria-current="page"] { @apply bg-surface text-ink shadow-xs; }
+}
+
 /* --- Touch screens: phones and tablets ------------------------------------
    The desktop layout is sized for a mouse (28px controls, 13px type). On a
    screen worked with fingers, two things change. These rules sit outside the
@@ -2758,7 +2880,7 @@
   .dt-page-size, .strip-btn, .omnibox, .account-btn, .menu-item {
     min-height: 36px;
   }
-  .row-icon-btn, .omnibox, .strip-btn, .dt-prev, .dt-next {
+  .row-icon-btn, .omnibox, .strip-btn, .dt-prev, .dt-next, .bell-btn {
     min-width: 36px;
     min-height: 36px;
   }

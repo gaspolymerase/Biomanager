@@ -73,11 +73,15 @@ def view(module: InventoryModule) -> ModuleView:
     return ModuleView(module, presets.normalise_settings(module.settings))
 
 
-def list_modules(session, include_disabled: bool = False) -> list[InventoryModule]:
+def list_modules(session, include_disabled: bool = False, everyone: bool = False) -> list[InventoryModule]:
+    """In a request: the lab's databases and the signed-in person's own
+    (app/lab.py). `everyone`, or outside a request: every database."""
     stmt = select(InventoryModule).order_by(InventoryModule.position, InventoryModule.label)
     if not include_disabled:
         stmt = stmt.where(InventoryModule.enabled.is_(True))
-    return list(session.scalars(stmt))
+    modules = list(session.scalars(stmt))
+    from .lab import visible_list
+    return modules if everyone else visible_list(modules)
 
 
 def get_module(session, key: str) -> InventoryModule | None:
@@ -85,7 +89,9 @@ def get_module(session, key: str) -> InventoryModule | None:
 
 
 def first_of_kind(session, kind: str) -> InventoryModule | None:
-    return session.scalar(select(InventoryModule).where(InventoryModule.kind == kind)
+    """The lab's inventory of this kind (never someone's personal one)."""
+    return session.scalar(select(InventoryModule).where(InventoryModule.kind == kind,
+                                                        InventoryModule.private_to == "")
                           .order_by(InventoryModule.position, InventoryModule.id))
 
 
@@ -384,7 +390,7 @@ def attention_items(session, days: int = 30, limit: int = 12) -> list[dict]:
 def open_order_count(session) -> int:
     """Orders still waiting, by each orders inventory's own open statuses."""
     total = 0
-    for module in session.scalars(select(InventoryModule).where(InventoryModule.kind == "orders")):
+    for module in (m for m in list_modules(session) if m.kind == "orders"):
         statuses = view(module).open_statuses
         if statuses:
             total += session.scalar(select(func.count(InventoryItem.id)).where(

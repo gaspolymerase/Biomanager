@@ -66,6 +66,15 @@ services.UPLOAD_DIR.mkdir(exist_ok=True)
 app.config["TESTING"] = True
 
 ON_POSTGRES = engine.dialect.name == "postgresql"
+
+# The suite's lab lets members add databases for everyone (app/lab.py), as
+# the app always did before lab setup: most tests have a member create a
+# database that others then use. tests/test_lab.py covers the stricter
+# default, where only admins add lab databases.
+with SessionLocal() as _s:
+    from app.inventory_service import set_setting as _set_setting
+    _set_setting(_s, "members_share_databases", "on")
+    _s.commit()
 only_sqlite = unittest.skipIf(ON_POSTGRES, "tests SQLite-only machinery")
 
 def _wait_out_midnight() -> None:
@@ -387,7 +396,7 @@ class AppTestCase(unittest.TestCase):
     def make_stock_module(client, kind: str = "fly", label: str | None = None) -> str:
         """A new fly (or worm) stock database of its own; returns its key."""
         label = label or uniq("Flies ")
-        r = client.post("/stocks/new", data={"kind": kind, "label": label})
+        r = client.post("/stocks/new", data={"kind": kind, "label": label, "audience": "lab"})
         path = location(r)
         assert path.startswith("/stocks/"), (r.status_code, path)
         return path.split("?")[0].rsplit("/", 1)[1]
@@ -441,7 +450,7 @@ class AppTestCase(unittest.TestCase):
         label = label or uniq("Newts ")
         caps = capabilities if capabilities is not None else [
             "housing", "housing_grid", "individuals", "group_counts", "lines", "cohorts", "genotyping", "schedule"]
-        r = client.post("/organisms/new", data={
+        r = client.post("/organisms/new", data={"audience": "lab",
             "preset_key": "custom", "label": label, "identity_mode": "individual", "age_unit": "days",
             "capabilities": caps, "organism_noun": "newt", "organism_noun_plural": "newts",
             "housing_noun": "tank", "housing_noun_plural": "tanks", **fields})

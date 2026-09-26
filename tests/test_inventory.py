@@ -78,7 +78,7 @@ class InventoryCase(AppTestCase):
     def new_module(client, preset: str = "custom", label: str | None = None) -> str:
         """Create an inventory through /inventory/new; returns its key."""
         label = label or uniq(f"{preset.title()} ")
-        r = client.post("/inventory/new", data={"preset": preset, "label": label})
+        r = client.post("/inventory/new", data={"preset": preset, "label": label, "audience": "lab"})
         path = location(r)
         assert path.startswith("/inventory/") and "/new" not in path, (r.status_code, path)
         return path.split("?")[0].rsplit("/", 1)[1]

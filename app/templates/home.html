@@ -5,18 +5,66 @@
 {% block page_subtitle %}{{ today_str }} · what needs attention today{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('notebook') }}">
-    {{ icon('notebook') }} Notebook
-  </a>
-  <a class="btn btn-primary" href="{{ url_for('colony', view='mice') }}">
-    {{ icon('mouse') }} Open {{ db_labels.get('colony', 'Mouse colony')|lower }}
-  </a>
+  {% if lab_features.notebook %}
+    <a class="btn" href="{{ url_for('notebook') }}">
+      {{ icon('notebook') }} Notebook
+    </a>
+  {% endif %}
+  {% if lab_features.colony %}
+    <a class="btn btn-primary" href="{{ url_for('colony', view='mice') }}">
+      {{ icon('mouse') }} Open {{ db_labels.get('colony', 'Mouse colony')|lower }}
+    </a>
+  {% endif %}
 {% endblock %}
 
 {% block content %}
 
+{% if setup_needed %}
+  <a class="setup-banner" href="{{ url_for('lab.setup') }}">
+    {{ icon('sliders') }}
+    <span><strong>Finish setting up the lab.</strong> Four questions decide which databases everyone sees.</span>
+    <span class="btn btn-sm btn-primary">Set up</span>
+  </a>
+{% endif %}
+
+{# ---- For you: unread notifications ------------------------------------- #}
+{% if for_you %}
+  <section class="card mb-3 flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon('bell') }} For you</h2>
+      <a class="card-head-link" href="{{ url_for('lab.notifications', show='unread') }}">{{ notification_unread }} unread</a>
+    </header>
+    <div class="flex flex-col">
+      {% for n in for_you %}
+        <a class="row-line" href="{{ url_for('lab.open_notification', note_id=n.id) }}">
+          <span class="min-w-0 flex-1 truncate text-ink">{{ n.title }}</span>
+          <span class="shrink-0 text-[11.5px] text-muted">{{ n.created_at|when }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+{# ---- Your databases: the lab's, and your own ---------------------------- #}
+{% set db_links = [] %}
+{% for section in nav_sections if section.label == 'Databases' %}
+  {% for link in section.links %}{% set _ = db_links.append(link) %}{% endfor %}
+{% endfor %}
+{% if db_links %}
+  <section class="home-dbs mb-3" aria-label="Your databases">
+    {% for link in db_links %}
+      <a class="home-db{% if link.key == 'new-db' %} is-add{% endif %}" href="{{ link.url }}">
+        {{ icon(link.icon) }}
+        <span class="home-db-label">{{ link.label }}</span>
+        {% if link.personal %}<span class="badge badge-brand">Just you</span>{% endif %}
+      </a>
+    {% endfor %}
+  </section>
+{% endif %}
+
 {# ---- Stat row ---------------------------------------------------------- #}
 <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+{% if lab_features.colony %}
   <a class="stat" href="{{ url_for('colony', view='mice') }}">
     <span class="stat-label">Total mice</span>
     <span class="stat-value">{{ counts.total_mice }}</span>
@@ -27,26 +75,32 @@
     <span class="stat-value">{{ sac_candidates|length }}</span>
     <span class="stat-sub">older than 30 weeks</span>
   </a>
-  <a class="stat" href="{{ url_for('orders') }}">
-    <span class="stat-label">Pending orders</span>
-    <span class="stat-value">{{ counts.pending_orders }}</span>
-    <span class="stat-sub">still open</span>
-  </a>
   <a class="stat" href="{{ url_for('colony', view='litters') }}">
     <span class="stat-label">Weanings</span>
     <span class="stat-value">{{ weanings|length }}</span>
     <span class="stat-sub">within ±7 days of P{{ wean_offset_days }}</span>
   </a>
-  <a class="stat col-span-2 sm:col-span-1" href="{{ url_for('notebook') }}">
+{% endif %}
+{% if has_orders %}
+  <a class="stat" href="{{ url_for('orders') }}">
+    <span class="stat-label">Pending orders</span>
+    <span class="stat-value">{{ counts.pending_orders }}</span>
+    <span class="stat-sub">still open</span>
+  </a>
+{% endif %}
+{% if lab_features.notebook %}
+  <a class="stat" href="{{ url_for('notebook') }}">
     <span class="stat-label">Notebook pages</span>
     <span class="stat-value">{{ counts.notebook_pages }}</span>
     <span class="stat-sub">your pages</span>
   </a>
+{% endif %}
 </section>
 
 {# ---- Two-column body -------------------------------------------------- #}
 <section class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
 
+  {% if lab_features.colony %}
   {# Sac candidates #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -131,7 +185,9 @@
       </div>
     {% endif %}
   </article>
+  {% endif %}
 
+  {% if has_stocks %}
   {# Fly / worm work due #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -152,7 +208,9 @@
       <div class="empty-state">{{ icon('fly') }}<p>No flips, collections or shifts due in the next two days.</p></div>
     {% endif %}
   </article>
+  {% endif %}
 
+  {% if has_restock %}
   {# Reagents and antibodies to restock #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -176,9 +234,10 @@
       <div class="empty-state">{{ icon('flask') }}<p>Nothing expiring in the next 30 days or marked low.</p></div>
     {% endif %}
   </article>
+  {% endif %}
 
   {# Zebrafish: mating tanks due back, tanks waiting on genotyping #}
-  {% if zebrafish_due.any %}
+  {% if lab_features.zebrafish and zebrafish_due.any %}
     <article class="card flex flex-col">
       <header class="card-head">
         <h2>{{ icon('fish') }} Zebrafish</h2>
@@ -242,6 +301,7 @@
     </article>
   {% endif %}
 
+  {% if lab_features.calendar %}
   {# Upcoming events #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -267,9 +327,11 @@
       </div>
     {% endif %}
   </article>
+  {% endif %}
 </section>
 
 {# ---- Recent orders ---------------------------------------------------- #}
+{% if has_orders %}
 <section class="mt-3">
   <article class="card flex flex-col">
     <header class="card-head">
@@ -296,4 +358,5 @@
     {% endif %}
   </article>
 </section>
+{% endif %}
 {% endblock %}

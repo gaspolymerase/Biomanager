@@ -181,11 +181,15 @@ def view(module: OrganismModule) -> ModuleView:
     )
 
 
-def list_modules(session, include_disabled: bool = False) -> list[OrganismModule]:
+def list_modules(session, include_disabled: bool = False, everyone: bool = False) -> list[OrganismModule]:
+    """In a request: the lab's databases and the signed-in person's own
+    (app/lab.py). `everyone`, or outside a request: every database."""
     stmt = select(OrganismModule).order_by(OrganismModule.position, OrganismModule.label)
     if not include_disabled:
         stmt = stmt.where(OrganismModule.enabled.is_(True))
-    return list(session.scalars(stmt).all())
+    modules = list(session.scalars(stmt).all())
+    from .lab import visible_list
+    return modules if everyone else visible_list(modules)
 
 
 def get_module(session, key: str) -> OrganismModule | None:

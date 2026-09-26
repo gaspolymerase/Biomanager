@@ -69,7 +69,7 @@ class ModuleBuilderTests(AppTestCase):
 
     def test_custom_module_is_created_and_opens_on_configure(self):
         label = uniq("Axolotls ")
-        r = self.a.post("/organisms/new", data={"preset_key": "custom", "label": label,
+        r = self.a.post("/organisms/new", data={"audience": "lab", "preset_key": "custom", "label": label,
                                                 "capabilities": ["housing"]})
         key = location(r).split("?")[0].rsplit("/", 1)[1]
         self.assertIn("view=settings", location(r))

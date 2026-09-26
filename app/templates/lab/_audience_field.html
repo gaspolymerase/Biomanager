@@ -1,0 +1,14 @@
+{# Who a new database is for (app/lab.py). Needs `audience` = lab.lab_audience(). #}
+<fieldset class="audience-choice">
+  <legend class="field-label">Who is it for?</legend>
+  <label class="audience-option">
+    <input type="radio" name="audience" value="me" {% if audience.default == 'me' or not audience.may_lab %}checked{% endif %}>
+    <span><strong>Just me</strong>
+      <span class="audience-hint">Only you, and lab admins, see it. You can share it with the lab later.</span></span>
+  </label>
+  <label class="audience-option{% if not audience.may_lab %} is-disabled{% endif %}">
+    <input type="radio" name="audience" value="lab" {% if audience.default == 'lab' and audience.may_lab %}checked{% endif %} {% if not audience.may_lab %}disabled{% endif %}>
+    <span><strong>The whole lab</strong>
+      <span class="audience-hint">{{ 'Everyone sees it in their sidebar, and is told it was added.' if audience.may_lab else 'Only lab admins add databases for everyone. Make it yours now; an admin can share it later.' }}</span></span>
+  </label>
+</fieldset>

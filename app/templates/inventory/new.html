@@ -53,6 +53,7 @@
       <label class="field-label">Description
         <input name="blurb" placeholder="Optional: one line about what this list holds">
       </label>
+      {% include "lab/_audience_field.html" %}
     </div>
     <footer class="flex items-center justify-end gap-2 border-t border-sand-100 px-4 py-3">
       <a class="btn" href="{{ url_for('organisms.index') }}">Cancel</a>

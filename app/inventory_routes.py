@@ -30,6 +30,8 @@ from . import access, audit, positions
 from . import inventory as presets
 from . import inventory_service as svc
 from .db import SessionLocal
+from . import lab, notify
+from .lab import lab_audience
 from .formutil import form_changed
 from .models import InventoryItem, InventoryModule, InventoryRack
 
@@ -72,7 +74,9 @@ def _int(raw, default: int, low: int, high: int) -> int:
 
 def _module_or_404(session, key: str) -> InventoryModule:
     module = svc.get_module(session, key)
-    if module is None:
+    # Someone else's personal database does not exist, as far as this
+    # person can tell (app/lab.py).
+    if module is None or not lab.can_see(module):
         abort(404)
     return module
 
@@ -138,6 +142,9 @@ def index():
 @bp.route("/new", methods=["GET", "POST"])
 def new_module():
     with SessionLocal() as session:
+        if not lab.may_create_database(session):
+            flash("An admin has turned off adding databases for members. Ask a lab admin.", "error")
+            return redirect(url_for("organisms.index"))
         if request.method == "POST":
             preset = request.form.get("preset", "custom")
             label = (request.form.get("label") or "").strip()
@@ -145,6 +152,13 @@ def new_module():
                 flash("Give the inventory a name.", "error")
                 return redirect(url_for("inventory.new_module", preset=preset))
             module = svc.create_module(session, preset, label, created_by=g.user.username)
+            module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
+            if module.private_to and request.form.get("audience") == "lab":
+                flash("It is yours for now: only lab admins add databases for everyone. "
+                      "Ask one to share it with the lab.", "info")
+            if not module.private_to:
+                notify.tell_lab(session, g.user.username,
+                                f"{g.user.display_name or g.user.username} added {module.label} for the lab")
             if request.form.get("blurb", "").strip():
                 module.blurb = request.form["blurb"].strip()
             session.commit()
@@ -152,7 +166,7 @@ def new_module():
             return redirect(url_for("inventory.module", key=module.key))
         preset = request.args.get("preset", "")
         return render_template("inventory/new.html", presets=presets.PRESETS, preset=preset,
-                               features=presets.FEATURES)
+                               features=presets.FEATURES, audience=lab_audience(session))
 
 
 # ---------------------------------------------------------------------------
@@ -662,7 +676,7 @@ def order_to_reagents(key: str, item_id: int):
         if stocked:
             return _done(key, error=f"{order.name or 'That order'} is already in stock ({stocked.replace(':', ' #')}).")
         target = svc.get_module(session, target_key) if target_key else svc.first_of_kind(session, "reagents")
-        if target is None or target.kind not in STOCK_KINDS:
+        if target is None or target.kind not in STOCK_KINDS or not lab.can_see(target):
             return _done(key, error="Pick a reagents or antibodies inventory to add it to.")
         tv = svc.view(target)
         with audit.batch(session, "mixed", f"order #{order.number} to {target.label}", "inventory_items"):

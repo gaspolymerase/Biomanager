@@ -206,6 +206,27 @@ def ensure_schema_updates() -> None:
             alter_statements.append("ALTER TABLE users ADD COLUMN notify_picked BOOLEAN DEFAULT TRUE")
         if "notify_breeder_aging" not in existing:
             alter_statements.append("ALTER TABLE users ADD COLUMN notify_breeder_aging BOOLEAN DEFAULT TRUE")
+        for column in ("notify_genotyping", "notify_orders", "notify_lab"):
+            if column not in existing:
+                alter_statements.append(f"ALTER TABLE users ADD COLUMN {column} BOOLEAN DEFAULT TRUE")
+        if "welcomed_at" not in existing:
+            alter_statements.append(f"ALTER TABLE users ADD COLUMN welcomed_at {timestamp}")
+
+    # In-app notifications: what kind, where it points, who caused it (app/notify.py).
+    if "notifications" in table_columns:
+        existing = table_columns["notifications"]
+        if "category" not in existing:
+            alter_statements.append("ALTER TABLE notifications ADD COLUMN category VARCHAR(40) DEFAULT 'general'")
+        if "link" not in existing:
+            alter_statements.append("ALTER TABLE notifications ADD COLUMN link VARCHAR(300) DEFAULT ''")
+        if "actor" not in existing:
+            alter_statements.append("ALTER TABLE notifications ADD COLUMN actor VARCHAR(80) DEFAULT ''")
+
+    # Personal databases: private_to names the one person a database is for;
+    # empty means the whole lab (app/lab.py).
+    for module_table in ("organism_modules", "stock_modules", "inventory_modules"):
+        if module_table in table_columns and "private_to" not in table_columns[module_table]:
+            alter_statements.append(f"ALTER TABLE {module_table} ADD COLUMN private_to VARCHAR(80) DEFAULT ''")
 
     if "notebook_pages" in table_columns and "entry_date" not in table_columns["notebook_pages"]:
         alter_statements.append("ALTER TABLE notebook_pages ADD COLUMN entry_date DATE")
@@ -905,22 +926,13 @@ def current_lab_usernames(session) -> list[str]:
     return [user.username for user in session.scalars(select(UserAccount).order_by(UserAccount.username)).all()]
 
 
-def add_notification(session, recipient_username: str, title: str, message: str, category: str = "general") -> None:
-    """Insert a notification, respecting the recipient's per-category preferences.
-
-    `category` maps to a `notify_<category>` boolean column on UserAccount
-    (transfer / picked / breeder_aging). Unknown categories always notify.
-    Disabled accounts never receive notifications.
-    """
-    user = session.scalar(select(UserAccount).where(UserAccount.username == recipient_username))
-    if user is None:
-        return
-    if user.disabled:
-        return
-    pref_attr = f"notify_{category}"
-    if hasattr(user, pref_attr) and getattr(user, pref_attr) is False:
-        return
-    session.add(NotificationRecord(recipient_username=recipient_username, title=title, message=message))
+def add_notification(session, recipient_username: str, title: str, message: str, category: str = "general",
+                     link: str = "", actor: str = "") -> None:
+    """Insert a notification, respecting the recipient's per-category
+    preferences (notify_<category> on UserAccount). See app/notify.py, which
+    also sends most notifications by itself when records change."""
+    from . import notify
+    notify.send(session, recipient_username, title, message, category=category, link=link, actor=actor)
 
 
 def recent_notifications(session, recipient_username: str, limit: int = 8) -> list[NotificationRecord]:

@@ -31,6 +31,8 @@ from flask import (
 from sqlalchemy import func, select
 
 from .db import SessionLocal
+from . import lab, notify
+from .lab import lab_audience
 from .formutil import form_changed
 from .models import (
     ModuleField,
@@ -145,7 +147,9 @@ def _ref(session, model, module_id: int, raw) -> int | None:
 
 def _module_or_404(session, key: str) -> OrganismModule:
     module = svc.get_module(session, key)
-    if module is None:
+    # Someone else's personal database does not exist, as far as this
+    # person can tell (app/lab.py).
+    if module is None or not lab.can_see(module):
         abort(404)
     return module
 
@@ -258,15 +262,20 @@ def index():
     from .models import StockUnit
 
     with SessionLocal() as session:
-        stock_modules = stocks.list_modules(session, include_disabled=True)
+        # Admins look after every database, personal ones included; members
+        # see the lab's and their own (app/lab.py).
+        everyone = access.is_admin()
+        stock_modules = stocks.list_modules(session, include_disabled=True, everyone=everyone)
         moved = {m.key for m in stock_modules}
         # Old fly/worm modules that moved to the stock pages are not listed.
-        modules = [m for m in svc.list_modules(session, include_disabled=True)
+        modules = [m for m in svc.list_modules(session, include_disabled=True, everyone=everyone)
                    if m.enabled or m.key not in moved]
+        share = lambda row: lab.can_change_audience(session, row)
         unit_counts = dict(session.execute(select(StockUnit.module_id_fk, func.count())
                                            .where(StockUnit.active.is_(True))
                                            .group_by(StockUnit.module_id_fk)).all())
-        stock_cards = [{"module": stocks.view(m), "count": unit_counts.get(m.id, 0)} for m in stock_modules]
+        stock_cards = [{"module": stocks.view(m), "count": unit_counts.get(m.id, 0), "row": m,
+                        "can_share": share(m)} for m in stock_modules]
         cards = []
         for module in modules:
             cards.append({
@@ -274,6 +283,8 @@ def index():
                 "census": svc.census(session, module),
                 "capabilities": svc.capability_labels(module),
                 "can_configure": access.can_configure(module),
+                "row": module,
+                "can_share": share(module),
             })
         names = inventories.builtin_labels(session)
         count = lambda model: session.scalar(select(func.count()).select_from(model)) or 0
@@ -293,13 +304,17 @@ def index():
             {"key": "plasmids", "icon": "plasmid", "url": url_for("plasmids"),
              "count": count(PlasmidRecord), "noun": "plasmids"},
         ]
+        features = lab.features_on(session)
         for b in builtins:
             b["label"] = names[b["key"]]
             b["default"] = inventories.BUILTIN_DATABASES[b["key"]][0]
+            b["on"] = features.get(b["key"], True)
+        builtins = [b for b in builtins if b["on"] or everyone]
         item_counts = dict(session.execute(select(InventoryItem.module_id_fk, func.count())
                                            .group_by(InventoryItem.module_id_fk)).all())
-        inventory_cards = [{"module": inventories.view(m), "count": item_counts.get(m.id, 0)}
-                           for m in inventories.list_modules(session, include_disabled=True)]
+        inventory_cards = [{"module": inventories.view(m), "count": item_counts.get(m.id, 0), "row": m,
+                            "can_share": share(m)}
+                           for m in inventories.list_modules(session, include_disabled=True, everyone=everyone)]
         return render_template("organisms/index.html", cards=cards, builtins=builtins,
                                inventory_cards=inventory_cards, stock_cards=stock_cards,
                                is_admin=access.is_admin())
@@ -331,6 +346,9 @@ TYPED_INPUTS = ("label", "label_plural", "blurb")
 @bp.route("/new", methods=["GET", "POST"])
 def new_module():
     with SessionLocal() as session:
+        if not lab.may_create_database(session):
+            flash("An admin has turned off adding databases for members. Ask a lab admin.", "error")
+            return redirect(url_for("organisms.index"))
         if request.method == "POST":
             spec = _spec_from_form(request.form)
             if not spec["label"]:
@@ -338,6 +356,13 @@ def new_module():
                 return redirect(url_for("organisms.new_module"))
             spec["key"] = svc.unique_key(session, spec["label"])
             module = svc.create_module(session, spec, created_by=g.user.username)
+            module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
+            if module.private_to and request.form.get("audience") == "lab":
+                flash("It is yours for now: only lab admins add databases for everyone. "
+                      "Ask one to share it with the lab.", "info")
+            if not module.private_to:
+                notify.tell_lab(session, g.user.username,
+                                f"{g.user.display_name or g.user.username} added {module.label} for the lab")
             svc.recompute_due(session, module)
             session.commit()
             flash(f"Created the {module.label} database.", "success")
@@ -360,6 +385,7 @@ def new_module():
             age_units=AGE_UNITS,
             inventory_presets=inventory_presets.PRESETS,
             stock_presets=stock_presets.PRESETS,
+            audience=lab_audience(session),
         )
 
 

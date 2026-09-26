@@ -116,6 +116,19 @@
                 <span class="kbd">⌘K</span>
               </button>
 
+              {# Notifications (app/notify.py): the count is live, the list is fetched when opened. #}
+              <div class="bell" data-bell data-count-url="{{ url_for('lab.notification_count') }}"
+                   data-panel-url="{{ url_for('lab.notification_panel') }}">
+                <button type="button" class="bell-btn" data-bell-toggle aria-haspopup="true" aria-expanded="false"
+                        aria-label="Notifications{% if notification_unread %}: {{ notification_unread }} unread{% endif %}">
+                  {{ icon('bell') }}
+                  <span class="bell-badge" data-bell-count {% if not notification_unread %}hidden{% endif %}>{{ notification_unread if notification_unread < 100 else '99+' }}</span>
+                </button>
+                <div class="menu notif-menu" data-bell-menu hidden>
+                  <div class="notif-loading">Loading…</div>
+                </div>
+              </div>
+
               <div class="account" data-account>
                 <button type="button" class="account-btn" data-account-toggle
                         aria-haspopup="menu" aria-expanded="false">
@@ -131,6 +144,9 @@
                   <a class="menu-item" href="{{ url_for('settings') }}" role="menuitem">
                     {{ icon('user-gear') }} Profile &amp; settings
                   </a>
+                  <a class="menu-item" href="{{ url_for('lab.notifications') }}" role="menuitem">
+                    {{ icon('bell') }} Notifications
+                  </a>
                   <a class="menu-item" href="{{ url_for('batches_view') }}" role="menuitem">
                     {{ icon('layers') }} Batch history
                   </a>
@@ -138,6 +154,9 @@
                     {{ icon('download') }} Export my data
                   </a>
                   {% if current_user.role == 'admin' %}
+                    <a class="menu-item" href="{{ url_for('lab.setup') }}" role="menuitem">
+                      {{ icon('sliders') }} Lab setup
+                    </a>
                     <a class="menu-item" href="{{ url_for('admin_users') }}" role="menuitem">
                       {{ icon('users') }} Manage users
                     </a>
