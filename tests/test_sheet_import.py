@@ -8,8 +8,9 @@ import json
 import re
 from datetime import datetime
 
-from app import sheet_import as si
+# tests.base first: it points the app at a throwaway database before app is imported.
 from tests.base import AppTestCase, count, flash_text, last_batch, one, row, uniq
+from app import sheet_import as si  # noqa: E402
 
 
 def xlsx(rows: list[list], sheet: str = "Sheet1", extra: dict | None = None) -> bytes:

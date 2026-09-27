@@ -7,8 +7,9 @@ import json
 from datetime import date, timedelta
 from types import SimpleNamespace
 
-from app.lab_calendar import occurrences
+# tests.base first: it points the app at a throwaway database before app is imported.
 from tests.base import AppTestCase, TODAY, client_for, days_ahead, make_user, one, uniq
+from app.lab_calendar import occurrences  # noqa: E402
 
 
 def iso(d: date) -> str:

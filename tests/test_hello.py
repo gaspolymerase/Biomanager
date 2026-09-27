@@ -2,8 +2,9 @@
 lab keeps, the guide, and the way in."""
 from __future__ import annotations
 
-from app.app import app
+# tests.base first: it points the app at a throwaway database before app is imported.
 from tests.base import AppTestCase, one
+from app.app import app  # noqa: E402
 
 
 class HelloTests(AppTestCase):

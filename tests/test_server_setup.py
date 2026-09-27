@@ -10,9 +10,10 @@ import time
 from types import SimpleNamespace
 from unittest import mock
 
-from app import server_setup as ss
-from app.app import app
+# tests.base first: it points the app at a throwaway database before app is imported.
 from tests.base import AppTestCase, ON_POSTGRES
+from app import server_setup as ss  # noqa: E402
+from app.app import app  # noqa: E402
 
 
 ANSWERS = {"target": "cloud-tailscale", "host": "203.0.113.10", "user": "ubuntu", "port": "22", "key_path": "",
