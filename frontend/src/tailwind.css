@@ -87,7 +87,9 @@
      is behind them; these are the tints that go with backdrop-filter. */
   --material-sidebar: rgba(246, 246, 248, 0.72);
   --material-bar:     rgba(255, 255, 255, 0.72);
-  --material-popover: rgba(252, 252, 254, 0.86);
+  /* Nearly opaque: a menu opening from the top bar can't blur what is
+     behind it (a blur inside a blurred bar isn't drawn), so it must hide it. */
+  --material-popover: rgba(252, 252, 254, 0.97);
 
   /* --- Type --------------------------------------------------------------
      No webfont: the system stack resolves to SF Pro on Apple devices, which
@@ -176,7 +178,7 @@
 
     --material-sidebar: rgba(32, 32, 34, 0.72);
     --material-bar:     rgba(38, 38, 40, 0.72);
-    --material-popover: rgba(44, 44, 46, 0.9);
+    --material-popover: rgba(44, 44, 46, 0.98);
 
     --shadow-xs:  0 0 0 0.5px rgb(255 255 255 / 0.06), 0 1px 1px rgb(0 0 0 / 0.3);
     --shadow-sm:  0 0 0 0.5px rgb(255 255 255 / 0.07), 0 1px 3px rgb(0 0 0 / 0.4);
@@ -899,7 +901,9 @@
   .dt-empty strong { @apply font-semibold text-ink-soft; }
   /* In a table wider than its card the message stays in view. */
   .dt-empty:has(> .dt-empty-msg) { @apply text-left; }
-  .dt-empty-msg { @apply sticky left-4 inline-block; }
+  /* Pinned to the visible part of a wide, scrolled table, and no wider than
+     it, so the hint for an empty sheet is readable on a phone too. */
+  .dt-empty-msg { @apply sticky left-4 inline-block max-w-[calc(100vw-4rem)] whitespace-normal; }
 
   .dt-bottom-bar {
     @apply flex flex-wrap items-center gap-2 border-t border-sand-100 bg-sand-50/60
@@ -1763,11 +1767,18 @@
   .view-switch .dt-chip svg { @apply size-[13px]; }
 
   .rack-view { @apply flex flex-col; }
-  .rack-bar { @apply flex flex-wrap items-center gap-2 border-b border-sand-100 px-3 py-2.5; }
+  .rack-bar { @apply relative flex flex-wrap items-center gap-2 border-b border-sand-100 px-3 py-2.5; }
   .rack-picker { @apply flex items-center gap-2 text-[12px] font-medium text-muted; }
   .rack-picker select { @apply field h-8 w-auto min-w-36 py-0 text-[12.5px] font-semibold text-ink; }
   .rack-meta { @apply text-[12px] text-muted tabular-nums; }
-  .rack-status { @apply ml-auto max-w-[44ch] truncate text-[11.5px] text-muted; }
+  /* "Moved cage 12 to A1" floats just under the bar: it appears and fades
+     after every drop, and taking a place in the bar made the bar wrap and
+     the grid jump under the pointer mid-drag. */
+  .rack-status {
+    @apply pointer-events-none absolute right-3 top-full z-20 mt-1.5 max-w-[44ch] truncate rounded-md border
+           border-hairline bg-surface px-2 py-1 text-[11.5px] text-muted shadow-xs;
+  }
+  .rack-status:empty { @apply hidden; }
   .rack-status[data-state="saved"] { @apply text-ok-700; }
   .rack-status[data-state="error"] { @apply font-medium text-danger-700; }
   .rack-search { @apply min-w-40 max-w-56 flex-none; }

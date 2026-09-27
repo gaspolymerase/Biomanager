@@ -1655,8 +1655,9 @@ function applyStatusChange(select, previous) {
   refreshLife(formId);
 }
 
-/* Changing a birth date always asks first. A mouse in a cohort shares
-   its litter's date, so saying yes moves it to a litter of its own. */
+/* Changing a birth date asks first (filling in a blank one doesn't). A
+   mouse in a cohort shares its litter's date, so saying yes moves it to a
+   litter of its own. */
 function confirmDobChange(input) {
   const from = input.dataset.originalDob || '';
   const to = input.value || '';
@@ -1679,6 +1680,13 @@ function confirmDobChange(input) {
   }
   const who = form?.dataset.mouseLabel ? `mouse ${form.dataset.mouseLabel}` : 'this mouse';
   const cohort = input.dataset.originalLitter && from;
+  // Filling in a blank date replaces nothing: no question, like any cell.
+  if (!from) {
+    const hidden = form?.querySelector('input[name="confirm_cohort_dob_change"]');
+    if (hidden) hidden.value = '0';
+    input.dataset.originalDob = to;
+    return true;
+  }
   const message = cohort
     ? `Change the date of birth of ${who} from ${from} to ${to || '(blank)'}?\n\n`
       + `It is in litter ${input.dataset.originalLitter}, so it will move to a new litter of its own. `

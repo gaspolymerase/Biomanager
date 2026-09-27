@@ -449,7 +449,10 @@
         <label class="col-span-full">Or paste {{ m.name_label|lower }}s, one per line
           <textarea name="names" rows="2" placeholder="S-201&#10;S-202" data-add-names></textarea>
           <span class="add-many-hint">One {{ m.item_noun }} per line, named after it; everything else below is the same for all.
-            {% if m.has('storage') %}In a box they go side by side from the position, into the next free cells.{% endif %}</span>
+            {% if m.has('storage') %}In a box they go side by side from the position, into the next free cells.{% endif %}
+            {% set shared_required = module.required_labels.values() | list | reject('equalto', m.name_label) | list %}
+            {% if shared_required and m.kind == 'orders' %}The {{ shared_required | join(', ') | lower }} you give apply to every line:
+              for items from different vendors, <b>Import</b> a spreadsheet instead, one row per order.{% endif %}</span>
         </label>
       </fieldset>
       <fieldset class="record-group">

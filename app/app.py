@@ -815,12 +815,32 @@ def set_mouse_litter(mouse: MouseRecord, litter: LitterRecord | None) -> None:
     mouse.litter_id_fk = litter.id if litter is not None else None
 
 
+def automatic_litter(db_session, dob: date) -> LitterRecord:
+    """A litter for mice given a date of birth and no litter: one per date
+    per request, numbered like any other."""
+    made = g.setdefault("_automatic_litters", {})
+    litter = made.get(dob)
+    if litter is None or litter not in db_session:
+        litter = get_or_create_litter(db_session, next_litter_id(db_session), dob)
+        made[dob] = litter
+    return litter
+
+
 def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owner_on_transfer: bool = True) -> tuple[str | None, str | None]:
     original_owner = mouse.owner
     transfer_recipient = None
     litter_code = form.get("litter_id", "").strip()
     dob = parse_date(form.get("date_of_birth"))
-    set_mouse_litter(mouse, get_or_create_litter(db_session, litter_code, dob) if litter_code else None)
+    if litter_code:
+        set_mouse_litter(mouse, get_or_create_litter(db_session, litter_code, dob))
+    elif dob is not None:
+        # A mouse's date of birth lives on its litter. Given a date and no
+        # litter (Add many, a spreadsheet with a dob column but no litter),
+        # the mouse gets an automatic litter of that date, shared by the
+        # mice born that day in this one save, so the date is never lost.
+        set_mouse_litter(mouse, automatic_litter(db_session, dob))
+    elif "litter_id" in form or "date_of_birth" in form:
+        set_mouse_litter(mouse, None)
 
     # A form that does not carry the cage (a cage card's mouse row, which
     # only shows the mouse's own fields) leaves the mouse where it is.
@@ -2849,12 +2869,13 @@ def batch_mice_create():
                 preserve_owner_on_transfer=False)
             if not mouse.owner and g.user is not None:
                 mouse.owner = g.user.username
-            sync_mouse_transgenes(mouse, [
-                row.get("transgene_1", ""), row.get("transgene_2", ""),
-                row.get("transgene_3", ""), row.get("transgene_4", ""),
-            ])
-            if row.get("genotype"):
-                mouse.genotype = row["genotype"]
+            transgenes = [row.get(f"transgene_{i}", "") for i in (1, 2, 3, 4)]
+            # A mouse's genotype is its transgenes joined ("Ai14; Cre"). An
+            # old spreadsheet's genotype column, given no transgenes, becomes
+            # Transgene 1, so it shows in the sheet and can be edited there.
+            if not any(t.strip() for t in transgenes) and (row.get("genotype") or "").strip():
+                transgenes[0] = row["genotype"].strip()
+            sync_mouse_transgenes(mouse, transgenes)
             db_session.add(mouse)
             created += 1
         batch_row.record_count = created

@@ -72,9 +72,6 @@
           <label class="field-label">Transgene 4
             <input name="transgene_4" list="strain-name-options">
           </label>
-          <label class="field-label">Genotype
-            <input name="genotype" placeholder="e.g. C57BL/6">
-          </label>
           <label class="field-label">Cage
             <input name="cage_id" placeholder="number, or 'new'">
             <span class="field-hint normal-case tracking-normal">
@@ -141,13 +138,14 @@
             Columns it understands
           </p>
           <p class="font-mono text-[11.5px] leading-relaxed text-ink-soft">
-            gender · transgene_1–4 · genotype · cage_id · cage_location ·
+            gender · transgene_1–4 · cage_id · cage_location ·
             owner · litter_id · date_of_birth · status · note
           </p>
           <p class="mt-2 text-[11.5px] leading-snug text-muted">
             <code class="ident">sex</code>, <code class="ident">dob</code>,
             <code class="ident">cage</code>, <code class="ident">litter</code> and
-            <code class="ident">notes</code> are accepted too. Unknown columns are ignored.
+            <code class="ident">notes</code> are accepted too, and a <code class="ident">genotype</code> column with no
+            transgene columns goes into Transgene 1. Unknown columns are ignored.
             <strong class="font-semibold text-ink-soft">Leave out mouse_id</strong> — IDs are
             assigned in ascending order from #{{ next_id }}.
           </p>

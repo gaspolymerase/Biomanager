@@ -778,7 +778,11 @@ def get_or_create_cage(session, cage_code: str) -> CageRecord:
         resolved_code = next_cage_id(session)
     cage = session.scalar(select(CageRecord).where(CageRecord.cage_id == resolved_code))
     if cage is None:
-        cage = CageRecord(cage_id=resolved_code)
+        # A cage made by typing its number belongs to whoever made it, like
+        # one from New cage; without an owner anyone could change it.
+        from flask import g, has_request_context
+        owner = g.user.username if has_request_context() and g.get("user") is not None else ""
+        cage = CageRecord(cage_id=resolved_code, owner=owner)
         session.add(cage)
         session.flush()
     return cage

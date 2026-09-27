@@ -155,7 +155,8 @@
 
               <div class="account" data-account>
                 <button type="button" class="account-btn" data-account-toggle
-                        aria-haspopup="menu" aria-expanded="false">
+                        aria-haspopup="menu" aria-expanded="false"
+                        aria-label="Account menu for {{ current_user.display_name or current_user.username }}">
                   {{ current_user.username | owner_badge }}
                   {{ icon('chevron-down') }}
                 </button>

@@ -763,6 +763,33 @@ class BatchMiceTests(AppTestCase):
         self.m.post("/colony/mice/batch/create", data=data)
         self.assertEqual(rows("select gender from mice where transgene_1=?", tg), [("F",)])
 
+    def test_a_date_of_birth_without_a_litter_is_kept(self):
+        """A spreadsheet with a dob column and no litter: every mouse keeps
+        its date, the ones born the same day in one automatic litter."""
+        tg = uniq("Tg")
+        spec = {"owner": self.member, "status": "experiment", "transgene_1": tg}
+        self.m.post("/colony/mice/batch/create", data=self.grid([
+            {**spec, "gender": "F", "date_of_birth": days_ago(40)},
+            {**spec, "gender": "M", "date_of_birth": days_ago(40)},
+            {**spec, "gender": "F", "date_of_birth": days_ago(10)}]))
+        made = rows("select l.date_of_birth, l.id from mice m join litters l on l.id=m.litter_id_fk "
+                    "where m.transgene_1=? order by m.id", tg)
+        self.assertEqual([str(d) for d, _ in made], [days_ago(40), days_ago(40), days_ago(10)])
+        self.assertEqual(made[0][1], made[1][1])       # born the same day: one litter
+        self.assertNotEqual(made[0][1], made[2][1])
+
+    def test_a_genotype_column_without_transgenes_becomes_transgene_1(self):
+        note = uniq("n")
+        self.m.post("/colony/mice/batch/create", data=self.grid(
+            [{"gender": "F", "owner": self.member, "genotype": "C57BL/6J", "note": note}]))
+        self.assertEqual(row("select transgene_1, genotype from mice where note=?", note), ("C57BL/6J", "C57BL/6J"))
+
+    def test_a_cage_typed_in_belongs_to_whoever_made_it(self):
+        cage = uniq("C")
+        self.m.post("/colony/mice/batch/create", data=self.grid(
+            [{"gender": "F", "cage_id": cage, "owner": self.member}]))
+        self.assertEqual(one("select owner from mouse_cages where cage_id=?", cage), self.member)
+
 # ================================================================ global search
 
 class GlobalSearchTests(AppTestCase):
