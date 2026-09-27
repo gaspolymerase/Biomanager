@@ -581,8 +581,10 @@
                   <td>{{ loc.name }}</td>
                   <td>{{ loc.kind }}</td>
                   <td>{% if loc.rows %}{{ loc.rows }} × {{ loc.cols }}{% endif %}</td>
-                  <td>
+                  <td class="flex items-center justify-end gap-0.5">
                     {% if can_configure %}
+                      <button type="button" class="row-icon-btn" title="Edit {{ loc.name }}" data-location-edit
+                              data-location="{{ {'id': loc.id, 'name': loc.name, 'kind': loc.kind, 'parent_id_fk': loc.parent_id_fk or '', 'rows': loc.rows or '', 'cols': loc.cols or ''} | tojson | forceescape }}">{{ icon('edit') }}</button>
                       <form method="post" action="{{ url_for('organisms.delete_row', key=module.key, entity='location', row_id=loc.id) }}"
                             data-confirm="Delete {{ loc.name }}? Anything in it stays, unplaced.">
                         <button type="submit" class="row-icon-btn danger-button" title="Delete">{{ icon('trash') }}</button>
@@ -596,8 +598,9 @@
         </div>
       {% endif %}
       {% if can_configure %}
-        <form method="post" action="{{ url_for('organisms.save_location', key=module.key) }}" class="modal-grid">
+        <form method="post" action="{{ url_for('organisms.save_location', key=module.key) }}" class="modal-grid" data-location-form>
           <input type="hidden" name="return_view" value="housing">
+          <input type="hidden" name="id" value="">
           <label class="field-label">Name<input name="name" required placeholder="e.g. Incubator 25 °C"></label>
           <label class="field-label">Kind
             <select name="kind">
@@ -608,11 +611,38 @@
           </label>
           <label class="field-label">Parent<select name="parent_id_fk">{{ location_options() }}</select></label>
           {% if module.has('housing_grid') %}
-            <label class="field-label">Rows<input type="number" name="rows" min="1" placeholder="8"></label>
-            <label class="field-label">Columns<input type="number" name="cols" min="1" placeholder="10"></label>
+            {# Real values, not placeholders: a rack saved without them had no grid. Clear them for a room. #}
+            <label class="field-label">Rows<input type="number" name="rows" min="1" value="8"></label>
+            <label class="field-label">Columns<input type="number" name="cols" min="1" value="10"></label>
           {% endif %}
-          <button type="submit">Add location</button>
+          <button type="submit" data-location-submit>Add location</button>
+          <button type="button" class="ghost-button" data-location-cancel hidden>Cancel edit</button>
         </form>
+        <script nonce="{{ csp_nonce() }}">
+          /* Edit a rack or room in the same form that adds one. */
+          (function () {
+            const form = document.querySelector('[data-location-form]');
+            if (!form) return;
+            const submit = form.querySelector('[data-location-submit]');
+            const cancel = form.querySelector('[data-location-cancel]');
+            document.addEventListener('click', (event) => {
+              const button = event.target.closest('[data-location-edit]');
+              if (!button) return;
+              let loc = {};
+              try { loc = JSON.parse(button.dataset.location); } catch (_) { return; }
+              Object.entries(loc).forEach(([name, value]) => { if (form.elements[name]) form.elements[name].value = value; });
+              submit.textContent = `Save ${loc.name}`;
+              cancel.hidden = false;
+              form.elements.name.focus();
+            });
+            cancel.addEventListener('click', () => {
+              form.reset();
+              form.elements.id.value = '';
+              submit.textContent = 'Add location';
+              cancel.hidden = true;
+            });
+          })();
+        </script>
       {% else %}
         <p class="text-[12.5px] text-muted">Only an admin or whoever created this database can add or remove {{ module.container_noun }}s.</p>
       {% endif %}

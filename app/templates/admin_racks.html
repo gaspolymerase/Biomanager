@@ -10,7 +10,7 @@
 
 {% block page_nav %}
   <div class="mb-3 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
-    {% for grp in groups %}<span class="badge">{{ grp.rows|length }} {{ grp.kind.label|lower }}</span>{% endfor %}
+    {% for grp in groups %}<span class="badge">{{ grp.kind.label }} · {{ grp.rows|length }}</span>{% endfor %}
     {% if total_unassigned %}<span class="badge badge-warn">{{ total_unassigned }} admin-only</span>{% endif %}
   </div>
 {% endblock %}

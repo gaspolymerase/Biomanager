@@ -1378,21 +1378,30 @@ def save_cohort(key: str):
         return _redirect_back(key, "cohorts")
 
 
+def _deny_location(module: OrganismModule, key: str, row: OrgLocation | None):
+    """Adding a rack or room is setting the database up; changing or
+    deleting one is also for whoever added it (access.can_edit_rack)."""
+    if row is not None and access.can_edit_rack(row):
+        return None
+    return _deny_configure(module, key)
+
+
 @bp.route("/<key>/location/save", methods=["POST"])
 def save_location(key: str):
     with SessionLocal() as session:
         module = _module_or_404(session, key)
-        denied = _deny_configure(module, key)
-        if denied:
-            return denied
         form = request.form
         row_id = _int(form.get("id"), 0)
+        row = None
         if row_id:
             row = session.get(OrgLocation, row_id)
             if row is None or row.module_id_fk != module.id:
                 abort(404)
-        else:
-            row = OrgLocation(module_id_fk=module.id)
+        denied = _deny_location(module, key, row)
+        if denied:
+            return denied
+        if row is None:
+            row = OrgLocation(module_id_fk=module.id, created_by=g.user.username)
             session.add(row)
 
         row.name = (form.get("name") or "").strip() or row.name or "Unnamed"
@@ -1775,7 +1784,7 @@ def delete_row(key: str, entity: str, row_id: int):
         if row is None or row.module_id_fk != module.id:
             abort(404)
         if entity == "location":
-            denied = _deny_configure(module, key)
+            denied = _deny_location(module, key, row)
             if denied:
                 return denied
         elif not access.can_edit(row):

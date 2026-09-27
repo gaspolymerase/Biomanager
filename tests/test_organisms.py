@@ -479,6 +479,23 @@ class PlacementTests(OrganismCase):
         self.assertEqual(rows("select location_id_fk, row, col from organism_housing where id=?", unit),
                          [(rack, None, None)])
 
+    def test_a_rack_records_who_added_it_and_they_may_change_it_once_handed_over(self):
+        name = uniq("Rack")
+        rack = self.rack(2, 2, name=name)
+        self.assertEqual(one("select created_by from organism_locations where id=?", rack), self.admin)
+        self.post(self.m, f"{self.url}/location/save", {"id": rack, "name": name, "rows": "3", "cols": "3"})
+        self.assertEqual(one("select rows from organism_locations where id=?", rack), 2)   # not theirs
+        self.post(self.a, "/admin/racks/assign", {"kind": "org_location", "id": rack, "creator": self.member})
+        self.post(self.m, f"{self.url}/location/save", {"id": rack, "name": name, "rows": "3", "cols": "3"})
+        self.assertEqual(one("select rows, cols from organism_locations where id=?", rack), 3)
+        self.assertIn(name, self.get_ok(self.a, "/admin/racks/"))
+
+    def test_the_rack_form_starts_with_a_real_size_and_offers_edit(self):
+        rack = self.rack()
+        html = self.page(self.a, "housing")
+        self.assertIn('name="rows" min="1" value="8"', html)
+        self.assertIn("data-location-edit", html)
+
     def test_member_cannot_add_or_delete_racks(self):
         rack = self.rack()
         name = uniq("Student rack")

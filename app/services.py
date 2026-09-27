@@ -315,6 +315,10 @@ def ensure_schema_updates() -> None:
             if column not in table_columns["mouse_cages"]:
                 alter_statements.append(f"ALTER TABLE mouse_cages ADD COLUMN {column} {ddl}")
 
+    # Who added each custom database's rack or room (2026-09-27).
+    if "organism_locations" in table_columns and "created_by" not in table_columns["organism_locations"]:
+        alter_statements.append("ALTER TABLE organism_locations ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
+
     # When a litter was weaned, so it stops being due everywhere (2026-09-26).
     if "litters" in table_columns and "weaned_on" not in table_columns["litters"]:
         alter_statements.append("ALTER TABLE litters ADD COLUMN weaned_on DATE")

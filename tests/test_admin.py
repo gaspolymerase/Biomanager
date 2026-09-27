@@ -35,8 +35,8 @@ class RackHandOverPage(AppTestCase):
 
     def test_the_page_lists_every_kind_of_container(self):
         html = self.get_ok(self.a, "/admin/racks/")
-        for label in ("Mouse racks", "Plasmid boxes", "Inventory boxes", "Fly &amp; worm racks",
-                      "Fly &amp; worm incubators"):
+        for label in ("Mouse racks", "Fish racks", "Racks and rooms of other databases", "Plasmid boxes",
+                      "Inventory boxes", "Fly &amp; worm racks", "Fly &amp; worm incubators"):
             self.assertIn(label, html)
 
     def test_a_container_without_a_creator_is_shown_as_admin_only(self):

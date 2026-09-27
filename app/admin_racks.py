@@ -20,8 +20,9 @@ from sqlalchemy import func, select
 from . import access, audit
 from .db import SessionLocal
 from .models import (
-    CageRecord, InventoryItem, InventoryModule, InventoryRack, MouseRack, PlasmidBox, PlasmidRecord,
-    StockIncubator, StockModule, StockRack, StockUnit, UserAccount,
+    CageRecord, FishRack, InventoryItem, InventoryModule, InventoryRack, MouseRack, OrganismModule, OrgHousing,
+    OrgLocation, PlasmidBox, PlasmidRecord, StockIncubator, StockModule, StockRack, StockUnit, TankRecord,
+    UserAccount,
 )
 
 bp = Blueprint("admin_racks", __name__, url_prefix="/admin/racks")
@@ -61,6 +62,16 @@ CONTAINERS: tuple[Kind, ...] = (
          lambda s, r: r.room or "",
          lambda s, r: s.scalar(select(func.count(CageRecord.id)).where(CageRecord.rack_id_fk == r.id)) or 0,
          "cages"),
+    Kind("fish_rack", "Fish racks", "rack", FishRack, "fish_racks",
+         lambda s, r: _builtin_label(s, "zebrafish", "Zebrafish"),
+         lambda s, r: r.system.name if r.system else "",
+         lambda s, r: s.scalar(select(func.count(TankRecord.id)).where(TankRecord.rack_id_fk == r.id)) or 0,
+         "tanks"),
+    Kind("org_location", "Racks and rooms of other databases", "rack", OrgLocation, "organism_locations",
+         _module_label(OrganismModule),
+         lambda s, r: r.kind or "",
+         lambda s, r: s.scalar(select(func.count(OrgHousing.id)).where(OrgHousing.location_id_fk == r.id)) or 0,
+         "units"),
     Kind("plasmid_box", "Plasmid boxes", "box", PlasmidBox, "plasmid_boxes",
          lambda s, r: _builtin_label(s, "plasmids", "Plasmids"),
          lambda s, r: r.location or "",

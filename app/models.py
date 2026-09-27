@@ -946,6 +946,9 @@ class OrgLocation(Base):
     cols: Mapped[int | None] = mapped_column(Integer, nullable=True)
     settings: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Who added it: they, whoever may configure the database, or an admin
+    # may change or delete it (Racks & boxes can hand it to someone else).
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     parent: Mapped["OrgLocation | None"] = relationship(
