@@ -28,6 +28,9 @@
     <p class="mt-4 text-center text-[12.5px] text-muted">
       Need an account? <a href="{{ url_for('register') }}">Create one</a>.
     </p>
+    <p class="mt-1 text-center text-[12.5px] text-muted">
+      <a href="{{ url_for('index') }}">What BioManager does</a> · <a href="{{ guide_url }}" target="_blank" rel="noopener">User guide</a>
+    </p>
   {% else %}
     <h1 class="text-[17px]">Create account</h1>
     <p class="mt-1 text-[12.5px] leading-snug text-muted">

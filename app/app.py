@@ -1332,7 +1332,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
 @app.route("/")
 def index():
     if g.user is None:
-        return redirect(url_for("login"))
+        return hello()
     # If the user picked a default landing page (settings → default_landing),
     # honor it. Otherwise show the dashboard.
     default_landing = (g.user.default_landing or "").strip()
@@ -1340,6 +1340,36 @@ def index():
             and lab.request_features().get(LANDING_FEATURES.get(default_landing, ""), True):
         return redirect(url_for(default_landing))
     return redirect(url_for("home_dashboard"))
+
+
+def hello():
+    """The first page someone sees before signing in: what BioManager is,
+    what this lab keeps in it, where the guide is, and the way in. On a
+    brand-new installation it leads to creating the first (admin) account."""
+    from . import inventory_service as inventories
+    from . import organism_service
+    from . import stock_service
+
+    with SessionLocal() as db_session:
+        first_account = db_session.scalar(select(func.count(UserAccount.id))) == 0
+        labels = inventories.builtin_labels(db_session)
+        features = lab.features_on(db_session)
+        # The lab's databases only: personal ones stay out of sight (app/lab.py).
+        databases = [{"label": labels[key], "icon": lab.FEATURES[key].icon}
+                     for key in ("colony", "zebrafish", "plasmids") if features.get(key)]
+        for module in stock_service.list_modules(db_session):
+            databases.append({"label": module.label, "icon": stock_service.view(module).icon})
+        for module in organism_service.list_modules(db_session):
+            databases.append({"label": module.label, "icon": module.icon or "paw"})
+        for module in inventories.list_modules(db_session):
+            databases.append({"label": module.label, "icon": inventories.view(module).icon})
+        lab_title = lab.lab_name(db_session)
+    return render_template(
+        "hello.html", first_account=first_account, databases=databases, lab_title=lab_title,
+        functions=[key for key in ("calendar", "notebook") if features.get(key)],
+        needs_setup_code=first_account and security.setup_code_required(),
+        guide_url=lab.GUIDE_URL,
+    )
 
 
 @app.route("/home")

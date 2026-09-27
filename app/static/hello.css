@@ -1,0 +1,155 @@
+/* templates/hello.html: the page before signing in. Colours are the app's
+   tokens (tailwind.css), so light and dark follow the system. */
+
+body.hello {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(1200px 520px at 85% -10%, color-mix(in srgb, var(--color-brand-600) 14%, transparent), transparent 70%),
+    var(--color-canvas);
+  color: var(--color-ink);
+  font-size: 14px;
+}
+.hello main { display: flex; flex-direction: column; gap: 56px; max-width: 1180px; margin: 0 auto; padding: 16px 24px 56px; }
+
+.hello-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 24px 12px;
+  background: var(--material-bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-hairline) 60%, transparent);
+}
+.hello-brand { display: flex; align-items: center; gap: 9px; color: var(--color-ink); text-decoration: none; font-size: 15px; font-weight: 650; }
+.hello-lab {
+  padding-left: 10px;
+  border-left: 1px solid var(--color-hairline);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+.hello-nav { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+.hello-nav > a:not(.btn) { font-size: 13px; font-weight: 500; color: var(--color-ink-soft); text-decoration: none; }
+.hello-nav > a:not(.btn):hover { color: var(--color-brand-700); }
+
+.hello-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  align-items: center;
+  gap: 48px;
+  padding-top: 40px;
+}
+.hello-eyebrow {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-brand-700);
+}
+.hello-hero h1 {
+  margin: 0;
+  font-size: clamp(30px, 4.2vw, 46px);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.hello-lede { margin: 18px 0 0; max-width: 34em; font-size: 16px; line-height: 1.55; color: var(--color-ink-soft); }
+.hello-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.hello-fine { margin: 16px 0 0; max-width: 34em; font-size: 12.5px; line-height: 1.5; color: var(--color-muted); }
+.hello-shot { margin: 0; }
+.hello-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  border: 1px solid var(--color-hairline);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 24px 60px -24px rgb(0 0 0 / 0.35);
+}
+
+.hello-section h2 { margin: 0 0 16px; font-size: 20px; font-weight: 650; letter-spacing: -0.015em; }
+.hello-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.hello-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  font-size: 13px;
+  font-weight: 500;
+}
+.hello-chips .icon { width: 14px; height: 14px; color: var(--color-brand-600); }
+
+.hello-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.hello-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px 20px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+.hello-card h3 { margin: 4px 0 0; font-size: 15px; font-weight: 650; }
+.hello-card p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--color-ink-soft); }
+.hello-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--color-brand-50);
+  color: var(--color-brand-700);
+}
+.hello-card-icon .icon { width: 18px; height: 18px; }
+
+.hello-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.hello-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--color-hairline);
+  color: var(--color-ink);
+  text-decoration: none;
+  transition: background-color 120ms, border-color 120ms;
+}
+.hello-link:hover { background: var(--color-surface); border-color: var(--color-brand-300); }
+.hello-link span:last-child { display: flex; flex-direction: column; gap: 3px; }
+.hello-link b { font-size: 14px; font-weight: 600; }
+.hello-link small { font-size: 12.5px; line-height: 1.45; color: var(--color-muted); }
+.hello-link-icon { flex: none; color: var(--color-brand-600); padding-top: 1px; }
+.hello-link-icon .icon { width: 18px; height: 18px; }
+
+.hello-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 24px calc(28px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-hairline);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.hello-foot a { color: var(--color-muted); }
+
+@media (max-width: 900px) {
+  .hello-hero { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-top: 16px; }
+  .hello-grid, .hello-links { grid-template-columns: minmax(0, 1fr); }
+  .hello main { gap: 40px; padding-inline: 16px; }
+  .hello-bar { padding-inline: 16px; }
+}
+@media (max-width: 520px) {
+  .hello-lab { display: none; }
+  .hello-actions .btn { flex: 1 1 100%; justify-content: center; }
+}

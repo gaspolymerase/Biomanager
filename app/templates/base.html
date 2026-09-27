@@ -240,7 +240,7 @@
     {% else %}
       {# ---- Sign in / register ---- #}
       <main class="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12">
-        <a class="flex flex-col items-center gap-3 no-underline" href="{{ url_for('login') }}">
+        <a class="flex flex-col items-center gap-3 no-underline" href="{{ url_for('index') }}" title="About BioManager">
           <img src="{{ url_for('static', filename='icon.svg') }}" alt="" class="size-16">
           <span class="text-[17px] font-semibold tracking-[-0.02em] text-ink">BioManager</span>
         </a>

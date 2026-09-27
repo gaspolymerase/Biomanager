@@ -613,6 +613,10 @@ track.
 
 ## 👥 Accounts, permissions and privacy
 
+- **A welcome page before signing in** says what BioManager is, lists the
+  databases the lab keeps, links the user guide (and the way in from
+  Excel), and leads to **Sign in** or **Create an account**. On a new
+  installation it leads to creating the admin account instead.
 - **The first account is the admin.** On a server it needs the setup code,
   so nobody else on the network can claim it first.
 - **New sign-ups wait for an admin's approval.**
