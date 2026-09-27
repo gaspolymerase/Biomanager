@@ -6,7 +6,7 @@
 // amount follows. Recipes can be saved to, and loaded from, the lab's
 // library, which has the common ones built in.
 
-import { api, debounce, el, escapeHtml, fmt, toNumber } from '../util.js';
+import { api, ask, debounce, el, escapeHtml, fmt, toNumber } from '../util.js';
 import { concOptions, family, litres, showMass, showVolume, toBase, unitOptions, VOLUME_UNITS } from './units.js';
 
 export function defaultRecipe() {
@@ -162,13 +162,13 @@ export function mountRecipe(host, ctx) {
       if (editable) commit();
       render();
     } else if (t.dataset.act === 'save') {
-      const name = prompt('Save to the lab library as:', data.name || '');
+      const name = await ask.prompt('Save to the lab library as', data.name || '', { okLabel: 'Save' });
       if (!name) return;
       try {
         await api('/notebook/api/recipes', { method: 'POST', body: { name, data: { ...data, components: data.components.map(({ done, ...c }) => c) } } });
         t.textContent = 'Saved ✓';
         setTimeout(() => { t.textContent = 'Save to library'; }, 2000);
-      } catch (e) { alert(`Could not save: ${e.message}`); }
+      } catch (e) { ask.alert(`Could not save: ${e.message}`); }
     } else if (t.dataset.act === 'load') {
       showLibrary();
     } else if (t.dataset.pick) {

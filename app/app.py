@@ -5491,6 +5491,34 @@ def notebook_lookup_order(order_id: int):
         )
 
 
+@app.route("/notebook/open/<entity_type>/<int:number>")
+@login_required
+def notebook_open_mention(entity_type: str, number: int):
+    """Where an @mention (@mouse 12, @plasmid 4, @order 7) leads: the record
+    itself, not its list. The number is the one people see."""
+    with SessionLocal() as db_session:
+        if entity_type == "mouse":
+            mouse = db_session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == number))
+            if mouse is not None:
+                return redirect(url_for("colony", view="mice", scope="all") + f"#mouse-update-{mouse.id}")
+            flash(f"There is no mouse #{number}.", "warning")
+            return redirect(url_for("colony", view="mice"))
+        if entity_type == "plasmid":
+            plasmid = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == number))
+            if plasmid is not None:
+                return redirect(url_for("plasmid_detail", row_id=plasmid.id))
+            flash(f"There is no plasmid #{number}.", "warning")
+            return redirect(url_for("plasmids"))
+        if entity_type == "order":
+            found = _order_items_query(db_session, str(number), 1)
+            if found:
+                module = db_session.get(InventoryModule, found[0].module_id_fk)
+                return redirect(url_for("inventory.module", key=module.key, open=found[0].id))
+            flash(f"There is no order #{number}.", "warning")
+            return redirect(url_for("home_dashboard"))
+    abort(404)
+
+
 @app.route("/notebook/backlinks/<entity_type>/<int:entity_id>")
 @login_required
 def notebook_backlinks(entity_type: str, entity_id: int):

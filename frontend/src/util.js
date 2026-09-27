@@ -171,6 +171,14 @@ export function personColor(name) {
   return PEOPLE_COLORS[h % PEOPLE_COLORS.length];
 }
 
+/* The app's own dialogs (static/dialogs.js), with the browser's as a
+   fallback for a page without them. Each returns a promise. */
+export const ask = {
+  confirm: (message, options) => (window.BioDialog ? window.BioDialog.confirm(message, options) : Promise.resolve(window.confirm(message))),
+  prompt: (message, value, options) => (window.BioDialog ? window.BioDialog.prompt(message, value, options) : Promise.resolve(window.prompt(message, value))),
+  alert: (message) => (window.BioDialog ? window.BioDialog.alert(message) : Promise.resolve(window.alert(message))),
+};
+
 export function initials(name) {
   const parts = String(name || '?').trim().split(/\s+/);
   return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();

@@ -301,7 +301,7 @@ async function submitWeight() {
   const r = await fetch(`/colony/mice/${currentWeighMouseRowId}/weights/create`, { method: 'POST', body: fd });
   if (r.ok) { window.location.reload(); return; }
   const data = await r.json().catch(() => ({}));
-  window.alert(`The weight was not saved: ${data.error || `the server answered ${r.status}`}.`);
+  BioDialog.alert(`The weight was not saved: ${data.error || `the server answered ${r.status}`}.`);
 }
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeWeightModal();

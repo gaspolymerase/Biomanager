@@ -8,7 +8,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { el, escapeHtml } from './util.js';
+import { ask, el, escapeHtml } from './util.js';
 
 const KEY = 'bm-nb-timers';
 export const DURATION_RE = /\b(\d+(?:\.\d+)?)(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*(hours?|hrs?|h|minutes?|mins?|min|seconds?|secs?|sec|s)\b(?![\w/°])/gi;
@@ -165,13 +165,13 @@ class TimerTray {
   }
 
   // A timer of any length, from the toolbar or the tray.
-  ask() {
-    const raw = prompt('Timer — minutes (e.g. 5, 1.5, or 1:30 for 1 h 30 min):', '5');
+  async ask() {
+    const raw = await ask.prompt('Timer — how many minutes?', '5', { placeholder: '5, 1.5, or 1:30 for 1 h 30 min', okLabel: 'Next' });
     if (!raw) return;
     const parts = raw.split(':').map(Number);
     const minutes = parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0];
     if (!(minutes > 0)) return;
-    const label = prompt('What for?', 'Timer') || 'Timer';
+    const label = (await ask.prompt('What for?', 'Timer', { okLabel: 'Start timer' })) || 'Timer';
     this.start(label, minutes * 60);
   }
 }

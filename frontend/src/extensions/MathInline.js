@@ -5,6 +5,7 @@
 
 import { InputRule, Node } from '@tiptap/core';
 import { katex } from '../vendor.js';
+import { ask } from '../util.js';
 
 function mathPlugin(md) {
   if (md.__nbMath) return;
@@ -127,9 +128,9 @@ export const MathInline = Node.create({
           dom.textContent = `$${current.attrs.latex}$`;
         }
       };
-      dom.addEventListener('click', () => {
+      dom.addEventListener('click', async () => {
         if (!editor.isEditable) return;
-        const next = prompt('Equation (LaTeX):', current.attrs.latex);
+        const next = await ask.prompt('Equation (LaTeX)', current.attrs.latex, { okLabel: 'Save' });
         if (next === null) return;
         const pos = getPos();
         if (typeof pos !== 'number') return;

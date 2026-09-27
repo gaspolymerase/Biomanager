@@ -13,10 +13,11 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 // /notebook/search/<type> for hover info and the suggestion dropdown to work.
 const MENTION_RE = /@(mouse|plasmid|order)\s+(\d+)/g;
 
+// The record itself (app.py notebook_open_mention redirects to its page).
 const NAVIGATION = {
-  mouse: () => '/colony?view=mice',
-  plasmid: () => '/plasmids',
-  order: () => '/orders',
+  mouse: (id) => `/notebook/open/mouse/${id}`,
+  plasmid: (id) => `/notebook/open/plasmid/${id}`,
+  order: (id) => `/notebook/open/order/${id}`,
 };
 
 const TYPE_LABELS = {
@@ -91,7 +92,7 @@ function positionPopover(chip) {
 
 function renderPopover(type, id, data, errorMsg) {
   const el = ensurePopover();
-  const navUrl = NAVIGATION[type] ? NAVIGATION[type]() : '#';
+  const navUrl = NAVIGATION[type] ? NAVIGATION[type](id) : '#';
   const typeLabel = TYPE_LABELS[type] || type;
 
   if (errorMsg) {
@@ -332,7 +333,7 @@ export const MentionDecoration = Extension.create({
             if (!chip) return false;
             if (!(event.metaKey || event.ctrlKey)) return false;
             const type = chip.getAttribute('data-entity-type');
-            const url = NAVIGATION[type] && NAVIGATION[type]();
+            const url = NAVIGATION[type] && NAVIGATION[type](chip.getAttribute('data-entity-id'));
             if (url) {
               openInAppTab(url);
               event.preventDefault();

@@ -6,7 +6,7 @@ import { defaultCalc } from './blocks/calc.js';
 import { defaultSheet } from './blocks/sheet.js';
 import { stampTime } from './docops.js';
 import { timers } from './timers.js';
-import { api, escapeHtml, isoDate } from './util.js';
+import { api, ask, escapeHtml, isoDate } from './util.js';
 
 export const SYMBOLS = [
   ['μ', 'micro'], ['°', 'degree'], ['℃', 'celsius'], ['±', 'plus-minus'], ['×', 'times'],
@@ -54,7 +54,7 @@ export async function uploadImage(editor, file, alt = '') {
     const caption = alt || file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
     editor.chain().focus().setImage({ src: data.url, alt: caption, title: caption }).run();
   } catch (e) {
-    alert(`The picture could not be uploaded: ${e.message}`);
+    ask.alert(`The picture could not be uploaded: ${e.message}`);
   }
 }
 
@@ -66,7 +66,7 @@ export async function uploadFile(editor, file) {
     const data = await api('/notebook/upload-file', { method: 'POST', form });
     editor.chain().focus().insertContent({ type: 'text', text: `${data.name} (${formatBytes(data.size)})`, marks: [{ type: 'link', attrs: { href: data.url } }] }).insertContent(' ').run();
   } catch (e) {
-    alert(`The file could not be uploaded: ${e.message}`);
+    ask.alert(`The file could not be uploaded: ${e.message}`);
   }
 }
 

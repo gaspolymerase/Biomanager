@@ -518,3 +518,24 @@ class NotificationSwitchTests(Notebook):
         with engine.connect() as con:
             cols = [r[1] for r in con.exec_driver_sql("PRAGMA table_info(users)")]
         self.assertIn("notify_notebook", cols)
+
+
+class MentionLinkTests(AppTestCase):
+    """@mouse / @plasmid / @order chips open the record, not its list."""
+
+    def test_a_mouse_mention_opens_that_mouse(self):
+        row_id = self.make_mouse(self.m, self.member)
+        number = one("select mouse_id from mice where id=?", row_id)
+        r = self.m.get(f"/notebook/open/mouse/{number}")
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.headers["Location"].endswith(f"#mouse-update-{row_id}"), r.headers["Location"])
+
+    def test_a_plasmid_mention_opens_its_page(self):
+        pid = self.make_plasmid(self.m)
+        number = one("select plasmid_id from plasmids where id=?", pid)
+        r = self.m.get(f"/notebook/open/plasmid/{number}")
+        self.assertTrue(r.headers["Location"].endswith(f"/plasmids/{pid}"), r.headers["Location"])
+
+    def test_an_unknown_number_says_so(self):
+        r = self.m.get("/notebook/open/mouse/987654", follow_redirects=True)
+        self.assertIn("no mouse #987654", r.get_data(as_text=True))

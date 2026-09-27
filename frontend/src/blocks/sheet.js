@@ -15,7 +15,7 @@
 import { computeSheet, colLetter } from './formula.js';
 import { compare, linearFit, summary, TESTS } from './stats.js';
 import { renderPlot, svgText, svgToPng } from './plot.js';
-import { debounce, download, el, escapeHtml, fmt, fmtP, isNum, parseDelimited, stars, toCsv, toNumber } from '../util.js';
+import { ask, debounce, download, el, escapeHtml, fmt, fmtP, isNum, parseDelimited, stars, toCsv, toNumber } from '../util.js';
 
 export function defaultSheet() {
   return {
@@ -80,9 +80,9 @@ export function mountSheet(host, ctx) {
         commit(); renderAll();
       });
       const menu = el('button', { type: 'button', class: 'nb-sheet-colmenu', title: 'Remove column', hidden: !editable, html: '×', 'aria-label': 'Remove column' });
-      menu.addEventListener('click', () => {
+      menu.addEventListener('click', async () => {
         if (data.columns.length <= 1) return;
-        if (!confirm(`Remove column “${col.name || colLetter(ci)}”?`)) return;
+        if (!(await ask.confirm(`Remove column “${col.name || colLetter(ci)}”?`, { danger: true }))) return;
         data.columns.splice(ci, 1);
         data.rows.forEach((r) => r.splice(ci, 1));
         fixIndices(ci);
@@ -116,8 +116,8 @@ export function mountSheet(host, ctx) {
     data.rows.forEach((row, ri) => {
       const tr = el('tr');
       const num = el('td', { class: 'nb-sheet-rownum', text: String(ri + 1), title: editable ? 'Remove row' : '' });
-      if (editable) num.addEventListener('click', () => {
-        if (row.some((v) => String(v ?? '').trim()) && !confirm(`Remove row ${ri + 1}?`)) return;
+      if (editable) num.addEventListener('click', async () => {
+        if (row.some((v) => String(v ?? '').trim()) && !(await ask.confirm(`Remove row ${ri + 1}?`, { danger: true }))) return;
         data.rows.splice(ri, 1);
         commit(); renderAll();
       });

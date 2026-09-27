@@ -11,7 +11,7 @@ import { ICONS } from './icons.js';
 import { ITEMS, pickFile, uploadFile, uploadImage } from './commands.js';
 import { stampTime } from './docops.js';
 import { timers } from './timers.js';
-import { escapeHtml } from './util.js';
+import { ask, escapeHtml } from './util.js';
 
 function svgIcon(html) {
   return `<span class="editor-toolbar-icon">${html}</span>`;
@@ -117,9 +117,9 @@ export function createToolbar(editor, { extra = [] } = {}) {
         id: 'link',
         icon: ICONS.link,
         label: 'Link',
-        exec: (e) => {
+        exec: async (e) => {
           const previous = e.getAttributes('link')?.href || '';
-          const url = window.prompt('Link URL (leave blank to remove):', previous);
+          const url = await ask.prompt('Link', previous, { placeholder: 'https://… (leave blank to remove the link)', okLabel: 'Save link' });
           if (url === null) return;
           if (url === '') {
             e.chain().focus().extendMarkRange('link').unsetLink().run();
@@ -213,9 +213,32 @@ export function createToolbar(editor, { extra = [] } = {}) {
   document.body.appendChild(toolbar);
   document.body.appendChild(tableBar);
 
+  // Centred over the page being written, not the window: centred on the
+  // window it sat on the notebook's sidebar and covered its buttons.
+  const column = document.querySelector('.notebook-main');
+  const centre = () => {
+    if (!column) return;
+    const box = column.getBoundingClientRect();
+    const x = `${Math.round(box.left + box.width / 2)}px`;
+    toolbar.style.left = x;
+    tableBar.style.left = x;
+    // No wider than the page: a narrow window wraps it to a second row
+    // instead of pushing it over the sidebar.
+    const room = `${Math.max(240, Math.round(box.width - 32))}px`;
+    toolbar.style.maxWidth = room;
+    tableBar.style.maxWidth = room;
+    tableBar.style.bottom = `${24 + toolbar.offsetHeight + 8}px`;
+  };
+  centre();
+  window.addEventListener('resize', centre);
+  const watcher = column && 'ResizeObserver' in window ? new ResizeObserver(centre) : null;
+  if (watcher) watcher.observe(column);
+
   return {
     el: toolbar,
     destroy() {
+      window.removeEventListener('resize', centre);
+      if (watcher) watcher.disconnect();
       editor.off('selectionUpdate', updateState);
       editor.off('focus', updateState);
       editor.off('transaction', updateState);

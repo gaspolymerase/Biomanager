@@ -6,7 +6,7 @@
 // from the propagated SD. Replicates more than 0.5 cycles apart are
 // flagged. The fold changes are plotted per target, one bar per sample.
 
-import { debounce, el, escapeHtml, fmt, isNum, parseDelimited, toNumber } from '../util.js';
+import { ask, debounce, el, escapeHtml, fmt, isNum, parseDelimited, toNumber } from '../util.js';
 import { mean, sd, summary, compare } from './stats.js';
 import { renderPlot } from './plot.js';
 
@@ -151,18 +151,18 @@ export function mountQpcr(host, ctx) {
       root._t = setTimeout(render, 700);
     }
   });
-  root.addEventListener('click', (event) => {
+  root.addEventListener('click', async (event) => {
     const b = event.target.closest('button');
     if (!b) return;
     if (b.dataset.act === 'raw') { showRaw = !showRaw; render(); }
     if (b.dataset.act === 'paste') {
       const rows = parseExport(root.querySelector('textarea').value);
-      if (!rows.length) { alert('No sample, target and Ct columns found in that text.'); return; }
+      if (!rows.length) { ask.alert('No sample, target and Ct columns found in that text.'); return; }
       data.rows = rows;
       showRaw = false;
       commit(); render();
     }
-    if (b.dataset.act === 'clear' && confirm('Clear the Ct values?')) { data.rows = []; commit(); render(); }
+    if (b.dataset.act === 'clear' && (await ask.confirm('Clear the Ct values?', { danger: true }))) { data.rows = []; commit(); render(); }
   });
 
   render();

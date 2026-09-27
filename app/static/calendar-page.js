@@ -899,7 +899,7 @@
     });
   })();
 
-  delBtn.addEventListener('click', () => {
+  delBtn.addEventListener('click', async () => {
     const f = form.elements;
     const kind = form.querySelector('input[name="kind"]:checked').value;
     const id = f.id.value;
@@ -907,7 +907,7 @@
     const repeat = repeatFreq.value && kind === 'event';
     const question = kind === 'booking' ? 'Cancel this booking?' : kind === 'away' ? 'Remove this time away?'
       : repeat ? 'Delete every repeat of this event?' : 'Delete this?';
-    if (!window.confirm(question)) return;
+    if (!(await BioDialog.confirm(question, { danger: true }))) return;
     const url = kind === 'booking' ? `/calendar/bookings/${id}/delete` : kind === 'away' ? `/calendar/away/${id}/delete`
       : `/calendar/items/${id}/delete`;
     postJson(url, {}).then((j) => {
@@ -1002,9 +1002,9 @@
       return undefined;
     });
   });
-  $('#cal-run-delete').addEventListener('click', () => {
+  $('#cal-run-delete').addEventListener('click', async () => {
     const id = runForm.elements.id.value;
-    if (!id || !window.confirm('Remove this protocol run and all its steps from the calendar?')) return;
+    if (!id || !(await BioDialog.confirm('Remove this protocol run and all its steps from the calendar?', { danger: true }))) return;
     postJson(`/calendar/protocols/runs/${id}/delete`, {}).then((j) => {
       if (!j.ok) return showError($('#cal-run-error'), j.error || "Couldn't remove it.");
       runModal.close();
@@ -1104,9 +1104,9 @@
       return undefined;
     });
   });
-  $('#cal-tpl-delete').addEventListener('click', () => {
+  $('#cal-tpl-delete').addEventListener('click', async () => {
     const id = tplForm.elements.id.value;
-    if (!id || !window.confirm('Delete this protocol? Runs already started keep their steps.')) return;
+    if (!id || !(await BioDialog.confirm('Delete this protocol? Runs already started keep their steps.', { danger: true }))) return;
     postJson(`/calendar/protocols/templates/${id}/delete`, {}).then((j) => {
       if (!j.ok) return showError($('#cal-tpl-error'), j.error || "Couldn't delete it.");
       loadProtocols().then(() => editTemplate(protocols.templates[0] || null));
@@ -1127,9 +1127,9 @@
         ${e.editable ? `<button type="button" class="btn btn-sm" data-retire="${e.id}">Remove</button>` : ''}</li>`).join('')
       || '<li class="cal-muted">No instruments yet. Add the first below.</li>';
   }
-  $('#cal-equip-manage-list').addEventListener('click', (e) => {
+  $('#cal-equip-manage-list').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-retire]');
-    if (!btn || !window.confirm('Remove this instrument? Its past bookings stay on the calendar.')) return;
+    if (!btn || !(await BioDialog.confirm('Remove this instrument? Its past bookings stay on the calendar.', { danger: true }))) return;
     postJson(`/calendar/equipment/${btn.dataset.retire}/delete`, {}).then((j) => {
       if (!j.ok) return showError($('#cal-equip-error'), j.error || "Couldn't remove it.");
       DATA.equipment = DATA.equipment.filter((x) => x.id !== Number(btn.dataset.retire));
@@ -1182,12 +1182,12 @@
   $$('input[name="feed_scope"]', feedModal).forEach((r) => r.addEventListener('change', () => {
     if ($('#cal-feed-url').value) feedCall(postJson('/calendar/phone-feed', { action: 'create', scope: feedScope() }));
   }));
-  $('#cal-feed-reset').addEventListener('click', () => {
-    if (!window.confirm('Make a new link? The old one stops working, so calendars subscribed to it need the new one.')) return;
+  $('#cal-feed-reset').addEventListener('click', async () => {
+    if (!(await BioDialog.confirm('Make a new link? The old one stops working, so calendars subscribed to it need the new one.', { danger: true }))) return;
     feedCall(postJson('/calendar/phone-feed', { action: 'reset', scope: feedScope() }));
   });
-  $('#cal-feed-stop').addEventListener('click', () => {
-    if (!window.confirm('Stop sharing? Calendars subscribed to the link stop updating.')) return;
+  $('#cal-feed-stop').addEventListener('click', async () => {
+    if (!(await BioDialog.confirm('Stop sharing? Calendars subscribed to the link stop updating.', { danger: true }))) return;
     feedCall(postJson('/calendar/phone-feed', { action: 'stop' }));
   });
   $('#cal-feed-copy').addEventListener('click', () => {
@@ -1299,13 +1299,13 @@
     if (!row || e.target.dataset.action !== 'toggle') return;
     postJson(`/calendar/subscriptions/${row.dataset.id}`, { enabled: e.target.checked }).then(() => fetchAndRender());
   });
-  subsListEl.addEventListener('click', (e) => {
+  subsListEl.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-action]');
     const row = e.target.closest('.biocal-sub-row');
     if (!btn || !row || btn.dataset.action === 'toggle') return;
     if (btn.dataset.action === 'refresh') {
       postJson(`/calendar/subscriptions/${row.dataset.id}/refresh`, {}).then(() => { loadSubscriptions(); fetchAndRender(); });
-    } else if (btn.dataset.action === 'delete' && window.confirm('Remove this subscription?')) {
+    } else if (btn.dataset.action === 'delete' && (await BioDialog.confirm('Remove this subscription?', { danger: true }))) {
       postJson(`/calendar/subscriptions/${row.dataset.id}/delete`, {}).then(() => { loadSubscriptions(); fetchAndRender(); });
     }
   });
@@ -1331,10 +1331,10 @@
       }
     });
   }
-  googleStatusEl.addEventListener('click', (e) => {
+  googleStatusEl.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-google]');
     if (!btn) return;
-    if (btn.dataset.google === 'disconnect' && !window.confirm('Disconnect Google Calendar?')) return;
+    if (btn.dataset.google === 'disconnect' && !(await BioDialog.confirm('Disconnect Google Calendar?', { danger: true }))) return;
     postJson(`/calendar/google/${btn.dataset.google}`, {}).then(() => { loadGoogleStatus(); fetchAndRender(); });
   });
 

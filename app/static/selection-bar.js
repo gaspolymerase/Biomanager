@@ -104,10 +104,19 @@
           return;
         }
         const confirmText = form.dataset.confirm;
-        if (confirmText && !window.confirm(confirmText.replace('{n}', ids.length))) {
+        if (confirmText && form.dataset.confirmed !== '1') {
+          // Ask in the app, then submit again with the same button.
           event.preventDefault();
+          const question = confirmText.replace('{n}', ids.length);
+          const submitter = event.submitter;
+          window.BioDialog.confirm(question, { danger: window.BioDialog.looksDestructive(question) }).then((ok) => {
+            if (!ok) return;
+            form.dataset.confirmed = '1';
+            form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+          });
           return;
         }
+        delete form.dataset.confirmed;
         form.querySelectorAll('input[name="selected_ids"]').forEach((el) => el.remove());
         ids.forEach((id) => {
           const field = document.createElement('input');

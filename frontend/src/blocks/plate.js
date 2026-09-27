@@ -7,7 +7,7 @@
 // data = { format, values: { A1: '0.52', ... }, roles: { A1: { t: 'blank'|'std'|'sample', name, conc, df } },
 //          fit: 'linear'|'loglog', unit, title }
 
-import { debounce, el, escapeHtml, fmt, isNum, parseDelimited, toNumber } from '../util.js';
+import { ask, debounce, el, escapeHtml, fmt, isNum, parseDelimited, toNumber } from '../util.js';
 import { linearFit, mean, sd } from './stats.js';
 import { renderPlot } from './plot.js';
 
@@ -218,13 +218,13 @@ export function mountPlate(host, ctx) {
     commit(); render();
   }
 
-  function standardSeries() {
-    if (!selected.size) { alert('Select the standard wells first, in the order of the series.'); return; }
-    const top = toNumber(prompt('Highest standard concentration:', '2000'));
+  async function standardSeries() {
+    if (!selected.size) { ask.alert('Select the standard wells first, in the order of the series.'); return; }
+    const top = toNumber(await ask.prompt('Highest standard concentration', '2000', { okLabel: 'Next' }));
     if (!Number.isFinite(top)) return;
-    const factor = toNumber(prompt('Divide by this at each step:', '2'));
+    const factor = toNumber(await ask.prompt('Divide by this at each step', '2', { okLabel: 'Next' }));
     if (!Number.isFinite(factor) || factor <= 1) return;
-    const reps = Math.max(1, Math.round(toNumber(prompt('Replicates of each standard (next to each other in the selection):', '2')) || 1));
+    const reps = Math.max(1, Math.round(toNumber(await ask.prompt('Replicates of each standard (next to each other in the selection)', '2', { okLabel: 'Make the series' })) || 1));
     const wells = [...selected].sort((a, b) => {
       const [ra, ca] = wellPos(a);
       const [rb, cb] = wellPos(b);
@@ -262,19 +262,19 @@ export function mountPlate(host, ctx) {
     if (dragging) { dragging = false; render(); }
   };
   window.addEventListener('mouseup', onMouseUp);
-  root.addEventListener('click', (event) => {
+  root.addEventListener('click', async (event) => {
     const b = event.target.closest('button');
     if (!b) return;
     if (b.dataset.mode) { mode = b.dataset.mode; render(); return; }
     if (b.dataset.act === 'paste') {
       const text = root.querySelector('.nb-plate-paste textarea').value;
       const values = parseReadings(text, data.format);
-      if (!Object.keys(values).length) { alert('No readings found in that text.'); return; }
+      if (!Object.keys(values).length) { ask.alert('No readings found in that text.'); return; }
       data.values = { ...(data.values || {}), ...values };
       mode = 'layout';
       commit(); render();
     } else if (b.dataset.act === 'clear') {
-      if (!confirm('Clear all readings?')) return;
+      if (!(await ask.confirm('Clear all readings?', { danger: true }))) return;
       data.values = {};
       commit(); render();
     } else if (b.dataset.act === 'apply') applyRole();

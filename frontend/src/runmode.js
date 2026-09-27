@@ -7,11 +7,11 @@
 
 import { appendLogLine, checkStep, taskItems } from './docops.js';
 import { findDurations, timers } from './timers.js';
-import { el, escapeHtml } from './util.js';
+import { ask, el, escapeHtml } from './util.js';
 
 export function openRunMode(editor, { title = '' } = {}) {
   if (!taskItems(editor.state.doc).length) {
-    alert('This page has no checklist to run. Steps written as a task list (☐) can be run one at a time.');
+    ask.alert('This page has no checklist to run. Steps written as a task list (☐) can be run one at a time.');
     return;
   }
   let index = taskItems(editor.state.doc).findIndex((t) => !t.checked);
@@ -80,8 +80,11 @@ export function openRunMode(editor, { title = '' } = {}) {
     }
     if (name === 'undo') checkStep(editor, step.pos, false, { stamp: false });
     if (name === 'deviation') {
-      const text = prompt(`What was different at step ${index + 1}?`);
-      if (text && text.trim()) appendLogLine(editor, /deviation/i, 'Deviations', `Step ${index + 1} (${overlay._clean.slice(0, 50)}): ${text.trim()}`);
+      ask.prompt(`What was different at step ${index + 1}?`, '', { okLabel: 'Note it' }).then((text) => {
+        if (text && text.trim()) appendLogLine(editor, /deviation/i, 'Deviations', `Step ${index + 1} (${overlay._clean.slice(0, 50)}): ${text.trim()}`);
+        render();
+      });
+      return;
     }
     render();
   }

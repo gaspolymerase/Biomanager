@@ -1658,7 +1658,7 @@ function applyStatusChange(select, previous) {
 /* Changing a birth date asks first (filling in a blank one doesn't). A
    mouse in a cohort shares its litter's date, so saying yes moves it to a
    litter of its own. */
-function confirmDobChange(input) {
+async function confirmDobChange(input) {
   const from = input.dataset.originalDob || '';
   const to = input.value || '';
   if (to === from) return false;
@@ -1670,7 +1670,7 @@ function confirmDobChange(input) {
     const what = form?.dataset.recordLabel || 'this litter';
     const message = `Change the date of birth of ${what}${from ? ` from ${from}` : ''} to ${to || '(blank)'}?`
       + (n ? `\n\nThe age of its ${n} ${n === 1 ? 'mouse' : 'mice'} changes with it.` : '');
-    if (!window.confirm(message)) {
+    if (!(await BioDialog.confirm(message, { okLabel: 'Change the date' }))) {
       input.value = from;
       input.dataset.empty = from ? '0' : '1';
       return false;
@@ -1692,7 +1692,7 @@ function confirmDobChange(input) {
       + `It is in litter ${input.dataset.originalLitter}, so it will move to a new litter of its own. `
       + 'The other mice in that litter keep their date.'
     : `Change the date of birth of ${who}${from ? ` from ${from}` : ''} to ${to || '(blank)'}?`;
-  if (!window.confirm(message)) {
+  if (!(await BioDialog.confirm(message, { okLabel: 'Change the date' }))) {
     input.value = from;
     input.dataset.empty = from ? '0' : '1';
     return false;
@@ -1706,10 +1706,10 @@ function wireDobInput(input) {
   // A date typed digit by digit changes several times; ask once the value
   // has settled, or when the field is left.
   let timer = null;
-  const settle = () => {
+  const settle = async () => {
     clearTimeout(timer);
     timer = null;
-    if (!confirmDobChange(input)) return;
+    if (!(await confirmDobChange(input))) return;
     input.dataset.dirty = '1';
     input.dataset.empty = input.value ? '0' : '1';
     autosaveInput(input, { immediate: true });
@@ -1922,17 +1922,22 @@ document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
     // Any change to an existing mouse's birth date asks first. In a
     // litter, saying yes moves it to a new litter of its own.
     const dob = form.elements.date_of_birth.value;
-    if (!original.id || dob === (original.date_of_birth || '')) return;
+    // Filling in a blank date replaces nothing: no question.
+    if (!original.id || dob === (original.date_of_birth || '') || !original.date_of_birth) return;
+    if (form.dataset.confirmed === '1') { delete form.dataset.confirmed; return; }
     const cohort = original.litter_id && original.date_of_birth && form.elements.litter_id.value === original.litter_id;
     const message = cohort
       ? `Change the date of birth of mouse ${original.mouse_id} from ${original.date_of_birth} to ${dob || '(blank)'}?\n\n`
         + `It is in litter ${original.litter_id}, so it will move to a new litter of its own. The other mice keep their date.`
       : `Change the date of birth of mouse ${original.mouse_id}${original.date_of_birth ? ` from ${original.date_of_birth}` : ''} to ${dob || '(blank)'}?`;
-    if (!window.confirm(message)) {
-      event.preventDefault();
-      return;
-    }
-    if (cohort) form.elements.confirm_cohort_dob_change.value = '1';
+    event.preventDefault();
+    const submitter = event.submitter;
+    BioDialog.confirm(message, { okLabel: 'Change the date' }).then((ok) => {
+      if (!ok) return;
+      if (cohort) form.elements.confirm_cohort_dob_change.value = '1';
+      form.dataset.confirmed = '1';
+      form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+    });
   });
 })();
 

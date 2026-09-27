@@ -301,7 +301,7 @@
 <script nonce="{{ csp_nonce() }}">
 // Topic management stays here so the sidebar works even without the editor bundle.
 async function createTab() {
-  const title = prompt('Topic name:');
+  const title = await BioDialog.prompt('New topic', '', { placeholder: 'e.g. Photometry', okLabel: 'Create topic' });
   if (!title || !title.trim()) return;
   const formData = new FormData();
   formData.append('title', title.trim());
@@ -312,7 +312,7 @@ async function createTab() {
 
 async function renameTab(tabId) {
   const current = document.querySelector(`.notebook-tab[data-tab-id="${tabId}"] .tab-title`)?.textContent || '';
-  const title = prompt('Rename topic:', current);
+  const title = await BioDialog.prompt('Rename topic', current, { okLabel: 'Rename' });
   if (!title || !title.trim()) return;
   const formData = new FormData();
   formData.append('title', title.trim());

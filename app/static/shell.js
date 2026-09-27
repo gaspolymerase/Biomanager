@@ -276,8 +276,17 @@ document.addEventListener('submit', (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement) || form.hasAttribute('data-selection-form')) return;
   const text = form.getAttribute('data-confirm');
-  if (text && !window.confirm(text)) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
+  if (!text) return;
+  // Answered yes a moment ago: this is the submit that follows (see below).
+  if (form.dataset.confirmed === '1') { delete form.dataset.confirmed; return; }
+  // Ask in the app (BioDialog), then submit again with the same button.
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const submitter = event.submitter;
+  window.BioDialog.confirm(text, { danger: window.BioDialog.looksDestructive(text) }).then((ok) => {
+    if (!ok) return;
+    form.dataset.confirmed = '1';
+    if (typeof form.requestSubmit === 'function') form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+    else { delete form.dataset.confirmed; form.submit(); }
+  });
 }, true);

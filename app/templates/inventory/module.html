@@ -743,7 +743,7 @@
           if (!response.ok || result.ok === false) {
             from.prepend(card);
             recount();
-            alert(result.error || 'Could not move it.');
+            BioDialog.alert(result.error || 'Could not move it.');
             return;
           }
           applyRow(card.dataset.id, result);

@@ -1207,6 +1207,9 @@
   }
   .record-dialog-hint { @apply mr-auto text-[12px] text-muted; }
   .record-dialog-narrow { @apply w-[min(460px,calc(100vw-2rem))]; }
+  /* BioDialog (static/dialogs.js): the app's confirm, prompt and alert. */
+  .bio-dialog-body { @apply gap-2.5; }
+  .bio-dialog-text { @apply m-0 whitespace-pre-line text-[13px] leading-snug text-ink-soft; }
 
   /* The CSV Import dialog (static/csv-import.js) and small in-page dialogs
      such as an experiment's Record weight: a card over a dimmed page. */

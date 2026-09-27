@@ -845,9 +845,15 @@
     form.addEventListener('submit', (event) => {
       const now = form.elements.genotype.value.trim();
       if (!opened.id || !opened._uses || now === opened.genotype) return;
-      if (!window.confirm(`Rename “${opened.genotype}” to “${now}”? ${opened._uses} active {{ m.units }} (and any crosses using it as a parent) will be relabelled.`)) {
-        event.preventDefault();
-      }
+      if (form.dataset.confirmed === '1') { delete form.dataset.confirmed; return; }
+      event.preventDefault();
+      const submitter = event.submitter;
+      BioDialog.confirm(`Rename “${opened.genotype}” to “${now}”? ${opened._uses} active {{ m.units }} (and any crosses using it as a parent) will be relabelled.`,
+                        { okLabel: 'Rename' }).then((ok) => {
+        if (!ok) return;
+        form.dataset.confirmed = '1';
+        form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+      });
     });
   })();
 

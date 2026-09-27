@@ -174,8 +174,9 @@
       if (pick) {
         api('/notebook/api/pages/new', { body: { template_id: Number(pick.dataset.template) } }).then(function (d) { go(d.url); });
       } else if (del) {
-        if (!confirm('Delete this template?')) return;
-        fetch('/notebook/templates/' + del.dataset.delTemplate + '/delete', { method: 'POST' }).then(loadTemplates);
+        BioDialog.confirm('Delete this template?', { danger: true }).then(function (ok) {
+          if (ok) fetch('/notebook/templates/' + del.dataset.delTemplate + '/delete', { method: 'POST' }).then(loadTemplates);
+        });
       }
     });
     var tform = $('#notebook-template-form');
@@ -402,17 +403,22 @@
           var del = e.target.closest('[data-comment-delete]');
           if (q && nb) nb.scrollToQuote(Number(q.dataset.quote));
           if (r) api('/notebook/api/comments/' + r.dataset.resolve + '/resolve', { body: { resolved: r.dataset.to === '1' } }).then(function () { PANELS.comments.render(box, {}); });
-          if (del && confirm('Delete this comment?')) api('/notebook/api/comments/' + del.dataset.commentDelete + '/delete', { body: {} }).then(function () { PANELS.comments.render(box, {}); });
+          if (del) BioDialog.confirm('Delete this comment?', { danger: true }).then(function (ok) {
+            if (ok) api('/notebook/api/comments/' + del.dataset.commentDelete + '/delete', { body: {} }).then(function () { PANELS.comments.render(box, {}); });
+          });
         };
       }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
 
       function afterPost(d) {
         if (d.no_access && d.no_access.length) {
           var names = d.no_access_names.join(', ');
-          if (isOwner && confirm(names + ' cannot see this page, so was not told. Let them view it?')) {
-            Promise.all(d.no_access.map(function (u) { return api('/notebook/api/pages/' + page.id + '/shares', { body: { username: u, role: 'view' } }); }))
-              .then(function () { toast('Shared with ' + esc(names) + '.'); });
-          } else if (!isOwner) {
+          if (isOwner) {
+            BioDialog.confirm(names + ' cannot see this page, so was not told. Let them view it?', { okLabel: 'Let them view it' }).then(function (ok) {
+              if (!ok) return;
+              Promise.all(d.no_access.map(function (u) { return api('/notebook/api/pages/' + page.id + '/shares', { body: { username: u, role: 'view' } }); }))
+                .then(function () { toast('Shared with ' + esc(names) + '.'); });
+            });
+          } else {
             toast(esc(names) + ' cannot see this page, so was not told. Ask ' + esc(page.owner_name) + ' to share it.', true);
           }
         }
@@ -476,11 +482,12 @@
           var row = e.target.closest('[data-version]');
           if (row) showVersion(Number(row.dataset.version), box);
           var restore = e.target.closest('[data-restore]');
-          if (restore && confirm('Put the page back as it was in this version? What is there now stays in the history.')) {
+          if (restore) BioDialog.confirm('Put the page back as it was in this version? What is there now stays in the history.', { okLabel: 'Restore' }).then(function (ok) {
+            if (!ok) return;
             flushed().then(function () { return api('/notebook/api/versions/' + restore.dataset.restore + '/restore', { body: {} }); })
               .then(function () { window.location.reload(); })
               .catch(function (err) { toast(esc(err.message), true); });
-          }
+          });
         };
       }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
     },
@@ -504,11 +511,12 @@
     });
   }
   function saveNamedVersion() {
-    var label = prompt('Name this version (e.g. “before re-analysis”):', '');
-    if (label === null) return Promise.resolve();
-    return flushed()
-      .then(function () { return api('/notebook/api/pages/' + page.id + '/versions', { body: { label: label } }); })
-      .then(function () { toast('Version saved.'); });
+    return BioDialog.prompt('Name this version', '', { placeholder: 'e.g. before re-analysis', okLabel: 'Save version' }).then(function (label) {
+      if (label === null) return undefined;
+      return flushed()
+        .then(function () { return api('/notebook/api/pages/' + page.id + '/versions', { body: { label: label } }); })
+        .then(function () { toast('Version saved.'); });
+    });
   }
 
   // ---- search
@@ -582,11 +590,12 @@
           if (b.dataset.back) api('/notebook/api/meetings/' + b.dataset.back + '/advance', { body: { step: -1 } }).then(function () { PANELS.meetings.render(box); });
           if (b.dataset.edit) seriesForm(box, byId[b.dataset.edit], d.people, weekdays);
           if (b.dataset.cal) {
-            var n = prompt('How many of the coming meetings?', String(Math.max(4, byId[b.dataset.cal].members.length)));
-            if (!n) return;
-            api('/notebook/api/meetings/' + b.dataset.cal + '/calendar', { body: { count: Number(n) } })
-              .then(function (r) { toast(r.made ? r.made + ' meeting' + (r.made > 1 ? 's' : '') + ' added to the calendar, each naming its presenter.' : 'They are on the calendar already.'); })
-              .catch(function (err) { toast(esc(err.message), true); });
+            BioDialog.prompt('How many of the coming meetings?', String(Math.max(4, byId[b.dataset.cal].members.length)), { okLabel: 'Add to the calendar' }).then(function (n) {
+              if (!n) return;
+              api('/notebook/api/meetings/' + b.dataset.cal + '/calendar', { body: { count: Number(n) } })
+                .then(function (r) { toast(r.made ? r.made + ' meeting' + (r.made > 1 ? 's' : '') + ' added to the calendar, each naming its presenter.' : 'They are on the calendar already.'); })
+                .catch(function (err) { toast(esc(err.message), true); });
+            });
           }
         };
       }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
@@ -629,7 +638,9 @@
         if (b.dataset.down !== undefined) { i = Number(b.dataset.down); if (i < members.length - 1) { members.splice(i + 1, 0, members.splice(i, 1)[0]); draw(); } }
         if (b.dataset.out !== undefined) { members.splice(Number(b.dataset.out), 1); draw(); }
         if (b.dataset.cancel !== undefined) holder.innerHTML = '';
-        if (b.dataset.deleteSeries !== undefined && confirm('Delete ' + s.name + '? Its notes stay.')) api('/notebook/api/meetings/' + s.id + '/delete', { body: {} }).then(function () { PANELS.meetings.render(box); });
+        if (b.dataset.deleteSeries !== undefined) BioDialog.confirm('Delete ' + s.name + '? Its notes stay.', { danger: true }).then(function (ok) {
+          if (ok) api('/notebook/api/meetings/' + s.id + '/delete', { body: {} }).then(function () { PANELS.meetings.render(box); });
+        });
       };
       form.onsubmit = function (e) {
         e.preventDefault();
@@ -668,7 +679,9 @@
             nb.editor.chain().focus().insertLabBlock('recipe', value).run();
             toast('Inserted ' + esc(r.name) + '.');
           }
-          if (del && confirm('Delete this recipe from the library?')) api('/notebook/api/recipes/' + del.dataset.delRecipe + '/delete', { body: {} }).then(function () { PANELS.recipes.render(box); });
+          if (del) BioDialog.confirm('Delete this recipe from the library?', { danger: true }).then(function (ok) {
+            if (ok) api('/notebook/api/recipes/' + del.dataset.delRecipe + '/delete', { body: {} }).then(function () { PANELS.recipes.render(box); });
+          });
         };
       }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
     },
@@ -838,11 +851,12 @@
       } else if (action === 'finish') {
         meta({ action: 'finish', outcome: b.dataset.outcome }).then(function () { window.location.reload(); });
       } else if (action === 'start-experiment') {
-        var name = prompt('Name the experiment:', page.title + ' — ' + new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }));
-        if (name === null) return;
-        flushed().then(function () {
-          return api('/notebook/api/pages/' + page.id + '/start-experiment', { body: { title: name } });
-        }).then(function (d) { go(d.url); }).catch(function (e) { toast(esc(e.message), true); });
+        BioDialog.prompt('Name the experiment', page.title + ' — ' + new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }), { okLabel: 'Start' }).then(function (name) {
+          if (name === null) return;
+          flushed().then(function () {
+            return api('/notebook/api/pages/' + page.id + '/start-experiment', { body: { title: name } });
+          }).then(function (d) { go(d.url); }).catch(function (e) { toast(esc(e.message), true); });
+        });
       } else if (action === 'release') {
         flushed().then(function () {
           return api('/notebook/api/pages/' + page.id + '/versions', { body: { release: true } });
@@ -928,20 +942,23 @@
       if (what === 'source') openSource();
       if (what === 'version') saveNamedVersion();
       if (what === 'template') {
-        var name = prompt('Save this page as a template named:', page.title || 'Untitled template');
-        if (!name) return;
-        var f = new FormData();
-        f.append('title', name);
-        f.append('from_page_id', page.id);
-        flushed().then(function () {
-          return fetch('/notebook/templates/create', { method: 'POST', body: f });
-        }).then(function (r) { return r.json(); })
-          .then(function (d) { if (d.ok) toast('Saved as the template “' + esc(name) + '”.'); });
+        BioDialog.prompt('Save this page as a template named', page.title || 'Untitled template', { okLabel: 'Save template' }).then(function (name) {
+          if (!name) return;
+          var f = new FormData();
+          f.append('title', name);
+          f.append('from_page_id', page.id);
+          flushed().then(function () {
+            return fetch('/notebook/templates/create', { method: 'POST', body: f });
+          }).then(function (r) { return r.json(); })
+            .then(function (d) { if (d.ok) toast('Saved as the template “' + esc(name) + '”.'); });
+        });
       }
       if (what === 'delete') {
-        if (!confirm('Delete “' + (page.title || 'Untitled page') + '”? Its history and comments go with it.')) return;
-        fetch('/notebook/pages/' + page.id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } })
-          .then(function (r) { return r.json(); }).then(function (d) { go('/notebook?tab=' + d.tab_id); });
+        BioDialog.confirm('Delete “' + (page.title || 'Untitled page') + '”? Its history and comments go with it.', { danger: true, okLabel: 'Delete page' }).then(function (ok) {
+          if (!ok) return;
+          fetch('/notebook/pages/' + page.id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } })
+            .then(function (r) { return r.json(); }).then(function (d) { go('/notebook?tab=' + d.tab_id); });
+        });
       }
     });
   }

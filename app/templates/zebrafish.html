@@ -1081,7 +1081,14 @@
   // Delete confirmations say what else the delete touches.
   document.querySelectorAll('form[data-confirm-delete]').forEach((form) => {
     form.addEventListener('submit', (event) => {
-      if (!confirm(form.dataset.confirmDelete)) event.preventDefault();
+      if (form.dataset.confirmed === '1') { delete form.dataset.confirmed; return; }
+      event.preventDefault();
+      const submitter = event.submitter;
+      BioDialog.confirm(form.dataset.confirmDelete, { danger: true }).then((ok) => {
+        if (!ok) return;
+        form.dataset.confirmed = '1';
+        form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+      });
     });
   });
 
