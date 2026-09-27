@@ -345,6 +345,8 @@ class Notifications(AppTestCase):
         got = [n for n in notes_for(self.member, "orders") if name in n[0]]
         self.assertEqual(len(got), 1)
         self.assertIn("was received", got[0][0])
+        # It opens that order, not just the list.
+        self.assertEqual(got[0][2], f"/inventory/{orders}?open={oid}")
 
     def test_a_status_change_outside_orders_is_not_an_order_notice(self):
         oid = self.make_item(self.m, "reagents", uniq("Buffer"), status="in stock")

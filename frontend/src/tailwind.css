@@ -1132,6 +1132,7 @@
            text-[11.5px] font-semibold whitespace-nowrap text-brand-700 transition-colors hover:bg-brand-100;
   }
   .row-stock-btn[hidden] { @apply hidden; }
+  .row-stock-link { @apply bg-sand-100 font-medium text-ink-soft no-underline hover:bg-sand-200; }
   .row-stock-btn svg { @apply size-3; }
   @media (hover: hover) {
     .sheet-table tbody tr .sheet-actions { @apply opacity-40 transition-opacity; }

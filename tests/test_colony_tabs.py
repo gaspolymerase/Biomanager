@@ -346,9 +346,44 @@ class BreedersTabTests(AppTestCase):
         self.make_cage(self.a, breeding, purpose="Breeding")
         self.make_cage(self.a, other, purpose="Experiments")
         html = self.get_ok(self.m, "/colony?view=breeders&scope=all")
-        self.assertIn(f"<strong>{breeder}</strong>", html)
-        self.assertIn(f"<strong>{breeding}</strong>", html)
-        self.assertNotIn(f"<strong>{other}</strong>", html)
+        self.assertIn(f">{breeder}</a></strong>", html)
+        self.assertIn(f">{breeding}</a></strong>", html)
+        self.assertNotIn(f">{other}</a></strong>", html)
+
+
+class WhereThingsAreTests(AppTestCase):
+    """Cards, the export and the Breeders tab say which rack and position
+    a cage is in, and how many of each sex it holds."""
+
+    def placed_cage(self, purpose="breeder"):
+        rack = uniq("Rack")
+        self.a.post("/colony/racks/save", data={"id": "", "name": rack, "rows": "4", "cols": "6"})
+        code = uniq("C")
+        rack_id = one("select id from mouse_racks where name=?", rack)
+        self.make_cage(self.a, code, purpose=purpose, rack_id=str(rack_id), position="B3")
+        self.make_mouse(self.a, self.admin, cage=code, gender="F")
+        self.make_mouse(self.a, self.admin, cage=code, gender="F")
+        self.make_mouse(self.a, self.admin, cage=code, gender="M")
+        return rack, code
+
+    def test_a_cage_card_says_where_it_goes_and_the_sexes(self):
+        rack, code = self.placed_cage()
+        html = self.get_ok(self.a, f"/labels/cards/cages?scope=all&ids={one('select id from mouse_cages where cage_id=?', code)}")
+        self.assertIn(f"{rack} · B3", html)
+        self.assertIn("3 · 2♀ 1♂", html)
+
+    def test_the_export_has_rack_and_position(self):
+        rack, code = self.placed_cage()
+        text = self.a.get("/colony/mice/export?format=csv&scope=all").get_data(as_text=True)
+        header, *lines = text.splitlines()
+        self.assertIn("Cage_ID,Rack,Position,", header)
+        self.assertTrue(any(f",{code},{rack},B3," in line for line in lines))
+
+    def test_the_breeders_tab_shows_rack_position_and_sexes(self):
+        rack, code = self.placed_cage()
+        html = self.get_ok(self.a, "/colony?view=breeders&scope=all")
+        self.assertIn(f"{rack} · B3", html)
+        self.assertIn("3 alive (2♀ 1♂)", html)
 
 
 class WeanDistributeTests(AppTestCase):

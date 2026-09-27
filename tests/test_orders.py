@@ -342,6 +342,19 @@ class OfferStockTests(OrdersCase):
         self.assertIn("Add where it is kept and when it expires", flash_text(self.a.get(location(r))))
 
 
+    def test_an_order_and_the_stock_it_became_link_to_each_other(self):
+        name = uniq("DNase ")
+        oid = self.order(name=name, status="received")
+        self.a.post(f"/inventory/{self.orders}/items/{oid}/to-reagents", data={"target": self.reagents, "shared": "1"})
+        [rid] = items_named(self.reagents, name)
+        number = item(rid)["number"]
+        orders_page = self.get_ok(self.a, f"/inventory/{self.orders}")
+        self.assertIn(f'href="/inventory/{self.reagents}?open={rid}"', orders_page)
+        self.assertIn(f"#{number}</a>", orders_page)
+        stock_page = self.get_ok(self.a, f"/inventory/{self.reagents}")
+        self.assertIn(f'href="/inventory/{self.orders}?open={oid}"', stock_page)
+
+
 class StockRequiredTests(OrdersCase):
     """Add to stock respects what the stock inventory requires."""
 

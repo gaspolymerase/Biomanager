@@ -1143,11 +1143,22 @@ def breeder_mice(session, current_username: str | None, current_role: str | None
             )
             if mouse.litter and mouse.litter.litter_id:
                 search_parts.append(mouse.litter.litter_id)
+        rack = cage.rack.name if cage.rack else ""
+        position = _cage_position(cage)
+        search_parts += [rack, position]
         search_blob = " ".join(part for part in search_parts if part).lower()
         active_count = sum(1 for mouse in sorted_mice if mouse_is_active(mouse))
+        living = [mouse for mouse in sorted_mice if mouse_is_active(mouse)]
+        females = sum(1 for mouse in living if mouse.gender == "F")
+        males = sum(1 for mouse in living if mouse.gender == "M")
         grouped.append(
             {
                 "cage_id": cage.cage_id,
+                "id": cage.id,
+                "rack": rack,
+                "position": position,
+                "females": females,
+                "males": males,
                 "cage_location": cage.cage_location,
                 "room": cage.room,
                 "location_detail": cage.location_detail,
@@ -1201,6 +1212,8 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
             "Transgene_3",
             "Transgene_4",
             "Cage_ID",
+            "Rack",
+            "Position",
             "Cage_Location",
             "Owner",
             "Litter_ID",
@@ -1223,6 +1236,8 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
                 row["transgene_3"],
                 row["transgene_4"],
                 row["cage_id"],
+                row.get("cage_rack", ""),
+                row.get("cage_position", ""),
                 row["cage_location"],
                 row["owner"],
                 row["litter_id"],

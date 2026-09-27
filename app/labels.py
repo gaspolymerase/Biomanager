@@ -26,7 +26,7 @@ from sqlalchemy import select
 
 from .db import SessionLocal
 from .models import CageRecord, OrgHousing, OrganismModule
-from . import access
+from . import access, positions
 from . import organism_service as svc
 
 bp = Blueprint("labels", __name__, url_prefix="/labels")
@@ -78,6 +78,17 @@ def qr_svg():
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
+def _cage_where(cage) -> str:
+    """"Rack A · D7", "Rack A" when not placed in it, else the room or the
+    location note."""
+    if cage.rack is not None:
+        where = cage.rack.name
+        if cage.rack_row and cage.rack_col:
+            where += " · " + positions.label(cage.rack_row, cage.rack_col, cage.rack.naming, cage.rack.cols)
+        return where
+    return cage.room or cage.cage_location or "—"
+
+
 def _absolute(path: str) -> str:
     """Turn an app path into a URL that resolves from a phone on the LAN."""
     return request.url_root.rstrip("/") + path
@@ -105,6 +116,10 @@ def cage_cards():
         cards = []
         for cage in cages:
             living = [m for m in cage.mice if m.date_of_death is None]
+            females = sum(1 for m in living if m.gender == "F")
+            males = sum(1 for m in living if m.gender == "M")
+            split = " ".join(f"{n}{sign}" for n, sign in
+                             ((females, "♀"), (males, "♂"), (len(living) - females - males, "?")) if n)
             genotypes = sorted({(m.genotype or "").strip() for m in living if (m.genotype or "").strip()})
             # scope=all: a card is scanned by whoever is at the rack, and the
             # default "My colony" view would leave someone else's cage out.
@@ -115,8 +130,9 @@ def cage_cards():
                 "rows": [
                     ("Owner", cage.owner or "—"),
                     ("Purpose", cage.purpose or "—"),
-                    ("Room", cage.room or cage.cage_location or "—"),
-                    ("Animals", str(len(living))),
+                    # Where it goes back: its rack and position, else the room.
+                    ("Where", _cage_where(cage)),
+                    ("Animals", f"{len(living)} · {split}" if split else str(len(living))),
                     ("Genotype", "; ".join(genotypes)[:60] or "—"),
                     ("Card ID", cage.card_id or "—"),
                 ],

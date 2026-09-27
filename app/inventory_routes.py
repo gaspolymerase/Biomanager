@@ -330,6 +330,7 @@ def module(key: str):
             "usernames": current_lab_usernames(session), "sources": sources, "mouse_links": mouse_links,
             "next_number": svc.next_number(session, row.id),
             "stock_targets": stock_targets, "order_module": order_module, "reorder": reorder,
+            "stock_links": _order_stock_links(session, row, items),
             "remembered": svc.remembered(session, mv, items),
             "can_configure": _can_configure(row), "is_admin": access.is_admin(),
             "terminal_statuses": sorted(svc.TERMINAL_STATUSES),
@@ -769,6 +770,41 @@ STOCK_CATEGORY = {"reagents": "reagent", "antibodies": "antibody"}
 def _stock_targets(session) -> list[InventoryModule]:
     """The reagent and antibody inventories this person can add to."""
     return [m for m in svc.list_modules(session) if m.kind in STOCK_KINDS]
+
+
+def _order_stock_links(session, row: InventoryModule, items: list[InventoryItem]) -> dict[int, dict]:
+    """Item id → the record on the other side of "To stock": on an order,
+    the reagent it became ("stocked_as": "reagents:8"); on a reagent or
+    antibody, the order it came from. Each with a label and a link that
+    opens it."""
+    links: dict[int, dict] = {}
+    if row.kind == "orders":
+        wanted: dict[tuple[str, int], int] = {}
+        for item in items:
+            key, _, number = (item.attrs_dict.get("stocked_as") or "").partition(":")
+            if key and number.isdigit():
+                wanted[(key, int(number))] = item.id
+        modules = {m.key: m for m in svc.list_modules(session) if m.key in {k for k, _n in wanted}}
+        for (key, number), order_id in wanted.items():
+            target = modules.get(key)
+            stock = target and session.scalar(select(InventoryItem).where(
+                InventoryItem.module_id_fk == target.id, InventoryItem.number == number))
+            if stock is not None:
+                links[order_id] = {"label": f"{target.label} #{number}", "icon": "flask",
+                                   "title": f"In stock as {target.label} #{number}: open it",
+                                   "url": url_for("inventory.module", key=key, open=stock.id)}
+    elif row.kind in STOCK_KINDS:
+        numbers = {item.number: item.id for item in items}
+        for orders in (m for m in svc.list_modules(session) if m.kind == "orders"):
+            for order in session.scalars(select(InventoryItem).where(
+                    InventoryItem.module_id_fk == orders.id, InventoryItem.attrs.like('%"stocked_as"%'))):
+                key, _, number = (order.attrs_dict.get("stocked_as") or "").partition(":")
+                if key == row.key and number.isdigit() and int(number) in numbers:
+                    links[numbers[int(number)]] = {
+                        "label": f"{orders.label} #{order.number}", "icon": "cart",
+                        "title": f"Came from {orders.label} #{order.number}: open the order",
+                        "url": url_for("inventory.module", key=orders.key, open=order.id)}
+    return links
 
 
 def _order_module(session) -> InventoryModule | None:

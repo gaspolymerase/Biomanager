@@ -228,7 +228,7 @@ def _item(obj: InventoryItem, actor: str) -> list[dict]:
     return [_note(obj.owner, "orders", ("order", actor, word, obj.module_id_fk), label,
                   f"Your order {label} was {word} by {actor}",
                   f"{{n}} of your orders were {word} by {actor}: {{items}}", ("inventory", obj.module_id_fk),
-                  orders_module=obj.module_id_fk)]
+                  orders_module=obj.module_id_fk, one_link=("inventory-item", obj.id))]
 
 
 DIRTY_RULES = {MouseRecord: _mouse, CageRecord: _cage, TankRecord: _tank, FishRecord: _fish,
@@ -325,6 +325,11 @@ def _link(session, target) -> str:
         if kind == "inventory":
             module = session.get(InventoryModule, ident)
             return url_for("inventory.module", key=module.key) if module else ""
+        if kind == "inventory-item":
+            # The order itself, opened in its dialog (?open=, inventory_routes).
+            item = session.get(InventoryItem, ident)
+            module = session.get(InventoryModule, item.module_id_fk) if item else None
+            return url_for("inventory.module", key=module.key, open=item.id) if module else ""
     except Exception:  # noqa: BLE001 — a link is a convenience; the message still goes
         return ""
     return ""
@@ -350,7 +355,10 @@ def deliver(session, notes: list[dict]) -> int:
             if len(items) > MAX_LISTED:
                 listed += f" and {len(items) - MAX_LISTED} more"
             title = first["many"].replace("{n}", str(len(items))).replace("{items}", listed)
-        link = _link(session, first["link"]) if first.get("link") else ""
+        # One item links to that item where there is a page for it; several
+        # to the list they are in.
+        target = first.get("one_link") if len(items) == 1 and first.get("one_link") else first.get("link")
+        link = _link(session, target) if target else ""
         actor = first["group"][1] if len(first["group"]) > 1 else ""
         if send(session, recipient, title, category=category, link=link, actor=actor):
             sent += 1
