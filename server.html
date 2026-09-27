@@ -376,10 +376,13 @@ curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/rele
         <tr><th>3 · Off-site</th><td>Encrypted copies in cloud storage, kept 30 days, 12 weeks and 24 months — and, with the
           bucket's Object Lock on, safe from deletion even by someone who takes over the server. Backblaze B2's first 10 GB are free — years of a lab's backups.
           One command: <code>sudo deploy/host/offsite-setup.sh</code>.</td></tr>
-        <tr><th>4 · On your own computers</th><td>An admin's Mac can pull every night's backup over SSH into
-          <code>~/BioManagerBackups</code> (and so into Time Machine): <code>deploy/mac/install.sh</code> from the bundle, on a
-          Mac that can <code>ssh</code> to the server. Any Linux computer can do the same with <code>rsync</code> from cron. The
-          more places hold a copy, the safer.</td></tr>
+        <tr><th>4 · On every lab computer</th><td>The <b>desktop app</b> keeps its own copy of the whole lab: on the server,
+          <b>Settings → Copies of the lab → Make a key</b> for a computer; in that computer's desktop app, <b>Settings → Keep a copy
+          of your lab server</b>, the address and the key. While the app is open it takes a fresh copy every day, checks it
+          arrived whole, keeps the last 14 and mirrors every uploaded file. Admins see which computers hold a copy and how
+          fresh it is. Put the app on a few lab machines and the lab survives even losing the server and its off-site copies.
+          (Admins may allow members to keep copies too, in Lab setup.) An admin's Mac can also pull the server's own nightly
+          backups over SSH: <code>deploy/mac/install.sh</code> from the bundle.</td></tr>
         <tr><th>5 · Everyone</th><td>Every sheet has <b>Export</b>, a CSV of what it shows that opens in Excel; and
           <b>Settings → Export my data</b> downloads your own mice and plasmids as CSV with your notebook pages, any time.</td></tr>
         <tr><th>6 · Undo and history</th><td>Mistakes, not disasters: every bulk change can be undone from <b>Batches</b>, and the
@@ -391,8 +394,9 @@ curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/rele
     <!-- ======================================================= move -->
     <section id="move">
       <h2>Moving from the desktop app to a server</h2>
-      <p>Everything you entered in the app comes along: records, history, IDs. Do it <b>before the server's first start</b>
-        (the copy goes into an empty database):</p>
+      <p>Everything you entered in the app comes along: records, history, IDs. The same steps rebuild a lost server from a
+        lab computer's copy: use the newest <code>.db</code> from its <code>lab-copies/…/db</code> folder instead, and its
+        <code>uploads</code> folder. Do it <b>before the server's first start</b> (the copy goes into an empty database):</p>
       <ol class="steps-list">
         <li>Quit the app, and copy its data folder (see <a href="#desktop">A</a>) to the server, for example with
           <code>scp</code>, to <code>/tmp/lab</code>.</li>
