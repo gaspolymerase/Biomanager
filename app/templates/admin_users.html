@@ -50,7 +50,7 @@
               {% elif u.expired %}
                 <span class="badge badge-quiet">guest, ended</span>
               {% elif u.expires_at %}
-                <span class="badge badge-brand" title="Until {{ u.expires_at.strftime('%Y-%m-%d %H:%M') }} UTC">guest</span>
+                <span class="badge badge-brand" title="Until {{ (u.expires_at | local).strftime('%Y-%m-%d %H:%M') }}">guest</span>
               {% else %}
                 <span class="dt-status" data-status="active">active</span>
               {% endif %}

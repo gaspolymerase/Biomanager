@@ -100,7 +100,7 @@ def _done(key: str, message: str = "", error: str = ""):
 
 
 # Query parameters that open something once when the page loads.
-ONE_SHOT_PARAMS = ("reorder", "offer", "open")
+ONE_SHOT_PARAMS = ("reorder", "offer", "open", "from_order", "shared")
 
 
 def _back(key: str, **params) -> str:
@@ -320,6 +320,9 @@ def module(key: str):
         order_module = _order_module(session) if row.kind in STOCK_KINDS else None
         reorder = (_reorder_payload(session, mv, items, request.args.get("reorder", ""))
                    if row.kind == "orders" and request.args.get("reorder") else None)
+        if row.kind in STOCK_KINDS and request.args.get("from_order"):
+            reorder = _from_order_payload(session, mv, request.args["from_order"],
+                                          shared=request.args.get("shared") == "1")
         context = {
             "module": mv, "rows": rows, "racks": racks, "col_sig": format(zlib.crc32(layout.encode()), "x"),
             "manageable_racks": {r.id for r in racks if _can_manage_rack(r)},
@@ -460,6 +463,11 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
             value = (form.get(f"attr_{k}") or "").strip()
             if field["type"] == "date" and value:
                 value = _date(value).isoformat()
+            if field["type"] == "number" and value:
+                try:
+                    float(value.replace(",", ""))
+                except ValueError:
+                    raise Refused(f"{field['label']} is a number column: “{value}” isn't a number.")
             attrs[k] = value
     if json.dumps(attrs, sort_keys=True) != before:
         item.attrs = json.dumps(attrs)
@@ -521,6 +529,15 @@ def save_item(key: str):
             session.rollback()
             return _done(key, error=str(refused))
         item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
+        if creating and row.kind in STOCK_KINDS and request.form.get("from_order"):
+            # Made from a received order's "Add to stock": the order now
+            # points at this record, and is not offered for stock again.
+            order, _ov = _order_for_stock(session, request.form["from_order"])
+            if order is not None:
+                session.flush()
+                order_attrs = order.attrs_dict
+                order_attrs["stocked_as"] = f"{row.key}:{item.number}"
+                order.attrs = json.dumps(order_attrs)
         session.commit()
         label = item.name or f"#{item.number}"
         for note in notes:
@@ -793,17 +810,18 @@ def order_to_reagents(key: str, item_id: int):
             return _done(key, error="Pick a reagents or antibodies inventory to add it to.")
         tv = svc.view(target)
         attrs = order.attrs_dict
+        draft = _stock_from_order(session, mv, tv, order, shared=request.form.get("shared") == "1")
+        missing = [label for k, label in tv.required_labels.items() if not _column_value(draft, k)]
+        if missing:
+            # The stock inventory needs things the order doesn't say (its
+            # Configure → Needed for a new item): open its new-item dialog,
+            # filled in from the order, and link the two when it is saved.
+            flash(f"Fill in {_and(missing)} to add it to {target.label}.", "warning")
+            return redirect(url_for("inventory.module", key=target.key, from_order=f"{key}:{order.id}",
+                                    shared="1" if draft.is_shared else "0"))
         with audit.batch(session, "mixed", f"order #{order.number} to {target.label}", "inventory_items"):
-            stock = InventoryItem(
-                module_id_fk=target.id, number=svc.next_number(session, target.id), name=order.name,
-                status=tv.statuses[0] if tv.statuses else "", owner=g.user.username,
-                is_shared=request.form.get("shared") == "1", quantity=order.quantity, unit=order.unit,
-                vendor=order.vendor, catalog_number=order.catalog_number, lot=order.lot,
-                received_on=order.received_on or date.today(), expires_on=order.expires_on,
-                # Columns both inventories have (a custom one added to each) come along.
-                attrs=json.dumps({f["key"]: attrs[f["key"]] for f in tv.fields
-                                  if attrs.get(f["key"]) and f["key"] not in NOT_COPIED_ATTRS}),
-                notes=f"From {mv.item_noun} #{order.number}" + (f". {order.notes}" if order.notes else ""))
+            stock = draft
+            stock.number = svc.next_number(session, target.id)
             session.add(stock)
             attrs["stocked_as"] = f"{target.key}:{stock.number}"
             order.attrs = json.dumps(attrs)
@@ -812,6 +830,47 @@ def order_to_reagents(key: str, item_id: int):
               f"Add where it is kept{' and when it expires' if tv.has('expiry') else ''}.", "success")
         # Its dialog opens there, for the details only the shelf knows.
         return redirect(url_for("inventory.module", key=target.key, open=stock.id))
+
+
+def _stock_from_order(session, mv, tv, order: InventoryItem, shared: bool) -> InventoryItem:
+    """A stock record (not yet added) made from a received order: what it
+    is, who sells it, how much, lot, dates, and any column both have."""
+    attrs = order.attrs_dict
+    return InventoryItem(
+        module_id_fk=tv.id, number=0, name=order.name,
+        status=tv.statuses[0] if tv.statuses else "", owner=g.user.username,
+        is_shared=shared, quantity=order.quantity, unit=order.unit,
+        vendor=order.vendor, catalog_number=order.catalog_number, lot=order.lot,
+        received_on=order.received_on or date.today(), expires_on=order.expires_on,
+        # Columns both inventories have (a custom one added to each) come along.
+        attrs=json.dumps({f["key"]: attrs[f["key"]] for f in tv.fields
+                          if attrs.get(f["key"]) and f["key"] not in NOT_COPIED_ATTRS}),
+        notes=f"From {mv.item_noun} #{order.number}" + (f". {order.notes}" if order.notes else ""))
+
+
+def _order_for_stock(session, ref: str):
+    """The received, not yet stocked order named by "orders:12" that this
+    person may stock, with its inventory's view; else (None, None)."""
+    key, _, raw = (ref or "").partition(":")
+    source = svc.get_module(session, key)
+    order = session.get(InventoryItem, int(raw)) if raw.isdigit() else None
+    if (source is None or source.kind != "orders" or not lab.can_see(source) or order is None
+            or order.module_id_fk != source.id or not _can_edit(order)
+            or (order.status or "").lower() != "received" or order.attrs_dict.get("stocked_as")):
+        return None, None
+    return order, svc.view(source)
+
+
+def _from_order_payload(session, tv, ref: str, shared: bool) -> dict | None:
+    order, mv = _order_for_stock(session, ref)
+    if order is None:
+        flash("That order can't be added to stock (it's gone, not received, or already in stock).", "warning")
+        return None
+    payload = _item_payload(tv, _stock_from_order(session, mv, tv, order, shared))
+    payload.pop("id", None)
+    payload.update(from_order=ref, _hint=f"Adding {mv.item_noun} #{order.number} to {tv.row.label}: "
+                                         f"fill in what is starred, then Create.")
+    return payload
 
 
 # ---------------------------------------------------------------------------

@@ -119,6 +119,9 @@
     const out = Object.assign({}, item, {
       backgroundColor: fill, dragBackgroundColor: fill, borderColor: edge, color: ink,
     });
+    // The month grid draws no "task" category (it's the week view's to-do
+    // strip): there a to-do is an all-day chip on the day it's due.
+    if (currentView === 'month' && out.category === 'task') out.category = 'allday';
     // A repeat is changed from its dialog, not by dragging one occurrence.
     if (item.raw && item.raw.occurrence) out.isReadOnly = true;
     if (item.kind === 'away' || item.kind === 'protocol' || item.kind === 'agenda' || item.kind === 'auto') out.isReadOnly = true;
@@ -874,6 +877,27 @@
       return undefined;
     });
   });
+
+  /* Ends follows Starts: moving the start keeps the event's length, so an
+     event can't be made to end before it begins by forgetting the end. */
+  (function () {
+    const f = form.elements;
+    if (!f.start || !f.end) return;
+    let length = null;
+    const ms = (v) => (v ? new Date(v.length === 10 ? `${v}T00:00` : v).getTime() : NaN);
+    const remember = () => { const d = ms(f.end.value) - ms(f.start.value); length = Number.isFinite(d) && d >= 0 ? d : null; };
+    f.start.addEventListener('focus', remember);
+    f.end.addEventListener('change', remember);
+    f.start.addEventListener('change', () => {
+      const start = ms(f.start.value);
+      if (!Number.isFinite(start)) return;
+      if (length === null && Number.isFinite(ms(f.end.value)) && ms(f.end.value) >= start) return;
+      const end = new Date(start + (length ?? 60 * 60 * 1000));
+      const pad = (n) => String(n).padStart(2, '0');
+      const date = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+      f.end.value = f.end.type === 'date' ? date : `${date}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
+    });
+  })();
 
   delBtn.addEventListener('click', () => {
     const f = form.elements;

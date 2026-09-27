@@ -1037,6 +1037,9 @@ class WormTests(StockCase):
         before = top(self.mid)
         r = self.post(self.m, self.url(self.key, f"/frozen/{lot}/thaw"))
         self.assertFlash(r, "3 left")
+        self.assertFlash(r, "has been told")      # someone else's lot: its keeper records the result
+        self.assertEqual(one("select count(*) from notifications where recipient_username=? and title like ?",
+                             self.admin, f"%thawed a vial of your {geno}%"), 1)
         self.assertEqual(one("select vials_left from stock_frozen where id=?", lot), 3)
         (plate,) = ids_after(self.mid, before)
         p = unit(plate)

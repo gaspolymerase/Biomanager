@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Flask, Response, abort, flash, g, get_flashed_messages, jsonify, redirect, render_template, request, send_from_directory, session, url_for
@@ -311,6 +311,17 @@ def app_icon_url(glyph: str, color: str) -> str:
     if appearance.is_default(glyph, color):
         return url_for("static", filename="icon.svg", v=appearance.version(glyph, color))
     return url_for("app_icon", glyph=glyph, color=color, v=appearance.version(glyph, color))
+
+
+@app.errorhandler(403)
+def handle_forbidden(_error):
+    """A page someone may not open: say so in the app, with a way back,
+    rather than a bare "Forbidden". Background saves get JSON."""
+    message = ("That page is for lab admins, or for whoever owns what it shows. "
+               "If you need it, ask an admin.")
+    if request.headers.get("X-Autosave") == "1" or request.accept_mimetypes.best == "application/json":
+        return jsonify({"ok": False, "error": message}), 403
+    return render_template("error.html", title="You don't have access to that", message=message), 403
 
 
 @app.errorhandler(IntegrityError)
@@ -697,6 +708,18 @@ def _name_color(seed: str) -> tuple[int, int, int]:
     for ch in seed:
         h = (h * 31 + ord(ch)) & 0xFFFFFF
     return h % 360, 55, 32
+
+
+def local_time(value):
+    """A timestamp the app stamped (datetime.utcnow(): naive UTC) as the
+    lab's own time (the server's TZ), for showing to people. Without it an
+    evening's entry reads as tomorrow."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+
+
+app.jinja_env.filters["local"] = local_time
 
 
 @app.template_filter("relative_day")
@@ -1345,7 +1368,7 @@ def home_dashboard():
             "item": o.name,
             "status": o.status,
             "qty": o.quantity,
-            "created_at": o.created_at.strftime("%b %d, %Y"),
+            "created_at": local_time(o.created_at).strftime("%b %d, %Y"),
         } for o in recent_orders]
 
         # ---- Upcoming calendar events ------------------------------------
@@ -1587,7 +1610,7 @@ def settings():
             "home_layout": home_layouts.get_layout(db_session, user.username),
             "app_icon": appearance.get_choice(db_session, user.username),
             "role": user.role,
-            "created_at": user.created_at.strftime("%Y-%m-%d") if user.created_at else "",
+            "created_at": local_time(user.created_at).strftime("%Y-%m-%d") if user.created_at else "",
             "notify_transfer": user.notify_transfer,
             "notify_picked": user.notify_picked,
             "notify_breeder_aging": user.notify_breeder_aging,
@@ -1598,7 +1621,7 @@ def settings():
                                     .order_by(UserIdentity.created_at)).all()
         identities = [{"id": i.id, "provider": oidc.LABELS.get(i.provider, i.provider.title()),
                        "provider_key": i.provider, "email": i.email,
-                       "last_used": i.last_login_at.strftime("%Y-%m-%d") if i.last_login_at else ""}
+                       "last_used": local_time(i.last_login_at).strftime("%Y-%m-%d") if i.last_login_at else ""}
                       for i in linked]
     from . import mailer
 
@@ -1742,7 +1765,7 @@ def admin_colony_overview():
                 "shared": shared,
                 "active": cage_is_active(cage),
                 "owner": cage.owner,
-                "idle_days": (today - last_touch.date()).days if last_touch else None,
+                "idle_days": (today - local_time(last_touch).date()).days if last_touch else None,
             })
             group["mice"] += len(living)
             group["active_cages"] += 1 if cage_is_active(cage) else 0
@@ -1790,7 +1813,7 @@ def admin_users():
                 "role_title": u.role_title,
                 "role": u.role,
                 "disabled": u.disabled,
-                "created_at": u.created_at.strftime("%Y-%m-%d") if u.created_at else "",
+                "created_at": local_time(u.created_at).strftime("%Y-%m-%d") if u.created_at else "",
                 # A guest's account (app/guests.py): when it stops working.
                 "expires_at": u.expires_at,
                 "expired": u.expires_at is not None and u.expires_at <= datetime.utcnow(),
@@ -1821,7 +1844,7 @@ def admin_toggle_role(user_id: int):
                         "You can now change Lab setup, approve sign-ups and edit any record.",
                         category="lab", link=url_for("lab.setup"), actor=g.user.username)
         db_session.commit()
-        flash(f"{target.username} is now {target.role}.", "success")
+        flash(f"{target.username} is now {'an admin' if target.role == 'admin' else 'a member'}.", "success")
     referrer = request.referrer or ""
     return redirect(referrer if referrer.startswith(request.host_url) else url_for("admin_users"))
 
@@ -4303,6 +4326,9 @@ def calendar_item_create():
     start = _parse(payload.get("start"))
     end = _parse(payload.get("end"))
     is_all_day = bool(payload.get("isAllday", True))
+    if start and end and end < start:
+        # Saved like that, it would vanish from Month and Week (List only).
+        return jsonify({"ok": False, "error": "It has to end after it starts."}), 400
     color = (payload.get("backgroundColor") or payload.get("color") or "").strip()
     owner = g.user.username if g.user else ""
 
@@ -4360,6 +4386,10 @@ def calendar_item_update(item_key: str):
             return _dt.fromisoformat(v.replace("Z", "+00:00").replace("+00:00", ""))
         except ValueError:
             return None
+
+    new_start, new_end = _parse(payload.get("start")), _parse(payload.get("end"))
+    if new_start and new_end and new_end < new_start:
+        return jsonify({"ok": False, "error": "It has to end after it starts."}), 400
 
     with SessionLocal() as db_session:
         if kind == "task":
@@ -5122,7 +5152,7 @@ def audit_log_view():
                 "record_label": e.record_label or f"#{e.record_id}",
                 "action": e.action,
                 "changed_by": e.changed_by,
-                "changed_at": e.changed_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "changed_at": local_time(e.changed_at).strftime("%Y-%m-%d %H:%M:%S"),
                 "details": e.details or "",
             }
             for e in rows
@@ -6278,9 +6308,9 @@ def plasmid_detail(row_id: int):
             "is_circular": bool(p.is_circular),
             "features": _features_only(features),
             "sequence_format": p.sequence_format or "",
-            "sequence_uploaded_at": p.sequence_uploaded_at.strftime("%b %d, %Y %H:%M") if p.sequence_uploaded_at else "",
+            "sequence_uploaded_at": local_time(p.sequence_uploaded_at).strftime("%b %d, %Y %H:%M") if p.sequence_uploaded_at else "",
             "length_bp": len(p.full_sequence or ""),
-            "updated_at": p.updated_at.strftime("%b %d, %Y") if p.updated_at else "",
+            "updated_at": local_time(p.updated_at).strftime("%b %d, %Y") if p.updated_at else "",
             "updated_by": p.updated_by or "",
             "locked": not access.can_edit(p),
             "denied": _plasmid_denied(p),
@@ -7047,7 +7077,8 @@ def _zebrafish_context(active_view: str):
         "racks": [{"id": r.id, "name": r.name, "rows": r.rows, "cols": r.cols,
                    "naming": positions.scheme(r.naming),
                    "edit": {"data-record-payload": json.dumps({
-                       "id": r.id, "_label": r.name, "name": r.name, "rows": r.rows,
+                       "id": r.id, "_label": r.name, "_locked": not access.can_edit_rack(r),
+                       "name": r.name, "rows": r.rows,
                        "cols": r.cols, "system_id_fk": r.system_id_fk or "",
                        **{f"naming_{k}": v for k, v in positions.scheme(r.naming).items()}})}} for r in racks],
         "items": [{
@@ -8002,7 +8033,7 @@ def zf_rack_fields(s, r, form) -> None:
 @login_required
 def zebrafish_create_rack():
     with SessionLocal() as s:
-        r = FishRack(notes=(request.form.get("notes") or "").strip())
+        r = FishRack(notes=(request.form.get("notes") or "").strip(), created_by=g.user.username)
         try:
             zf_rack_fields(s, r, request.form)
         except ZfInputError as error:
@@ -8023,6 +8054,11 @@ def zebrafish_update_rack(rack_id: int):
         if r is None:
             flash("That rack no longer exists.", "error")
             return redirect(url_for("zebrafish", view="tanks", mode="grid"))
+        if not access.can_edit_rack(r):
+            # Renaming or resizing a rack moves every tank in it: as for
+            # mouse and fly racks, only whoever added it or an admin.
+            flash(f"Only whoever added rack {r.name}, or an admin, can change it.", "error")
+            return redirect(url_for("zebrafish", view="tanks", mode="grid"))
         try:
             zf_rack_fields(s, r, request.form)
         except ZfInputError as error:
@@ -8041,6 +8077,9 @@ def zebrafish_delete_rack(rack_id: int):
     move tanks you may not edit."""
     with SessionLocal() as s:
         r = s.get(FishRack, rack_id)
+        if r is not None and not access.can_edit_rack(r):
+            flash(f"Only whoever added rack {r.name}, or an admin, can delete it.", "error")
+            return redirect(url_for("zebrafish", view="tanks", mode="grid"))
         if r is not None:
             theirs = [t.tank_id for t in r.tanks if not zf_can_edit(t)]
             if theirs:

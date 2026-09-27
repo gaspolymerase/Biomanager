@@ -134,8 +134,10 @@ def enter():
                 gp.last_used_at = now
                 s.commit()
                 security.start_session(user)
+                from .app import local_time
+                until = local_time(gp.expires_at)
                 flash(f"Welcome, {gp.label}. Your guest access lasts until "
-                      f"{gp.expires_at.day} {gp.expires_at:%b %Y, %H:%M} UTC.", "success")
+                      f"{until.day} {until:%b %Y, %H:%M}.", "success")
                 return redirect(landing_url(user))
     return render_template("guests/enter.html"), status
 

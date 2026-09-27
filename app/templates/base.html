@@ -18,6 +18,10 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
 
+    {# Cascade layers, lowest first. "vendor" holds third-party stylesheets
+       (the plasmid editor's): above the reset in "base", so they keep their
+       own look, but below the app's components, which they must not restyle. #}
+    <style>@layer properties, theme, base, vendor, components, utilities;</style>
     <link rel="stylesheet"
           href="{{ url_for('static', filename='tailwind.css') }}?v={{ asset_version('tailwind.css') }}">
     {# The accent that matches the person's app icon (app/appearance.py). #}

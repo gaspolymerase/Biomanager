@@ -272,18 +272,25 @@ class RackTests(AppTestCase):
         self.assertEqual(cell(tank), (None, None, None))
 
     def test_member_cannot_delete_a_rack_holding_someone_elses_tank(self):
-        rack = make_rack(self.a)
+        rack = make_rack(self.m)
         self.make_tank(self.a, rack_id_fk=str(rack), position="A1")
         r = self.post(self.m, f"/zebrafish/racks/{rack}/delete")
         self.assertFlash(r, "holds tanks you can", "error")
         self.assertEqual(count("fish_racks", "id=?", rack), 1)
 
-    def test_racks_are_open_to_every_member(self):
+    def test_a_rack_is_changed_by_whoever_added_it_or_an_admin(self):
+        """As for mouse and fly racks: renaming or resizing moves every tank
+        in it, so it isn't for any member."""
         rack = make_rack(self.a)
         new_name = uniq("ZR")
         r = self.post(self.m, f"/zebrafish/racks/{rack}/update", {"name": new_name, "rows": "5", "cols": "6"})
+        self.assertFlash(r, "Only whoever added rack", "error")
+        self.assertNotEqual(one("select name from fish_racks where id=?", rack), new_name)
+        self.assertFlash(self.post(self.m, f"/zebrafish/racks/{rack}/delete"), "Only whoever added rack", "error")
+        mine = make_rack(self.m)
+        r = self.post(self.m, f"/zebrafish/racks/{mine}/update", {"name": new_name, "rows": "5", "cols": "6"})
         self.assertFlash(r, "Saved rack", "success")
-        self.assertEqual(row("select name, rows, cols from fish_racks where id=?", rack), (new_name, 5, 6))
+        self.assertEqual(row("select name, rows, cols from fish_racks where id=?", mine), (new_name, 5, 6))
 
 
 class WaterTests(AppTestCase):

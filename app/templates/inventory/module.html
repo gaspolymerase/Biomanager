@@ -36,7 +36,7 @@
   {% elif field.type == 'source' %}
     {% set src = value if value is mapping else {} %}
     {% set mouse_row = links.get(src.ref|string) if src.kind in ['mouse', 'colony'] else none %}
-    <span class="sheet-cell-text">{% if src.kind or src.ref %}<span class="source-chip">{% if src.kind %}<span class="source-chip-kind">{{ src_label or src.kind.split(':')[-1]|replace('_', ' ')|title }}</span>{% endif %}{% if mouse_row %}<a class="ident source-chip-link" href="{{ url_for('colony', view='mice', scope='all', q=src.ref) }}" title="Open mouse {{ src.ref }} in the colony">{{ src.ref }}</a>{% else %}<span class="ident" {% if src.kind in ['mouse', 'colony'] and src.ref %}title="No mouse {{ src.ref }} in the colony"{% endif %}>{{ src.ref or '—' }}</span>{% endif %}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</span>
+    <span class="sheet-cell-text">{% if src.kind or src.ref %}<span class="source-chip">{% if src.kind %}<span class="source-chip-kind">{{ src_label or src.kind.split(':')[-1]|replace('_', ' ')|title }}</span>{% endif %}{% if mouse_row %}<a class="ident source-chip-link" href="{{ url_for('colony', view='mice', scope='all') }}#mouse-update-{{ mouse_row }}" title="Open mouse {{ src.ref }} in the colony">{{ src.ref }}</a>{% else %}<span class="ident" {% if src.kind in ['mouse', 'colony'] and src.ref %}title="No mouse {{ src.ref }} in the colony"{% endif %}>{{ src.ref or '—' }}</span>{% endif %}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</span>
   {% elif field.type == 'url' and value %}
     <a class="sheet-link font-normal" href="{{ value }}" target="_blank" rel="noopener">{{ value|replace('https://', '')|truncate(28) }}</a>
   {% else %}
@@ -441,6 +441,7 @@
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
+      <input type="hidden" name="from_order">
       <label class="record-wide" data-name-label><span>{{ m.name_label }}{{ star('name') }}</span> <input name="name"{{ req('name') }}{{ rem('name') }} autocomplete="off" data-fill-key="name"></label>
       <p class="record-wide record-fill-hint" data-fill-hint hidden></p>
       <fieldset class="record-group" data-new-only>
@@ -459,7 +460,7 @@
         <legend>{{ m.item_noun|capitalize }}</legend>
         <label><span>{{ m.category_label }}{{ star('category') }}</span>
           {% if m.categories %}
-            <select name="category"{{ req('category') }}><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}</select>
+            <select name="category"{{ req('category') }}><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c[:1]|upper ~ c[1:] }}</option>{% endfor %}</select>
           {% else %}<input name="category"{{ req('category') }}{{ rem('category') }}>{% endif %}
         </label>
         {% if m.statuses %}
@@ -505,7 +506,7 @@
             {% elif fd.type == 'textarea' %}
               <label class="col-span-full"><span>{{ fd.label }}{{ star(name) }}</span> <textarea name="{{ name }}" rows="2"{{ req(name) }}></textarea></label>
             {% else %}
-              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}" {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
+              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}" {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% elif fd.type == 'number' %}type="number" step="any"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
             {% endif %}
           {% endfor %}
         </fieldset>
@@ -882,7 +883,7 @@
   window.addEventListener('load', () => {
     const params = new URLSearchParams(window.location.search);
     const once = {};
-    ['reorder', 'offer', 'open'].forEach((k) => { if (params.has(k)) { once[k] = params.get(k); params.delete(k); } });
+    ['reorder', 'offer', 'open', 'from_order', 'shared'].forEach((k) => { if (params.has(k)) { once[k] = params.get(k); params.delete(k); } });
     if (!Object.keys(once).length) return;
     const rest = params.toString();
     history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : '') + window.location.hash);

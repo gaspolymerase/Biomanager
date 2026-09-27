@@ -26,7 +26,7 @@
     </td>
     <td><input type="text" name="field_{{ i }}_options" value="{{ (f.options or []) | join(', ') }}" placeholder="For Choice: a, b, c" aria-label="Choices"></td>
     <td><input type="text" name="field_{{ i }}_icon" value="{{ f.icon or '' }}" placeholder="icon" class="w-24" aria-label="Icon"></td>
-    <td><input type="number" name="field_{{ i }}_width" value="{{ f.width or 130 }}" min="60" max="400" step="10" class="w-20" aria-label="Width"></td>
+    <td><input type="number" name="field_{{ i }}_width" value="{{ f.width or 130 }}" min="60" max="400" step="1" class="w-20" aria-label="Width"></td>
     <td class="text-center"><input type="checkbox" name="field_{{ i }}_in_table" value="1" {% if f.in_table is not defined or f.in_table %}checked{% endif %} aria-label="Show in table"></td>
     <td class="text-center"><input type="checkbox" name="field_{{ i }}_remove" value="1" aria-label="Remove" data-remove-toggle></td>
   </tr>

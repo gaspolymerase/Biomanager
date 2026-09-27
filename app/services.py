@@ -305,6 +305,8 @@ def ensure_schema_updates() -> None:
         alter_statements.append("ALTER TABLE mouse_racks ADD COLUMN naming TEXT DEFAULT '{}'")
     if "fish_racks" in table_columns and "naming" not in table_columns["fish_racks"]:
         alter_statements.append("ALTER TABLE fish_racks ADD COLUMN naming TEXT DEFAULT '{}'")
+    if "fish_racks" in table_columns and "created_by" not in table_columns["fish_racks"]:
+        alter_statements.append("ALTER TABLE fish_racks ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
     if "mouse_racks" in table_columns and "created_by" not in table_columns["mouse_racks"]:
         alter_statements.append("ALTER TABLE mouse_racks ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
     if "mouse_cages" in table_columns:

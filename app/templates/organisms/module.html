@@ -1256,7 +1256,7 @@
             <tbody>
               {% for reading in readings %}
                 <tr>
-                  <td>{{ reading.recorded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                  <td>{{ (reading.recorded_at | local).strftime('%Y-%m-%d %H:%M') }}</td>
                   <td>
                     {% for loc in locations if loc.id == reading.subject_id %}{{ loc.name }}{% endfor %}
                   </td>

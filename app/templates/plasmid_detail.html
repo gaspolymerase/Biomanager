@@ -44,9 +44,11 @@
   <option value="Spec"></option><option value="Hyg"></option><option value="Puro"></option>
 </datalist>
 
-{# Open Vector Editor's own stylesheet. ?v= is the file mtime, so the
-   browser refetches after a rebuild. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='notebook-build/plasmid-app.css') }}?v={{ asset_version('notebook-build/plasmid-app.css') }}">
+{# Open Vector Editor's own stylesheet, in the "vendor" layer (base.html):
+   unlayered, its a { color } and form { display } rules beat the app's own
+   and turned the sidebar blue. ?v= is the file mtime, so the browser
+   refetches after a rebuild. #}
+<style>@import url("{{ url_for('static', filename='notebook-build/plasmid-app.css') }}?v={{ asset_version('notebook-build/plasmid-app.css') }}") layer(vendor);</style>
 
 {# ============ Sequence — Open Vector Editor ============ #}
 <section class="plasmid-tab-panel is-active" data-panel="sequence">

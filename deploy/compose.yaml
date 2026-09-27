@@ -37,6 +37,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-}
       BIOMANAGER_BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
       BIOMANAGER_HTTPS: "1"
+      # The lab's time zone: "today" (weaning due, expiry) and the times shown.
+      TZ: ${TZ:-UTC}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
       BIOMANAGER_SMTP_HOST: ${BIOMANAGER_SMTP_HOST:-}
       BIOMANAGER_SMTP_PORT: ${BIOMANAGER_SMTP_PORT:-587}

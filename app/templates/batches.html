@@ -36,7 +36,7 @@
         <tbody>
           {% for batch in batches %}
             <tr class="{% if batch.undone_at %}opacity-55{% endif %}">
-              <td>{{ batch.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+              <td>{{ (batch.created_at | local).strftime('%Y-%m-%d %H:%M') }}</td>
               <td>
                 <span class="dt-status"
                       data-status="{{ {'create': 'active', 'update': 'ordered', 'delete': 'cancelled'}.get(batch.action, batch.action) }}">
@@ -52,7 +52,7 @@
               <td>
                 {% if batch.undone_at %}
                   <span class="badge badge-quiet">
-                    undone by {{ batch.undone_by }} · {{ batch.undone_at.strftime('%b %d') }}
+                    undone by {{ batch.undone_by }} · {{ (batch.undone_at | local).strftime('%b %d') }}
                   </span>
                 {% elif batch.blocked %}
                   {% for problem in batch.blocked %}

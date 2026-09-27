@@ -342,5 +342,26 @@ class OfferStockTests(OrdersCase):
         self.assertIn("Add where it is kept and when it expires", flash_text(self.a.get(location(r))))
 
 
+class StockRequiredTests(OrdersCase):
+    """Add to stock respects what the stock inventory requires."""
+
+    def test_missing_required_fields_open_a_prefilled_dialog_and_link_on_save(self):
+        key = self.new_module(self.a, "reagents")
+        self.post(self.a, f"/inventory/{key}/configure",
+                  data=self.configure_form(key, required_sent="1", required=["name", "attr_cas"]))
+        name = uniq("Tris ")
+        oid = self.order(name=name, status="received")
+        r = self.a.post(f"/inventory/{self.orders}/items/{oid}/to-reagents", data={"target": key, "shared": "1"})
+        self.assertEqual(items_named(key, name), [])                       # nothing made yet
+        self.assertIn(f"from_order={self.orders}", location(r))
+        page = self.get_ok(self.a, location(r))
+        payload = payload_of(page, "data-reorder-open")
+        self.assertEqual((payload["name"], payload["from_order"], payload["is_shared"]), (name, f"{self.orders}:{oid}", "1"))
+        self.a.post(f"/inventory/{key}/items/save", data={
+            "id": "", "name": name, "attr_cas": "77-86-1", "from_order": payload["from_order"]})
+        [rid] = items_named(key, name)
+        self.assertEqual(attrs_of(oid)["stocked_as"], f"{key}:{item(rid)['number']}")
+
+
 if __name__ == "__main__":
     unittest.main()

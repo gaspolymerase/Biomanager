@@ -662,6 +662,9 @@ class FishRack(Base):
     cols: Mapped[int] = mapped_column(Integer, default=10)
     naming: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Who added it: they (or an admin) may rename, resize or delete it
+    # (access.can_edit_rack). Racks from before this are admin-only.
+    created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     system: Mapped[WaterSystem | None] = relationship(back_populates="racks")

@@ -9,6 +9,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Time-zone data, so TZ (the lab's zone, from deploy/.env) sets the app's
+# "today" and the times it shows; slim images leave it out.
+RUN apt-get update -q && apt-get install -y -q --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+
 # pywebview is for the desktop app only and needs GUI libraries.
 COPY requirements.txt .
 RUN grep -v pywebview requirements.txt > /tmp/requirements.txt \

@@ -796,6 +796,10 @@ def rack_flipped(key: str, rack_id: int):
             on = _checked_date(request.form, "on")
         except Invalid as error:
             return _back(key, view="schedule", error=str(error))
+        if on and on > date.today():
+            # A flip "on" a future day would drop the rack off the schedule.
+            return _back(key, view="schedule", error=f"A {mv.s['flip_verb'].lower()} can't be recorded for a day that "
+                                                      f"hasn't come yet ({on:%d %b}).")
         rack.last_flipped_on = on or date.today()
         session.commit()
         return _back(key, view="units" if request.form.get("back") == "units" else "schedule",
@@ -1000,10 +1004,20 @@ def frozen_action(key: str, fid: int, action: str):
                           notes=f"Thawed from frozen lot ({lot.frozen_on or 'undated'}).",
                           updated_by=g.user.username)
         session.add(plate)
+        # Frozen stocks are the lab's to thaw, but the lot's keeper records
+        # how thaws went (and is told when someone else uses a vial).
+        mine = access.can_edit(lot)
+        if not mine and lot.owner:
+            from . import notify
+            notify.send(session, lot.owner, f"{g.user.display_name or g.user.username} thawed a vial of your {lot.genotype}",
+                        f"Onto {mv.code(plate)}; {lot.vials_left} vial{'s' if lot.vials_left != 1 else ''} left. "
+                        f"Record whether it recovered.", category="lab",
+                        link=url_for("stocks.module", key=key, view="frozen"), actor=g.user.username)
         session.commit()
+        follow_up = ("Record whether it recovered once you can see." if mine else
+                     f"{lot.owner} keeps this lot and has been told; tell them whether it recovered.")
         return _back(key, view="frozen",
-                     message=f"Thawed one vial of {lot.genotype} onto {mv.code(plate)}; {lot.vials_left} left. "
-                             f"Record whether it recovered once you can see.")
+                     message=f"Thawed one vial of {lot.genotype} onto {mv.code(plate)}; {lot.vials_left} left. {follow_up}")
 
 
 # ---------------------------------------------------------------------------
