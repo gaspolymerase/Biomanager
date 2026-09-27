@@ -24,7 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from . import inventory_service, organism_service, positions, stock_service
 from .models import CageRecord, CalendarEvent, InventoryItem, LitterRecord, MouseRack, MouseRecord, StockRack, StockUnit
-from .services import WEAN_OFFSET_DAYS
+from .services import WEAN_OFFSET_DAYS, weaning_due, weaning_title
 
 LAYOUTS = {
     "classic": ("Classic", "columns"),
@@ -149,19 +149,14 @@ def _colony_items(session, today, until) -> list[dict]:
                          mice_url, detail=f"oldest {weeks} w" if past else "",
                          loc=_cage_loc(group[0].cage), owner=group[0].owner))
 
-    # Weanings at P21, from a week overdue to the end of the window.
-    litters = session.scalars(
-        select(LitterRecord).options(selectinload(LitterRecord.mice).selectinload(MouseRecord.cage)
-                                     .selectinload(CageRecord.rack))
-        .where(LitterRecord.date_of_birth.is_not(None),
-               LitterRecord.date_of_birth >= today - timedelta(days=WEAN_OFFSET_DAYS + 7),
-               LitterRecord.date_of_birth <= until - timedelta(days=WEAN_OFFSET_DAYS))).all()
-    for litter in litters:
-        living = [m for m in litter.mice if m.date_of_death is None]
-        cage = next((m.cage for m in living if m.cage is not None), None)
-        bits = [b for b in (litter.cohort_name, f"{litter.total_pups} pups" if litter.total_pups else "") if b]
-        out.append(_item("colony:wean", litter.date_of_birth + timedelta(days=WEAN_OFFSET_DAYS),
-                         f"Wean {litter.litter_id}", today, url_for("colony", view="litters"),
+    # Weanings at P21, from a week overdue to the end of the window: the
+    # same list as Home's and the calendar's (services.weaning_due).
+    for wean in weaning_due(session, today - timedelta(days=7), until):
+        cage, litter = wean["cage"], wean["litter"]
+        bits = [b for b in (litter.cohort_name if litter else "", f"{wean['pups']} pups" if wean["pups"] else "") if b]
+        url = (url_for("colony", view="cages", scope="all") + f"#cage-{cage.id}") if cage is not None \
+            else url_for("colony", view="litters")
+        out.append(_item("colony:wean", wean["due"], f"Wean {weaning_title(wean)}", today, url,
                          detail=" · ".join(bits), loc=_cage_loc(cage),
                          owner=cage.owner if cage is not None else ""))
 

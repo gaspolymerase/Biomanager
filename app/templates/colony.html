@@ -613,7 +613,9 @@
                                 <button type="button" class="btn btn-sm" data-wean
                                         data-distribute-action="{{ url_for('cage_wean_distribute', cage_row_id=cage.id) }}"
                                         data-wean-action="{{ url_for('cage_wean', cage_row_id=cage.id) }}"
-                                        data-target-label="{{ cage.cage_id }}">
+                                        data-target-label="{{ cage.cage_id }}"
+                                        data-born="{{ cage.wean_born }}" data-age="{{ cage.wean_age }}"
+                                        data-pups="{{ cage.wean_pups | tojson | forceescape }}">
                                   {{ icon('litter') }} Wean
                                 </button>
                               </span>
@@ -1462,8 +1464,10 @@
     <h3>Wean and distribute pups <small id="wean-cage-label" class="muted-inline"></small></h3>
     <button type="submit" class="ghost-button">Close</button>
   </form>
-  <p class="muted-inline">Distribute pups from this cage to new or existing cages, one destination per row. A filled <strong>Existing cage</strong> wins over <strong>Card</strong>; leave both empty for a new cage of yours. Mice not listed in any row stay in the current cage.</p>
+  <p class="muted-inline">Move the pups to new or existing cages, one destination per row: the rows start with this cage's pups, females and males apart. A filled <strong>Existing cage</strong> wins over <strong>Card</strong>; leave both empty for a new cage of yours. Mice not listed in any row stay in the current cage.</p>
   <form method="post" id="wean-form">
+    {# Set once the person has confirmed weaning pups younger than P{{ min_wean_age_days }}. #}
+    <input type="hidden" name="early" value="">
     <div class="table-wrap">
       <table class="dense-table fit-table" id="wean-rows-table">
         <thead>
@@ -1481,8 +1485,8 @@
     <div class="wean-actions">
       <button type="button" class="ghost-button" data-on-click="addWeanRow">+ Add row</button>
       <span class="wean-actions-spacer"></span>
-      <button type="submit" id="wean-submit-self" class="ghost-button" formmethod="post" title="Just wean — clear DOB, you'll move pups manually">Distribute myself</button>
-      <button type="submit" id="wean-submit-distribute" formmethod="post" title="Distribute pups per the rows above and wean">Distribute</button>
+      <button type="submit" id="wean-submit-self" class="ghost-button" formmethod="post" title="Marks the litter weaned and moves no one: you move the pups yourself">Mark weaned, move pups later</button>
+      <button type="submit" id="wean-submit-distribute" formmethod="post" title="Moves the pups as the rows above say, and marks the litter weaned">Wean and move</button>
     </div>
   </form>
 </dialog>
@@ -1519,7 +1523,7 @@ document.addEventListener('click', (event) => {
     return;
   }
   const wean = event.target.closest('[data-wean]');
-  if (wean) openWeanModal(wean.dataset.distributeAction, wean.dataset.weanAction, wean.dataset.targetLabel);
+  if (wean) openWeanModal(wean);
 });
 
 function addWeanRow(prefill) {
@@ -1542,21 +1546,38 @@ function addWeanRow(prefill) {
     <td><button type="button" class="ghost-button" data-on-click="remove-row" title="Remove row">×</button></td>
   `;
   if (prefill && prefill.gender) tr.querySelector('select[name="gender[]"]').value = prefill.gender;
+  if (prefill && prefill.mice) tr.querySelector('input[name="mouse_ids[]"]').value = prefill.mice;
   body.appendChild(tr);
 }
 
-function openWeanModal(distributeAction, weanAction, cageReadableId) {
+async function openWeanModal(button) {
   const dialog = document.getElementById('wean-modal');
   const form = document.getElementById('wean-form');
   if (!dialog || !form) return;
-  document.getElementById('wean-cage-label').textContent = cageReadableId ? `· cage ${cageReadableId}` : '';
-  document.getElementById('wean-submit-distribute').setAttribute('formaction', distributeAction);
-  document.getElementById('wean-submit-self').setAttribute('formaction', weanAction);
-  // start with two empty rows pre-set to F and M as the most common pattern
+  const cageLabel = button.dataset.targetLabel || '';
+  // Pups under P{{ min_wean_age_days }}: ask first (the server refuses without early=1).
+  const age = parseInt(button.dataset.age, 10);
+  form.elements.early.value = '';
+  if (!Number.isNaN(age) && age < {{ min_wean_age_days | int }}) {
+    const ok = await BioDialog.confirm(
+      `The pups in cage ${cageLabel} are ${age < 0 ? 'not born yet by their date' : age + ' days old'}. `
+      + `Weaning is due at P{{ wean_offset_days | int }}.\n\nWean them early anyway?`,
+      { danger: true, okLabel: 'Wean early', title: 'These pups are young' });
+    if (!ok) return;
+    form.elements.early.value = '1';
+  }
+  document.getElementById('wean-cage-label').textContent = cageLabel ? `· cage ${cageLabel}` : '';
+  document.getElementById('wean-submit-distribute').setAttribute('formaction', button.dataset.distributeAction);
+  document.getElementById('wean-submit-self').setAttribute('formaction', button.dataset.weanAction);
+  // One row for the females and one for the males, filled with this
+  // cage's pups when they are entered as mice; unsexed pups get a row too.
+  let pups = {};
+  try { pups = JSON.parse(button.dataset.pups || '{}'); } catch (_) {}
   const body = document.getElementById('wean-rows-body');
   body.innerHTML = '';
-  addWeanRow({ gender: 'F' });
-  addWeanRow({ gender: 'M' });
+  addWeanRow({ gender: 'F', mice: pups.F || '' });
+  addWeanRow({ gender: 'M', mice: pups.M || '' });
+  if (pups['']) addWeanRow({ gender: '', mice: pups[''] });
   dialog.showModal();
 }
 

@@ -226,6 +226,9 @@ class LitterRecord(Base):
     mother_info: Mapped[str] = mapped_column(String(120), default="")
     total_pups: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Set when its cage is weaned: from then on it is not "due to wean"
+    # anywhere (Home, the calendar, the cage sheet; services.weaning_due).
+    weaned_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     mice: Mapped[list["MouseRecord"]] = relationship(back_populates="litter")

@@ -74,6 +74,10 @@ from .services import (
     breeder_mice,
     is_breeder_purpose,
     WEAN_OFFSET_DAYS,
+    MIN_WEAN_AGE_DAYS,
+    mark_weaned,
+    weaning_due,
+    weaning_title,
     CAGE_GENO_OFFSET_DAYS,
     split_genotype,
     derive_auto_calendar_items,
@@ -856,6 +860,17 @@ def automatic_litter(db_session, dob: date) -> LitterRecord:
     return litter
 
 
+def future_birth(form, field: str = "date_of_birth", what: str = "A date of birth") -> str | None:
+    """The refusal for a birth date after today, or None. Nothing is born
+    tomorrow; a future date is a typo (2062 for 2026, a month and day
+    swapped) that would put the weaning, genotyping and age reminders on
+    the wrong days."""
+    born = parse_date(form.get(field)) if field in form else None
+    if born is not None and born > date.today():
+        return f"{what} can't be in the future ({born:%b %d, %Y}). Nothing was saved."
+    return None
+
+
 def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owner_on_transfer: bool = True) -> tuple[str | None, str | None]:
     original_owner = mouse.owner
     transfer_recipient = None
@@ -1006,6 +1021,7 @@ def cage_pup_litter(cage) -> LitterRecord | None:
     today = date.today()
     litters = {m.litter.id: m.litter for m in cage.mice
                if mouse_is_active(m) and m.litter is not None and m.litter.date_of_birth
+               and m.litter.weaned_on is None
                and 0 <= (today - m.litter.date_of_birth).days <= PUP_AGE_DAYS}
     return max(litters.values(), key=lambda lit: lit.date_of_birth) if litters else None
 
@@ -1070,6 +1086,14 @@ def cage_sheet_row(cage) -> dict:
     ordered = sorted(cage.mice, key=lambda item: item.mouse_id)
     pups = cage_pup_litter(cage)
     values = cage_sheet_values(cage)
+    # What the Wean dialog starts from: the pups' birth date (it asks
+    # before weaning under P18) and the pups themselves, by sex.
+    wean_born = cage.date_give_birth or (pups.date_of_birth if pups else None)
+    wean_pups: dict[str, list[str]] = {"F": [], "M": [], "": []}
+    for m in ordered:
+        if (mouse_is_active(m) and wean_born and m.litter is not None
+                and m.litter.date_of_birth == wean_born and m.litter.weaned_on is None):
+            wean_pups[m.gender if m.gender in ("F", "M") else ""].append(str(m.mouse_id))
     role = getattr(g.user, "role", None) if g.user else None
     return {
         **values,
@@ -1092,6 +1116,9 @@ def cage_sheet_row(cage) -> dict:
         "sex_label": _sex_label(females, males, len(living) - females - males),
         "pup_litter": pups.litter_id if pups else "",
         "pup_dob": pups.date_of_birth.isoformat() if pups else "",
+        "wean_born": wean_born.isoformat() if wean_born else "",
+        "wean_age": (date.today() - wean_born).days if wean_born else "",
+        "wean_pups": {sex: ", ".join(ids) for sex, ids in wean_pups.items()},
         "default_father": next((str(m.mouse_id) for m in ordered if m.gender == "M"), ""),
         "default_mother": next((str(m.mouse_id) for m in ordered if m.gender == "F"), ""),
         "mice": [dict(mouse_display_row(m, access.username(), role), editable=can_edit_mouse(m))
@@ -1244,6 +1271,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         "open_experiments": open_experiments,
         "totals": totals,
         "wean_offset_days": WEAN_OFFSET_DAYS,
+        "min_wean_age_days": MIN_WEAN_AGE_DAYS,
         "cage_geno_offset_days": CAGE_GENO_OFFSET_DAYS,
     }
 
@@ -1323,27 +1351,18 @@ def home_dashboard():
 
         # ---- Upcoming weanings: litters whose weaning day (DOB + P21, the
         # same WEAN_OFFSET_DAYS the cage cards use) is within ±7 days -------
-        upcoming_litters = db_session.scalars(
-            select(LitterRecord)
-            .where(LitterRecord.date_of_birth.is_not(None))
-            .where(LitterRecord.date_of_birth >= today - timedelta(days=WEAN_OFFSET_DAYS + 7))
-            .where(LitterRecord.date_of_birth <= today - timedelta(days=WEAN_OFFSET_DAYS - 7))
-            .order_by(LitterRecord.date_of_birth.asc())
-            .limit(10)
-        ).all()
         weanings = []
-        for litter in upcoming_litters:
-            dob = litter.date_of_birth
-            wean_date = dob + timedelta(days=WEAN_OFFSET_DAYS)
-            days_to_wean = (wean_date - today).days
+        for item in weaning_due(db_session, today - timedelta(days=7), today + timedelta(days=7))[:10]:
+            days_to_wean = (item["due"] - today).days
             weanings.append({
-                "litter_id": litter.litter_id,
-                "dob": dob.strftime("%b %d") if dob else "",
-                "wean_date": wean_date.strftime("%b %d"),
+                "title": weaning_title(item),
+                "cage_row_id": item["cage"].id if item["cage"] else None,
+                "dob": item["born"].strftime("%b %d"),
+                "wean_date": item["due"].strftime("%b %d"),
                 "days_to_wean": days_to_wean,
                 "overdue": days_to_wean < 0,
-                "pups": litter.total_pups,
-                "cohort": litter.cohort_name,
+                "pups": item["pups"],
+                "cohort": item["litter"].cohort_name if item["litter"] else "",
             })
 
         # ---- Genotyping queue: mice with status='geno' OR recently born
@@ -2362,6 +2381,10 @@ def mouse_weight_delete(mouse_row_id: int, weight_id: int):
 @app.route("/colony/mice/create", methods=["POST"])
 @login_required
 def create_mouse():
+    refused = future_birth(request.form)
+    if refused:
+        flash(refused, "error")
+        return redirect(url_for("colony", view="mice"))
     with SessionLocal() as db_session:
         mouse = MouseRecord(mouse_id=next_mouse_id(db_session), owner=request.form.get("owner", "").strip())
         transfer_recipient, sender_username = populate_mouse_from_form(db_session, mouse, request.form, preserve_owner_on_transfer=False)
@@ -2395,6 +2418,10 @@ def update_mouse(mouse_row_id: int):
             flash(access.reason_denied(mouse), "error")
             return autosave_response("mice")
 
+        refused = future_birth(request.form)
+        if refused:
+            flash(refused, "error")
+            return autosave_response("mice")
         original_litter_id = mouse.litter.litter_id if mouse.litter else ""
         original_dob = mouse.litter.date_of_birth if mouse.litter else None
         form_litter_id = request.form.get("litter_id", "").strip()
@@ -2972,7 +2999,21 @@ def batch_mice_preview():
         flash("Nothing to preview — set a count or choose a file.", "error")
         return redirect(url_for("batch_mice"))
     warnings.extend(_mixed_new_cages(rows))
+    warnings.extend(_future_births(rows))
+    return _batch_preview(rows, warnings)
 
+
+def _future_births(rows: list[dict]) -> list[str]:
+    today_ = date.today()
+    late = [str(index + 1) for index, row in enumerate(rows)
+            if (parse_date(row.get("date_of_birth")) or today_) > today_]
+    if not late:
+        return []
+    return [f"Row{'s' if len(late) > 1 else ''} {', '.join(late)}: the date of birth is in the future. "
+            "Correct it before creating."]
+
+
+def _batch_preview(rows: list[dict], warnings: list[str]):
     with SessionLocal() as db_session:
         # Shown so you can see what you will get; re-allocated on save.
         proposed = reserve_mouse_ids(db_session, len(rows))
@@ -3001,6 +3042,10 @@ def batch_mice_create():
     if not rows:
         flash("Nothing to create.", "error")
         return redirect(url_for("batch_mice"))
+    late = _future_births(rows)
+    if late:
+        # Back to the grid as it was typed, not to an empty form.
+        return _batch_preview(rows, late + _mixed_new_cages(rows))
 
     created = 0
     with SessionLocal() as db_session, audit.batch(
@@ -3099,6 +3144,10 @@ def create_cage():
         flash(f"Make between 1 and {MAX_NEW_CAGES} cages at a time (asked for “{raw_count}”).", "error")
         return autosave_response("cages")
     count = int(raw_count)
+    refused = future_birth(form, "date_give_birth", "A litter's birth date")
+    if refused:
+        flash(refused, "error")
+        return autosave_response("cages")
     with SessionLocal() as db_session:
         if requested and requested.lower() != "new":
             if count > 1 and not requested.isdigit():
@@ -3405,6 +3454,9 @@ def apply_cage_form(db_session, cage, form) -> str | None:
     if "cage_location" in form and form_changed(form, "cage_location"):
         cage.cage_location = (form.get("cage_location") or "").strip()
     if "date_give_birth" in form:
+        refused = future_birth(form, "date_give_birth", "A litter's birth date")
+        if refused:
+            return refused
         cage.date_give_birth = parse_date(form.get("date_give_birth"))
     if "is_shared" in form:
         cage.is_shared = (form.get("is_shared") or "").strip() in ("1", "on", "true", "yes")
@@ -3632,10 +3684,36 @@ def cage_wean(cage_row_id: int):
         if blocked:
             return blocked
         if cage is not None:
-            cage.date_give_birth = None
+            young = _too_young_to_wean(cage)
+            if young:
+                flash(young, "error")
+                return _back_to_colony("cages")
+            mark_weaned(cage)
             db_session.commit()
             flash(f"Cage {cage.cage_id} is weaned.", "success")
     return _back_to_colony("cages")
+
+
+def _too_young_to_wean(cage) -> str | None:
+    """Why weaning this cage now needs a second look, or None. The form
+    sends early=1 once the person has confirmed (colony.html asks)."""
+    if request.form.get("early"):
+        return None
+    born = cage.date_give_birth
+    if born is None:
+        litter = cage_pup_litter(cage)
+        born = litter.date_of_birth if litter else None
+    if born is None:
+        return None
+    age = (date.today() - born).days
+    if age >= MIN_WEAN_AGE_DAYS:
+        return None
+    due = born + timedelta(days=WEAN_OFFSET_DAYS)
+    if age < 0:
+        return (f"Cage {cage.cage_id}'s litter is dated {born:%b %d}, in the future. "
+                "Correct its date before weaning.")
+    return (f"The pups in cage {cage.cage_id} are {age} days old; weaning is due {due:%b %d} "
+            f"(P{WEAN_OFFSET_DAYS}). Nothing was changed. To wean them early anyway, confirm it when asked.")
 
 
 @app.route("/colony/cages/<int:cage_row_id>/wean-distribute", methods=["POST"])
@@ -3673,6 +3751,12 @@ def cage_wean_distribute(cage_row_id: int):
         if blocked:
             return blocked
         source_cage_label = source_cage.cage_id
+        young = _too_young_to_wean(source_cage)
+        if young:
+            flash(young, "error")
+            return redirect(url_for("colony", view="cages"))
+        # Before the pups move out: which litter they are is read from the cage.
+        mark_weaned(source_cage)
 
         for mouse_ids_str, gender_raw, cage_id_input, card_id_input in rows:
             mouse_ids_str = (mouse_ids_str or "").strip()
@@ -3748,6 +3832,10 @@ def create_litter():
     """Create a litter. A blank ID takes the next free number; an ID that is
     already a litter is refused rather than overwriting that litter."""
     requested = (request.form.get("litter_id") or "").strip()
+    refused = future_birth(request.form)
+    if refused:
+        flash(refused, "error")
+        return redirect(url_for("colony", view="litters", scope=request.form.get("scope") or None))
     with SessionLocal() as db_session:
         if requested and db_session.scalar(select(LitterRecord.id).where(LitterRecord.litter_id == requested)):
             flash(f"Litter {requested} already exists; nothing was changed. "
@@ -3774,6 +3862,10 @@ def update_litter(litter_row_id: int):
         if refused:
             return refused
         form = request.form
+        refused = future_birth(form)
+        if refused:
+            flash(refused, "error")
+            return autosave_response("litters")
         if "date_of_birth" in form:
             litter.date_of_birth = parse_date(form.get("date_of_birth"))
         for field in ("cohort_name", "notes", "father_info", "mother_info"):

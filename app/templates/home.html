@@ -160,8 +160,9 @@
     {% if weanings %}
       <div class="flex flex-col">
         {% for w in weanings %}
-          <a class="row-line" href="{{ url_for('colony', view='litters') }}">
-            <span class="ident w-16 shrink-0 truncate">{{ w.litter_id }}</span>
+          {# To the cage, where the Wean button is; the litters list when there is no cage. #}
+          <a class="row-line" href="{{ url_for('colony', view='cages', scope='all') ~ '#cage-' ~ w.cage_row_id if w.cage_row_id else url_for('colony', view='litters') }}">
+            <span class="w-40 shrink-0 truncate font-medium text-ink">{{ w.title }}</span>
             <span class="min-w-0 flex-1 truncate text-ink-soft">
               DOB {{ w.dob }}{% if w.cohort %} · {{ w.cohort }}{% endif %}{% if w.pups %} · {{ w.pups }} pups{% endif %}
             </span>

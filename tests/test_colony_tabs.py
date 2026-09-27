@@ -243,6 +243,101 @@ class WeanDueTests(AppTestCase):
         self.assertEqual(self.wean_due(col["cage_id"], notes="x"), (days_ahead(11), ""))
 
 
+class OneWeaningListTests(AppTestCase):
+    """Home, the calendar and the cage sheet read one list of what is due
+    to be weaned (services.weaning_due), and weaning takes a litter off it."""
+
+    def calendar_weans(self, client):
+        r = client.get("/calendar/events.json", query_string={"start": days_ago(30), "end": days_ahead(30)})
+        return [i["title"] for i in r.get_json()["items"] if i["id"].endswith("-wean")]
+
+    def test_a_cage_birth_date_is_due_on_home_and_the_calendar(self):
+        code = uniq("C")
+        self.make_cage(self.m, code, date_give_birth=days_ago(18))
+        self.assertIn(f"Cage {code}", self.get_ok(self.m, "/home"))
+        self.assertTrue(any(f"Cage {code}" in t for t in self.calendar_weans(self.m)))
+
+    def test_a_litter_without_a_cage_date_is_due_on_the_calendar_too(self):
+        col = self.make_colony(self.m, self.member, n_mice=2, dob=days_ago(18))
+        titles = self.calendar_weans(self.m)
+        self.assertIn(f"Wean - Litter {col['litter']} · cage {col['cage']}", titles)
+        self.assertIn(f"Litter {col['litter']}", self.get_ok(self.m, "/home"))
+
+    def test_a_litter_in_a_cage_with_its_date_counts_once(self):
+        col = self.make_colony(self.m, self.member, n_mice=2, dob=days_ago(18), date_give_birth=days_ago(18))
+        titles = [t for t in self.calendar_weans(self.m) if col["cage"] in t]
+        self.assertEqual(titles, [f"Wean - Litter {col['litter']} · cage {col['cage']}"])
+
+    def test_weaning_takes_the_litter_off_every_list(self):
+        col = self.make_colony(self.m, self.member, n_mice=2, dob=days_ago(22))
+        self.m.post(f"/colony/cages/{col['cage_id']}/wean")
+        self.assertEqual(one("select weaned_on from litters where id=?", col["litter_id"]), T)
+        self.assertNotIn(f"Litter {col['litter']}", self.get_ok(self.m, "/home"))
+        self.assertFalse([t for t in self.calendar_weans(self.m) if col["litter"] in t])
+        r = self.autosave(self.m, f"/colony/cages/{col['cage_id']}/update", {"notes": "x"})
+        self.assertEqual(r.get_json()["row"]["values"]["wean_due"], "")
+
+    def test_distributing_marks_the_litter_weaned_before_the_pups_leave(self):
+        col = self.make_colony(self.m, self.member, n_mice=1, dob=days_ago(21), date_give_birth=days_ago(21))
+        self.post(self.m, f"/colony/cages/{col['cage_id']}/wean-distribute", {
+            "mouse_ids[]": [str(mouse_number(col["mice"][0]))], "gender[]": ["F"], "cage_id[]": [""], "card_id[]": [""]})
+        self.assertEqual(one("select weaned_on from litters where id=?", col["litter_id"]), T)
+        # Nor is the new cage due to wean, though the pup's litter is young.
+        r = self.autosave(self.m, f"/colony/cages/{cage_of(col['mice'][0])}/update", {"notes": "x"})
+        self.assertEqual(r.get_json()["row"]["values"]["wean_due"], "")
+
+    def test_young_pups_are_weaned_only_once_confirmed(self):
+        cage = self.make_cage(self.m, date_give_birth=days_ago(12))
+        r = self.post(self.m, f"/colony/cages/{cage}/wean", {})
+        self.assertFlash(r, "are 12 days old", "error")
+        self.assertEqual(one("select date_give_birth from mouse_cages where id=?", cage), days_ago(12))
+        self.post(self.m, f"/colony/cages/{cage}/wean", {"early": "1"})
+        self.assertIsNone(one("select date_give_birth from mouse_cages where id=?", cage))
+
+    def test_the_wean_button_carries_the_pups_by_sex(self):
+        col = self.make_colony(self.m, self.member, n_mice=2, dob=days_ago(20))
+        html = self.get_ok(self.m, "/colony?view=cages")
+        button = re.search(r'<button[^>]*data-wean\s[^>]*data-target-label="' + col["cage"] + r'"[^>]*>', html).group(0)
+        self.assertIn('data-age="20"', button)
+        ids = ", ".join(str(mouse_number(m)) for m in col["mice"])
+        self.assertIn(f"&#34;F&#34;: &#34;{ids}&#34;", button)
+
+
+class FutureBirthTests(AppTestCase):
+    """Nothing is born tomorrow: a future birth date is refused."""
+
+    def test_a_mouse_born_tomorrow_is_refused(self):
+        before = count("mice")
+        r = self.post(self.m, "/colony/mice/create", {"date_of_birth": days_ahead(1), "owner": self.member})
+        self.assertFlash(r, "can't be in the future", "error")
+        self.assertEqual(count("mice"), before)
+
+    def test_editing_a_date_of_birth_into_the_future_is_refused(self):
+        mouse = self.make_mouse(self.m, self.member, date_of_birth=days_ago(30))
+        r = self.autosave(self.m, f"/colony/mice/{mouse}/update", {"date_of_birth": days_ahead(3)})
+        self.assertFalse(r.get_json()["ok"])
+        self.assertEqual(one("select l.date_of_birth from mice m join litters l on l.id=m.litter_id_fk where m.id=?",
+                             mouse), days_ago(30))
+
+    def test_a_litter_or_a_cage_born_in_the_future_is_refused(self):
+        litter = self.make_litter(self.m, date_of_birth=days_ago(3))
+        self.autosave(self.m, f"/colony/litters/{litter}/update", {"date_of_birth": days_ahead(2)})
+        self.assertEqual(one("select date_of_birth from litters where id=?", litter), days_ago(3))
+        cage = self.make_cage(self.m)
+        self.autosave(self.m, f"/colony/cages/{cage}/update", {"date_give_birth": days_ahead(2)})
+        self.assertIsNone(one("select date_give_birth from mouse_cages where id=?", cage))
+
+    def test_add_many_shows_the_rows_again_instead_of_creating(self):
+        tg = uniq("Tg")
+        r = self.m.post("/colony/mice/batch/create", data={
+            "rows-0-gender": "F", "rows-0-transgene_1": tg, "rows-0-date_of_birth": days_ahead(5),
+            "rows-1-gender": "M", "rows-1-transgene_1": tg, "rows-1-date_of_birth": days_ago(5)})
+        html = r.get_data(as_text=True)
+        self.assertIn("Row 1: the date of birth is in the future", html)
+        self.assertIn(f'value="{tg}"', html)
+        self.assertEqual(count("mice", "transgene_1=?", tg), 0)
+
+
 class BreedersTabTests(AppTestCase):
 
     def test_breeders_tab_lists_breeder_and_breeding_cages_only(self):

@@ -54,7 +54,7 @@ class TracksTests(AppTestCase):
     def test_a_weaning_lands_on_its_day(self):
         colony = self.make_colony(self.m, self.member, n_mice=1, dob=days_ago(19))
         html = self.get_ok(self.m, "/home")
-        self.assertIn(f"Wean {colony['litter']}", html)
+        self.assertIn(f"Wean Litter {colony['litter']} · cage {colony['cage']}", html)
         self.assertIn("Weaning · P21", html)
 
     def test_mice_past_30_weeks_are_overdue(self):

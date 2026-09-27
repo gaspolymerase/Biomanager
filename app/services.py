@@ -315,6 +315,10 @@ def ensure_schema_updates() -> None:
             if column not in table_columns["mouse_cages"]:
                 alter_statements.append(f"ALTER TABLE mouse_cages ADD COLUMN {column} {ddl}")
 
+    # When a litter was weaned, so it stops being due everywhere (2026-09-26).
+    if "litters" in table_columns and "weaned_on" not in table_columns["litters"]:
+        alter_statements.append("ALTER TABLE litters ADD COLUMN weaned_on DATE")
+
     # Who made each inventory box, for who may resize or delete it (2026-09-25).
     if "inventory_racks" in table_columns and "created_by" not in table_columns["inventory_racks"]:
         alter_statements.append("ALTER TABLE inventory_racks ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
@@ -916,6 +920,89 @@ GENO_OFFSET_DAYS = 28
 CAGE_GENO_OFFSET_DAYS = GENO_OFFSET_DAYS
 
 
+# Younger than this, weaning asks first: P21 is the usual day, and pups
+# weaned before about P18 often do not survive without their mother.
+MIN_WEAN_AGE_DAYS = 18
+
+
+def weaning_due(session, start: date, end: date) -> list[dict]:
+    """Every litter waiting to be weaned whose day (born + P21) falls
+    between start and end, soonest first.
+
+    The one source for Home, its layouts and the calendar, so they agree
+    with each other and with the cage sheet. Two things wait to be weaned:
+    a cage's "Litter born" date (the pups may not be entered as mice yet;
+    weaning the cage clears it), and a litter with a date of birth that has
+    not been weaned (weaned_on) and still has living mice or a pup count.
+    A litter whose pups sit in such a cage counts once, as that cage.
+    """
+    from sqlalchemy.orm import selectinload
+
+    first, last = start - timedelta(days=WEAN_OFFSET_DAYS), end - timedelta(days=WEAN_OFFSET_DAYS)
+    items: list[dict] = []
+    cages = session.scalars(
+        select(CageRecord).options(selectinload(CageRecord.mice).selectinload(MouseRecord.litter),
+                                   selectinload(CageRecord.rack))
+        .where(CageRecord.date_give_birth.is_not(None),
+               CageRecord.date_give_birth >= first, CageRecord.date_give_birth <= last)).all()
+    counted: set[int] = set()
+    for cage in cages:
+        born = cage.date_give_birth
+        litter = next((m.litter for m in cage.mice
+                       if m.date_of_death is None and m.litter is not None and m.litter.date_of_birth == born), None)
+        if litter is not None:
+            if litter.weaned_on is not None:
+                continue
+            counted.add(litter.id)
+        items.append({"born": born, "due": born + timedelta(days=WEAN_OFFSET_DAYS), "cage": cage,
+                      "litter": litter, "pups": litter.total_pups if litter else 0})
+    litters = session.scalars(
+        select(LitterRecord).options(selectinload(LitterRecord.mice).selectinload(MouseRecord.cage)
+                                     .selectinload(CageRecord.rack))
+        .where(LitterRecord.weaned_on.is_(None), LitterRecord.date_of_birth.is_not(None),
+               LitterRecord.date_of_birth >= first, LitterRecord.date_of_birth <= last)).all()
+    for litter in litters:
+        if litter.id in counted:
+            continue
+        living = [m for m in litter.mice if m.date_of_death is None]
+        if litter.mice and not living:
+            continue
+        cage = next((m.cage for m in living if m.cage is not None), None)
+        items.append({"born": litter.date_of_birth, "due": litter.date_of_birth + timedelta(days=WEAN_OFFSET_DAYS),
+                      "cage": cage, "litter": litter, "pups": litter.total_pups or len(living)})
+    items.sort(key=lambda item: (item["due"], item["litter"].litter_id if item["litter"] else ""))
+    return items
+
+
+def weaning_title(item: dict) -> str:
+    """"Litter L-2601 · cage 12", or "Cage 12" before the pups are entered."""
+    parts = []
+    if item["litter"] is not None:
+        parts.append(f"Litter {item['litter'].litter_id}")
+    if item["cage"] is not None:
+        parts.append(("cage " if parts else "Cage ") + item["cage"].cage_id)
+    return " · ".join(parts) or "A litter"
+
+
+def mark_weaned(cage: CageRecord, when: date | None = None) -> list[LitterRecord]:
+    """Weaning a cage: its "Litter born" date is cleared and the litters
+    of its pups are marked weaned. The pups are the living mice born on
+    that date, or, with no date, the youngest litter still under P28."""
+    when = when or date.today()
+    born = cage.date_give_birth
+    litters = {m.litter.id: m.litter for m in cage.mice
+               if m.date_of_death is None and m.litter is not None and m.litter.date_of_birth
+               and m.litter.weaned_on is None
+               and (m.litter.date_of_birth == born if born else 0 <= (when - m.litter.date_of_birth).days <= 28)}
+    if not born and litters:
+        youngest = max(litters.values(), key=lambda lit: lit.date_of_birth)
+        litters = {youngest.id: youngest}
+    for litter in litters.values():
+        litter.weaned_on = when
+    cage.date_give_birth = None
+    return list(litters.values())
+
+
 def cage_derived_dates(cage: CageRecord) -> dict[str, str]:
     if cage.date_give_birth is None:
         return {"genotyping_date": "", "weaning_date": ""}
@@ -1271,16 +1358,8 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
             body_parts.append(f"Genotype: {cage_geno}")
         body = " · ".join(body_parts)
 
-        wean = dob + timedelta(days=WEAN_OFFSET_DAYS)
+        # Weaning comes from weaning_due below, the same list Home shows.
         geno = dob + timedelta(days=GENO_OFFSET_DAYS)
-        if _in_window(wean):
-            items.append(_auto_item(
-                kind_tag="wean", anchor_id=cage.id,
-                title=f"Wean - {location_label}",
-                color="#b6e2a1",  # pistachio
-                day=wean, body=body, source="cage",
-                href=f"/colony?cage_id={cage.id}",
-            ))
         if _in_window(geno):
             items.append(_auto_item(
                 kind_tag="geno", anchor_id=cage.id,
@@ -1289,6 +1368,36 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
                 day=geno, body=body, source="cage",
                 href=f"/colony?cage_id={cage.id}",
             ))
+
+    # ----- Weaning at P21: cages with a litter-born date, and litters not
+    # yet weaned (weaning_due, shared with Home) -------------------------
+    def _day(value, default: date) -> date:
+        if not value:
+            return default
+        return value.date() if isinstance(value, datetime) else value
+
+    lo = _day(start_dt, date.today() - timedelta(days=365))
+    hi = _day(end_dt, date.today() + timedelta(days=365))
+    for wean in weaning_due(session, lo, hi):
+        cage, litter = wean["cage"], wean["litter"]
+        body_parts = [f"DOB {wean['born'].isoformat()}"]
+        if litter is not None:
+            father = _parent_label(session, litter.father_info)
+            mother = _parent_label(session, litter.mother_info)
+            body_parts += [f"Father: {father}"] if father else []
+            body_parts += [f"Mother: {mother}"] if mother else []
+        if cage is not None and (cage.genotype_summary or "").strip() and len(body_parts) == 1:
+            body_parts.append(f"Genotype: {cage.genotype_summary.strip()}")
+        where = ""
+        if cage is not None:
+            where = (cage.cage_location or "").strip()
+        items.append(_auto_item(
+            kind_tag="wean", anchor_id=(cage.id if cage is not None else litter.id),
+            title=f"Wean - {weaning_title(wean)}" + (f" ({where})" if where else ""),
+            color="#b6e2a1",  # pistachio
+            day=wean["due"], body=" · ".join(body_parts), source="cage" if cage is not None else "litter",
+            href=(f"/colony?view=cages&scope=all#cage-{cage.id}" if cage is not None else "/colony?view=litters"),
+        ))
 
     # ----- Old-mouse sac threshold (>= 30 weeks via litter DOB) ----------
     # Mice link to litters; we walk mice whose litter has a DOB. We skip
