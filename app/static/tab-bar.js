@@ -1,7 +1,8 @@
 /* Workspace tabs — the persistent strip at the top of the main column.
  *
  * Tabs behave like a browser's: following a link navigates the tab you are
- * already in, and only the "+" button opens a new one. Anything else would
+ * already in, and only the "+" button opens a new one (on the person's start
+ * page, chosen in Settings). Anything else would
  * spawn a tab per click and turn the strip into a history list.
  *
  * State lives in localStorage as an array of { url, title } plus the index
