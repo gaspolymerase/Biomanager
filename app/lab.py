@@ -76,6 +76,9 @@ MEMBER_PERMISSIONS = {
                                  "A personal database only its owner (and admins) sees.", True),
     "members_share_databases": ("Members may add databases for the whole lab",
                                 "Otherwise only admins add lab databases, and members share theirs through an admin.", False),
+    "members_keep_copies": ("Members may keep a copy of the lab on their computers",
+                            "The desktop app keeps a copy of the whole database, refreshed daily, as a backup. "
+                            "Admins always may; a laptop with a copy holds every record.", False),
 }
 
 SETUP_DONE_KEY = "lab_setup_done"

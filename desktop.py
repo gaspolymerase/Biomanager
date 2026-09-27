@@ -55,6 +55,11 @@ def main() -> int:
     url = f"http://127.0.0.1:{port}/"
     _wait_until_ready(url)
 
+    # Keep this computer's copy of the lab server fresh, if it is set up to
+    # (Settings → Keep a copy of your lab server; app/lab_copy.py).
+    from app import lab_copy
+    lab_copy.start_background(app)
+
     webview.create_window(
         "BioManager",
         url,

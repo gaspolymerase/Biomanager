@@ -361,6 +361,22 @@ class GuestPass(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class LabCopyKey(Base):
+    """A key a computer uses to keep a copy of the lab's database
+    (app/lab_copy.py). Only its hash is kept; the person sees it once."""
+    __tablename__ = "lab_copy_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id_fk: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(80))                  # which computer, e.g. "Lab iMac"
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_bytes: Mapped[int] = mapped_column(Integer, default=0)       # size of the last copy it took
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class UserIdentity(Base):
     """A Google or Microsoft account that signs in as a BioManager user
     (app/oidc.py). Matched on the provider's issuer and subject, the one

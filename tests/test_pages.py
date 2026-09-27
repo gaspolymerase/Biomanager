@@ -14,7 +14,10 @@ from app.organism_routes import MODULE_VIEWS
 from app.stock_routes import VIEWS as STOCK_VIEWS
 
 # Not pages: they end the session, or hand off to Google.
-SKIP = {"/logout", "/calendar/google/connect", "/calendar/google/callback"}
+SKIP = {"/logout", "/calendar/google/connect", "/calendar/google/callback",
+        # A computer's key, not a session, opens these (tests/test_lab_copy.py);
+        # the status is the desktop app's only.
+        "/api/lab-copy/snapshot", "/api/lab-copy/files", "/lab-copy/status"}
 PUBLIC = {"/login", "/register", "/healthz", "/guest"}  # /guest: entering a guest code (app/guests.py)
 
 

@@ -228,6 +228,26 @@ pages are in `app/lab_routes.py`.
   one-shot parameters are removed from the address on load and from the
   referrer in `_back()`.
 
+## Copies of the lab on every computer
+
+`app/lab_copy.py`. On a server, someone who may (admins; members when Lab
+setup's `members_keep_copies` is on) makes a key per computer under
+Settings (`lab_copy_keys`, only a SHA-256 kept). With `Authorization:
+Bearer <key>` a computer gets `GET /api/lab-copy/snapshot` (the whole
+database written to a SQLite file with the app's own metadata, encrypted
+columns blanked; SHA-256 and row counts in `X-BioManager-*` headers; one
+per key every 2 minutes), `/api/lab-copy/files` (uploads: path and size)
+and `/api/lab-copy/files/<path>`. Wrong keys are throttled; from the
+internet (guest access) the gate refuses them like any request without a
+session. The desktop app (`LOCAL_SETUP`) stores the address and the key
+(encrypted) in `app_settings`, and `start_background()` (from `desktop.py`)
+fetches a copy when the last good one is over 20 hours old: checksum and
+`PRAGMA integrity_check` first, the newest `lab_copy_keep` kept in
+`<data>/lab-copies/<host>/db/`, uploads mirrored into `uploads/` (never
+deleted). A snapshot loads into a new server with
+`scripts/migrate-to-postgres.py` (`tests/test_lab_copy.py` proves it on
+PostgreSQL).
+
 ## Notifications
 
 `app/notify.py`. A `before_flush` listener looks at dirty records (mice,

@@ -143,7 +143,7 @@ from . import oidc  # noqa: E402
 app.register_blueprint(oidc.bp)
 
 # Importing app.notify registers the listener that sends notifications.
-from . import guests, lab_routes, notify  # noqa: E402,F401
+from . import guests, lab_copy, lab_routes, notify  # noqa: E402,F401
 from . import appearance, home_layouts  # noqa: E402
 from . import lab_calendar  # noqa: E402
 from . import lab_notebook  # noqa: E402
@@ -286,6 +286,9 @@ app.register_blueprint(lab_routes.bp)
 
 # Guest passes and the gate in front of internet access (app/guests.py).
 app.register_blueprint(guests.bp)
+
+# Copies of the lab's database on every desktop app (app/lab_copy.py).
+app.register_blueprint(lab_copy.bp)
 # Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
 app.register_blueprint(lab_calendar.bp)
 # Sharing, live editing, versions, comments, protocols and meetings (app/lab_notebook.py).

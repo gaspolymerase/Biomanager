@@ -172,7 +172,7 @@
       <header class="setup-step-head"><span class="setup-step-num">4</span><h3>What may members do?</h3></header>
       <div class="choice-grid">
         {% for key, (label, blurb, _default) in permissions.items() %}
-          {{ choice(key, state.permissions[key], label, blurb, 'user' if key == 'members_create_databases' else 'users') }}
+          {{ choice(key, state.permissions[key], label, blurb, {'members_create_databases': 'user', 'members_keep_copies': 'download'}.get(key, 'users')) }}
         {% endfor %}
       </div>
       <p class="setup-note">Admins can always add databases for the whole lab. Everyone sees every lab database's records; each person edits what they own, and shared cages are everyone's.</p>
