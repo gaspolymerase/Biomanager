@@ -125,6 +125,7 @@
           <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
           <button type="button" class="dt-toolbar-btn" data-on-click="openExportModal">{{ icon('download') }} Export</button>
           <button type="button" class="dt-toolbar-btn" data-on-click="printMouseTable">{{ icon('print') }} Print</button>
+          <a class="dt-toolbar-btn" href="{{ sheet_import_url('mice') }}" title="Bring in the Excel or CSV sheet you kept your mice in">{{ icon('import') }} Import from Excel</a>
           <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">{{ icon('duplicate') }} Add many</a>
           <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                   data-mouse-edit data-mouse-payload='{{ {"owner": current_user.username, "status": "experiment"} | tojson }}'>

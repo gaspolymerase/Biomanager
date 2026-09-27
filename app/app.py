@@ -309,6 +309,9 @@ app.register_blueprint(lab_calendar.bp)
 # Setting up a lab server from the desktop app (app/server_setup.py).
 from . import server_setup  # noqa: E402
 app.register_blueprint(server_setup.bp)
+# Import from Excel into any database (app/sheet_import.py).
+from . import sheet_import  # noqa: E402
+app.register_blueprint(sheet_import.bp)
 # Sharing, live editing, versions, comments, protocols and meetings (app/lab_notebook.py).
 app.register_blueprint(lab_notebook.bp)
 

@@ -374,6 +374,33 @@ stock**, and statuses and categories can be renamed without losing items.
   </tr>
 </table>
 
+### 📥 Coming from Excel
+
+Every database has **Import from Excel** beside **Add many**: mice, fish,
+plasmids, fly and worm vials, any organism database and every inventory.
+Upload the workbook (.xlsx, any sheet) or CSV you kept your records in, as
+it is:
+
+- **Columns are matched by meaning, not just by name.** *Position*,
+  *Slot* and *Well* are the position; *DOB* and *Born* the date of birth;
+  *Supplier* the vendor; *Cat. No.* the catalogue number. Where a name
+  could mean two things the values decide: a *Location* of `A1`, `B2`…
+  is a position in a box, one of `Freezer 2` is a location note. Each match
+  says why it was made, and you can change any of them.
+- **The database adjusts to your sheet.** A column BioManager doesn't have
+  becomes a new column (text, number or date) in inventories and organism
+  databases; in the fixed ones it goes into each record's notes as
+  `Header: value`, so nothing is lost.
+- **Must-have columns are filled in.** If your sheet has no owner, say who
+  every row belongs to (you, by default).
+- **Values are tidied.** Excel dates in any style (day or month first,
+  decided per column, or a date number), `Male`/`m`/`♂` → `M`, your lab's
+  own statuses, people by name.
+- **You see a preview first.** It runs through the same checks as the
+  database's own dialogs and lists every row that would be skipped and why,
+  by its row number in Excel. The import itself is one batch, so
+  **Batch history** can undo it.
+
 ### 📱 Cage cards that open on your phone
 
 Print correctly sized cards for cages, tanks and vials. Scan the QR code
@@ -557,7 +584,8 @@ A walk-through for a mouse colony. The other modules work the same way.
     <td valign="top" width="25%">
       <h4>Day 2 · Bring the mice in</h4>
       <ol>
-        <li><b>Mice → Add many</b>: describe a group, or upload your old spreadsheet as CSV.</li>
+        <li><b>Mice → Import from Excel</b>: upload your old spreadsheet as it is and check how its columns were matched.</li>
+        <li>Or <b>Mice → Add many</b>: describe a group of new mice.</li>
         <li>Check the preview; <b>Fill down</b>, <b>Skip</b>, then save.</li>
         <li>Give each cage a purpose and a rack position.</li>
       </ol>

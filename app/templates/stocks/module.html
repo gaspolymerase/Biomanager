@@ -110,6 +110,7 @@
         </div>
         <div class="dt-toolbar-spacer"></div>
         {{ sheet_ui.tools() }}
+        <a class="dt-toolbar-btn" href="{{ sheet_import_url('stocks:' ~ key) }}" title="Bring in the Excel or CSV sheet you kept your {{ m.units }} in">{{ icon('import') }} Import from Excel</a>
         <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                 data-record-edit="unit-dialog" data-record-payload='{{ new_payload | tojson }}'>
           {{ icon('plus') }} New {{ m.unit }}
