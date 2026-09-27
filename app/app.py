@@ -306,6 +306,9 @@ app.register_blueprint(guests.bp)
 app.register_blueprint(lab_copy.bp)
 # Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
 app.register_blueprint(lab_calendar.bp)
+# Setting up a lab server from the desktop app (app/server_setup.py).
+from . import server_setup  # noqa: E402
+app.register_blueprint(server_setup.bp)
 # Sharing, live editing, versions, comments, protocols and meetings (app/lab_notebook.py).
 app.register_blueprint(lab_notebook.bp)
 

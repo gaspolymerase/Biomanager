@@ -39,6 +39,10 @@
             <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}">Create the admin account</a>
             <a class="btn btn-lg" href="{{ guide_url }}#first-run" target="_blank" rel="noopener">How setting up works</a>
           </div>
+          {% if config.LOCAL_SETUP %}
+            <p class="hello-fine">Setting BioManager up for a whole lab, on a server everyone signs in to?
+              <a href="{{ url_for('server_setup.page') }}">Set up a lab server</a> from here instead.</p>
+          {% endif %}
           {% if needs_setup_code %}
             <p class="hello-fine">You'll need the <b>setup code</b> printed in the server's log when BioManager started, so nobody else on
               the network can claim the admin account first.</p>

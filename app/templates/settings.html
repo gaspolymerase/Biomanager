@@ -266,6 +266,19 @@
     {% endif %}
 
     {% include "lab_copy/_cards.html" %}
+    {% if config.LOCAL_SETUP %}
+      {# Only the desktop app sets servers up (app/server_setup.py). #}
+      <article class="card lg:col-span-2" id="lab-server">
+        <header class="card-head"><h2>{{ icon('database') }} Set up a lab server</h2></header>
+        <div class="flex flex-col gap-3 p-4">
+          <p class="text-[12.5px] leading-snug text-muted">
+            One BioManager everyone in the lab signs in to, from their computers and phones: on a cloud server, a university
+            server, a lab computer or this one. This app asks where, does the setting up, and can bring your records along.
+          </p>
+          <div><a class="btn btn-primary" href="{{ url_for('server_setup.page') }}">Set up a lab server</a></div>
+        </div>
+      </article>
+    {% endif %}
   </div>
 
   {# ---- Roadmap ---- #}

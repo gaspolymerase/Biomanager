@@ -433,7 +433,7 @@ flowchart TB
 | --- | --- | --- | --- |
 | **For** | one person, one computer | a whole lab, from any browser | developers |
 | **Database** | SQLite, on your computer | PostgreSQL | SQLite (or PostgreSQL) |
-| **Setup** | download and open | Docker on a Linux machine or VM | Python 3.11+ and Node |
+| **Setup** | download and open | the desktop app sets it up for you (or Docker by hand) | Python 3.11+ and Node |
 | **Backups** | `dbtool.py backup` | automatic, nightly, test-restored weekly, optional off-site copy | `dbtool.py backup` |
 | **Phones & QR codes** | — only your computer can reach it | ✅ | on your local network |
 
@@ -481,7 +481,23 @@ Windows and Linux.
 
 ### 🏫 Lab server
 
-The supported setup is the Docker stack in [`deploy/`](deploy/README.md):
+**The easy way: let the desktop app do it.** In the desktop app, choose
+**Set up a lab server** (on the welcome page, or in Settings) and say where
+it should run:
+
+- a cloud server reached privately over **Tailscale** (recommended; Oracle's
+  free tier is enough), or one with the lab's **own web address**;
+- a **university or department server**;
+- a **Linux computer in the lab**, or **this computer** if it has Docker.
+
+It signs in over SSH with your key, installs Docker (and Tailscale) if
+needed, downloads the release's server bundle, writes its settings with a
+fresh database password, can bring the desktop app's records along, starts
+it, sets up alerts and backups, and checks that it answers. Every step and
+every command is shown before and while it runs; at the end you get the
+address and the setup code for the admin account.
+
+**By hand:** the supported setup is the Docker stack in [`deploy/`](deploy/README.md):
 HTTPS, PostgreSQL, and a backup service that dumps the database every
 night, checks each dump and test-restores one every week.
 

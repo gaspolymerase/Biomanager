@@ -17,7 +17,9 @@ from app.stock_routes import VIEWS as STOCK_VIEWS
 SKIP = {"/logout", "/calendar/google/connect", "/calendar/google/callback",
         # A computer's key, not a session, opens these (tests/test_lab_copy.py);
         # the status is the desktop app's only.
-        "/api/lab-copy/snapshot", "/api/lab-copy/files", "/lab-copy/status"}
+        "/api/lab-copy/snapshot", "/api/lab-copy/files", "/lab-copy/status",
+        # The desktop app's only (tests/test_server_setup.py).
+        "/server-setup/"}
 # /: the welcome page before signing in (app.py hello); /guest: entering a guest code (app/guests.py).
 PUBLIC = {"/", "/login", "/register", "/healthz", "/guest"}
 
