@@ -119,28 +119,32 @@
         <tr><th>Version history, "who changed this?"</th><td>The <b>Audit log</b> records every edit, who made it and what it was before;
           <b>Batches</b> undoes any bulk change.</td></tr>
         <tr><th>Mail-merge for cage labels</th><td><b>Cage cards</b> sized for card stock, each with a QR code that opens the cage on a phone.</td></tr>
+        <tr><th>Your old workbook</th><td><b>Import from Excel</b> on every database reads it as it is, whatever its columns are called.</td></tr>
         <tr><th>Save As CSV</th><td><b>Export</b> on every sheet (CSV; for mice also Excel and PDF). Your data is never locked in.</td></tr>
       </table>
 
       <h3>Move in, in about half an hour</h3>
       <ol class="steps-list">
-        <li><b>Save your sheets as CSV.</b> In Excel, <b>File → Save As → CSV UTF-8</b>, one file per sheet.</li>
-        <li><b>Mice.</b> <b>Mice → Add many → Download a template</b> gives a CSV with the headers BioManager reads —
-          <code>sex</code>, <code>transgene_1</code>…<code>transgene_4</code>, <code>cage</code>, <code>cage_location</code>,
-          <code>owner</code>, <code>litter</code>, <code>dob</code>, <code>status</code>, <code>note</code>. Paste your columns under
-          them (a single <code>genotype</code> column goes into Transgene 1; other columns are ignored). Dates may stay as Excel writes
-          them, <code>3/14/2026</code> or <code>14/03/2026</code>: the file decides whether day or month comes first, and says so when it
-          can't tell. Leave out your old IDs: BioManager numbers mice in order. Then <b>Or load a CSV → Preview file</b>, check the
-          preview, fix anything in place, and <b>Create</b>.</li>
+        <li><b>Bring each sheet in as it is.</b> Every database has <b>Import from Excel</b> beside <b>Add many</b> — Mice, Fish,
+          Plasmids, fly and worm vials, any organism and every inventory. Upload the workbook (<code>.xlsx</code>, then pick the
+          sheet) or a CSV. No template, no renaming columns.</li>
+        <li><b>Check how the columns were matched.</b> BioManager matches by meaning, not just by name: <i>Position</i>,
+          <i>Slot</i> and <i>Well</i> are the position, <i>DOB</i> and <i>Born</i> the date of birth, <i>Supplier</i> the vendor,
+          <i>Cat. No.</i> the catalogue number. Where a name could mean two things the values decide — a <i>Location</i> of
+          <code>A1</code>, <code>B2</code>… is a position in a box, one of <code>Freezer 2</code> is a location. Each match says why;
+          change any of them.</li>
+        <li><b>Nothing is dropped.</b> A column BioManager doesn't have becomes a new column in an inventory or organism database
+          (if you may configure it), or goes into each record's notes as <code>Header: value</code>. A must-have column your sheet
+          lacks, like the owner, gets one value for every row. Dates stay as Excel wrote them (<code>3/14/2026</code>,
+          <code>14/03/2026</code>): each column decides whether day or month comes first. <i>Male</i>, <i>m</i> and <i>♂</i> all
+          become M; statuses and people are matched by name.</li>
+        <li><b>Preview, then import.</b> The preview runs every row through the same checks as the database's own form and lists
+          any that would be skipped, by its row number in Excel. <b>Import</b> saves the rest as one batch, which
+          <b>Batches</b> can undo.</li>
+        <li><b>Or paste a column.</b> In any inventory, and in Plasmids, <b>Add many</b> takes a list pasted straight from Excel —
+          one name per line becomes one record each. Fill in the shared details once.</li>
         <li><b>Racks.</b> <b>Cages → Rack grid → New rack</b>, labelled like your real stickers, then drag each cage from
           <i>Unplaced</i> onto its position (on a tablet: <b>Move</b>, tap the cage, tap its place).</li>
-        <li><b>Orders.</b> <b>Orders → Import</b> with the headers <code>item_name</code>, <code>vendor_name</code>,
-          <code>catalog_number</code>, <code>quantity</code>, <code>status</code>, <code>requester_name</code>, <code>notes</code>.
-          A preview shows any row it can't read before anything is saved.</li>
-        <li><b>Plasmids.</b> <b>Plasmids → Import</b> with <code>name</code>, <code>backbone</code>, <code>insert_seq</code>,
-          <code>resistance</code>, <code>owner</code>, <code>location</code>, <code>notes</code>.</li>
-        <li><b>Everything else: paste a column.</b> In any inventory, and in Plasmids, <b>Add many</b> takes a list pasted straight
-          from Excel — one name per line becomes one record each. Fill in the shared details once.</li>
         <li><b>Print cage cards</b> and put them on the cages. From now on, the spreadsheet is the backup, not the record.</li>
       </ol>
 
@@ -169,7 +173,8 @@
         <tr><th>Windows</th><td>Extract the zip, open the <b>BioManager</b> folder, run <b>BioManager.exe</b>. At the warning choose
           <b>More info → Run anyway</b>.</td></tr>
         <tr><th>Linux</th><td>Mark <code>BioManager-Linux.AppImage</code> executable (right-click → Properties, or <code>chmod +x</code>) and open it.</td></tr>
-        <tr><th>A lab server</th><td>Nothing to install: open the address your admin gives you. Setting one up is on
+        <tr><th>A lab server</th><td>Nothing to install: open the address your admin gives you. A welcome page shows what
+          BioManager does and leads to <b>Sign in</b> or <b>Create an account</b>. Setting one up is on
           <a href="server.html">Run it for your lab</a>.</td></tr>
         <tr><th>Android</th><td>Install <code>BioManager-Android.apk</code> from the <a href="./#download">download page</a> and type your lab
           server's address once. See <a href="#phones">Phones</a>.</td></tr>
@@ -260,8 +265,10 @@
           inventories and plasmids, paste a list of names, one per line. You always see an editable preview first, with the numbers
           that will be assigned: <b>Fill down</b> copies the cell you're in to every row below (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>D</kbd>
           too), and nothing is saved until you press Create.</dd>
-        <dt>Import</dt>
-        <dd>Orders and plasmids take a CSV through <b>Import</b>, with a dry run that lists any row it can't read.</dd>
+        <dt>Import from Excel</dt>
+        <dd>Every database takes an Excel workbook or CSV, with any columns: you check how they were matched, see a preview of
+          what would be created and which rows would be skipped, then import them as one batch you can undo. See
+          <a href="#excel">Coming from Excel</a>.</dd>
         <dt>Select and act</dt>
         <dd>Tick rows (shift-click selects a range) and a bar rises from the bottom: set a field, move, change owner or status, sac,
           retire, delete. Records you may not change are skipped and counted, never silently changed.</dd>
@@ -429,7 +436,7 @@
           or paste a list of names to make several. Drop in a SnapGene <code>.dna</code>, GenBank, FASTA or plain-text sequence.</li>
         <li>Open a plasmid to see its sequence and features on an interactive map you can edit (edits save themselves), full screen if
           you like; <b>Storage</b> and <b>Properties</b> are the other tabs.</li>
-        <li>Select plasmids to set owner or resistance, move them to a box, or delete. <b>Import</b> takes a CSV.</li>
+        <li>Select plasmids to set owner or resistance, move them to a box, or delete. <b>Import from Excel</b> brings in your old list.</li>
       </ul>
       <figure class="gshot"><img src="assets/screenshots/plasmid-map.webp" alt="A plasmid map" loading="lazy" width="2000" height="1250"></figure>
     </section>
