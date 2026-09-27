@@ -156,6 +156,31 @@ class GettingStarted(LabSettingsCase):
         self.assertIn("Bring in your mice", html)
         self.assertNotIn("Add a plasmid", html)
 
+    def test_a_member_gets_their_own_steps_not_the_labs(self):
+        member = real_user()
+        client, _ = self.login(member)
+        html = client.get("/home").get_data(as_text=True)
+        self.assertIn("Find your mice", html)
+        self.assertIn("Scan a cage card", html)
+        self.assertNotIn("Add a rack", html)            # the admin's setting up
+        self.assertIn("Add a rack", self.get_ok(self.a, "/home"))
+
+    def test_opening_the_colony_and_scanning_a_card_tick_a_members_steps(self):
+        member = real_user()
+        client, _ = self.login(member)
+        uid = user_id(member)
+        client.get("/colony?view=mice")
+        self.assertTrue(one("select value from app_settings where key=?", f"did:{uid}:colony"))
+        self.assertIsNone(one("select value from app_settings where key=?", f"did:{uid}:scan"))
+        client.get("/colony?view=cages&scope=all&card=1")
+        self.assertTrue(one("select value from app_settings where key=?", f"did:{uid}:scan"))
+
+    def test_a_cage_card_scans_as_a_scan(self):
+        from unittest import mock
+        self.a.post("/colony/cages/create", data={"cage_id": uniq("C")})
+        with mock.patch("app.labels._qr_svg", side_effect=lambda target, scale=3: f"<i>{target}</i>"):
+            self.assertIn("card=1", self.get_ok(self.a, "/labels/cards/cages?scope=all"))
+
     def test_the_guide_link_goes_to_the_website(self):
         r = self.m.get("/guide?section=mice")
         self.assertEqual(r.headers["Location"], "https://gaspolymerase.github.io/biomanager-app/guide.html#mice")

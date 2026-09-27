@@ -75,8 +75,9 @@
           <label class="field-label">Cage
             <input name="cage_id" placeholder="number, or 'new'">
             <span class="field-hint normal-case tracking-normal">
-              <code class="ident">new</code> puts the whole batch in one freshly
-              allocated cage. Type numbers per row in the preview to split them.
+              <code class="ident">new</code> puts the batch in one fresh cage;
+              with females and males, each sex gets its own. In the preview,
+              <code class="ident">new-2</code>, <code class="ident">new-3</code>… are further new cages.
             </span>
           </label>
           <label class="field-label">Cage location
@@ -109,6 +110,10 @@
           <label class="field-label">Males
             <input type="number" name="count_male" min="0" max="{{ max_batch }}" placeholder="0">
           </label>
+          <label class="inline-check sm:col-span-2 self-end text-[12.5px]" title="With Cage set to new, females and males otherwise go into two new cages">
+            <input type="checkbox" name="one_new_cage" value="1">
+            Keep both sexes in one new cage (to breed)
+          </label>
         </div>
       </div>
 
@@ -138,18 +143,21 @@
             Columns it understands
           </p>
           <p class="font-mono text-[11.5px] leading-relaxed text-ink-soft">
-            gender · transgene_1–4 · cage_id · cage_location ·
-            owner · litter_id · date_of_birth · status · note
+            {{ template_headers | join(' · ') }}
           </p>
           <p class="mt-2 text-[11.5px] leading-snug text-muted">
-            <code class="ident">sex</code>, <code class="ident">dob</code>,
-            <code class="ident">cage</code>, <code class="ident">litter</code> and
-            <code class="ident">notes</code> are accepted too, and a <code class="ident">genotype</code> column with no
-            transgene columns goes into Transgene 1. Unknown columns are ignored.
-            <strong class="font-semibold text-ink-soft">Leave out mouse_id</strong> — IDs are
-            assigned in ascending order from #{{ next_id }}.
+            Easiest: download the template, fill it in Excel or Sheets and save
+            it as CSV. Dates may be written as in Excel (3/14/2026 or
+            14/03/2026). A <code class="ident">genotype</code> column with no
+            transgene columns goes into Transgene 1; other columns are ignored.
+            <strong class="font-semibold text-ink-soft">Leave out mouse IDs</strong>: they are
+            assigned in order from #{{ next_id }}.
           </p>
         </div>
+
+        <a class="btn" href="{{ url_for('batch_mice_template') }}" download>
+          {{ icon('download') }} Download a template
+        </a>
 
         <button type="submit" class="btn btn-primary">
           {{ icon('eye') }} Preview file
@@ -167,8 +175,10 @@
         <span class="badge">IDs #{{ proposed_ids[0] }} – #{{ proposed_ids[-1] }}</span>
       {% endif %}
       <span class="text-[12px] text-muted">assigned in order when you save</span>
+      <span class="text-[12px] text-ok-700" data-fill-note aria-live="polite"></span>
       <div class="dt-toolbar-spacer"></div>
-      <button type="button" class="dt-toolbar-btn" data-on-click="batchFill">
+      <button type="button" class="dt-toolbar-btn" data-on-click="batchFill"
+              title="Copies the cell you were in to every row below it (Ctrl+D). With no cell chosen, fills empty cells from the first row.">
         {{ icon('arrow-down') }} Fill down
       </button>
       <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">
@@ -197,7 +207,7 @@
               {% for key, label, width in columns %}
                 <td>
                   {% if key == 'date_of_birth' %}
-                    <input type="date" name="rows-{{ r }}-{{ key }}" value="{{ row[key] }}">
+                    <input type="date" name="rows-{{ r }}-{{ key }}" value="{{ row[key] }}" data-col="{{ key }}">
                   {% elif key == 'gender' %}
                     <input name="rows-{{ r }}-{{ key }}" value="{{ row[key] }}"
                            list="options-gender" data-col="{{ key }}">
@@ -248,9 +258,35 @@
   </datalist>
 
   <script nonce="{{ csp_nonce() }}">
-    /* Copy the first row's value down any column that is still empty —
-       the usual fix after a CSV that only filled in the first line. */
+    /* Fill down, as in a spreadsheet: the cell you were last in is copied
+       to every row below it in its column (the button, or Ctrl+D / ⌘D).
+       With no cell chosen yet, the first row's values go into every empty
+       cell below: the usual fix after a CSV that only filled the first line. */
+    let lastCell = null;
+    document.addEventListener('focusin', (event) => {
+      if (event.target.matches && event.target.matches('[data-col]')) lastCell = event.target;
+    });
+    const note = document.querySelector('[data-fill-note]');
+    function tell(text) {
+      if (!note) return;
+      note.textContent = text;
+      clearTimeout(tell.timer);
+      tell.timer = setTimeout(() => { note.textContent = ''; }, 3500);
+    }
     function batchFill() {
+      if (lastCell && document.contains(lastCell)) {
+        const col = lastCell.dataset.col;
+        const cells = [...document.querySelectorAll(`[data-col="${col}"]`)];
+        const below = cells.slice(cells.indexOf(lastCell) + 1);
+        below.forEach((cell) => { cell.value = lastCell.value; });
+        const label = lastCell.closest('table').tHead.rows[0].cells[lastCell.closest('td').cellIndex].textContent.trim();
+        tell(below.length
+          ? `${label}: “${lastCell.value || 'blank'}” copied to ${below.length} row${below.length === 1 ? '' : 's'} below`
+          : 'That is the last row: nothing below to fill');
+        lastCell.focus();
+        return;
+      }
+      let filled = 0;
       const columns = new Set(
         [...document.querySelectorAll('[data-col]')].map((el) => el.dataset.col));
       columns.forEach((col) => {
@@ -259,10 +295,20 @@
         const source = cells[0].value.trim();
         if (!source) return;
         cells.slice(1).forEach((cell) => {
-          if (!cell.value.trim()) cell.value = source;
+          if (!cell.value.trim()) { cell.value = source; filled += 1; }
         });
       });
+      tell(filled ? `Filled ${filled} empty cell${filled === 1 ? '' : 's'} from the first row`
+                  : 'Nothing empty to fill. Click a cell first to copy it down.');
     }
+    document.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey
+          && event.key.toLowerCase() === 'd' && event.target.matches && event.target.matches('[data-col]')) {
+        event.preventDefault();
+        lastCell = event.target;
+        batchFill();
+      }
+    });
     BioActions.register({ batchFill: batchFill });
   </script>
 {% endif %}

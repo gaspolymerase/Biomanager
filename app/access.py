@@ -172,6 +172,11 @@ SCOPES = (
     ("shared", "Shared"),
     ("all", "Everyone"),
 )
+SCOPE_HINTS = {
+    "mine": "Your own mice, and the shared breeder cages",
+    "shared": "The breeder cages everyone works with",
+    "all": "Every mouse in the lab (you still edit only your own)",
+}
 VALID_SCOPES = {key for key, _ in SCOPES}
 DEFAULT_SCOPE = "mine"
 

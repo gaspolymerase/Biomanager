@@ -462,9 +462,17 @@ def hide_getting_started(session, user) -> None:
 
 
 def getting_started(session, user, on_server: bool) -> list[dict]:
-    """The first steps for what this lab keeps, each ticked off by the data
-    itself: a rack exists, mice exist, cage cards were printed. Lab-wide, so
-    a step one person did is done for everyone."""
+    """The first steps, each ticked off by the data itself.
+
+    An admin sets the lab up: a rack exists, mice exist, cage cards were
+    printed. Those are lab-wide, so a step one admin did is done for the
+    others. A member joins a lab that is already set up, so theirs are their
+    own (member_getting_started); a guest, here for a short visit, has none.
+    """
+    if getattr(user, "expires_at", None) is not None:
+        return []
+    if user.role != "admin":
+        return member_getting_started(session, user)
     from flask import url_for
     from sqlalchemy import func, select
     from . import inventory_service, stock_service
@@ -510,6 +518,48 @@ def getting_started(session, user, on_server: bool) -> list[dict]:
             UserAccount.id != user.id, UserAccount.disabled.is_(False))) or 0
         steps.append(step("Invite your lab", "Send members this address. They sign up, and you approve them in Manage users.",
                           url_for("admin_users"), others > 0))
+    steps.append(step("Read the user guide", "Ten minutes on everything BioManager does. Help in the sidebar opens it too.",
+                      GUIDE_URL, did(session, user, "guide"), external=True))
+    return steps
+
+
+def member_getting_started(session, user) -> list[dict]:
+    """A member's own first steps: find what is theirs, do one thing of their
+    own, scan a card. Ticked off by what this person did, not the lab."""
+    from flask import url_for
+    from sqlalchemy import select
+    from . import inventory_service
+    from .models import InventoryItem, MouseRecord, PlasmidRecord
+
+    def exists(stmt) -> bool:
+        return session.scalar(stmt.limit(1)) is not None
+
+    def step(title, hint, url, done, external=False):
+        return {"title": title, "hint": hint, "url": url, "done": bool(done), "external": external}
+
+    me = user.username
+    features = features_on(session)
+    steps: list[dict] = []
+    if features["colony"]:
+        steps.append(step("Find your mice", "Mice, then the Mine chip: the mice that are yours. "
+                          "Ask whoever had them to hand over any that should be.",
+                          url_for("colony", view="mice", scope="mine"),
+                          did(session, user, "colony") or exists(select(MouseRecord.id).where(MouseRecord.owner == me))))
+        steps.append(step("Scan a cage card", "Point your phone's camera at the QR code on a cage card: "
+                          "it opens that cage here, ready to edit.",
+                          url_for("colony", view="cages"), did(session, user, "scan")))
+    for module in inventory_service.list_modules(session):
+        if module.kind != "orders":
+            continue
+        steps.append(step(f"Request something in {module.label}",
+                          "New order: what, from whom, how many. You are told when it arrives.",
+                          url_for("inventory.module", key=module.key),
+                          exists(select(InventoryItem.id).where(InventoryItem.module_id_fk == module.id,
+                                                                InventoryItem.owner == me))))
+        break
+    if features["plasmids"]:
+        steps.append(step("Add a plasmid of yours", "Upload its GenBank or FASTA file to see the map.",
+                          url_for("plasmids"), exists(select(PlasmidRecord.id).where(PlasmidRecord.owner == me))))
     steps.append(step("Read the user guide", "Ten minutes on everything BioManager does. Help in the sidebar opens it too.",
                       GUIDE_URL, did(session, user, "guide"), external=True))
     return steps

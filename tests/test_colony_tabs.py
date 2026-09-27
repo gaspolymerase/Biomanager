@@ -9,6 +9,7 @@ a strain by whoever added it; presets by admins only. Admins edit anything.
 """
 from __future__ import annotations
 
+import io
 import re
 import unittest
 
@@ -707,11 +708,11 @@ class PresetTests(AppTestCase):
 
     def test_presets_tab_is_read_only_for_members(self):
         member_html = self.get_ok(self.m, "/colony?view=settings")
-        self.assertIn("Only an admin can add, rename or remove presets", member_html)
-        self.assertNotIn("Save preset", member_html)
+        self.assertIn("Only an admin can add, rename or remove choices", member_html)
+        self.assertNotIn("Add choice", member_html)
         admin_html = self.get_ok(self.a, "/colony?view=settings")
-        self.assertIn("Save preset", admin_html)
-        self.assertNotIn("Only an admin can add, rename or remove presets", admin_html)
+        self.assertIn("Add choice", admin_html)
+        self.assertNotIn("Only an admin can add, rename or remove choices", admin_html)
 
 
 # ============================================================ Add many (batch)
@@ -797,6 +798,57 @@ class BatchMiceTests(AppTestCase):
         self.m.post("/colony/mice/batch/create", data=self.grid(
             [{"gender": "F", "cage_id": cage, "owner": self.member}]))
         self.assertEqual(one("select owner from mouse_cages where cage_id=?", cage), self.member)
+
+    def test_new_with_both_sexes_gives_each_sex_its_own_cage(self):
+        r = self.m.post("/colony/mice/batch/preview", data={
+            "count_female": "2", "count_male": "1", "cage_id": "new", "owner": self.member})
+        cages = re.findall(r'name="rows-\d+-cage_id" value="([^"]*)"', r.get_data(as_text=True))
+        self.assertEqual(cages, ["new-F", "new-F", "new-M"])
+        tg = uniq("Tg")
+        self.m.post("/colony/mice/batch/create", data=self.grid(
+            [{"gender": g, "cage_id": c, "owner": self.member, "transgene_1": tg}
+             for g, c in (("F", "new-F"), ("F", "new-F"), ("M", "new-M"))]))
+        made = rows("select gender, cage_id_fk from mice where transgene_1=? order by id", tg)
+        self.assertEqual(made[0][1], made[1][1])
+        self.assertNotEqual(made[0][1], made[2][1])
+
+    def test_a_breeding_cage_may_be_asked_for(self):
+        r = self.m.post("/colony/mice/batch/preview", data={
+            "count_female": "1", "count_male": "1", "cage_id": "new", "one_new_cage": "1", "owner": self.member})
+        html = r.get_data(as_text=True)
+        self.assertEqual(re.findall(r'name="rows-\d+-cage_id" value="([^"]*)"', html), ["new", "new"])
+        self.assertIn("would get females and males together", html)
+
+    def test_the_template_has_the_headers_the_page_lists(self):
+        r = self.m.get("/colony/mice/batch/template.csv")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("attachment", r.headers["Content-Disposition"])
+        header = r.get_data(as_text=True).lstrip("\ufeff").splitlines()[0]
+        self.assertTrue(header.startswith("sex,transgene_1"))
+        self.assertIn(header.replace(",", " · "), self.get_ok(self.m, "/colony/mice/batch"))
+
+    def csv_preview(self, text):
+        return self.m.post("/colony/mice/batch/preview", content_type="multipart/form-data", data={
+            "file": (io.BytesIO(text.encode()), "mice.csv")}).get_data(as_text=True)
+
+    def dobs(self, html):
+        return re.findall(r'name="rows-\d+-date_of_birth" value="([^"]*)"', html)
+
+    def test_excel_dates_in_a_csv_are_read(self):
+        html = self.csv_preview("sex,dob\nF,3/14/2026\nM,2026-02-01\nF,4/5/26\n")
+        self.assertEqual(self.dobs(html), ["2026-03-14", "2026-02-01", "2026-04-05"])
+        self.assertNotIn("read month first", html)     # 3/14 settles the order
+
+    def test_day_first_dates_are_recognised_from_the_file(self):
+        html = self.csv_preview("sex,dob\nF,14/03/2026\nM,04.05.2026\n")
+        self.assertEqual(self.dobs(html), ["2026-03-14", "2026-05-04"])
+
+    def test_ambiguous_and_unreadable_dates_are_reported(self):
+        html = self.csv_preview("sex,dob\nF,03/04/2026\nM,soon\n")
+        self.assertEqual(self.dobs(html), ["2026-03-04", ""])
+        self.assertIn("read month first", html)
+        self.assertIn("Row 3: “soon” is not a date", html)
+
 
 # ================================================================ global search
 

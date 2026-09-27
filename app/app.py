@@ -445,19 +445,25 @@ NAV_SECTIONS: list[dict] = [
             {"key": "plasmids", "label": "Plasmids", "icon": "plasmid", "feature": "plasmids",
              "endpoint": "plasmids", "match": ("plasmids", "plasmid_detail")},
             {"key": "new-db", "label": "Add database", "icon": "plus", "needs": "create_db",
+             "hint": "Keep another kind of record: an organism, a stock collection or an inventory",
              "endpoint": "organisms.new_module", "match": ("organisms.new_module",)},
         ],
     },
 ]
 
 NAV_FOOTER: list[dict] = [
-    {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities"},
+    {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities",
+     "hint": "Bench calculators (dilutions, molarity, recipes) and reference data"},
     {"key": "admin-colony", "label": "Colony overview", "short": "Overview",
+     "hint": "Every member's mice and cages at a glance",
      "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True, "feature": "colony"},
-    {"key": "batches", "label": "Batches", "icon": "layers", "endpoint": "batches_view"},
+    {"key": "batches", "label": "Batches", "icon": "layers", "endpoint": "batches_view",
+     "hint": "Changes made many records at a time (Add many, bulk edits, imports), each with Undo"},
     {"key": "audit", "label": "Audit log", "icon": "history", "endpoint": "audit_log_view",
+     "hint": "Who changed what, and when",
      "admin_only": True},
     {"key": "lab-setup", "label": "Lab setup", "short": "Setup", "icon": "sliders",
+     "hint": "What the lab keeps, its name, and what members may do",
      "endpoint": "lab.setup", "admin_only": True},
     {"key": "settings", "label": "Settings", "icon": "settings", "endpoint": "settings",
      "match": ("settings", "admin_users")},
@@ -478,8 +484,8 @@ COLONY_VIEW_META: dict[str, dict[str, str]] = {
                     "blurb": "Cohorts assembled for a specific experiment"},
     "strains":     {"label": "Strains", "icon": "sitemap",
                     "blurb": "Strain and allele reference list"},
-    "settings":    {"label": "Presets", "icon": "sliders",
-                    "blurb": "Saved dropdown values for the colony columns"},
+    "settings":    {"label": "Dropdowns", "icon": "sliders",
+                    "blurb": "The choices offered in the colony's dropdowns (statuses, purposes, strains…)"},
 }
 
 
@@ -520,6 +526,7 @@ def _resolve_nav_item(item: dict, active_endpoint: str) -> dict | None:
         "label": item["label"],
         "short": item.get("short", item["label"]),
         "icon": item["icon"],
+        "hint": item.get("hint", ""),
         "soon": item.get("soon"),
         "url": None,
         "active": False,
@@ -1981,6 +1988,7 @@ def colony():
     context = colony_context(active_view, scope)
     context["scope"] = scope
     context["scopes"] = access.SCOPES
+    context["scope_hints"] = access.SCOPE_HINTS
     context["end_statuses"] = sorted(END_STATUSES)
     return render_template("colony.html", **context)
 
@@ -2737,10 +2745,16 @@ def _rows_from_prototype(form) -> list[dict]:
 
     rows: list[dict] = []
     if females or males:
+        # Females and males in one fresh cage breed. Unless asked to keep
+        # them together, "new" becomes one new cage per sex.
+        split = (females and males and _new_cage_token(prototype["cage_id"]) is not None
+                 and not form.get("one_new_cage"))
+        cage_f = f"{prototype['cage_id']}-F" if split else prototype["cage_id"]
+        cage_m = f"{prototype['cage_id']}-M" if split else prototype["cage_id"]
         for _ in range(females):
-            rows.append({**prototype, "gender": "F"})
+            rows.append({**prototype, "gender": "F", "cage_id": cage_f})
         for _ in range(males):
-            rows.append({**prototype, "gender": "M"})
+            rows.append({**prototype, "gender": "M", "cage_id": cage_m})
     else:
         rows = [dict(prototype) for _ in range(plain or 1)]
     return rows[:MAX_BATCH]
@@ -2781,7 +2795,92 @@ def _rows_from_csv(upload) -> tuple[list[dict], list[str]]:
             rows.append(row)
     if not rows:
         warnings.append("No usable rows found in that file.")
+    warnings.extend(_normalise_csv_dates(rows))
     return rows, warnings
+
+
+# The ways a spreadsheet writes a date into a CSV. Excel uses the computer's
+# own format: 3/14/2026 in the US, 14/03/2026 or 14.03.2026 in much of the
+# world, and 3/14/26 when the year column is narrow.
+_SLASH_DATE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2}|\d{4})$")
+
+
+def _normalise_csv_dates(rows: list[dict]) -> list[str]:
+    """Rewrite each row's date of birth as YYYY-MM-DD, in place.
+
+    The preview's date field holds only that form, so anything else would
+    arrive blank and be lost without a word. Whether 03/04/2026 is 3 April
+    or 4 March is decided once for the whole file: a date whose first number
+    is over 12 means day first, one whose second number is over 12 means
+    month first, and with neither the file is read month first and says so.
+    """
+    warnings: list[str] = []
+    parsed: dict[int, tuple[int, int, int]] = {}
+    unreadable: list[int] = []
+    day_first = month_first = False
+    for index, row in enumerate(rows):
+        raw = (row.get("date_of_birth") or "").strip()
+        if not raw or parse_date(raw):
+            if raw:
+                row["date_of_birth"] = parse_date(raw).isoformat()
+            continue
+        match = _SLASH_DATE.match(raw)
+        if not match:
+            unreadable.append(index)
+            continue
+        a, b, year = (int(part) for part in match.groups())
+        if year < 100:
+            year += 2000
+        parsed[index] = (a, b, year)
+        day_first = day_first or a > 12
+        month_first = month_first or b > 12
+    guessed = False
+    for index, (a, b, year) in parsed.items():
+        month, day = (b, a) if day_first and not month_first else (a, b)
+        guessed = guessed or (not day_first and not month_first and a != b)
+        try:
+            rows[index]["date_of_birth"] = date(year, month, day).isoformat()
+        except ValueError:
+            unreadable.append(index)
+    for index in sorted(unreadable):
+        warnings.append(f"Row {index + 2}: “{rows[index]['date_of_birth']}” is not a date; "
+                        "that date of birth is left blank.")
+        rows[index]["date_of_birth"] = ""
+    if day_first and month_first:
+        warnings.append("The dates of birth mix day-first and month-first; check them.")
+    elif guessed:
+        warnings.append("Dates of birth were read month first (03/04/2026 as 4 March). If the "
+                        "file is day first, correct them here, or save it with YYYY-MM-DD dates.")
+    return warnings
+
+
+def _new_cage_token(value) -> str | None:
+    """The key of a "new" cage in the Cage column, or None.
+
+    "new" is one fresh cage; "new-F", "new 2" and so on are each another, so
+    a batch can be split into as many new cages as it needs.
+    """
+    text = (value or "").strip().lower()
+    if text == "new" or re.match(r"^new[\s\-_#]+\S", text):
+        return re.sub(r"[\s\-_#]+", "-", text)
+    return None
+
+
+def _mixed_new_cages(rows: list[dict]) -> list[str]:
+    """Warnings for new cages that would hold both sexes."""
+    sexes: dict[str, set[str]] = {}
+    labels: dict[str, str] = {}
+    for row in rows:
+        token = _new_cage_token(row.get("cage_id"))
+        sex = (row.get("gender") or "").strip().upper()[:1]
+        if token and sex in ("F", "M"):
+            sexes.setdefault(token, set()).add(sex)
+            labels.setdefault(token, row["cage_id"].strip())
+    return [
+        f"Cage “{labels[token]}” would get females and males together. Give the males "
+        f"another new cage (e.g. “{labels[token]}-M”) unless they are meant to breed."
+        for token, found in sexes.items() if len(found) > 1
+    ]
 
 
 def _rows_from_grid(form) -> list[dict]:
@@ -2822,6 +2921,7 @@ def batch_mice():
             rows=[],
             warnings=[],
             prototype=_blank_row() | {"owner": g.user.username, "status": "experiment"},
+            template_headers=BATCH_TEMPLATE_HEADERS,
             dropdowns=dropdown_options_map(db_session),
             usernames=current_lab_usernames(db_session),
             strain_rows=db_session.scalars(
@@ -2829,6 +2929,29 @@ def batch_mice():
             next_id=next_mouse_id(db_session),
             max_batch=MAX_BATCH,
         )
+
+
+# The file "Download a template" gives: the headers the importer reads, in
+# the short spelling the page shows, and two example rows to overwrite.
+BATCH_TEMPLATE_HEADERS = ["sex", "transgene_1", "transgene_2", "transgene_3", "transgene_4",
+                          "cage", "cage_location", "owner", "litter", "dob", "status", "note"]
+
+
+@app.route("/colony/mice/batch/template.csv", methods=["GET"])
+@login_required
+def batch_mice_template():
+    import csv as _csv, io as _io
+
+    buffer = _io.StringIO()
+    writer = _csv.writer(buffer)
+    writer.writerow(BATCH_TEMPLATE_HEADERS)
+    example = {"transgene_1": "DAT-IRES-Cre/+", "cage": "new-F", "owner": g.user.username,
+               "dob": (date.today() - timedelta(days=56)).isoformat(), "status": "experiment"}
+    writer.writerow([{**example, "sex": "F"}.get(h, "") for h in BATCH_TEMPLATE_HEADERS])
+    writer.writerow([{**example, "sex": "M", "cage": "new-M"}.get(h, "") for h in BATCH_TEMPLATE_HEADERS])
+    # A byte-order mark, so Excel opens the file as UTF-8.
+    return Response("\ufeff" + buffer.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="mice-template.csv"'})
 
 
 @app.route("/colony/mice/batch/preview", methods=["POST"])
@@ -2848,6 +2971,7 @@ def batch_mice_preview():
     if not rows:
         flash("Nothing to preview — set a count or choose a file.", "error")
         return redirect(url_for("batch_mice"))
+    warnings.extend(_mixed_new_cages(rows))
 
     with SessionLocal() as db_session:
         # Shown so you can see what you will get; re-allocated on save.
@@ -2883,17 +3007,18 @@ def batch_mice_create():
             db_session, "create", f"add {len(rows)} mice in bulk", "mice") as batch_row:
         ids = reserve_mouse_ids(db_session, len(rows))
 
-        # Resolve "new" once for the whole batch. Six littermates arriving
-        # together belong in one cage; allocating a cage per row would make
-        # the common case the wrong one, and typing an explicit number per
-        # row still splits them however you like.
-        shared_new_cage = None
-        if any((row.get("cage_id") or "").strip().lower() == "new" for row in rows):
-            shared_new_cage = new_owned_cage(db_session).cage_id
-
+        # Resolve each "new" once for the whole batch. Six littermates
+        # arriving together belong in one cage; allocating a cage per row
+        # would make the common case the wrong one. "new-F", "new-M",
+        # "new 2"… are each a cage of their own, and explicit numbers per
+        # row still split them however you like.
+        new_cages: dict[str, str] = {}
         for row, mouse_id in zip(rows, ids):
-            if shared_new_cage and (row.get("cage_id") or "").strip().lower() == "new":
-                row = {**row, "cage_id": shared_new_cage}
+            token = _new_cage_token(row.get("cage_id"))
+            if token:
+                if token not in new_cages:
+                    new_cages[token] = new_owned_cage(db_session).cage_id
+                row = {**row, "cage_id": new_cages[token]}
             mouse = MouseRecord(mouse_id=mouse_id, owner=row.get("owner", ""))
             # Reuse the single-record path so cage allocation, litter
             # linking and DOB inheritance behave identically.

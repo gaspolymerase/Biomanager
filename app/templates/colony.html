@@ -31,7 +31,7 @@
     {% for view_key, _ in colony_views %}
       {% set meta = colony_view_meta.get(view_key, {}) %}
       <a class="seg-item {% if active_view == view_key %}is-active{% endif %}"
-         href="{{ url_for('colony', view=view_key, scope=scope) }}"
+         href="{{ url_for('colony', view=view_key, scope=scope) }}" title="{{ meta.get('blurb', '') }}"
          role="tab" aria-selected="{{ 'true' if active_view == view_key else 'false' }}">
         {{ icon(meta.get('icon', 'table')) }}{{ meta.get('label', view_key|title) }}
       </a>
@@ -44,7 +44,7 @@
     <nav class="seg" aria-label="Whose records to show">
       {% for value, label in scopes %}
         <a class="seg-item {% if scope == value %}is-active{% endif %}"
-           href="{{ url_for('colony', view=active_view, scope=value) }}">
+           href="{{ url_for('colony', view=active_view, scope=value) }}" title="{{ scope_hints[value] }}">
           {{ label }}
           <span class="seg-count">
             {%- if value == 'mine' %}{{ totals.my_mice }}
@@ -822,9 +822,9 @@
                 <input type="number" name="count" min="1" max="20" value="1"
                        title="Several new cages get consecutive IDs, and consecutive free positions from the one given">
               </label>
-              <label>Purpose <input name="purpose" list="options-purpose"></label>
-              <label>Card ID <input name="card_id"></label>
-              <label>Genotype summary <input name="genotype_summary"></label>
+              <label title="What the cage is for: breeding, stock, an experiment…">Purpose <input name="purpose" list="options-purpose"></label>
+              <label title="The number on the facility's own cage card, if it has one">Card ID <input name="card_id"></label>
+              <label title="A short genotype for the cage card, when the mice's own genotypes are too long">Genotype summary <input name="genotype_summary"></label>
               <label>Litter born <input type="date" name="date_give_birth"></label>
             </fieldset>
             <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
@@ -1280,10 +1280,10 @@
 {% else %}
       <section class="grid two-col">
         <article class="panel">
-          <h2>Saved presets</h2>
-          <p>Each column can have reusable preset values. Selecting a column filters the panel on the right to that column only.</p>
+          <h2>Dropdown choices</h2>
+          <p>The choices a column's dropdown offers. Picking a column shows only its choices on the right.</p>
           {% if not can_edit_presets %}
-            <p class="preset-readonly-note">{{ icon('lock') }} Only an admin can add, rename or remove presets. You can still pick them everywhere.</p>
+            <p class="preset-readonly-note">{{ icon('lock') }} Only an admin can add, rename or remove choices. You can still pick them everywhere.</p>
           {% endif %}
           <form method="post" action="{{ url_for('create_option') }}" class="option-form"{% if not can_edit_presets %} data-presets-locked{% endif %}>
             <label>
@@ -1296,15 +1296,15 @@
             </label>
             {% if can_edit_presets %}
               <label>
-                <span>Preset value</span>
+                <span>Choice</span>
                 <input name="option_value" required>
               </label>
-              <button type="submit">Save preset</button>
+              <button type="submit">Add choice</button>
             {% endif %}
           </form>
         </article>
         <article class="panel">
-          <h2>Current presets <span id="preset-selected-label" class="muted-inline" style="font-weight:normal;"></span></h2>
+          <h2>Current choices <span id="preset-selected-label" class="muted-inline" style="font-weight:normal;"></span></h2>
           <p>{% if can_edit_presets %}Edit a value inline to rename a preset, or remove it with the delete button.{% else %}The values offered in each column’s dropdown.{% endif %}</p>
           {% for field_name, options in dropdown_records.items() %}
             <div class="preset-block" data-field-name="{{ field_name }}">

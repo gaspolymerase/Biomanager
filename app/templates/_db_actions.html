@@ -6,7 +6,7 @@
    {% block page_actions %}{{ db_actions(url_for('inventory.configure', key=key), can_configure) }}{% endblock %} #}
 {% macro db_actions(configure_url=None, can_configure=False) %}
   {% if configure_url and can_configure %}
-    <a class="btn" href="{{ configure_url }}">{{ icon('sliders') }} Configure</a>
+    <a class="btn" href="{{ configure_url }}" title="Change this database's columns, statuses and name">{{ icon('sliders') }} Configure</a>
   {% endif %}
   <a class="btn" href="{{ url_for('organisms.index') }}">{{ icon('database') }} All databases</a>
 {% endmacro %}

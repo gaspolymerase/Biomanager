@@ -170,13 +170,16 @@ def welcome():
 
 # ---------------------------------------------------------------- user guide and getting started
 
-# Pages that tick off a Getting started step just by being opened.
-MILESTONE_ENDPOINTS = {"labels.cage_cards": "cage_cards"}
+# Pages that tick off a Getting started step just by being opened. A cage
+# card's QR code opens the cages with ?card=1 (labels.py): that is a scan.
+MILESTONE_ENDPOINTS = {"labels.cage_cards": "cage_cards", "colony": "colony"}
 
 
 @bp.before_app_request
 def remember_milestones():
     milestone = MILESTONE_ENDPOINTS.get(request.endpoint or "")
+    if milestone == "colony" and request.args.get("card"):
+        milestone = "scan"
     user = g.get("user")
     if milestone is None or user is None or session.get(f"did:{milestone}"):
         return None

@@ -94,7 +94,7 @@
     <span class="stat-sub">{{ counts.active_mice }} active · {{ counts.my_mice }} yours</span>
   </a>
   <a class="stat" href="{{ url_for('colony', view='breeders') }}">
-    <span class="stat-label">Sac candidates</span>
+    <span class="stat-label">Over 30 weeks</span>
     <span class="stat-value">{{ sac_candidates|length }}</span>
     <span class="stat-sub">older than 30 weeks</span>
   </a>
@@ -124,7 +124,7 @@
 <section class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
 
   {% if lab_features.colony %}
-  {# Sac candidates #}
+  {# Mice over 30 weeks: candidates to retire or sacrifice #}
   <article class="card flex flex-col">
     <header class="card-head">
       <h2>{{ icon('warning') }} Mice older than 30 weeks</h2>

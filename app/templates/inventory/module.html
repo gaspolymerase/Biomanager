@@ -103,8 +103,8 @@
         <div class="dt-chips" role="group" aria-label="Show">
           <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">All <span class="dt-chip-count">{{ counts.all }}</span></button>
           {% if m.has('sharing') %}
-            <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ counts.mine }}</span></button>
-            <button type="button" class="dt-chip" data-dt-filter="shared:true" aria-pressed="false">Lab common <span class="dt-chip-count">{{ counts.lab }}</span></button>
+            <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false" title="What you own">Mine <span class="dt-chip-count">{{ counts.mine }}</span></button>
+            <button type="button" class="dt-chip" data-dt-filter="shared:true" aria-pressed="false" title="The lab's common stock: anyone may use and edit it">Lab common <span class="dt-chip-count">{{ counts.lab }}</span></button>
           {% endif %}
           {% if m.has('board') %}
             <button type="button" class="dt-chip" data-dt-filter="open:true" aria-pressed="false" data-count-open>Open <span class="dt-chip-count">{{ counts.open }}</span></button>
