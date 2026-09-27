@@ -267,8 +267,8 @@
         <li><b>Search everything</b> with <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd>, from anywhere: mice, cages, litters, experiments,
           strains, vials, tanks, lines, clutches, plasmids, orders, samples, reagents, antibodies and notebook pages. Arrows to move,
           Enter to open.</li>
-        <li><b>Tabs.</b> Every page you open becomes a tab along the top: drag to reorder, <b>+</b> for a new one,
-          <kbd>Alt</kbd> + <kbd>1</kbd>…<kbd>9</kbd> to jump. They're still there tomorrow.</li>
+        <li><b>Tabs.</b> Following a link moves the tab you're in; <b>+</b> opens a new tab on your start page (chosen in Settings;
+          Home if none). Drag to reorder, <kbd>Alt</kbd> + <kbd>1</kbd>…<kbd>9</kbd> to jump. They're still there tomorrow.</li>
       </ul>
     </section>
 
@@ -364,6 +364,9 @@
           <b>Chunked</b>), <b>Collect eggs</b> into a new vial (worms: <b>Pick progeny</b>), and record scoring. Intervals follow the
           temperature: set them under <b>Settings → Temperatures and timing</b>, and a rack moved from 25 °C to 18 °C changes its
           schedule by itself.</li>
+        <li>In <b>Grid</b>, the line above a rack says when it was last flipped and when the next is due (red when overdue), and
+          <b>Flipped today</b> beside Edit records a flip of the whole rack in one click. Hover over the line for the rule it follows,
+          e.g. <i>every 14 days at 25 °C</i>.</li>
         <li>Worms: <b>New frozen lot</b> records a freeze; thaw one onto a new plate when you need it.</li>
       </ol>
       <p><b>Discard</b> retires a vial (it can be restored); <b>Copy to a new vial</b> starts the next generation. Settings also renames
@@ -389,6 +392,16 @@
       </ul>
       <p>Change any of it later under the database's <b>Configure</b>, without losing records. The same page offers inventories
         (samples, orders, reagents, antibodies, a custom list) and fly or worm stock databases.</p>
+      <h3>Every database works the same way</h3>
+      <ul>
+        <li><b>Only what the lab keeps.</b> No database is there by default — the mouse colony, zebrafish and plasmids included. The
+          set-up survey adds what the lab uses; later an admin adds one from <b>Add database → Ready-made databases</b>, and takes one
+          out under its <b>Configure</b>. Taking one out deletes nothing: add it back and every record is there.</li>
+        <li><b>All databases</b> lists them in two groups, <i>Animals</i> and <i>Molecular &amp; supplies</i>, each with <b>Open</b> and
+          <b>Rename / configure</b>.</li>
+        <li>Beside every database's name, the same two buttons: <b>Configure</b> (if you may change it) and <b>All databases</b>.</li>
+        <li>An icon is picked from a grid of the icons themselves; hover over one for its name.</li>
+      </ul>
     </section>
 
     <section id="plasmids">
@@ -443,11 +456,25 @@
     <section id="calendar">
       <h2>Calendar</h2>
       <ul>
-        <li><b>Month, Week, Day</b> and <b>List</b> views, with colony dates — weanings, genotyping, sac reminders — filled in for you.</li>
-        <li><b>New event</b> offers an event, a to-do (due today, tomorrow, next week, or a date), <b>Book equipment</b> (bookings of one
-          instrument can't overlap), <b>Time away</b>, and <b>Start a protocol</b> from a saved multi-step protocol.</li>
+        <li><b>Month, Week, Day</b> and <b>List</b> views. Filled in for you: weanings, genotyping and sac reminders, fly and worm flips and
+          egg collections, organism schedules, zebrafish tanks and reagent expiry. Clicking one opens the record it came from.</li>
+        <li>The sidebar has a small month to jump around, a <b>Show</b> list with a colour and a count for each kind (events, to-dos,
+          the colony, stocks and organisms, supplies, protocols, equipment, time away, connected calendars), the instruments and the
+          protocols under way.</li>
+        <li><b>New event</b> offers an event, a to-do (due today, tomorrow, next week, or a date), <b>Book equipment</b>, <b>Time away</b>
+          and <b>Start a protocol</b>. Drag an event, to-do or booking to move it.</li>
+        <li><b>Repeats</b>: an event every N days, weeks or months, until a date. <b>Delete this one</b> takes out a single date; editing
+          changes every repeat.</li>
+        <li><b>Protocols</b>: write the steps once in days from day 0 (tamoxifen days 0–4, implant day 14, perfuse day 42), then start
+          it for an experiment or a cohort. Every step lands on its day; move day 0 and they all move. A run keeps the steps it started
+          with if the protocol is edited later.</li>
+        <li><b>Equipment</b>: add the lab's instruments under <b>Manage</b>. A booking that overlaps another is refused, saying who has
+          it and when.</li>
+        <li><b>Time away</b>: leave or a conference. <b>Away soon</b> lists what of theirs falls due meanwhile — animals, vials,
+          to-dos, bookings, protocol steps — and asks who covers it; that person is told.</li>
         <li><b>Connected calendars</b> shows Google Calendar and any iCal subscription alongside, read-only.</li>
-        <li><b>On your phone</b>: make a private feed link (just yours, or the whole lab's) and subscribe to it in your phone's calendar.</li>
+        <li><b>On your phone</b>: a private link (just your things, or the whole lab's) for Apple, Google or Outlook Calendar. It updates
+          about every hour. <b>Make a new link</b> stops the old one working.</li>
       </ul>
       <figure class="gshot"><img src="assets/screenshots/calendar.webp" alt="The calendar" loading="lazy" width="2000" height="1250"></figure>
     </section>
@@ -455,11 +482,27 @@
     <section id="notebook">
       <h2>Notebook and utilities</h2>
       <ul>
-        <li>Pages in <b>Topics</b>, with <b>Recents</b> and a filter. Headings, lists, task lists, quotes, tables, images and attached files.</li>
-        <li><b>Templates</b> for pages you write often: save any page as one, and start new pages from it.</li>
-        <li><b>Insert…</b> adds live tables — a list of mice, plasmids or inventory items, a results table, a mixture-prep table, a saved
-          search — and code blocks and symbols.</li>
-        <li>Type <code>@</code> to link a mouse, plasmid or order; the page and the record then point at each other.</li>
+        <li>Pages in <b>Topics</b>, written like a document and kept as Markdown. Type <b>/</b> on a new line for everything below.
+          <b>Templates</b>: save any page as one, and start new pages from it.</li>
+        <li>Type <code>@</code> to link a mouse, plasmid or order; the page and the record then point at each other. Hover over one for
+          its details; <b>↗</b> (or <kbd>⌘</kbd>/<kbd>Ctrl</kbd>-click) opens it in a new BioManager tab.</li>
+        <li><b>Experiments</b>: aim, setup, samples and lot numbers, steps, results. <i>Start</i> and <i>Finished</i> stamp the times;
+          planned, running, done or failed shows in the sidebar.</li>
+        <li><b>Protocols</b> with numbered versions. <i>Start an experiment from it</i> copies the steps as a checklist and records the
+          version; <b>Run mode</b> takes you through it at the bench, one step at a time. <b>Protocols</b> in the sidebar (or
+          <code>/protocol</code>) opens the library: the lab's protocols and a dozen common ones built in, to insert or copy.</li>
+        <li><b>Data sheets</b>: paste from Excel or a CSV, add formula columns, and get a plot (bar, dot, box, scatter, line) with error
+          bars, a fitted line and a t-test, Mann–Whitney or ANOVA. <b>Plate reader</b> and <b>qPCR</b> blocks read concentrations off a
+          standard curve and ΔΔCt fold changes.</li>
+        <li><b>Buffer recipes</b> scale with the volume; common buffers are built in and the lab's own are shared. <b>Calculators</b>
+          for dilution, molarity, master mix, serial dilution, ligation, cells, gels and DNA/RNA. Durations in a step get a
+          <b>⏱</b> timer.</li>
+        <li><b>Daily log</b> (<i>Today</i>) and <b>Meetings</b>: a presenter rotation, shared meeting notes, and action items
+          (<code>- [ ] @name …, due …</code>) sent to that person's to-dos.</li>
+        <li><b>Working together</b>: share a page to read or edit; editors type in it at the same time. Comments on a passage, with
+          <code>@name</code> telling that person (switch these notices off under <b>Settings → Notifications</b>).
+          <b>Version history</b> keeps every editing session to compare or restore. <b>Tags and search</b> across every page you can
+          open.</li>
         <li><b>Utilities</b> (sidebar): mass from concentration (molecular weight, target mM, final mL) and a chemical reference list.</li>
       </ul>
     </section>
