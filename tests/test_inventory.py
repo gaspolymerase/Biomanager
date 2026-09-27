@@ -230,6 +230,19 @@ class ItemPermissionTests(InventoryCase):
 
 # ======================================================================= boxes
 
+class SwitchedOffTests(InventoryCase):
+    """A database switched off in Lab setup is closed to members, not just
+    left out of the sidebar; an admin can still look, and is told."""
+
+    def test_members_cannot_open_it_and_admins_are_told(self):
+        key = self.new_module(self.a, "custom")
+        execute("update inventory_modules set enabled=? where key=?", False, key)
+        self.assertEqual(self.m.get(f"/inventory/{key}").status_code, 404)
+        self.assertIn("is switched off", self.get_ok(self.a, f"/inventory/{key}"))
+        execute("update inventory_modules set enabled=? where key=?", True, key)
+        self.assertNotIn("is switched off", self.get_ok(self.m, f"/inventory/{key}"))
+
+
 class BoxTests(InventoryCase):
     """Editing or deleting a box: an admin or whoever created it. Items in
     a box keep their own owner's rules."""

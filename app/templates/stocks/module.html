@@ -68,6 +68,8 @@
 {% endblock %}
 
 {% block content %}
+{% from "_switched_off.html" import switched_off_notice with context %}
+{{ switched_off_notice(module.row) }}
 <datalist id="stock-genotypes">{% for gt in genotypes %}<option value="{{ gt.genotype }}">{{ gt.alias }}</option>{% endfor %}</datalist>
 <datalist id="stock-owners">{% for u in usernames %}<option value="{{ u }}"></option>{% endfor %}</datalist>
 

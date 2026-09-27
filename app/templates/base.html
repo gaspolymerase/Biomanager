@@ -115,7 +115,7 @@
           {% set current_url = request.path + ('?' + request.query_string.decode('utf-8') if request.query_string else '') %}
           <nav class="topstrip" aria-label="Open tabs">
             <div class="wtab-strip">
-              <nav class="wtabs" id="app-tabbar"
+              <nav class="wtabs" id="app-tabbar" data-user="{{ current_user.id }}"
                    data-current-url="{{ current_url }}"
                    data-current-title="{{ title_text }}"></nav>
               {# "/" sends each person to their own start page (Settings). #}

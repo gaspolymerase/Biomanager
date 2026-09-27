@@ -192,8 +192,14 @@ def is_personal(module) -> bool:
 
 
 def can_see(module, user=None) -> bool:
-    """May this person open the database at all?"""
+    """May this person open the database at all?
+
+    A database switched off in Lab setup is hidden "for everyone": its
+    pages refuse members too, not only the sidebar. Admins still reach it,
+    to look before switching it back on (the page says it is off)."""
     user = user if user is not None else g.get("user")
+    if user is not None and not getattr(module, "enabled", True) and user.role != "admin":
+        return False
     if not is_personal(module):
         return True
     if user is None:

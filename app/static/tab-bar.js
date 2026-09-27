@@ -20,11 +20,19 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'biomanager:tabs';
-  const ACTIVE_KEY = 'biomanager:tabs:active';
+  // Each person's own tabs: a shared lab computer, or a second account in
+  // the same browser, would otherwise open the last person's pages.
+  const bar = document.getElementById('app-tabbar');
+  const who = bar && bar.dataset.user ? `:u${bar.dataset.user}` : '';
+  const STORAGE_KEY = `biomanager:tabs${who}`;
+  const ACTIVE_KEY = `biomanager:tabs${who}:active`;
   // Set by the "+" button; the next navigation consumes it and opens a new
   // tab instead of navigating in place.
-  const NEW_TAB_KEY = 'biomanager:tabs:new';
+  const NEW_TAB_KEY = `biomanager:tabs${who}:new`;
+  if (who) {
+    // Tabs kept before they were per person belong to no one in particular.
+    try { ['', ':active', ':new'].forEach((k) => localStorage.removeItem(`biomanager:tabs${k}`)); } catch (e) {}
+  }
   // If "+" was pressed and then abandoned, don't let the request haunt a
   // navigation made minutes later.
   const NEW_TAB_TTL_MS = 2 * 60 * 1000;

@@ -76,6 +76,8 @@
 {% endblock %}
 
 {% block content %}
+{% from "_switched_off.html" import switched_off_notice with context %}
+{{ switched_off_notice(module.row) }}
 {{ sheet_ui.owners_list(usernames, 'inv-owner-options') }}
 {% for column, values in remembered.suggest.items() %}
   <datalist id="inv-rem-{{ column }}">{% for v in values %}<option value="{{ v }}"></option>{% endfor %}</datalist>
@@ -280,6 +282,11 @@
                 <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ i.notes }}" title="{{ i.notes }}" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
                 <td class="sheet-pin sheet-pin-end">
                   <div class="sheet-actions">
+                    {% set link = stock_links.get(i.id) %}
+                    {% if link %}
+                      {# The other side of "To stock": the reagent an order became, or the order a reagent came from. #}
+                      <a class="row-stock-btn row-stock-link" href="{{ link.url }}" title="{{ link.title }}">{{ icon(link.icon) }}{{ link.label }}</a>
+                    {% endif %}
                     {% if m.kind == 'orders' and stock_targets and not r.attrs.get('stocked_as') and not locked %}
                       {# Shown once the order is received (also after a board drag); gone once stocked. #}
                       {# Labelled: on a touch screen there is no tooltip to say what a flask means. #}

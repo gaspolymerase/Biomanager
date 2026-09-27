@@ -83,6 +83,8 @@
 {% endblock %}
 
 {% block content %}
+{% from "_switched_off.html" import switched_off_notice with context %}
+{{ switched_off_notice(module.row) }}
 {{ sheet_ui.owners_list(usernames, 'org-owners') }}
 
 {# =====================================================================
