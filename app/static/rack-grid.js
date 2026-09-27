@@ -296,6 +296,11 @@
       if (rack && item.rack === rack.id && item.row === r && item.col === c) return;
       const previous = { rack: item.rack, row: item.row, col: item.col };
       const occupant = rack ? items.find((i) => i !== item && i.rack === rack.id && i.row === r && i.col === c) : null;
+      if (occupant && occupant.locked) {
+        say('error', `${whereText(rack, r, c)} holds ${occupant.label}` + (occupant.owner ? ` (${occupant.owner}'s)` : '')
+          + ', which you may not move. Pick an empty position.');
+        return;
+      }
       const body = new FormData();
       body.append(fields.rack, rack ? rack.id : '');
       body.append(fields.row, rack ? r - 1 + base : '');
@@ -320,7 +325,11 @@
             position: where && moved.row ? positionText(where, moved.row, moved.col) : '',
           } }));
         });
-        say('saved', rack ? `Moved ${item.label} to ${whereText(rack, r, c)}` : `Unplaced ${item.label}`);
+        // A swap moves two records: say so, or the second move goes unseen.
+        const swapped = occupant
+          ? ` · ${occupant.label} went to ${occupant.rack ? whereText(rackById(occupant.rack), occupant.row, occupant.col) : 'Unplaced'}`
+          : '';
+        say('saved', (rack ? `Moved ${item.label} to ${whereText(rack, r, c)}` : `Unplaced ${item.label}`) + swapped);
         render();
       } catch (error) {
         say('error', `Couldn’t move ${item.label}: ${error.message}`);

@@ -1208,6 +1208,35 @@
   .record-dialog-hint { @apply mr-auto text-[12px] text-muted; }
   .record-dialog-narrow { @apply w-[min(460px,calc(100vw-2rem))]; }
 
+  /* The CSV Import dialog (static/csv-import.js) and small in-page dialogs
+     such as an experiment's Record weight: a card over a dimmed page. */
+  .csv-modal { @apply fixed inset-0 z-100 grid place-items-center p-4; }
+  .csv-modal[hidden] { @apply hidden; }
+  .csv-modal-backdrop { @apply absolute inset-0 bg-black/35; }
+  .csv-modal-card {
+    @apply relative flex max-h-[86vh] w-[min(560px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl
+           border border-hairline bg-surface shadow-pop;
+  }
+  .csv-modal-head { @apply flex items-center justify-between gap-3 border-b border-sand-100 px-5 pb-3 pt-4; }
+  .csv-modal-head h3 { @apply text-[15px] font-semibold text-ink; }
+  .csv-modal-close {
+    @apply grid size-8 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-[18px] leading-none
+           text-sand-500 hover:bg-sand-100 hover:text-ink;
+  }
+  .csv-modal-body { @apply flex flex-col gap-3 overflow-y-auto px-5 py-4 text-[13px] text-ink-soft; }
+  .csv-modal-body label { @apply field-label; }
+  .csv-modal-body label > :is(input, select, textarea) { @apply field mt-1 normal-case tracking-normal; }
+  .csv-modal-foot { @apply flex items-center justify-end gap-2 border-t border-sand-100 bg-sand-50/60 px-5 py-3; }
+  .csv-modal-hint { @apply text-[12.5px] leading-snug text-muted; }
+  .csv-template-line { @apply flex flex-wrap gap-2; }
+  .csv-template-btn { @apply btn btn-sm; }
+  .csv-modal-result { @apply text-[12.5px] leading-snug; }
+  .csv-loading { @apply text-muted; }
+  .csv-success { @apply rounded-lg bg-ok-50 px-3 py-2 text-ok-700; }
+  .csv-error { @apply text-danger-700; }
+  .csv-errors-block { @apply rounded-lg bg-danger-50 px-3 py-2; }
+  .csv-preview-details { @apply rounded-lg border border-hairline px-3 py-2; }
+
   /* A column that must be filled in before a new entry can be added. */
   .req-star { @apply ml-0.5 font-bold normal-case text-danger-600; }
   /* "Filled vendor and catalog # from order #12": fields taken from an
@@ -1847,6 +1876,9 @@
   .rack-tile:is([data-tone="quarantine"], [data-tone="expansion"], [data-tone="starved"]) { @apply border-warn-200 bg-warn-50; }
   .rack-tile:is([data-tone="cross"], [data-tone="backup"]) { @apply border-violet-200 bg-violet-50; }
   .rack-tile[data-tone="inactive"] { @apply border-dashed bg-sand-50 opacity-70; }
+  /* Someone else's cage, outside the scope shown: the cell is taken. */
+  .rack-tile[data-tone="other"] { @apply border-dashed bg-sand-100 opacity-55; }
+  .rack-tile[data-locked="true"] { @apply cursor-not-allowed; }
 
   /* Rack dialog: the delete form sits under the main form. */
   .rack-delete {

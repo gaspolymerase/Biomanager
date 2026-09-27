@@ -609,6 +609,21 @@ class PlaceCageTests(RackMixin, Case):
         self.assertEqual(r.status_code, 403)
         self.assertEqual((cage(self.cage)["rack_row"], cage(theirs)["rack_row"]), (1, 2))
 
+    def test_the_grid_shows_every_taken_position_whatever_the_scope(self):
+        """In "My colony", someone else's cage in the rack is still drawn
+        (dimmed, and locked when you may not move it), so its cell never
+        looks empty."""
+        import json
+        import re as _re
+        theirs_code = uniq("T")
+        self.make_cage(self.o, cage_id=theirs_code, purpose="Experiments", rack_id=str(self.rack), position="B2")
+        html = self.m.get("/colony?view=cages&scope=mine").get_data(as_text=True)
+        blob = _re.search(r'<script type="application/json" data-rack-data>(.*?)</script>', html, _re.S)
+        self.assertIsNotNone(blob, "no rack grid data on the page")
+        items = json.loads(blob.group(1))["items"]
+        theirs = next(i for i in items if i["label"] == theirs_code)
+        self.assertEqual((theirs["row"], theirs["col"], theirs["tone"], theirs["locked"]), (2, 2, "other", True))
+
     def test_a_position_outside_the_rack_is_a_400(self):
         r = self.place(self.m, self.cage, rack_id=str(self.rack), row="4", col="1")
         self.assertEqual(r.status_code, 400)

@@ -135,7 +135,10 @@
     _revealHashTarget() {
       const id = decodeURIComponent(location.hash.slice(1));
       const target = id && document.getElementById(id);
-      const row = target && target.closest('tr');
+      // A sheet row's form sits outside the row, its cells joining it with
+      // form="…" (a notification links to #mouse-update-39): find the row by them.
+      const row = target && (target.closest('tr')
+        || (target.tagName === 'FORM' && this.card.querySelector(`[form="${CSS.escape(id)}"]`)?.closest('tr')));
       if (!row || !this.rows.includes(row) || !this.reveal(row)) return;
       requestAnimationFrame(() => row.scrollIntoView({ block: 'center' }));
       row.dispatchEvent(new CustomEvent('dt:revealed', { bubbles: true }));

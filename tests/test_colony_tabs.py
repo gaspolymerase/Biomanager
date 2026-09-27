@@ -44,12 +44,20 @@ class LitterCreateTests(AppTestCase):
         self.assertEqual(rows("select date_of_birth, cohort_name from litters where litter_id=?", code),
                          [(days_ago(10), "original")])
 
-    def test_create_without_id_takes_the_next_free_number(self):
-        numbers = [int(code) for (code,) in rows("select litter_id from litters") if code and code.isdigit()]
-        expected = str(max(numbers, default=0) + 1)
+    def test_create_without_id_follows_the_labs_own_numbering(self):
+        """After L-0041 comes L-0042: the prefix and padding of the newest
+        numbered litter, not a bare 1 that looks like a mouse number."""
+        prefix = uniq("QA").replace("-", "") + "-"
+        self.make_litter(self.a, f"{prefix}0041", date_of_birth=days_ago(20))
         r = self.post(self.a, "/colony/litters/create", {"litter_id": "", "date_of_birth": T})
-        self.assertFlash(r, f"Created litter {expected}", "success")
-        self.assertEqual(one("select date_of_birth from litters where litter_id=?", expected), T)
+        self.assertFlash(r, f"Created litter {prefix}0042", "success")
+        self.assertEqual(one("select date_of_birth from litters where litter_id=?", f"{prefix}0042"), T)
+
+    def test_plain_numbers_continue_as_plain_numbers(self):
+        n = 900000 + int(one("select coalesce(max(id), 0) from litters"))
+        self.make_litter(self.a, str(n), date_of_birth=days_ago(5))
+        r = self.post(self.a, "/colony/litters/create", {"litter_id": "", "date_of_birth": T})
+        self.assertFlash(r, f"Created litter {n + 1}", "success")
 
 
 class LitterUpdateTests(AppTestCase):

@@ -2481,7 +2481,17 @@ def bulk_sac_mice():
                 done += 1
         batch_row.record_count = done
         db_session.commit()
-    return redirect(url_for("colony", view="mice"))
+    # Say what happened, like every other batch action, and go back to the
+    # view (and scope) it was done from.
+    _report(done, len(mice) - done, "Recorded sac")
+    return _back_to_colony("mice")
+
+
+def _back_to_colony(view: str):
+    """The colony page an action came from, scope and all, or the view."""
+    referrer = request.referrer or ""
+    return redirect(referrer if referrer.startswith(request.host_url) and "/colony" in referrer
+                    else url_for("colony", view=view))
 
 
 # ---------------------------------------------------------------------------
@@ -3173,10 +3183,17 @@ def place_cage(cage_row_id: int):
 
 
 def mouse_rack_payload(db_session, cages) -> dict:
-    """Racks and the cages in scope, for the rack grid."""
+    """Racks and the cages in scope, for the rack grid. Cages outside the
+    scope that sit in a rack are drawn too, dimmed (and locked if you may
+    not move them): a cell that looks empty must be empty, or a drop there
+    would move someone else's cage without anyone seeing it."""
     racks = mouse_racks(db_session)
     items = []
-    for cage in cages:
+    in_scope = {cage.id for cage in cages}
+    others = [c for c in db_session.scalars(select(CageRecord).where(CageRecord.rack_id_fk.is_not(None)))
+              if c.id not in in_scope and c.rack_row]
+    for cage in [*cages, *others]:
+        outside = cage.id not in in_scope
         live = [m for m in cage.mice if mouse_is_active(m)]
         strains = sorted({(m.transgene_1 or "").strip() for m in live if (m.transgene_1 or "").strip()})
         sexes = "".join(m.gender[:1] for m in live if m.gender in ("F", "M"))
@@ -3186,12 +3203,15 @@ def mouse_rack_payload(db_session, cages) -> dict:
             "label": cage.cage_id,
             "sub": cage.genotype_summary or ", ".join(strains[:2]) or cage.purpose or "",
             "badge": f"{len(live)}" if live else "",
-            "tone": normalize_status(cage.purpose) if live else "inactive",
+            "tone": "other" if outside else (normalize_status(cage.purpose) if live else "inactive"),
+            "locked": outside and not can_edit_cage(cage),
+            "owner": cage.owner or "",
             "rack": cage.rack_id_fk,
             "row": cage.rack_row,
             "col": cage.rack_col,
             "title": "\n".join(filter(None, [
                 f"Cage {cage.cage_id}" + (f" · {where}" if where else ""),
+                f"{cage.owner or 'Nobody'}'s cage, not in this view" if outside else "",
                 cage.purpose, f"{len(live)} live ({sexes.count('F')}F {sexes.count('M')}M)" if live else "empty",
                 ", ".join(str(m.mouse_id) for m in live[:12]),
             ])),
@@ -3399,9 +3419,19 @@ def cage_give_birth(cage_row_id: int):
         if blocked:
             return blocked
         if cage is not None:
-            cage.date_give_birth = date.today()
+            today = date.today()
+            before = cage.date_give_birth
+            cage.date_give_birth = today
             db_session.commit()
-    return redirect(url_for("colony", view="cages"))
+            wean = (today + timedelta(days=WEAN_OFFSET_DAYS)).strftime("%b %d")
+            flash(f"Recorded a litter born today in cage {cage.cage_id}: weaning is due {wean}.", "success")
+            if before and before != today:
+                # The cage holds one litter date: say what the new one replaced,
+                # so a litter still waiting to be weaned isn't forgotten.
+                flash(f"It replaces the litter born {before:%b %d} (weaning was due "
+                      f"{before + timedelta(days=WEAN_OFFSET_DAYS):%b %d}). If those pups are still in the cage, "
+                      f"wean them first.", "warning")
+    return _back_to_colony("cages")
 
 
 @app.route("/colony/cages/<int:cage_row_id>/genotyping", methods=["POST"])
@@ -3456,7 +3486,8 @@ def cage_wean(cage_row_id: int):
         if cage is not None:
             cage.date_give_birth = None
             db_session.commit()
-    return redirect(url_for("colony", view="cages"))
+            flash(f"Cage {cage.cage_id} is weaned.", "success")
+    return _back_to_colony("cages")
 
 
 @app.route("/colony/cages/<int:cage_row_id>/wean-distribute", methods=["POST"])
@@ -4613,6 +4644,9 @@ def global_search():
     Empty `q` returns nothing — the palette only fires on non-empty input.
     """
     q = (request.args.get("q") or "").strip()
+    # "#44" is how the app writes mouse 44 everywhere; search for the number.
+    if re.fullmatch(r"#\s*\d+", q):
+        q = q.lstrip("#").strip()
     if not q:
         return jsonify({"ok": True, "results": []})
     like = f"%{q}%"

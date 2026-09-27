@@ -906,10 +906,12 @@ def cage_is_active(cage: CageRecord) -> bool:
 
 
 # Weaning at P21 is the standard; the home dashboard, cage cards and the
-# calendar all read this one constant. Cage cards also suggest tail-clip
-# genotyping at P7.
+# calendar all read this one constant, and genotyping (a week after
+# weaning, P28) is one constant too: the cage, the calendar and Home must
+# never disagree about when it is due.
 WEAN_OFFSET_DAYS = 21
-CAGE_GENO_OFFSET_DAYS = 7
+GENO_OFFSET_DAYS = 28
+CAGE_GENO_OFFSET_DAYS = GENO_OFFSET_DAYS
 
 
 def cage_derived_dates(cage: CageRecord) -> dict[str, str]:
@@ -1074,15 +1076,20 @@ def breeder_mice(session, current_username: str | None, current_role: str | None
 
 
 def next_litter_id(session) -> str:
+    """The next litter ID in the lab's own pattern: after L-2620 comes
+    L-2621 (the prefix and zero padding of the newest litter whose ID ends
+    in a number), and plain 1, 2, 3 for a lab that has none yet."""
     session.flush()
-    rows = session.scalars(select(LitterRecord)).all()
-    best = 0
-    for litter in rows:
-        if litter.litter_id and litter.litter_id.isdigit():
-            value = int(litter.litter_id)
-            if value > best:
-                best = value
-    return str(best + 1)
+    rows = session.scalars(select(LitterRecord).order_by(LitterRecord.id.desc())).all()
+    numbered = [m for m in (re.fullmatch(r"(.*?)(\d+)", (r.litter_id or "").strip()) for r in rows) if m]
+    if not numbered:
+        return "1"
+    prefix, width = numbered[0].group(1), len(numbered[0].group(2))
+    taken = {(r.litter_id or "").strip() for r in rows}
+    n = max(int(m.group(2)) for m in numbered if m.group(1) == prefix) + 1
+    while f"{prefix}{n:0{width}d}" in taken:
+        n += 1
+    return f"{prefix}{n:0{width}d}"
 
 
 def generate_litter_id(session, cage: CageRecord | None) -> str:
@@ -1119,8 +1126,8 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
             [
                 row["mouse_id"],
                 "Yes" if row["active"] else "No",
-                row["age_weeks"] or "",
-                row["age_days"] or "",
+                "" if row["age_weeks"] is None else row["age_weeks"],   # a mouse born today is 0, not blank
+                "" if row["age_days"] is None else row["age_days"],
                 row["gender"],
                 row["transgene_1"],
                 row["transgene_2"],
@@ -1154,9 +1161,8 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
 # - weaning at P21 (3 weeks)
 # - genotyping ~a week after weaning (P28)
 # - "old mouse" sac-threshold reminder at 30 weeks
-# WEAN_OFFSET_DAYS is defined with the cage dates above (one weaning rule
-# for the home dashboard, cage cards and the calendar).
-GENO_OFFSET_DAYS = 28
+# WEAN_OFFSET_DAYS and GENO_OFFSET_DAYS are defined with the cage dates
+# above (one rule each for the home dashboard, cage cards and the calendar).
 SAC_THRESHOLD_WEEKS = 30
 
 
