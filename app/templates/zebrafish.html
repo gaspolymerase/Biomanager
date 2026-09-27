@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_db_actions.html" import db_actions with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 {% import "_sheet.html" as sheet_ui with context %}
 
@@ -19,6 +20,7 @@
 {% set tanks_sub = request.args.get('mode', 'table') %}
 {% set extra_purposes = tanks | map(attribute='purpose') | reject('in', tank_purpose_options) | reject('none') | unique | list %}
 
+{% block page_actions %}{{ db_actions(url_for('organisms.configure_builtin', key='zebrafish'), current_user.role == 'admin') }}{% endblock %}
 {% block page_title %}{{ db_labels.get('zebrafish', 'Zebrafish') }} · {{ active_view|title }}{% endblock %}
 {% block page_heading %}{{ db_labels.get('zebrafish', 'Zebrafish') }}{% endblock %}
 {% block page_subtitle %}{{ zfish_blurbs.get(active_view, '') }}{% endblock %}

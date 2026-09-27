@@ -289,6 +289,7 @@ def module(key: str):
             if mv.s.get("frozen") else []
         context = {
             "module": mv, "view": view_name, "rows": rows, "racks": racks, "incubators": incubators,
+            "can_configure": can_configure(row),
             "rack_rows": rack_rows, "genotypes": genotypes, "active_counts": active_counts,
             "grid": grid_payload(mv, racks, units), "schedule": schedule, "frozen": frozen,
             "usernames": current_lab_usernames(session), "today": today,

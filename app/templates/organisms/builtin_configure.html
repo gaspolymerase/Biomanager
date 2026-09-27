@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_db_actions.html" import db_actions with context %}
+
+{% block page_title %}Configure {{ label }}{% endblock %}
+{% block page_heading %}Configure {{ label }}{% endblock %}
+{% block page_subtitle %}{{ feature.blurb }}{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ open_url }}">{{ icon(feature.icon) }} Open {{ label }}</a>
+  {{ db_actions() }}
+{% endblock %}
+
+{% block content %}
+<div class="flex max-w-[720px] flex-col gap-4">
+  <section class="card">
+    <header class="card-head"><h2>{{ icon('edit') }} Name</h2></header>
+    <form method="post" action="{{ url_for('organisms.rename_builtin', key=key) }}" class="flex flex-col gap-3 p-4">
+      <label class="field-label">What the lab calls it
+        <input name="label" value="{{ label }}" placeholder="{{ default }}" class="field" autocomplete="off">
+        <span class="field-hint">Shown in the sidebar, on Home and in the page title. Leave it empty for “{{ default }}”.</span>
+      </label>
+      <div><button type="submit" class="btn btn-primary">Save name</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <header class="card-head"><h2>{{ icon('database') }} In this lab</h2></header>
+    <div class="flex flex-col gap-3 p-4">
+      <p class="text-[12.5px] leading-snug text-muted">
+        Take {{ label }} out of the lab if it isn't used. It leaves the sidebar, Home and the calendar
+        and its pages close; nothing is deleted. Add it back from New database and every record is there.
+      </p>
+      <form method="post" action="{{ url_for('organisms.switch_builtin', key=key) }}"
+            data-confirm="Take {{ label }} out of the lab? Nothing is deleted; you can add it back from New database.">
+        <input type="hidden" name="on" value="0">
+        <button type="submit" class="btn btn-danger">{{ icon('archive') }} Take out of the lab</button>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

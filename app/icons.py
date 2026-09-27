@@ -67,3 +67,13 @@ def resolve(name: str | None) -> str:
 
 def housing_icon(noun: str | None) -> str:
     return HOUSING_ICONS.get((noun or "").strip().lower(), "box")
+
+
+# The icons offered in an icon picker (templates/_icon_picker.html): what a
+# lab keeps, then general marks. Any name in the sprite is still accepted.
+PICKER_ICONS = [
+    "mouse", "fish", "fly", "worm", "frog", "paw", "egg", "seedling", "bacterium", "virus",
+    "cage", "tank", "petri", "culture-vial", "vial", "vials", "flask", "flask-vial", "antibody", "plasmid",
+    "dna", "microscope", "syringe", "droplet", "snowflake", "temperature", "box", "archive", "cart", "tag",
+    "list", "file", "notebook", "calendar", "calendar-clock", "alarm", "heart", "heart-pulse", "scale", "star",
+]

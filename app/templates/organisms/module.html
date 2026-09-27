@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_db_actions.html" import db_actions with context %}
+{% from "_icon_picker.html" import icon_picker with context %}
 {% import "organisms/_fields.html" as F with context %}
 {% import "_sheet.html" as sheet_ui with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog, view_switch with context %}
@@ -11,9 +13,7 @@
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('organisms.index') }}">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#database"></use></svg> All databases
-  </a>
+  {{ db_actions(url_for('organisms.module', key=module.key, view='settings'), can_configure) }}
 {% endblock %}
 
 {# Sortable header cell. #}
@@ -1418,7 +1418,7 @@
         <div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           <label class="field-label">Name<input name="label" value="{{ module.label }}" required></label>
           <label class="field-label">Plural<input name="label_plural" value="{{ module.label_plural }}"></label>
-          <label class="field-label">Icon<input name="icon" value="{{ module.icon }}"></label>
+          <div class="sm:col-span-2 lg:col-span-3">{{ icon_picker('icon', module.icon) }}</div>
           <label class="field-label sm:col-span-2 lg:col-span-3">Description
             <input name="blurb" value="{{ module.blurb }}">
           </label>
@@ -1665,7 +1665,7 @@
               </span>
             </label>
             <label class="field-label">Days after<input type="number" name="offset_days" value="14" min="0" required></label>
-            <label class="field-label">Icon<input name="icon" value="calendar-clock"></label>
+            <div style="grid-column: 1 / -1">{{ icon_picker('icon', 'calendar-clock', label='Icon on the schedule') }}</div>
             <label class="field-label">By temperature
               <input name="temp_offsets" placeholder="18:28, 25:14">
               <span class="field-hint normal-case tracking-normal">

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icon_picker.html" import icon_picker with context %}
 
 {% block page_title %}New database{% endblock %}
 {% block page_heading %}New database{% endblock %}
@@ -6,12 +7,35 @@
 {% block page_shell_class %}shell-page workbench{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('organisms.index') }}">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> All databases
-  </a>
+  <a class="btn" href="{{ url_for('organisms.index') }}">{{ icon('database') }} All databases</a>
 {% endblock %}
 
 {% block content %}
+
+{# ---- Mouse colony, zebrafish, plasmids (app/lab.py) ---------------------- #}
+{% if builtin_choices %}
+<section class="mb-6">
+  <h2 class="mb-1 flex items-center gap-2">{{ icon('database', 'size-[17px] text-brand-600') }} Ready-made databases</h2>
+  <p class="mb-3 text-[12.5px] text-muted">
+    Full databases of their own, with the lab's racks, tanks or boxes. Anything added to one before
+    comes back with it.
+  </p>
+  <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+    {% for f in builtin_choices %}
+      <form method="post" action="{{ url_for('organisms.switch_builtin', key=f.key) }}" class="contents">
+        <input type="hidden" name="on" value="1">
+        <button type="submit" class="card flex flex-col gap-2 p-4 text-left transition-all hover:border-brand-300 hover:shadow-sm">
+          <span class="flex items-center gap-2">
+            {{ icon(f.icon, "size-[17px] text-brand-600") }}
+            <span class="text-[14px] font-semibold text-ink">{{ f.label }}</span>
+          </span>
+          <span class="text-[12px] leading-snug text-muted">{{ f.blurb }}</span>
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 {# ---- Fly and worm stocks ------------------------------------------------ #}
 <section class="mb-6">
@@ -117,16 +141,7 @@
           <input name="label_plural" value="{{ prefill.get('label_plural', '') }}" data-typed
                  data-prefill="{{ prefill.get('label_plural', '') }}">
         </label>
-        <label class="field-label">Icon
-          <input name="icon" value="{{ prefill.get('icon', 'paw') }}"
-                 placeholder="icon name">
-          <span class="field-hint normal-case tracking-normal">
-            A name from the app's icon set — e.g. <code class="ident">mouse</code>,
-            <code class="ident">fly</code>, <code class="ident">worm</code>,
-            <code class="ident">fish</code>, <code class="ident">frog</code>,
-            <code class="ident">petri</code>, <code class="ident">plasmid</code>.
-          </span>
-        </label>
+        <div class="sm:col-span-2">{{ icon_picker('icon', prefill.get('icon', 'paw')) }}</div>
 
         <label class="field-label sm:col-span-2 lg:col-span-3">Description
           <input name="blurb" value="{{ prefill.get('blurb', '') }}" data-typed

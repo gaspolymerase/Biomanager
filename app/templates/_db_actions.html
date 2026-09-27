@@ -1,0 +1,12 @@
+{# The same two buttons beside every database's name, whatever kind it is:
+   its configuration (for whoever may change it) and the list of all of
+   them. A page puts its own actions before these.
+
+   {% from "_db_actions.html" import db_actions with context %}
+   {% block page_actions %}{{ db_actions(url_for('inventory.configure', key=key), can_configure) }}{% endblock %} #}
+{% macro db_actions(configure_url=None, can_configure=False) %}
+  {% if configure_url and can_configure %}
+    <a class="btn" href="{{ configure_url }}">{{ icon('sliders') }} Configure</a>
+  {% endif %}
+  <a class="btn" href="{{ url_for('organisms.index') }}">{{ icon('database') }} All databases</a>
+{% endmacro %}

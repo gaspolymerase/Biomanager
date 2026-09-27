@@ -375,7 +375,8 @@ def inject_icon():
             f'<use href="/static/icons.svg#{resolve(name)}"></use></svg>'
         )
 
-    return {"icon": icon}
+    from .icons import PICKER_ICONS
+    return {"icon": icon, "picker_icons": PICKER_ICONS}
 
 
 @app.context_processor

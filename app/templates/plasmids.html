@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% from "_db_actions.html" import db_actions with context %}
 {% import "_sheet.html" as sheet_ui with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 
+{% block page_actions %}{{ db_actions(url_for('organisms.configure_builtin', key='plasmids'), current_user.role == 'admin') }}{% endblock %}
 {% block page_title %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
 {% block page_heading %}{{ db_labels.get('plasmids', 'Plasmids') }}{% endblock %}
 {% block page_subtitle %}Reference a plasmid in the notebook with <code class="ident">@plasmid 123</code>{% endblock %}

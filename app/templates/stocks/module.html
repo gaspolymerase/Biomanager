@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_db_actions.html" import db_actions with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 {% import "_sheet.html" as sheet_ui with context %}
 
@@ -18,7 +19,7 @@
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('organisms.index') }}">{{ icon('database') }} All databases</a>
+  {{ db_actions(url_for('stocks.module', key=module.key, view='settings'), can_configure) }}
 {% endblock %}
 
 {# A rack picker grouped by incubator, used by the dialog, the sheet and

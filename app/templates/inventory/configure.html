@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icon_picker.html" import icon_picker with context %}
 
 {% set m = module %}
 
@@ -9,6 +10,7 @@
 
 {% block page_actions %}
   <a class="btn" href="{{ url_for('inventory.module', key=m.key) }}">{{ icon('back') }} Back to {{ m.label }}</a>
+  <a class="btn" href="{{ url_for('organisms.index') }}">{{ icon('database') }} All databases</a>
 {% endblock %}
 
 {% macro field_row(i, f) %}
@@ -84,11 +86,7 @@
         <label class="field-label">One entry is a… <input name="item_noun" value="{{ m.item_noun }}"></label>
         <label class="field-label">Many are… <input name="item_noun_plural" value="{{ m.item_noun_plural }}"></label>
         <label class="field-label sm:col-span-2">Description <input name="blurb" value="{{ m.blurb }}"></label>
-        <label class="field-label">Icon
-          <select name="icon">
-            {% for name in icons %}<option value="{{ name }}" {% if name == m.icon %}selected{% endif %}>{{ name }}</option>{% endfor %}
-          </select>
-        </label>
+        <div class="sm:col-span-2 lg:col-span-3">{{ icon_picker('icon', m.icon, choices=icons) }}</div>
         <label class="flex items-center gap-2 text-[12.5px] sm:col-span-2 lg:col-span-3">
           <input type="hidden" name="enabled" value="0">
           <input type="checkbox" name="enabled" value="1" {% if m.enabled %}checked{% endif %}>

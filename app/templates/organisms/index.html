@@ -32,39 +32,48 @@
   {% endif %}
 {% endmacro %}
 
+{# The mouse colony, zebrafish and plasmid pages, as cards like the others:
+   shown only when the lab has them (app/lab.py), configured by an admin. #}
+{% macro builtin_card(b) %}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon(b.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ b.url }}">{{ b.label }}</a></h2>
+      <span class="badge badge-quiet">{{ b.count }} {{ b.noun }}</span>
+    </header>
+    <div class="flex flex-col gap-3 p-4">
+      <p class="text-[12.5px] leading-snug text-muted">{{ b.blurb }}</p>
+    </div>
+    <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
+      <a class="btn btn-sm" href="{{ b.url }}">Open</a>
+      {% if is_admin %}
+        <a class="btn btn-sm btn-ghost" href="{{ b.configure_url }}">{{ icon('settings') }} Rename / configure</a>
+      {% endif %}
+    </footer>
+  </article>
+{% endmacro %}
+
 {% block content %}
-<h2 class="mb-2 mt-1 flex items-center gap-2">{{ icon('database') }} Built in</h2>
-<section class="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-3">
-  {% for b in builtins %}
-    <article class="card flex flex-col">
-      <header class="card-head">
-        <h2>{{ icon(b.icon) }}<a class="text-ink no-underline hover:text-brand-700" href="{{ b.url }}">{{ b.label }}</a></h2>
-        {% if b.on %}<span class="badge badge-quiet">{{ b.count }} {{ b.noun }}</span>{% else %}<span class="badge badge-quiet">switched off</span>{% endif %}
-      </header>
-      <div class="flex flex-col gap-3 p-4">
-        <p class="text-[12.5px] leading-snug text-muted">The lab's built-in {{ b.default|lower }} page{% if b.label != b.default %}, shown here as {{ b.label }}{% endif %}.</p>
-      </div>
-      <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
-        <a class="btn btn-sm" href="{{ b.url }}">Open</a>
-        {% if is_admin %}
-          <form method="post" action="{{ url_for('organisms.rename_builtin', key=b.key) }}" class="db-rename">
-            <input name="label" value="{{ b.label }}" placeholder="{{ b.default }}" aria-label="Name of {{ b.default }}">
-            <button type="submit" class="btn btn-sm btn-ghost">{{ icon('edit') }} Rename</button>
-          </form>
-        {% endif %}
-      </footer>
-    </article>
-  {% endfor %}
-</section>
+{% set animal_builtins = builtins | selectattr('key', 'in', ['colony', 'zebrafish']) | list %}
+{% set supply_builtins = builtins | selectattr('key', 'equalto', 'plasmids') | list %}
+
+{% if not builtins and not stock_cards and not inventory_cards and not cards %}
+  <div class="card empty-state mb-6">
+    {{ icon('database') }}
+    <p>The lab has no databases yet. Add the first one: a mouse colony, fly stocks, an inventory, or your own.</p>
+    <a class="btn btn-primary mt-2" href="{{ url_for('organisms.new_module') }}">{{ icon('plus') }} New database</a>
+  </div>
+{% endif %}
 
 <div class="mb-2 flex items-center justify-between gap-2">
-  <h2 class="flex items-center gap-2">{{ icon('fly') }} Fly &amp; worm stocks</h2>
+  <h2 class="flex items-center gap-2">{{ icon('paw') }} Animals</h2>
   <div class="flex gap-1.5">
     <a class="btn btn-sm" href="{{ url_for('stocks.new_module', kind='fly') }}">{{ icon('plus') }} Drosophila</a>
     <a class="btn btn-sm" href="{{ url_for('stocks.new_module', kind='worm') }}">{{ icon('plus') }} C. elegans</a>
+    <a class="btn btn-sm" href="{{ url_for('organisms.new_module') }}">{{ icon('plus') }} Other organism</a>
   </div>
 </div>
 <section class="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+  {% for b in animal_builtins %}{{ builtin_card(b) }}{% endfor %}
   {% for c in stock_cards %}
     {% set m = c.module %}
     <article class="card flex flex-col">
@@ -81,16 +90,81 @@
         {{ audience('stocks', c.row, c.can_share) }}
       </footer>
     </article>
-  {% else %}
-    <div class="card empty-state"><p>No fly or worm databases.</p></div>
   {% endfor %}
+  {% for card in cards %}
+    {% set m = card.module %}
+    <article class="card flex flex-col">
+      <header class="card-head">
+        <h2>
+          {{ icon(m.icon) }}
+          <a class="text-ink no-underline hover:text-brand-700"
+             href="{{ url_for('organisms.module', key=m.key) }}">{{ m.label }}</a>
+        </h2>
+        {{ audience_badge(card.row) }}
+        {% if not card.module.row.enabled %}
+          <span class="badge badge-quiet">hidden</span>
+        {% else %}
+          <span class="badge badge-quiet">{{ card.census.animals }} {{ m.organism_noun if card.census.animals == 1 else m.organism_noun_plural }}</span>
+        {% endif %}
+      </header>
+
+      <div class="flex flex-col gap-3 p-4">
+        {% if m.blurb %}
+          <p class="text-[12.5px] leading-snug text-muted">{{ m.blurb }}</p>
+        {% endif %}
+
+        <div class="grid grid-cols-3 gap-2">
+          <div class="inset py-2">
+            <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.organism_noun_plural }}</span>
+            <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.animals }}</span>
+          </div>
+          <div class="inset py-2">
+            <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.housing_noun_plural }}</span>
+            <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.housing }}</span>
+          </div>
+          <div class="inset py-2">
+            <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.line_noun_plural }}</span>
+            <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.lines }}</span>
+          </div>
+        </div>
+
+        {% if card.census.overdue %}
+          <p class="flash-message flash-warning mb-0 py-2 text-[12px]">
+            <svg class="icon size-3.5 shrink-0" aria-hidden="true"><use href="/static/icons.svg#alarm"></use></svg>
+            {{ card.census.overdue }} overdue item{{ '' if card.census.overdue == 1 else 's' }}
+          </p>
+        {% endif %}
+
+        <div class="flex flex-wrap gap-1">
+          {% for label in card.capabilities[:7] %}
+            <span class="badge badge-quiet">{{ label }}</span>
+        {% endfor %}
+          {% if card.capabilities|length > 7 %}
+            <span class="badge badge-quiet">+{{ card.capabilities|length - 7 }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
+        <a class="btn btn-sm" href="{{ url_for('organisms.module', key=m.key) }}">Open</a>
+        <a class="btn btn-sm btn-ghost" href="{{ url_for('organisms.module', key=m.key, view='settings') }}">
+          {{ icon('settings') }} {{ 'Rename / configure' if card.can_configure else 'Setup' }}
+        </a>
+        {{ audience('organisms', card.row, card.can_share) }}
+      </footer>
+    </article>
+  {% endfor %}
+  {% if not animal_builtins and not stock_cards and not cards %}
+    <div class="card empty-state"><p>No animal databases.</p></div>
+  {% endif %}
 </section>
 
 <div class="mb-2 flex items-center justify-between gap-2">
-  <h2 class="flex items-center gap-2">{{ icon('flask') }} Lab inventories</h2>
+  <h2 class="flex items-center gap-2">{{ icon('flask') }} Molecular &amp; supplies</h2>
   <a class="btn btn-sm" href="{{ url_for('inventory.new_module') }}">{{ icon('plus') }} New inventory</a>
 </div>
 <section class="mb-6 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+  {% for b in supply_builtins %}{{ builtin_card(b) }}{% endfor %}
   {% for c in inventory_cards %}
     {% set m = c.module %}
     <article class="card flex flex-col">
@@ -112,96 +186,9 @@
         {{ audience('inventory', c.row, c.can_share) }}
       </footer>
     </article>
-  {% else %}
-    <div class="card empty-state"><p>No inventories yet.</p></div>
   {% endfor %}
+  {% if not supply_builtins and not inventory_cards %}
+    <div class="card empty-state"><p>No inventories yet.</p></div>
+  {% endif %}
 </section>
-
-<div class="mb-2 flex items-center justify-between gap-2">
-  <h2 class="flex items-center gap-2">{{ icon('paw') }} Organism databases</h2>
-  <a class="btn btn-sm" href="{{ url_for('organisms.new_module') }}">{{ icon('plus') }} New organism database</a>
-</div>
-{% if cards %}
-  <section class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
-    {% for card in cards %}
-      {% set m = card.module %}
-      <article class="card flex flex-col">
-        <header class="card-head">
-          <h2>
-            {{ icon(m.icon) }}
-            <a class="text-ink no-underline hover:text-brand-700"
-               href="{{ url_for('organisms.module', key=m.key) }}">{{ m.label }}</a>
-          </h2>
-          {{ audience_badge(card.row) }}
-          {% if not card.module.row.enabled %}
-            <span class="badge badge-quiet">hidden</span>
-          {% else %}
-            <span class="badge badge-quiet">{{ card.census.animals }} {{ m.organism_noun if card.census.animals == 1 else m.organism_noun_plural }}</span>
-          {% endif %}
-        </header>
-
-        <div class="flex flex-col gap-3 p-4">
-          {% if m.blurb %}
-            <p class="text-[12.5px] leading-snug text-muted">{{ m.blurb }}</p>
-          {% endif %}
-
-          <div class="grid grid-cols-3 gap-2">
-            <div class="inset py-2">
-              <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.organism_noun_plural }}</span>
-              <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.animals }}</span>
-            </div>
-            <div class="inset py-2">
-              <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.housing_noun_plural }}</span>
-              <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.housing }}</span>
-            </div>
-            <div class="inset py-2">
-              <span class="block text-[10px] font-semibold uppercase tracking-[0.07em] text-sand-400">{{ m.line_noun_plural }}</span>
-              <span class="text-[18px] font-semibold leading-tight text-ink">{{ card.census.lines }}</span>
-            </div>
-          </div>
-
-          {% if card.census.overdue %}
-            <p class="flash-message flash-warning mb-0 py-2 text-[12px]">
-              <svg class="icon size-3.5 shrink-0" aria-hidden="true"><use href="/static/icons.svg#alarm"></use></svg>
-              {{ card.census.overdue }} overdue item{{ '' if card.census.overdue == 1 else 's' }}
-            </p>
-          {% endif %}
-
-          <div class="flex flex-wrap gap-1">
-            {% for label in card.capabilities[:7] %}
-              <span class="badge badge-quiet">{{ label }}</span>
-            {% endfor %}
-            {% if card.capabilities|length > 7 %}
-              <span class="badge badge-quiet">+{{ card.capabilities|length - 7 }}</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <footer class="mt-auto flex flex-wrap items-center gap-2 border-t border-sand-100 px-4 py-3">
-          <a class="btn btn-sm" href="{{ url_for('organisms.module', key=m.key) }}">Open</a>
-          <a class="btn btn-sm btn-ghost" href="{{ url_for('organisms.module', key=m.key, view='settings') }}">
-            {{ icon('settings') }} {{ 'Rename / configure' if card.can_configure else 'Setup' }}
-          </a>
-          {{ audience('organisms', card.row, card.can_share) }}
-        </footer>
-      </article>
-    {% endfor %}
-  </section>
-{% else %}
-  <div class="card empty-state">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#database"></use></svg>
-    <p>No configurable databases yet.</p>
-    <a class="btn btn-primary mt-2" href="{{ url_for('organisms.new_module') }}">
-      <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg> Create one
-    </a>
-  </div>
-{% endif %}
-
-<div class="mt-5 inset max-w-[720px]">
-  <p class="text-[12.5px] leading-snug text-muted">
-    The built-in mouse colony and zebrafish pages are one of each. To run a second colony
-    (another room, a collaborator's line), create an organism database from the Mouse or
-    Zebrafish preset.
-  </p>
-</div>
 {% endblock %}

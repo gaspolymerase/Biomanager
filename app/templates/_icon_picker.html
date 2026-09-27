@@ -1,0 +1,22 @@
+{# Picking an icon by looking at it: a grid of the icons themselves, each a
+   radio button carrying its name. Hover shows the name.
+
+   {% from "_icon_picker.html" import icon_picker with context %}
+   {{ icon_picker('icon', module.icon) }}                   the lab's usual set
+   {{ icon_picker('icon', m.icon, choices=icons) }}         a list of its own #}
+{% macro icon_picker(name, selected, choices=None, label='Icon', id=None) %}
+  {% set names = (choices or picker_icons) | list %}
+  {% if selected and selected not in names %}{% set names = [selected] + names %}{% endif %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='icon-picker.css') }}?v={{ asset_version('icon-picker.css') }}">
+  <fieldset class="icon-picker"{% if id %} id="{{ id }}"{% endif %}>
+    <legend>{{ label }}</legend>
+    <div class="icon-picker-grid">
+      {% for n in names %}
+        <label class="icon-picker-choice" title="{{ n }}">
+          <input type="radio" name="{{ name }}" value="{{ n }}" aria-label="{{ n }}" {% if n == selected %}checked{% endif %}>
+          {{ icon(n) }}
+        </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+{% endmacro %}

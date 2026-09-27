@@ -309,7 +309,12 @@ def index():
             b["label"] = names[b["key"]]
             b["default"] = inventories.BUILTIN_DATABASES[b["key"]][0]
             b["on"] = features.get(b["key"], True)
-        builtins = [b for b in builtins if b["on"] or everyone]
+        # No database is there by default: these three show once the lab has
+        # them (the setup survey, or New database), like any other.
+        builtins = [b for b in builtins if b["on"]]
+        for b in builtins:
+            b["configure_url"] = url_for("organisms.configure_builtin", key=b["key"])
+            b["blurb"] = lab.FEATURES[b["key"]].blurb
         item_counts = dict(session.execute(select(InventoryItem.module_id_fk, func.count())
                                            .group_by(InventoryItem.module_id_fk)).all())
         inventory_cards = [{"module": inventories.view(m), "count": item_counts.get(m.id, 0), "row": m,
@@ -336,6 +341,54 @@ def rename_builtin(key: str):
         inventories.set_setting(session, f"db_label:{key}", label)
         session.commit()
     flash(f"Renamed to {label or inventories.BUILTIN_DATABASES[key][0]}.", "success")
+    return redirect(url_for("organisms.configure_builtin", key=key))
+
+
+@bp.route("/builtin/<key>/configure")
+def configure_builtin(key: str):
+    """Rename the mouse colony, zebrafish or plasmid pages, or take one out
+    of the lab (admins). Their records and columns are set on their own
+    pages; this is what every other database's Configure also offers."""
+    from . import inventory_service as inventories
+
+    if key not in inventories.BUILTIN_DATABASES:
+        abort(404)
+    if not access.is_admin():
+        flash("Only an admin can configure this database.", "error")
+        return redirect(url_for("organisms.index"))
+    feature = lab.FEATURES[key]
+    with SessionLocal() as session:
+        label = inventories.builtin_labels(session)[key]
+        on = lab.feature_on(session, key)
+    return render_template("organisms/builtin_configure.html", key=key, feature=feature, label=label,
+                           default=inventories.BUILTIN_DATABASES[key][0], on=on,
+                           open_url={"colony": url_for("colony", view="mice"), "zebrafish": url_for("zebrafish"),
+                                     "plasmids": url_for("plasmids")}[key])
+
+
+@bp.route("/builtin/<key>/switch", methods=["POST"])
+def switch_builtin(key: str):
+    """Add the mouse colony, zebrafish or plasmid pages to the lab, or take
+    one out. Taking out hides it and refuses its pages; nothing is deleted,
+    and adding it back brings every record back."""
+    from . import inventory_service as inventories
+
+    if key not in inventories.BUILTIN_DATABASES:
+        abort(404)
+    if not access.is_admin():
+        flash("Only an admin can add or remove this database.", "error")
+        return redirect(url_for("organisms.index"))
+    on = request.form.get("on") == "1"
+    with SessionLocal() as session:
+        lab.set_feature(session, key, on)
+        name = inventories.builtin_labels(session)[key]
+        session.commit()
+    if on:
+        flash(f"{name} added to the lab.", "success")
+        return redirect({"colony": url_for("colony", view="mice"), "zebrafish": url_for("zebrafish"),
+                         "plasmids": url_for("plasmids")}[key])
+    flash(f"{name} taken out of the lab. Nothing was deleted: add it back from New database "
+          "and every record is there.", "success")
     return redirect(url_for("organisms.index"))
 
 
@@ -386,6 +439,11 @@ def new_module():
             inventory_presets=inventory_presets.PRESETS,
             stock_presets=stock_presets.PRESETS,
             audience=lab_audience(session),
+            # The mouse colony, zebrafish and plasmid pages the lab has not got
+            # yet: an admin adds them from here, as they would any database.
+            builtin_choices=[f for f in lab.FEATURES.values()
+                             if f.kind == "database" and not lab.feature_on(session, f.key)]
+            if access.is_admin() else [],
         )
 
 

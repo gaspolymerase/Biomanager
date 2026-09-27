@@ -35,6 +35,13 @@ let popoverEl = null;
 let popoverHideTimer = null;
 let popoverActiveChip = null;
 
+/* Records open in a new tab of BioManager's own tab strip (static/tab-bar.js),
+   not a new browser tab or window, so the notebook stays one click away. */
+function openInAppTab(url) {
+  if (window.BiomanagerTabs && window.BiomanagerTabs.open) window.BiomanagerTabs.open(url);
+  else window.location.href = url;
+}
+
 function ensurePopover() {
   if (popoverEl) return popoverEl;
   popoverEl = document.createElement('div');
@@ -46,6 +53,12 @@ function ensurePopover() {
   });
   popoverEl.addEventListener('mouseleave', () => {
     schedulePopoverHide();
+  });
+  popoverEl.addEventListener('click', (event) => {
+    const open = event.target.closest && event.target.closest('.entity-popover-open');
+    if (!open) return;
+    event.preventDefault();
+    openInAppTab(open.getAttribute('href'));
   });
   document.body.appendChild(popoverEl);
   return popoverEl;
@@ -141,13 +154,13 @@ function renderPopover(type, id, data, errorMsg) {
     <div class="entity-popover-head">
       <span class="entity-popover-tag entity-popover-tag-${type}">${typeLabel}</span>
       <span class="entity-popover-id">#${escapeHtml(String(id))}</span>
-      <a href="${escapeAttr(navUrl)}" target="_blank" rel="noopener" class="entity-popover-open" title="Open in new tab">↗</a>
+      <a href="${escapeAttr(navUrl)}" class="entity-popover-open" title="Open in a new tab">↗</a>
     </div>
     <div class="entity-popover-body">${rows || '<div class="entity-popover-empty">No details available.</div>'}</div>
     <div class="entity-popover-backlinks" data-loading="1">
       <div class="entity-popover-backlinks-loading">Loading mentions…</div>
     </div>
-    <div class="entity-popover-hint">Cmd / Ctrl + click chip to open</div>
+    <div class="entity-popover-hint">Cmd / Ctrl + click the chip to open it in a new tab</div>
   `;
 }
 
@@ -321,7 +334,7 @@ export const MentionDecoration = Extension.create({
             const type = chip.getAttribute('data-entity-type');
             const url = NAVIGATION[type] && NAVIGATION[type]();
             if (url) {
-              window.open(url, '_blank', 'noopener');
+              openInAppTab(url);
               event.preventDefault();
               return true;
             }
