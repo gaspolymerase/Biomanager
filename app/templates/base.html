@@ -110,8 +110,9 @@
               <nav class="wtabs" id="app-tabbar"
                    data-current-url="{{ current_url }}"
                    data-current-title="{{ title_text }}"></nav>
-              <button type="button" class="wtab-add" data-new-tab
-                      aria-label="New tab" title="New tab">{{ icon('plus') }}</button>
+              {# "/" sends each person to their own start page (Settings). #}
+              <button type="button" class="wtab-add" data-new-tab="{{ url_for('index') }}"
+                      aria-label="New tab" title="New tab, on your start page">{{ icon('plus') }}</button>
             </div>
           </nav>
 

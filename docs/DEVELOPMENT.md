@@ -71,7 +71,8 @@ the one symbol every organism in the app shares.
 ## Interface
 
 The UI is a collapsible icon rail plus a persistent **workspace tab strip**:
-every page you open becomes a tab, tabs survive navigation (they live in
+every page you open becomes a tab, **+** opens a new one on the person's
+start page (Settings; Home if none), tabs survive navigation (they live in
 `localStorage`), and they can be reordered by dragging, closed with middle
 click, and switched with `Alt+1…9` / `Alt+←` / `Alt+→` (`Alt+W` closes,
 `Cmd/Ctrl+B` collapses the rail, `Cmd/Ctrl+K` opens search).

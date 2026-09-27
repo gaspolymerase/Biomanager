@@ -211,9 +211,8 @@
       el.addEventListener('click', () => toast(el.dataset.soon));
     });
 
-    // Both open the command palette, but they mean different things: the
-    // omnibox searches in the tab you are already in, while "+" is a
-    // request for a new tab that the next navigation fulfils.
+    // The omnibox searches in the tab you are already in; "+" (below) opens
+    // a new tab on your start page.
     const omnibox = document.querySelector('#app-global-search');
     if (omnibox) {
       omnibox.addEventListener('click', (event) => {
@@ -225,10 +224,13 @@
 
     const newTabButton = document.querySelector('[data-new-tab]');
     if (newTabButton) {
+      // A new tab opens on the person's start page, as a browser's opens on
+      // its home page; the palette (Cmd/Ctrl+K) is for going somewhere else.
       newTabButton.addEventListener('click', (event) => {
         event.preventDefault();
-        if (window.BiomanagerTabs) window.BiomanagerTabs.requestNewTab();
-        if (window.BiomanagerSearch) window.BiomanagerSearch.open();
+        const start = newTabButton.dataset.newTab || '/';
+        if (window.BiomanagerTabs) window.BiomanagerTabs.open(start);
+        else window.location.href = start;
       });
     }
 
