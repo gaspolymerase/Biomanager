@@ -106,6 +106,7 @@
       this._wireChips();
       this._wireResize();
       this._wireExport();
+      this._labelCells();
       this._applyHidden();
       this._applyResizedWidths();
       this.render();
@@ -411,6 +412,19 @@
             });
             menu.appendChild(clear);
           }
+        });
+      });
+    }
+
+    /* Each cell carries its column's name, which a phone shows beside the
+       value when the sheet turns into one card per row (tailwind.css,
+       "Sheets on a phone"): there is no header row to look up to. */
+    _labelCells() {
+      if (!this.table || !this.table.tHead || !this.table.tHead.rows[0]) return;
+      const labels = Array.from(this.table.tHead.rows[0].cells).map((th) => this._columnLabel(th));
+      this.rows.forEach((tr) => {
+        Array.from(tr.cells).forEach((td, idx) => {
+          if (labels[idx] && !td.dataset.label) td.dataset.label = labels[idx];
         });
       });
     }

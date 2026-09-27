@@ -34,6 +34,10 @@
         <button type="button" class="btn btn-sm" data-record-edit="{{ rack_dialog_id }}"
                 data-record-payload='{{ dict({"rows": 8, "cols": 10, "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"}, **(new_rack_payload or {})) | tojson }}'>{{ icon('plus') }} New {{ rack_noun }}</button>
       {% endif %}
+      {# Tap a tile, then where it goes: for touch screens, where dragging
+         scrolls the page instead, and for the keyboard. #}
+      <button type="button" class="btn btn-sm" data-rack-move aria-pressed="false"
+              title="Tap a tile, then the position it goes to (another tile swaps with it, Unplaced takes it out)">{{ icon('position') }} Move</button>
       <span class="rack-status" data-rack-status aria-live="polite"></span>
       <div class="dt-toolbar-search rack-search">
         {{ icon('search', 'search-icon') }}
@@ -44,7 +48,7 @@
       <div class="rack-grid" data-rack-grid></div>
       <aside class="rack-tray" data-rack-tray>
         <h4>Unplaced</h4>
-        <p>{{ hint or 'Drag onto a cell to place, or back here to take out. Click a tile to edit it; click an empty cell to add one there.' }}</p>
+        <p>{{ hint or 'Drag onto a cell to place, or back here to take out (on a phone: Move, then tap the tile and its new place). Click a tile to edit it; click an empty cell to add one there.' }}</p>
         <div class="rack-tray-items" data-rack-tray-items></div>
       </aside>
     </div>

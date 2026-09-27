@@ -21,6 +21,8 @@
  * Editing on the grid:
  *   · drag a tile to a cell to move it (an occupied cell swaps), or onto the
  *     tray to unplace it — saved immediately through data-move-url;
+ *   · or press Move, tap a tile, then tap where it goes (a cell, another
+ *     tile to swap, or the tray): dragging doesn't work on a touch screen;
  *   · click a tile to open that record's own edit dialog (its `edit`
  *     attributes are the same data-*-edit hooks the table rows use);
  *   · click an empty cell to create a record already placed there.
@@ -94,6 +96,10 @@
     const editRack = root.querySelector('[data-rack-edit]');
     const rackAction = root.querySelector('[data-rack-action]');
     const status = root.querySelector('[data-rack-status]');
+    const moveButton = root.querySelector('[data-rack-move]');
+    // Move mode: tiles are picked up and put down by tapping, not opened.
+    let moving = false;
+    let picked = null;
 
     let active = null;
     const rackById0 = (id) => racks.find((r) => r.id === id);
@@ -174,7 +180,12 @@
         el.classList.add('is-dragging');
       });
       el.addEventListener('dragend', () => el.classList.remove('is-dragging'));
-      el.addEventListener('click', () => { if (item.edit) trigger(item.edit); });
+      if (picked === item.id) el.classList.add('is-picked');
+      el.addEventListener('click', (event) => {
+        if (!moving) { if (item.edit) trigger(item.edit); return; }
+        event.stopPropagation();
+        tapTile(item);
+      });
       return el;
     }
 
@@ -247,13 +258,14 @@
                 add.className = 'rack-cell-add';
                 add.setAttribute('aria-label', `New at ${whereText(rack, r, c)}`);
                 add.innerHTML = name + '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg>';
-                add.addEventListener('click', () => createAt(rack, r, c));
+                add.addEventListener('click', () => { if (!moving) createAt(rack, r, c); });
                 cell.appendChild(add);
               } else {
                 cell.insertAdjacentHTML('beforeend', name);
               }
             }
             wireDrop(cell, () => moveTo(cell._dragId, rack, r, c));
+            if (!here) cell.addEventListener('click', () => { if (moving) tapPlace(rack, r, c); });
             grid.appendChild(cell);
           }
         }
@@ -275,6 +287,52 @@
       });
     }
     wireDrop(trayBox, () => moveTo(trayBox._dragId, null, null, null));
+
+    /* Move mode, step by step. The status line says what the next tap does. */
+    const pickedItem = () => items.find((i) => i.id === picked);
+    function nextStep() {
+      if (!moving) return;
+      const item = pickedItem();
+      say('saving', item
+        ? `Tap where ${item.label} goes: an empty position, another tile to swap, or Unplaced.`
+        : 'Tap the tile to move.');
+    }
+    function setMoving(on) {
+      moving = on;
+      picked = null;
+      root.classList.toggle('is-moving', on);
+      if (moveButton) {
+        moveButton.setAttribute('aria-pressed', String(on));
+        moveButton.classList.toggle('btn-primary', on);
+      }
+      render();
+      if (on) nextStep(); else say('saved', '');
+    }
+    function tapTile(item) {
+      const holding = pickedItem();
+      if (holding && holding.id === item.id) { picked = null; render(); nextStep(); return; }
+      const where = item.rack ? rackById(item.rack) : null;
+      if (holding && where && placedIn(where, item)) { moveTo(holding.id, where, item.row, item.col); return; }
+      if (item.locked) {
+        say('error', `${item.label} is ${item.owner ? `${item.owner}'s` : 'someone else\u2019s'}; you may not move it.`);
+        return;
+      }
+      picked = item.id;
+      render();
+      nextStep();
+    }
+    function tapPlace(rack, r, c) {
+      if (picked) moveTo(picked, rack, r, c);
+      else nextStep();
+    }
+    if (moveButton) moveButton.addEventListener('click', () => setMoving(!moving));
+    trayBox.addEventListener('click', (event) => {
+      if (!moving || !picked || event.target.closest('.rack-tile')) return;
+      moveTo(picked, null, null, null);
+    });
+    root.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && moving) { event.stopPropagation(); setMoving(false); }
+    });
 
     function createAt(rack, r, c) {
       const payload = Object.assign({}, create.payload || {});
@@ -329,6 +387,7 @@
         const swapped = occupant
           ? ` · ${occupant.label} went to ${occupant.rack ? whereText(rackById(occupant.rack), occupant.row, occupant.col) : 'Unplaced'}`
           : '';
+        picked = null;
         say('saved', (rack ? `Moved ${item.label} to ${whereText(rack, r, c)}` : `Unplaced ${item.label}`) + swapped);
         render();
       } catch (error) {

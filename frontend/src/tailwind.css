@@ -1814,6 +1814,15 @@
   .rack-status[data-state="saved"] { @apply text-ok-700; }
   .rack-status[data-state="error"] { @apply font-medium text-danger-700; }
   .rack-search { @apply min-w-40 max-w-56 flex-none; }
+  /* Move mode (tap a tile, then its place): the button stays pressed
+     (btn-primary, set by rack-grid.js), the picked tile is ringed, and every place it may go reads as a target. */
+  .rack-view.is-moving .rack-status { @apply whitespace-normal; }
+  .rack-view.is-moving .rack-tile { @apply cursor-pointer; }
+  .rack-view.is-moving .rack-cell-add svg { @apply hidden; }
+  .rack-view.is-moving .rack-cell:hover .rack-cell-add .rack-cell-name { @apply block; }
+  .rack-view.is-moving:has(.rack-tile.is-picked) .rack-cell:not(:has(.rack-tile)) { @apply border-brand-300 bg-brand-50/60; }
+  .rack-view.is-moving:has(.rack-tile.is-picked) .rack-tray { @apply cursor-pointer border-brand-300; }
+  .rack-tile.is-picked { @apply border-brand-600 ring-2 ring-brand-500/60; }
 
   .rack-body { @apply grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_230px]; }
   .rack-grid {
@@ -2996,6 +3005,72 @@
     gap: 0;
     padding-inline: 9px;
   }
+}
+
+/* Sheets on a phone: one card per row. A row of twelve columns is three
+   screens wide on a phone, and what matters most (Status, the row's
+   actions) sat at the far end of it. Here the row's checkbox, ID and
+   actions head the card and every other column follows, one per line,
+   under the name data-table.js gives each cell (data-label). Hidden columns
+   stay hidden; sorting is in the toolbar's Sort menu. */
+@media (max-width: 480px) {
+  .sheet .dt-scroll { max-height: none; overflow: visible; }
+  .sheet-table, .sheet-table tbody { display: block; width: 100%; min-width: 0; }
+  .sheet-table thead { display: none; }
+  .sheet-table tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 8px;
+    padding: 8px 12px 10px;
+    border-bottom: 1px solid var(--color-hairline);
+    background-color: var(--color-surface);
+  }
+  .sheet-table tbody tr.is-selected { background-color: var(--color-brand-50); }
+  .sheet-table tbody td {
+    display: block;
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .sheet-table tbody tr:hover td, .sheet-table tbody tr.is-selected td { background: transparent; }
+  /* Flex, not grid: a cell may hold loose text beside a span ("30" + "w"),
+     which a grid would put on two lines. */
+  .sheet-table tbody td[data-label]:not(.sheet-pin) {
+    display: flex;
+    align-items: center;
+    min-height: 36px;
+    text-align: left;
+  }
+  .sheet-table tbody td[data-label]:not(.sheet-pin) > :is(input, select, textarea, div, a) { flex: 1 1 0; min-width: 0; }
+  .sheet-table tbody td[data-label]:not(.sheet-pin) > :is(.sex-pill, .status-pill, .scope-pill) { flex: 0 1 auto; }
+  .sheet-table tbody td[data-label]:not(.sheet-pin)::before {
+    content: attr(data-label);
+    flex: 0 0 7.5rem;
+    margin-right: 8px;
+    font-size: 11.5px;
+    color: var(--color-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sheet-table tbody td.sheet-text { white-space: normal; }
+  /* The card's head line: checkbox and ID on the left, actions on the right. */
+  .sheet-table tbody td.sheet-pin {
+    position: static;
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    order: -1;
+    min-height: 40px;
+    box-shadow: none;
+  }
+  .sheet-table tbody td.sheet-pin-end { margin-left: auto; }
+  .sheet-table tbody td.sheet-pin-end .sheet-actions { opacity: 1; }
 }
 
 /* The row a link or a QR code pointed at (#cage-12): marked until another is. */
