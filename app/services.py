@@ -920,8 +920,26 @@ def cage_is_active(cage: CageRecord) -> bool:
 # weaning, P28) is one constant too: the cage, the calendar and Home must
 # never disagree about when it is due.
 WEAN_OFFSET_DAYS = 21
-GENO_OFFSET_DAYS = 28
+GENO_OFFSET_DAYS = 28          # the default; the lab may choose another day (genotyping_offset)
 CAGE_GENO_OFFSET_DAYS = GENO_OFFSET_DAYS
+
+
+def genotyping_offset(session=None) -> int:
+    """The day after birth the lab genotypes (Lab setup; P28 unless
+    chosen), read once per request."""
+    from flask import g, has_request_context
+    from . import lab
+    if has_request_context() and "genotyping_day" in g:
+        return g.genotyping_day
+    if session is not None:
+        value = lab.genotyping_day(session)
+    else:
+        from .db import SessionLocal
+        with SessionLocal() as own:
+            value = lab.genotyping_day(own)
+    if has_request_context():
+        g.genotyping_day = value
+    return value
 
 
 # Younger than this, weaning asks first: P21 is the usual day, and pups
@@ -1011,7 +1029,7 @@ def cage_derived_dates(cage: CageRecord) -> dict[str, str]:
     if cage.date_give_birth is None:
         return {"genotyping_date": "", "weaning_date": ""}
     return {
-        "genotyping_date": (cage.date_give_birth + timedelta(days=CAGE_GENO_OFFSET_DAYS)).isoformat(),
+        "genotyping_date": (cage.date_give_birth + timedelta(days=genotyping_offset())).isoformat(),
         "weaning_date": (cage.date_give_birth + timedelta(days=WEAN_OFFSET_DAYS)).isoformat(),
     }
 
@@ -1378,7 +1396,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
         body = " · ".join(body_parts)
 
         # Weaning comes from weaning_due below, the same list Home shows.
-        geno = dob + timedelta(days=GENO_OFFSET_DAYS)
+        geno = dob + timedelta(days=genotyping_offset(session))
         if _in_window(geno):
             items.append(_auto_item(
                 kind_tag="geno", anchor_id=cage.id,

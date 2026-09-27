@@ -6,6 +6,7 @@ lab-wide setting puts it back in tearDown."""
 from tests.base import *  # noqa: F401,F403
 from tests.base import AUTOSAVE, AppTestCase, client_for, count, execute, make_user, one, rows, uniq, user_id
 
+import os
 import unittest
 from datetime import datetime, timedelta
 
@@ -42,7 +43,8 @@ def notes_for(username, category=None):
 
 class LabSettingsCase(AppTestCase):
     """Remembers the lab-wide settings and puts them back afterwards."""
-    KEYS = ["lab_setup_done", "lab_name", "members_create_databases", "members_share_databases"] + \
+    KEYS = ["lab_setup_done", "lab_name", "members_create_databases", "members_share_databases",
+            "lab_timezone", "date_style", "genotyping_day"] + \
            [f"feature:{k}" for k in lab.FEATURES]
 
     def setUp(self):
@@ -66,6 +68,9 @@ class LabSettingsCase(AppTestCase):
         for kind, mid, enabled in self._modules:
             execute(f"update {'stock_modules' if kind == 'stock' else 'inventory_modules'} "
                     f"set enabled={'true' if enabled else 'false'} where id=?", mid)
+        # The process's zone goes back to the server's own.
+        lab.apply_timezone("")
+        lab._tz_cache["value"] = None
         super().tearDown()
 
     def set(self, key, value):
@@ -450,3 +455,38 @@ class Bell(AppTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LabTimeAndDates(LabSettingsCase):
+    """Lab setup's time zone, date style and genotyping day."""
+
+    def test_the_time_zone_is_saved_and_becomes_the_processes(self):
+        # The server's own zone by name, so "today" cannot move mid-test.
+        zone = lab.server_timezone()
+        if not lab.valid_timezone(zone):
+            self.skipTest("no zone data for this computer's zone")
+        self.survey(self.a, lab_timezone=zone)
+        self.assertEqual(one("select value from app_settings where key='lab_timezone'"), zone)
+        self.assertEqual(os.environ.get("TZ"), zone)
+
+    def test_an_unknown_time_zone_is_refused_and_said(self):
+        r = self.survey(self.a, lab_timezone="Mars/Olympus_Mons")
+        self.assertIn("is not a time zone", flash_text(r))
+        self.assertIn(one("select value from app_settings where key='lab_timezone'"), (None, ""))
+
+    def test_the_date_style_is_how_dates_are_written(self):
+        born = TODAY + timedelta(days=2)
+        for style, text in (("iso", born.isoformat()), ("day", f"{born.day} {born:%b}"),
+                            ("month", f"{born:%b} {born.day}")):
+            with self.subTest(style=style):
+                self.survey(self.a, date_style=style)
+                r = self.post(self.a, "/colony/mice/create", {"date_of_birth": born.isoformat(), "owner": self.admin})
+                self.assertIn(f"({text}", flash_text(r))
+
+    def test_the_genotyping_day_moves_the_reminder(self):
+        self.survey(self.a, genotyping_day="25")
+        born = TODAY - timedelta(days=10)
+        cage = self.make_cage(self.a, date_give_birth=born.isoformat())
+        r = self.a.get("/calendar/events.json", query_string={"start": days_ago(30), "end": days_ahead(40)})
+        genos = [i["start"][:10] for i in r.get_json()["items"] if i["id"] == f"auto-cage-{cage}-geno"]
+        self.assertEqual(genos, [(born + timedelta(days=25)).isoformat()])

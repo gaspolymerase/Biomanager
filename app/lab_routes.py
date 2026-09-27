@@ -25,6 +25,7 @@ from sqlalchemy import select
 from . import lab, notify
 from .db import SessionLocal
 from .models import NotificationRecord, UserAccount
+from .services import WEAN_OFFSET_DAYS
 
 bp = Blueprint("lab", __name__)
 
@@ -44,7 +45,8 @@ def when(moment) -> str:
         return f"{int(seconds // 3600)} h ago"
     if seconds < 2 * 86400:
         return "yesterday"
-    return moment.strftime("%d %b %Y") if seconds > 300 * 86400 else moment.strftime("%d %b")
+    # Further back: the date, written the lab's way (Lab setup → Dates).
+    return current_app.jinja_env.filters["day"](current_app.jinja_env.filters["local"](moment))
 
 
 @bp.app_context_processor
@@ -118,6 +120,10 @@ def setup():
                 db_session.commit()
                 flash(f"{module.label} {'switched on' if module.enabled else 'switched off'}.", "success")
                 return redirect(url_for("lab.setup") + "#databases")
+            zone = (request.form.get("lab_timezone") or "").strip()
+            if zone and not lab.valid_timezone(zone):
+                flash(f"“{zone}” is not a time zone BioManager knows; the time zone was left as it was. "
+                      "Pick one from the list, such as America/New_York.", "error")
             switched_on = lab.apply_survey(db_session, request.form, g.user.username)
             if switched_on and not first_run:
                 notify.tell_lab(db_session, g.user.username,
@@ -146,7 +152,9 @@ def setup():
             incubator_temps=lab.INCUBATOR_TEMPS, incubator_defaults=lab.INCUBATOR_DEFAULTS,
             stock_default_labels={kind: STOCK_PRESETS[kind]["label"] for kind in lab.STOCK_CHOICES},
             admins=[{"id": a.id, "username": a.username, "name": a.display_name or a.username} for a in admins],
-            members=[{"id": m.id, "username": m.username, "name": m.display_name or m.username} for m in members])
+            members=[{"id": m.id, "username": m.username, "name": m.display_name or m.username} for m in members],
+            date_styles=lab.DATE_STYLES, timezones=lab.timezone_names(), server_timezone=lab.server_timezone(),
+            local_setup=bool(current_app.config.get("LOCAL_SETUP")), wean_offset_days=WEAN_OFFSET_DAYS)
 
 
 # ---------------------------------------------------------------- welcome tour

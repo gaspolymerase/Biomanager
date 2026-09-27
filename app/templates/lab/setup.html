@@ -43,6 +43,26 @@
         <input name="lab_name" value="{{ state.lab_name }}" maxlength="80" placeholder="e.g. McClintock Lab" autocomplete="organization">
         <span class="field-hint normal-case tracking-normal">Shown to members when they first sign in. Optional.</span>
       </label>
+      <div class="mt-3 grid max-w-[720px] grid-cols-1 gap-3 sm:grid-cols-3">
+        <label class="field-label">Time zone
+          <input name="lab_timezone" value="{{ state.lab_timezone }}" list="lab-timezones" autocomplete="off"
+                 placeholder="{{ server_timezone }}">
+          <span class="field-hint normal-case tracking-normal">What "today" and "overdue" mean, and the times shown. Blank: the {{ 'computer' if local_setup else 'server' }}'s ({{ server_timezone }}).</span>
+        </label>
+        <label class="field-label">Dates
+          <select name="date_style">
+            {% for key, example in date_styles.items() %}
+              <option value="{{ key }}" {% if state.date_style == key %}selected{% endif %}>{{ example }}</option>
+            {% endfor %}
+          </select>
+          <span class="field-hint normal-case tracking-normal">How dates are written in lists and messages. Date fields follow the computer's language.</span>
+        </label>
+        <label class="field-label">Genotyping day
+          <input type="number" name="genotyping_day" min="1" max="120" value="{{ state.genotyping_day }}">
+          <span class="field-hint normal-case tracking-normal">Days after birth (P{{ state.genotyping_day }}) the genotyping reminder falls on. Weaning is P{{ wean_offset_days }}.</span>
+        </label>
+      </div>
+      <datalist id="lab-timezones">{% for zone in timezones %}<option value="{{ zone }}"></option>{% endfor %}</datalist>
     </section>
 
     <section class="setup-step" id="databases">

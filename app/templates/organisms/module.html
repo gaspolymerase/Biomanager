@@ -182,7 +182,7 @@
                 <td><input class="ident" name="genotype" form="{{ f }}" value="{{ row.genotype }}" title="{{ row.genotype }}" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
                 <td>
                   {% if call %}
-                    <span class="org-call" title="{{ call.assay or 'Call' }} · {{ call.called_on or '' }}{% if call.called_by %} · {{ call.called_by }}{% endif %}">
+                    <span class="org-call" title="{{ call.assay or 'Call' }} · {{ call.called_on | day }}{% if call.called_by %} · {{ call.called_by }}{% endif %}">
                       <span class="ident">{{ call.result }}</span>
                       {% if call.zygosity %}<span class="badge badge-quiet">{{ call.zygosity }}</span>{% endif %}
                     </span>
@@ -701,7 +701,7 @@
               <td><span class="sheet-cell-text ident" title="{{ line.genotype }}">{{ line.genotype }}</span></td>
               {{ F.table_cells(own_fields, attrs) }}
               <td class="sheet-num">{{ line_counts.get(line.id, 0) }}</td>
-              {% if module.has('preservation') %}<td><span class="sheet-cell-text">{{ line.last_frozen_on or '' }}</span></td>{% endif %}
+              {% if module.has('preservation') %}<td><span class="sheet-cell-text">{{ line.last_frozen_on | day }}</span></td>{% endif %}
               <td>{% if line.owner %}{{ line.owner | owner_badge }}{% endif %}</td>
               <td class="sheet-pin sheet-pin-end">
                 <div class="sheet-actions">
@@ -827,8 +827,8 @@
               {% if module.has('housing') %}
                 <td>{% if cross.housing %}<span class="ident">{{ cross.housing.code }}</span>{% endif %}</td>
               {% endif %}
-              <td><span class="sheet-cell-text">{{ cross.set_up_on or '' }}</span></td>
-              <td>{% if cross.collected_on %}<span class="sheet-cell-text">{{ cross.collected_on }}</span>{% else %}
+              <td><span class="sheet-cell-text">{{ cross.set_up_on | day }}</span></td>
+              <td>{% if cross.collected_on %}<span class="sheet-cell-text">{{ cross.collected_on | day }}</span>{% else %}
                 <span class="dt-status" data-status="active">open</span>{% endif %}</td>
               {{ F.table_cells(own_fields, attrs) }}
               <td>{% if cross.owner %}{{ cross.owner | owner_badge }}{% endif %}</td>
@@ -946,7 +946,7 @@
                 class="{% if locked %}is-locked{% endif %}">
               <td>{{ sheet_ui.id_cell(cohort.code, locked=locked, owner=cohort.owner, noun=module.cohort_noun) }}</td>
               {% if module.has('lines') %}<td><span class="sheet-cell-text">{{ cohort.line.code if cohort.line else '' }}</span></td>{% endif %}
-              <td><span class="sheet-cell-text">{{ cohort.birth_on or '' }}</span></td>
+              <td><span class="sheet-cell-text">{{ cohort.birth_on | day }}</span></td>
               <td class="sheet-num">{{ age_label(module_row, cohort.birth_on) }}</td>
               {% if module.has('nursery') %}
                 <td>{% if cohort.stage %}<span class="badge badge-quiet">{{ cohort.stage }}</span>{% endif %}</td>
@@ -1082,7 +1082,7 @@
               <td><span class="sheet-cell-text">{{ call.assay }}</span></td>
               <td><span class="sheet-cell-text ident" title="{{ call.result }}">{{ call.result }}</span></td>
               <td>{% if call.zygosity %}<span class="badge badge-quiet">{{ call.zygosity }}</span>{% endif %}</td>
-              <td><span class="sheet-cell-text">{{ call.called_on or '' }}</span></td>
+              <td><span class="sheet-cell-text">{{ call.called_on | day }}</span></td>
               <td>{% if call.called_by %}{{ call.called_by | owner_badge }}{% endif %}</td>
               <td>{% if call.image_path %}<a class="org-gel-link" href="{{ call.image_path }}" target="_blank" rel="noopener">{{ icon('external') }} Open</a>{% endif %}</td>
               <td><span class="sheet-cell-text text-muted" title="{{ call.notes }}">{{ call.notes }}</span></td>
@@ -1187,7 +1187,7 @@
             <span class="w-[150px] shrink-0 font-medium text-ink">{{ item.label }}</span>
             <span class="ident w-[140px] shrink-0">{{ item.subject_label }}</span>
             <span class="hidden w-[90px] shrink-0 text-[11.5px] text-muted sm:block">{{ item.subject_kind }}</span>
-            <span class="min-w-0 flex-1 text-[12px] text-muted">{{ item.due_on }}</span>
+            <span class="min-w-0 flex-1 text-[12px] text-muted">{{ item.due_on | day }}</span>
             {% if item.overdue %}
               <span class="badge badge-danger shrink-0">{{ -item.days }}d overdue</span>
             {% elif item.days == 0 %}
@@ -1288,7 +1288,7 @@
             <tbody>
               {% for reading in readings %}
                 <tr>
-                  <td>{{ (reading.recorded_at | local).strftime('%Y-%m-%d %H:%M') }}</td>
+                  <td>{{ reading.recorded_at | local | day_time }}</td>
                   <td>
                     {% for loc in locations if loc.id == reading.subject_id %}{{ loc.name }}{% endfor %}
                   </td>
@@ -1349,14 +1349,14 @@
               <td><span class="dt-row-name">{{ lot.code or ('#' ~ lot.id) }}</span></td>
               <td>{{ lot.line.code if lot.line else '' }}</td>
               <td>{{ lot.method }}</td>
-              <td>{{ lot.frozen_on or '' }}</td>
+              <td>{{ lot.frozen_on | day }}</td>
               <td class="font-medium">{{ lot.vials_remaining }} / {{ lot.vial_count }}</td>
               <td>{{ lot.storage_text }}{% if lot.position %} · <span class="ident">{{ lot.position }}</span>{% endif %}</td>
               <td>
                 {% if lot.recovery_ok is none %}
                   <span class="badge badge-warn">untested</span>
                 {% elif lot.recovery_ok %}
-                  <span class="badge badge-ok">recovered {{ lot.recovery_tested_on or '' }}</span>
+                  <span class="badge badge-ok">recovered {{ lot.recovery_tested_on | day }}</span>
                 {% else %}
                   <span class="badge badge-danger">failed</span>
                 {% endif %}

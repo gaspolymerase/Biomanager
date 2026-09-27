@@ -30,7 +30,7 @@
     <div class="field"><b>Owner</b><span>{{ tank.owner or '—' }}</span></div>
     <div class="field"><b>Card ID</b><span>{{ tank.card_id or '—' }}</span></div>
     {% if tank.mating_return_at %}
-      <div class="field"><b>Return by</b><span>{{ tank.mating_return_at.isoformat() }}</span></div>
+      <div class="field"><b>Return by</b><span>{{ tank.mating_return_at | day }}</span></div>
     {% endif %}
     {% if tank.notes %}<div class="field"><b>Notes</b><span>{{ tank.notes }}</span></div>{% endif %}
     {% if tank.needs_genotyping %}<div class="alert">⚑ Needs genotyping</div>{% endif %}

@@ -175,7 +175,7 @@
                       {{ r.next.label }} · {{ r.next.on | relative_day }}
                     </span>
                   {% elif not u.active %}
-                    <span class="sheet-empty">discarded {{ u.discarded_on or '' }}</span>
+                    <span class="sheet-empty">discarded {{ u.discarded_on | day }}</span>
                   {% else %}<span class="sheet-empty">–</span>{% endif %}
                 </td>
                 <td>
@@ -500,7 +500,7 @@
               <td class="tabular-nums">{{ r.rows }} × {{ r.cols }}</td>
               <td class="tabular-nums">{{ rr.count }}</td>
               <td>{{ rr.interval }} d{% if not r.flip_days %} <span class="text-sand-400">({{ rr.temp }} °C)</span>{% endif %}</td>
-              <td>{{ r.last_flipped_on.strftime('%d %b') if r.last_flipped_on else '–' }}</td>
+              <td>{{ r.last_flipped_on | day if r.last_flipped_on else '–' }}</td>
               <td>{% if rr.next %}<span class="next-due {% if rr.next < today %}is-overdue{% elif rr.next == today %}is-today{% endif %}">{{ rr.next | relative_day }}</span>{% else %}–{% endif %}</td>
               <td class="whitespace-nowrap text-right">
                 <div class="flex items-center justify-end gap-1">
@@ -589,12 +589,12 @@
           {% for lot in frozen %}
             <tr data-id="{{ lot.id }}" data-genotype="{{ lot.genotype }}" data-frozen="{{ lot.frozen_on or '' }}">
               <td><span class="sheet-cell-text ident">{{ lot.genotype }}</span></td>
-              <td><span class="sheet-cell-text">{{ lot.frozen_on or '–' }}</span></td>
+              <td><span class="sheet-cell-text">{{ lot.frozen_on | day if lot.frozen_on else '–' }}</span></td>
               <td><span class="sheet-cell-text tabular-nums {% if lot.vials_left <= 1 %}font-semibold text-warn-700{% endif %}">{{ lot.vials_left }} / {{ lot.vials }}</span></td>
               <td><span class="sheet-cell-text">{{ lot.location or '–' }}</span></td>
               <td><span class="sheet-cell-text">
-                {% if lot.thaw_ok %}<span class="status-pill-static" data-status="in stock">recovered {{ lot.thaw_tested_on or '' }}</span>
-                {% elif lot.thaw_ok == false %}<span class="status-pill-static" data-status="empty">failed {{ lot.thaw_tested_on or '' }}</span>
+                {% if lot.thaw_ok %}<span class="status-pill-static" data-status="in stock">recovered {{ lot.thaw_tested_on | day }}</span>
+                {% elif lot.thaw_ok == false %}<span class="status-pill-static" data-status="empty">failed {{ lot.thaw_tested_on | day }}</span>
                 {% else %}<span class="status-pill-static" data-status="low">not tested</span>{% endif %}
               </span></td>
               <td>{% if lot.owner %}{{ lot.owner | owner_badge }}{% endif %}</td>

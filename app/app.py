@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
-from flask import Flask, Response, abort, flash, g, get_flashed_messages, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, Response, abort, flash, g, get_flashed_messages, has_request_context, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from markupsafe import Markup, escape
 from werkzeug.datastructures import ImmutableMultiDict
 from sqlalchemy import func, select
@@ -79,6 +79,7 @@ from .services import (
     weaning_due,
     weaning_title,
     CAGE_GENO_OFFSET_DAYS,
+    genotyping_offset,
     split_genotype,
     derive_auto_calendar_items,
     fetch_ics_subscription,
@@ -257,6 +258,16 @@ def stamp_updated(record, fields_changed: int = 1) -> None:
         return
     record.updated_at = datetime.utcnow()
     record.updated_by = g.user.username
+
+
+@app.before_request
+def follow_lab_timezone():
+    # The lab's zone from Lab setup (lab.apply_timezone), before anything
+    # asks what day it is.
+    try:
+        lab.refresh_timezone(SessionLocal)
+    except Exception:  # noqa: BLE001 — a missing setting table on first start
+        app.logger.debug("lab time zone not read", exc_info=True)
 
 
 @app.before_request
@@ -738,6 +749,8 @@ def relative_day_filter(value) -> str:
     """"today", "tomorrow", "in 3 d", "2 d ago", or a date further out."""
     if not value:
         return ""
+    if isinstance(value, datetime):
+        value = value.date()
     days = (value - date.today()).days
     if days == 0:
         return "today"
@@ -749,7 +762,47 @@ def relative_day_filter(value) -> str:
         return f"in {days} d"
     if -13 <= days < -1:
         return f"{-days} d ago"
-    return value.strftime("%d %b")
+    return fmt_day(value)
+
+
+def _lab_date_style() -> str:
+    if has_request_context():
+        if "date_style" not in g:
+            with SessionLocal() as db_session:
+                g.date_style = lab.date_style(db_session)
+        return g.date_style
+    return "month"
+
+
+def fmt_day(value, with_time: bool = False) -> str:
+    """A date as the lab writes it (Lab setup → Dates): "Sep 26", "26 Sep"
+    or "2026-09-26"; the year is added when it is not this year. Takes a
+    date, a datetime or an ISO string; with_time adds "· 14:05"."""
+    if value in (None, ""):
+        return ""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value) if "T" in value or " " in value else date.fromisoformat(value)
+        except ValueError:
+            return value
+    moment = value if isinstance(value, datetime) else None
+    day = value.date() if isinstance(value, datetime) else value
+    style = _lab_date_style()
+    if style == "iso":
+        text = day.isoformat()
+    else:
+        this_year = day.year == date.today().year
+        if style == "day":
+            text = f"{day.day} {day:%b}" + ("" if this_year else f" {day.year}")
+        else:
+            text = f"{day:%b} {day.day}" + ("" if this_year else f", {day.year}")
+    if with_time and moment is not None:
+        text += f" · {moment:%H:%M}"
+    return text
+
+
+app.jinja_env.filters["day"] = fmt_day
+app.jinja_env.filters["day_time"] = lambda value: fmt_day(value, with_time=True)
 
 
 @app.template_filter("owner_short")
@@ -867,7 +920,7 @@ def future_birth(form, field: str = "date_of_birth", what: str = "A date of birt
     the wrong days."""
     born = parse_date(form.get(field)) if field in form else None
     if born is not None and born > date.today():
-        return f"{what} can't be in the future ({born:%b %d, %Y}). Nothing was saved."
+        return f"{what} can't be in the future ({fmt_day(born)}). Nothing was saved."
     return None
 
 
@@ -1272,7 +1325,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         "totals": totals,
         "wean_offset_days": WEAN_OFFSET_DAYS,
         "min_wean_age_days": MIN_WEAN_AGE_DAYS,
-        "cage_geno_offset_days": CAGE_GENO_OFFSET_DAYS,
+        "cage_geno_offset_days": genotyping_offset(),
     }
 
 
@@ -1357,8 +1410,8 @@ def home_dashboard():
             weanings.append({
                 "title": weaning_title(item),
                 "cage_row_id": item["cage"].id if item["cage"] else None,
-                "dob": item["born"].strftime("%b %d"),
-                "wean_date": item["due"].strftime("%b %d"),
+                "dob": fmt_day(item["born"]),
+                "wean_date": fmt_day(item["due"]),
                 "days_to_wean": days_to_wean,
                 "overdue": days_to_wean < 0,
                 "pups": item["pups"],
@@ -1407,7 +1460,7 @@ def home_dashboard():
         ).all()
         events_list = [{
             "title": e.title,
-            "event_date": e.event_date.strftime("%b %d"),
+            "event_date": e.event_date,
             "days_until": (e.event_date - today).days,
             "event_type": e.event_type,
         } for e in upcoming_events]
@@ -3623,13 +3676,13 @@ def cage_give_birth(cage_row_id: int):
             before = cage.date_give_birth
             cage.date_give_birth = today
             db_session.commit()
-            wean = (today + timedelta(days=WEAN_OFFSET_DAYS)).strftime("%b %d")
+            wean = fmt_day(today + timedelta(days=WEAN_OFFSET_DAYS))
             flash(f"Recorded a litter born today in cage {cage.cage_id}: weaning is due {wean}.", "success")
             if before and before != today:
                 # The cage holds one litter date: say what the new one replaced,
                 # so a litter still waiting to be weaned isn't forgotten.
-                flash(f"It replaces the litter born {before:%b %d} (weaning was due "
-                      f"{before + timedelta(days=WEAN_OFFSET_DAYS):%b %d}). If those pups are still in the cage, "
+                flash(f"It replaces the litter born {fmt_day(before)} (weaning was due "
+                      f"{fmt_day(before + timedelta(days=WEAN_OFFSET_DAYS))}). If those pups are still in the cage, "
                       f"wean them first.", "warning")
     return _back_to_colony("cages")
 
@@ -3710,9 +3763,9 @@ def _too_young_to_wean(cage) -> str | None:
         return None
     due = born + timedelta(days=WEAN_OFFSET_DAYS)
     if age < 0:
-        return (f"Cage {cage.cage_id}'s litter is dated {born:%b %d}, in the future. "
+        return (f"Cage {cage.cage_id}'s litter is dated {fmt_day(born)}, in the future. "
                 "Correct its date before weaning.")
-    return (f"The pups in cage {cage.cage_id} are {age} days old; weaning is due {due:%b %d} "
+    return (f"The pups in cage {cage.cage_id} are {age} days old; weaning is due {fmt_day(due)} "
             f"(P{WEAN_OFFSET_DAYS}). Nothing was changed. To wean them early anyway, confirm it when asked.")
 
 
@@ -8660,7 +8713,7 @@ def zebrafish_set_up_mating():
             s.add(tank)
         s.commit()
         moved = f" with {males} ♂ and {females} ♀" if males or females else ""
-        flash(f"Mating tank {tank.tank_id} set up{moved} · return by {tank.mating_return_at.isoformat()}.", "success")
+        flash(f"Mating tank {tank.tank_id} set up{moved} · return by {fmt_day(tank.mating_return_at)}.", "success")
     return redirect(url_for("zebrafish", view="tanks"))
 
 

@@ -28,6 +28,8 @@ and turning it back on brings everything back.
 from __future__ import annotations
 
 import json
+import os
+import time
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -286,9 +288,103 @@ def _inventory_by_kind(session, kind):
                            .order_by(InventoryModule.position, InventoryModule.id)).all()
 
 
+# ---------------------------------------------------------------- the lab's time, dates and colony days
+
+# How the app writes a date in text (a sheet's date fields are the
+# browser's own and follow the computer's language instead).
+DATE_STYLES = {
+    "month": "Sep 26, 2026",
+    "day": "26 Sep 2026",
+    "iso": "2026-09-26",
+}
+DEFAULT_GENOTYPING_DAY = 28
+_ORIGINAL_TZ = os.environ.get("TZ")
+_tz_cache: dict = {"at": 0.0, "value": None}
+
+
+def lab_timezone(session) -> str:
+    get_setting, _ = _settings()
+    return (get_setting(session, "lab_timezone", "") or "").strip()
+
+
+def valid_timezone(name: str) -> bool:
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(name)
+        return True
+    except Exception:  # noqa: BLE001 — unknown name, or no zone data
+        return False
+
+
+def apply_timezone(name: str) -> None:
+    """Make the lab's zone this process's: date.today(), "overdue" and the
+    times shown (local_time) then follow the lab, not the server's clock.
+    Blank puts back whatever the server started with (TZ in deploy/.env)."""
+    if not hasattr(time, "tzset"):
+        return   # Windows: the desktop app already runs on the computer's own zone
+    wanted = name or _ORIGINAL_TZ
+    if os.environ.get("TZ") == wanted:
+        return
+    if wanted:
+        os.environ["TZ"] = wanted
+    else:
+        os.environ.pop("TZ", None)
+    time.tzset()
+
+
+def refresh_timezone(session_factory, every: float = 30.0) -> None:
+    """Pick up a zone changed in Lab setup, in every worker, within `every`
+    seconds (called before each request; the setting is read at most that
+    often)."""
+    now = time.monotonic()
+    if _tz_cache["value"] is not None and now - _tz_cache["at"] < every:
+        return
+    with session_factory() as session:
+        name = lab_timezone(session)
+    _tz_cache.update(at=now, value=name)
+    if not name or valid_timezone(name):
+        apply_timezone(name)
+
+
+def server_timezone() -> str:
+    """The zone the server (or computer) runs on by itself, by name."""
+    if _ORIGINAL_TZ:
+        return _ORIGINAL_TZ
+    link = os.path.realpath("/etc/localtime")
+    if "zoneinfo/" in link:
+        return link.split("zoneinfo/", 1)[1]
+    return time.tzname[0] or "UTC"
+
+
+def timezone_names() -> list[str]:
+    """Region/City names to pick from (Lab setup's list)."""
+    try:
+        from zoneinfo import available_timezones
+    except ImportError:
+        return []
+    return sorted(z for z in available_timezones()
+                  if "/" in z and not z.startswith(("Etc/", "SystemV/", "US/", "posix/", "right/")))
+
+
+def date_style(session) -> str:
+    get_setting, _ = _settings()
+    style = get_setting(session, "date_style", "") or "month"
+    return style if style in DATE_STYLES else "month"
+
+
+def genotyping_day(session) -> int:
+    """The day after birth the lab genotypes pups (P28 unless chosen)."""
+    get_setting, _ = _settings()
+    raw = (get_setting(session, "genotyping_day", "") or "").strip()
+    return int(raw) if raw.isdigit() and 1 <= int(raw) <= 120 else DEFAULT_GENOTYPING_DAY
+
+
 def survey_state(session) -> dict:
     """What the survey form should show as chosen right now."""
     return {
+        "lab_timezone": lab_timezone(session),
+        "date_style": date_style(session),
+        "genotyping_day": genotyping_day(session),
         "features": features_on(session),
         "stocks": {kind: any(m.enabled for m in _stock_by_kind(session, kind)) for kind in STOCK_CHOICES},
         "inventories": {kind: any(m.enabled for m in _inventory_by_kind(session, kind)) for kind in INVENTORY_CHOICES},
@@ -350,6 +446,17 @@ def apply_survey(session, form, actor: str) -> list[str]:
     for key in MEMBER_PERMISSIONS:
         _set_flag(session, key, form.get(key) == "1")
     set_setting(session, "lab_name", (form.get("lab_name") or "").strip()[:80])
+    if "lab_timezone" in form:
+        zone = (form.get("lab_timezone") or "").strip()
+        if not zone or valid_timezone(zone):
+            set_setting(session, "lab_timezone", zone)
+            _tz_cache["value"] = None
+            apply_timezone(zone)
+    if form.get("date_style") in DATE_STYLES:
+        set_setting(session, "date_style", form["date_style"])
+    raw_day = (form.get("genotyping_day") or "").strip()
+    if raw_day.isdigit() and 1 <= int(raw_day) <= 120:
+        set_setting(session, "genotyping_day", raw_day)
     mark_setup_done(session)
     return switched_on
 
