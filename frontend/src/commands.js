@@ -85,6 +85,8 @@ export const ITEMS = [
   { id: 'plate', group: 'Data', icon: 'plate', label: 'Plate reader', hint: 'Heatmap, layout, standard curve', keywords: 'bca elisa absorbance 96 well plate', run: block('plate') },
   { id: 'qpcr', group: 'Data', icon: 'chart', label: 'qPCR ΔΔCt', hint: 'Paste Ct values, get fold change', keywords: 'pcr ct cq ddct expression', run: block('qpcr') },
   // ---- Bench
+  // The protocol library opens in the page's side panel (notebook-page.js), where one is picked and inserted.
+  { id: 'protocol', group: 'Bench', icon: 'task', label: 'Protocol', hint: 'Insert a lab or common protocol', keywords: 'protocol method procedure sop steps library', run: () => window.dispatchEvent(new CustomEvent('nb:open-panel', { detail: { name: 'protocols' } })) },
   { id: 'recipe', group: 'Bench', icon: 'flask', label: 'Buffer recipe', hint: 'Masses and volumes for any volume', keywords: 'buffer media solution pbs recipe', run: block('recipe') },
   ...Object.entries(CALC_TYPES).map(([type, label]) => ({
     id: `calc-${type}`, group: 'Bench', icon: 'calc', label, hint: 'Calculator', keywords: `calculator ${type}`, run: block('calc', defaultCalc(type)),

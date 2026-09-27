@@ -1,6 +1,6 @@
 /* The notebook page around the editor: saving, the page's kind, status and
  * tags, and the side panels — sharing, comments, version history, search,
- * meetings, recipes. The editor itself is the bundle in notebook-build/
+ * meetings, recipes, protocols. The editor itself is the bundle in notebook-build/
  * (frontend/src/main.js); without it the page falls back to a plain
  * Markdown textarea so nothing is ever locked away.
  */
@@ -673,6 +673,67 @@
       }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
     },
   };
+
+  // ---- protocols: the lab's protocol pages and the common ones built in
+  PANELS.protocols = {
+    title: 'Protocols',
+    render: function (box) {
+      api('/notebook/api/protocols').then(function (d) {
+        var insertable = !!(nb && canEdit);
+        var labRow = function (p) {
+          var meta = [p.owner_name, p.version ? 'v' + p.version : 'not numbered yet'].filter(Boolean).join(' · ');
+          return '<li class="nb-list-row" data-find="' + esc((p.title + ' ' + (p.tags || []).join(' ')).toLowerCase()) + '">' +
+            '<span class="nb-grow"><b>' + esc(p.title) + '</b><small>' + esc(meta) + '</small></span>' +
+            (insertable ? '<button type="button" class="btn" data-insert-page="' + p.id + '">Insert</button>' : '') +
+            '<a class="btn btn-ghost" href="/notebook?page=' + p.id + '">Open</a></li>';
+        };
+        var presetRow = function (p) {
+          return '<li class="nb-list-row" data-find="' + esc((p.title + ' ' + p.category + ' ' + p.summary).toLowerCase()) + '">' +
+            '<span class="nb-grow"><b>' + esc(p.title) + '</b><small>' + esc(p.summary) + '</small></span>' +
+            (insertable ? '<button type="button" class="btn" data-insert-preset="' + esc(p.key) + '">Insert</button>' : '') +
+            '<button type="button" class="btn btn-ghost" data-copy-preset="' + esc(p.key) + '" title="Save a copy as your own protocol to change">Copy</button></li>';
+        };
+        var groups = {};
+        d.presets.forEach(function (p) { (groups[p.category] = groups[p.category] || []).push(p); });
+        box.innerHTML =
+          '<p class="nb-muted">' + (insertable
+            ? 'Insert one into this page: its steps come in as a checklist you can run, with a link back to the protocol.'
+            : 'Open a page you can edit to insert a protocol into it.') + '</p>' +
+          '<div class="nb-panel-actions"><input type="search" class="nb-panel-search" placeholder="Find a protocol…" aria-label="Find a protocol">' +
+          '<button type="button" class="btn btn-primary" data-new-protocol>' + icon('plus') + ' New protocol</button></div>' +
+          '<div class="notebook-section-label">Lab protocols</div>' +
+          (d.protocols.length ? '<ul class="nb-list">' + d.protocols.map(labRow).join('') + '</ul>'
+            : '<p class="nb-muted">None yet. Write one with New protocol, or copy a common one below and make it yours.</p>') +
+          Object.keys(groups).map(function (cat) {
+            return '<div class="notebook-section-label">' + esc(cat) + '</div><ul class="nb-list">' + groups[cat].map(presetRow).join('') + '</ul>';
+          }).join('');
+        var search = box.querySelector('.nb-panel-search');
+        search.addEventListener('input', function () {
+          var q = search.value.trim().toLowerCase();
+          box.querySelectorAll('[data-find]').forEach(function (row) { row.hidden = !!q && row.dataset.find.indexOf(q) < 0; });
+        });
+        box.onclick = function (e) {
+          var target = e.target.closest('[data-insert-page],[data-insert-preset],[data-copy-preset],[data-new-protocol]');
+          if (!target) return;
+          if (target.hasAttribute('data-new-protocol') || target.dataset.copyPreset) {
+            target.disabled = true;
+            api('/notebook/api/protocols/new', { body: target.dataset.copyPreset ? { preset: target.dataset.copyPreset } : {} })
+              .then(function (r) { window.location.href = r.url; })
+              .catch(function (err) { target.disabled = false; toast(esc(err.message), true); });
+            return;
+          }
+          if (!nb) return;
+          var query = target.dataset.insertPage ? 'page=' + target.dataset.insertPage : 'preset=' + encodeURIComponent(target.dataset.insertPreset);
+          api('/notebook/api/protocols/text?' + query).then(function (r) {
+            nb.editor.chain().focus().insertContent(r.markdown).run();
+            toast('Inserted ' + esc(r.title) + '.');
+          }).catch(function (err) { toast(esc(err.message), true); });
+        };
+      }).catch(function (e) { box.innerHTML = '<p class="nb-warn">' + esc(e.message) + '</p>'; });
+    },
+  };
+  // The editor's /protocol command asks for this panel.
+  window.addEventListener('nb:open-panel', function (e) { openPanel((e.detail && e.detail.name) || ''); });
 
   // ---- experiments that followed a protocol
   PANELS.experiments = {

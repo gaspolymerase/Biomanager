@@ -18,6 +18,8 @@ app.py:
   meeting and shared with everyone in it, and action items (tasks naming
   @someone) sent to the calendar as their to-dos.
 - A lab library of buffer recipes, with a set of common ones built in.
+- A protocol library: the lab's protocol pages and common protocols built
+  in (app/notebook_protocols.py), to insert into a page or copy and edit.
 
 A page's rows in these tables go when the page does (delete_page_rows).
 """
@@ -32,7 +34,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, Response, abort, g, jsonify, redirect, request, url_for
 from sqlalchemy import delete, func, or_, select
 
-from . import access, notify
+from . import access, notebook_protocols, notify
 from .db import SessionLocal
 from .models import (CalendarEvent, NotebookComment, NotebookMeetingSeries, NotebookPage, NotebookPageInfo,
                      NotebookPresence, NotebookRecipe, NotebookShare, NotebookSyncUpdate, NotebookTab,
@@ -67,6 +69,7 @@ MAX_TAGS = 20
 DAILY_TAB = "Daily log"
 EXPERIMENTS_TAB = "Experiments"
 MEETINGS_TAB = "Meetings"
+PROTOCOLS_TAB = "Protocols"
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_.-]{0,79})")
@@ -1068,7 +1071,68 @@ def protocols():
         return jsonify({"ok": True, "protocols": [{
             "id": r.id, "title": r.title, "owner": r.owner_username,
             "owner_name": names.get(r.owner_username, r.owner_username), "version": releases.get(r.id),
-            "tags": tag_list(r.tags or ""), "updated_at": _iso(r.updated_at)} for r in rows]})
+            "tags": tag_list(r.tags or ""), "updated_at": _iso(r.updated_at)} for r in rows],
+            "presets": notebook_protocols.preset_list()})
+
+
+def _latest_release(session, page_id: int):
+    return session.scalar(select(NotebookVersion).where(NotebookVersion.page_id_fk == page_id,
+                                                        NotebookVersion.kind == "release")
+                          .order_by(NotebookVersion.number.desc()).limit(1))
+
+
+@bp.get("/api/protocols/text")
+def protocol_text():
+    """A protocol ready to insert into a page: a line saying which protocol
+    (and version) it is, then its text with the steps as a checklist. A lab
+    protocol gives its latest numbered version, or its current text."""
+    with SessionLocal() as s:
+        if request.args.get("preset"):
+            preset = notebook_protocols.PRESET_PROTOCOLS.get(request.args["preset"])
+            if preset is None:
+                return _fail("That protocol is not built in.", 404)
+            title, body = preset["title"], preset["body"]
+            header = f"> **Protocol:** {title} (built in)"
+        elif _int(request.args.get("page")):
+            page, _role = load_page(s, _int(request.args["page"]))
+            release = _latest_release(s, page.id)
+            title = page.title or "Protocol"
+            body = release.body if release is not None else (page.body or "")
+            version = f" · v{release.number}" if release is not None else ""
+            header = f"> **Protocol:** [{title}]({page_url(page.id)}){version}"
+        else:
+            return _fail("Choose a protocol to insert.")
+        return jsonify({"ok": True, "title": title,
+                        "markdown": f"\n{header}\n\n{steps_as_checklist(body, title)}\n"})
+
+
+BLANK_PROTOCOL = """## Purpose
+
+## Materials
+- 
+
+## Steps
+1. 
+
+## Notes
+"""
+
+
+@bp.post("/api/protocols/new")
+def protocol_new():
+    """A new protocol page of one's own: blank, or a copy of a built-in one
+    to change. It goes in the Protocols topic."""
+    data = _json_body()
+    preset = notebook_protocols.PRESET_PROTOCOLS.get(str(data.get("preset") or ""))
+    if data.get("preset") and preset is None:
+        return _fail("That protocol is not built in.", 404)
+    title = str(data.get("title") or "").strip()[:200] or (preset["title"] if preset else "New protocol")
+    with SessionLocal() as s:
+        tab = tab_named(s, _me(), PROTOCOLS_TAB)
+        page = new_page(s, tab, title, preset["body"] if preset else BLANK_PROTOCOL, kind="protocol")
+        record_edit(s, page)
+        s.commit()
+        return jsonify({"ok": True, "page_id": page.id, "url": page_url(page.id)})
 
 
 ORDERED_RE = re.compile(r"^(\s*)\d+[.)]\s+(.*)$")

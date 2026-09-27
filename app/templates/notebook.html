@@ -2,7 +2,7 @@
 
 {% block page_title %}{% if selected_page %}{{ selected_page.title }}{% else %}Notebook{% endif %}{% endblock %}
 {% block page_heading %}Notebook{% endblock %}
-{% block page_subtitle %}Experiments, protocols, data and meetings. Type / in a page for sheets, recipes, calculators and diagrams.{% endblock %}
+{% block page_subtitle %}Experiments, protocols, data and meetings. Type / in a page for protocols, sheets, recipes, calculators and diagrams.{% endblock %}
 {% block page_shell_class %}shell-page-flush{% endblock %}
 
 {% macro page_link(page, active_id, tab_id=None) -%}
@@ -46,6 +46,7 @@
       <a href="{{ url_for('nb.today') }}">{{ icon('calendar-clock') }} Today</a>
       <button type="button" data-panel="search">{{ icon('search') }} Search &amp; tags</button>
       <button type="button" data-panel="meetings">{{ icon('users') }} Meetings</button>
+      <button type="button" data-panel="protocols">{{ icon('protocol') }} Protocols</button>
       <button type="button" data-panel="recipes">{{ icon('flask') }} Recipes</button>
     </nav>
 

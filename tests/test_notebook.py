@@ -341,6 +341,60 @@ class ProtocolTests(Notebook):
         self.assertIn(exp, [x["id"] for x in listed])
 
 
+class ProtocolLibraryTests(Notebook):
+    """The protocol library: the lab's protocol pages and common protocols
+    built in (app/notebook_protocols.py), inserted into a page or copied."""
+
+    def test_the_library_lists_lab_protocols_and_the_built_in_ones(self):
+        title = uniq("Perfusion v2")
+        self.new_page(self.m, starter="protocol", title=title)
+        lib = self.m.get("/notebook/api/protocols").get_json()
+        self.assertIn(title, [p["title"] for p in lib["protocols"]])
+        keys = [p["key"] for p in lib["presets"]]
+        self.assertIn("hotshot", keys)
+        self.assertTrue(all(p["title"] and p["category"] and p["summary"] for p in lib["presets"]))
+
+    def test_every_built_in_protocol_has_steps_that_become_a_checklist(self):
+        from app.notebook_protocols import PRESET_PROTOCOLS
+        for key in PRESET_PROTOCOLS:
+            text = self.m.get(f"/notebook/api/protocols/text?preset={key}").get_json()
+            self.assertIn("(built in)", text["markdown"], key)
+            self.assertIn("- [ ] ", text["markdown"], key)
+            self.assertIn("### Steps", text["markdown"], key)
+
+    def test_a_lab_protocol_is_inserted_at_its_numbered_version_with_a_link(self):
+        title = uniq("Miniprep")
+        protocol = self.new_page(self.m, starter="protocol", title=title)
+        self.save(self.m, protocol, body="## Steps\n\n1. Pellet cells\n2. Resuspend\n")
+        self.post_json(self.m, f"/notebook/api/pages/{protocol}/versions", {"release": True})
+        self.save(self.m, protocol, body="## Steps\n\n1. Pellet cells\n2. Resuspend in P1\n")
+        text = self.m.get(f"/notebook/api/protocols/text?page={protocol}").get_json()["markdown"]
+        self.assertIn(f"[{title}](/notebook?page={protocol}) · v1", text)
+        self.assertIn("- [ ] Resuspend", text)
+        self.assertNotIn("in P1", text)
+
+    def test_someone_elses_private_protocol_cannot_be_inserted(self):
+        protocol = self.new_page(self.m, starter="protocol", title=uniq("Secret"))
+        self.assertEqual(client_for(make_user()).get(f"/notebook/api/protocols/text?page={protocol}").status_code, 404)
+
+    def test_copying_a_built_in_protocol_makes_an_editable_protocol_page(self):
+        r = self.post_json(self.m, "/notebook/api/protocols/new", {"preset": "western"}).get_json()
+        page = self.m.get(f"/notebook/api/pages/{r['page_id']}").get_json()["page"]
+        self.assertEqual((page["kind"], page["title"], page["role"]), ("protocol", "Western blot", "owner"))
+        self.assertIn("Ponceau", page["body"])
+        tab = one("select t.title from notebook_pages p join notebook_tabs t on t.id=p.tab_id_fk where p.id=?", r["page_id"])
+        self.assertEqual(tab, "Protocols")
+
+    def test_a_new_blank_protocol_and_an_unknown_preset(self):
+        blank = self.post_json(self.m, "/notebook/api/protocols/new", {}).get_json()
+        self.assertIn("## Steps", self.m.get(f"/notebook/api/pages/{blank['page_id']}").get_json()["page"]["body"])
+        self.assertEqual(self.post_json(self.m, "/notebook/api/protocols/new", {"preset": "nope"}).status_code, 404)
+        self.assertEqual(self.m.get("/notebook/api/protocols/text?preset=nope").status_code, 404)
+
+    def test_the_sidebar_offers_the_library(self):
+        self.assertIn('data-panel="protocols"', self.get_ok(self.m, "/notebook"))
+
+
 class MeetingTests(Notebook):
     def make_series(self, members, **extra):
         body = {"name": uniq("Lab meeting"), "members": members, "weekday": TODAY.weekday(), "time": "16:00", **extra}
