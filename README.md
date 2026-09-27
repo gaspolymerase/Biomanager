@@ -93,7 +93,10 @@ The most complete module, built around how a mouse room actually works.
   inside (with the sex breakdown), litter born and the P21 weaning date.
   Expand a cage to edit its mice right there.
 - **Litters** — record a birth once, and the weaning date (P21) and
-  genotyping date (about P28) follow from it.
+  genotyping date (about P28) follow from it. **Wean** starts filled with
+  the cage's pups, females and males apart; weaning before P18 asks first,
+  and a weaned litter leaves every list. Birth dates in the future are
+  refused.
 - **Breeders** — breeding cages at a glance, with breeders past 30 weeks
   flagged.
 - **Strains** and **Experiments** — your lab's lines with owners, and
@@ -127,6 +130,8 @@ incubators.
   when the progeny will be adults.
 - **Flip / chunk schedules that follow temperature** — flip every 14 days
   at 25 °C, every 28 at 18 °C — and they show up on Home when due.
+- **Each rack's grid says when it was last flipped** and when the next is
+  due (red when overdue), with a **Flipped today** button beside Edit.
 - Frozen-stock records for worms.
 
 <table>
@@ -163,6 +168,14 @@ sheet, and describe your organism:
 > [!TIP]
 > Xenopus, axolotls, cell lines, yeast strains — anything you keep in
 > containers and breed or passage fits here. No code and no migration.
+
+**Only what your lab keeps.** No database is there by default, the mouse
+colony, zebrafish and plasmids included: the lab adds what it uses (from
+the setup survey, or **Add database → Ready-made databases**), and an admin
+can take one out again without deleting anything. **All databases** groups
+them into Animals and Molecular & supplies, and every database has the same
+two buttons beside its name: **Configure** (for whoever may change it) and
+**All databases**. Icons are picked from a grid of the icons themselves.
 
 ### 🧬 Plasmids
 
@@ -242,6 +255,11 @@ stock**, and statuses and categories can be renamed without losing items.
     failed shows in the sidebar.
   - **Protocols** with numbered versions. *Start an experiment from it*
     copies the steps as a checklist and records which version was followed.
+    **Protocols** in the sidebar (or `/protocol` in a page) opens the
+    library: the lab's protocols and a dozen common ones built in
+    (genotyping, perfusion, immunofluorescence, western, BCA,
+    transformation, miniprep, TRIzol, qPCR, passaging, tamoxifen), to insert
+    as a checklist or copy into a protocol of your own.
     **Run mode** goes through the checklist at the bench one step at a time
     in large type: each tick gets the time, a deviation is written under the
     page's Deviations heading.
@@ -277,7 +295,8 @@ stock**, and statuses and categories can be renamed without losing items.
   - **Working together**: share a page with lab mates (or the whole lab)
     to read or to edit. Editors write in it at the same time and see each
     other's cursors. Comments sit on a passage of text, and an `@name`
-    tells that person. Anyone can turn these notebook notices off under
+    tells that person. A mention of a mouse, plasmid or order opens that
+    record in a new BioManager tab. Anyone can turn these notebook notices off under
     **Settings → Notifications**.
   - **Version history**: every editing session is kept, compared line by
     line with the page now, and any version can be restored.
@@ -315,8 +334,10 @@ stock**, and statuses and categories can be renamed without losing items.
     <td valign="top">
       <h4>➕ Add many at once</h4>
       Describe one mouse and say how many (<code>4 females, 2 males</code>),
-      or upload a CSV. You check an editable preview — IDs included —
-      before anything is saved.
+      or upload a CSV from the template (Excel's dates are read as
+      written). You check an editable preview — IDs included — before
+      anything is saved. <b>Fill down</b> (<kbd>Ctrl</kbd> + <kbd>D</kbd>)
+      works as in a spreadsheet.
     </td>
     <td valign="top">
       <h4>↩️ Batch actions with undo</h4>
@@ -335,8 +356,8 @@ stock**, and statuses and categories can be renamed without losing items.
     <td valign="top">
       <h4>🔎 Search and tabs</h4>
       <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd> searches everything.
-      Every page opens as a tab you can reorder, and your tabs are still
-      there tomorrow.
+      Every page opens as a tab you can reorder, <b>+</b> opens a new one
+      on your start page, and your tabs are still there tomorrow.
     </td>
   </tr>
   <tr>
@@ -357,7 +378,9 @@ stock**, and statuses and categories can be renamed without losing items.
 
 Print correctly sized cards for cages, tanks and vials. Scan the QR code
 with any phone camera at the rack and that cage opens, ready to edit —
-nobody walks back to a computer to type an ID.
+nobody walks back to a computer to type an ID. On a phone every sheet row
+becomes a card with its columns under their names, and rack grids get a
+**Move** button: tap a cage, then where it goes.
 
 <table>
   <tr>
@@ -611,6 +634,11 @@ track.
   animals, records a genotype for yours, or when an order you placed is
   ordered, received or cancelled; you choose which kinds in Settings. New
   members get a short welcome tour.
+- **Guests.** An admin can let someone outside the lab in for a day to 30
+  days with a **guest pass**: a one-time code instead of a password, an
+  account that stops working when the pass ends, and nothing they can do
+  to Lab setup or other people's records. From the internet, someone not
+  signed in only ever sees the page for entering a code.
 - **When someone leaves,** the admin's **Overview** shows every cage by
   owner, idle cages and living mice without a cage, and **Racks & boxes**
   hands their racks to someone else.
@@ -638,7 +666,11 @@ python scripts/dbtool.py restore <file>
 
 A lab server backs itself up every night, checks every backup and
 test-restores one every week, with an optional off-site copy and a nightly
-copy on the admin's Mac. **Settings → Export my data** downloads your own
+copy on the admin's Mac. The desktop app can also keep **a copy of the lab
+server** on any computer (**Settings → Keep a copy of your lab server**):
+the whole database, checked when it arrives, refreshed daily, the newest 14
+kept, and loadable into a new server if the old one is lost. Admins decide
+whether members may. **Settings → Export my data** downloads your own
 records as a zip at any time.
 
 ---
