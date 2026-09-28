@@ -565,6 +565,20 @@ push (`.github/workflows/tests.yml`).
 
 ## Desktop App
 
+`desktop.py` starts Flask on a free local port and opens it in a
+pywebview window. `desktop_menu.py` builds the menus: on a Mac, the whole
+menu bar through AppKit (installed on the main thread once the window is
+shown, replacing pywebview's two defaults); elsewhere pywebview's own
+menus. The Go menu is the sidebar: `static/shell.js` sends the page's
+sidebar links to `DesktopApi.set_nav` over pywebview's JavaScript bridge,
+which keeps only same-origin paths. `desktop_updates.py` is the version
+(the `VERSION` file `Biomanager.spec` bundles from `BIOMANAGER_VERSION`;
+from source, the latest tag + "+dev"), the update check against
+`api.github.com/repos/gaspolymerase/biomanager-app/releases/latest`, and
+this computer's `desktop-prefs.json` (automatic check, skipped version,
+appearance, zoom) in the data folder. Set `BIOMANAGER_MENU_DUMP=<file>` to
+have a running app write its menu bar there, for checking a build.
+
 Build a clickable native app (no terminal needed to launch):
 
 ```bash

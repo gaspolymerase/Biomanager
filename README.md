@@ -501,6 +501,22 @@ flowchart TB
    creates just those databases, with racks and incubators to match. Home
    then shows a **Getting started** list of first steps.
 
+On a Mac the app has a full menu bar: **File** (New Tab ⌘T, Close Tab
+⌘W, Export This Sheet ⇧⌘E, Print ⌘P), **Edit** (the usual editing
+commands and Search BioManager ⌘K), **View** (Reload ⌘R, zoom, Light or
+Dark whatever the system uses, Full Screen), **Go** (Back ⌘[, Forward ⌘],
+Home ⇧⌘H, next and previous tab ⇧⌘] ⇧⌘[, and everything in your sidebar,
+the databases on ⌘1 to ⌘9), **Window** and **Help** (the user guide,
+keyboard shortcuts, what's new, report a problem). **Settings…** is ⌘,.
+On Windows and Linux the same destinations are in File, Go and Help.
+
+**Check for Updates…** (in the BioManager menu, or Help on Windows and
+Linux) asks GitHub for the latest release and, if it is newer, shows
+what's new and downloads the file for your computer in your browser. The
+app also checks by itself, at most once a day; turn that off with
+**Check for Updates Automatically**. The check sends nothing but the app's
+version.
+
 Your data lives outside the app, so updating or reinstalling never
 touches it:
 

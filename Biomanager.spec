@@ -20,6 +20,14 @@ datas = [
     ("app/templates", "app/templates"),
 ]
 
+# The version the app shows in About and compares in Check for Updates
+# (desktop_updates.version()), from the release tag.
+import tempfile
+_version_dir = tempfile.mkdtemp(prefix="biomanager-version-")
+with open(os.path.join(_version_dir, "VERSION"), "w") as _f:
+    _f.write(os.environ.get("BIOMANAGER_VERSION", "0.1.0"))
+datas.append((os.path.join(_version_dir, "VERSION"), "."))
+
 # pywebview backends + Flask use a few modules PyInstaller's static analysis
 # can miss.
 hiddenimports = (

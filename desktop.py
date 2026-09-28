@@ -60,17 +60,23 @@ def main() -> int:
     from app import lab_copy
     lab_copy.start_background(app)
 
-    webview.create_window(
+    import desktop_menu
+    window = webview.create_window(
         "BioManager",
         url,
         width=1280,
         height=820,
         min_size=(960, 600),
         confirm_close=False,
+        js_api=desktop_menu.DesktopApi(),
     )
     # gui=None lets pywebview pick the native backend (cocoa on macOS,
-    # edgechromium on Windows, gtk/qt on Linux).
-    webview.start(debug=False)
+    # edgechromium on Windows, gtk/qt on Linux). On a Mac the full menu bar
+    # replaces pywebview's once the window is up; elsewhere pywebview's own
+    # menus carry the same destinations (desktop_menu.py). Either way the
+    # app checks for a newer release, at most once a day.
+    menus = [] if sys.platform == "darwin" else desktop_menu.plain_menus()
+    webview.start(desktop_menu.start, (window,), debug=False, menu=menus)
     return 0
 
 

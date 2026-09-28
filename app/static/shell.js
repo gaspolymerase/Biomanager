@@ -195,9 +195,35 @@
     });
   }
 
+  /* ------------------------------------------------- the desktop app's menus */
+
+  // In the desktop app, the Go menu lists what this sidebar shows
+  // (desktop_menu.py, through pywebview's bridge). Anywhere else there is
+  // no window.pywebview and this does nothing.
+  function shareNavWithDesktop() {
+    const send = () => {
+      const api = window.pywebview && window.pywebview.api;
+      if (!api || typeof api.set_nav !== 'function') return;
+      const links = (root) => [...root.querySelectorAll('a.rail-item[href]')]
+        .filter((a) => a.getAttribute('href').startsWith('/'))
+        .map((a) => ({ label: a.dataset.label || a.textContent.trim(), url: a.getAttribute('href') }));
+      const sections = [...document.querySelectorAll('.rail-group')].map((group) => ({
+        label: ((group.querySelector('.rail-group-label') || {}).textContent || '').trim(),
+        links: links(group),
+      }));
+      const foot = document.querySelector('.rail-foot');
+      if (foot) sections.push({ label: 'More', links: links(foot) });
+      api.set_nav(sections);
+    };
+    const ready = () => window.pywebview && window.pywebview.api && typeof window.pywebview.api.set_nav === 'function';
+    if (ready()) send();
+    else window.addEventListener('pywebviewready', send, { once: true });
+  }
+
   /* ------------------------------------------------------------------ init */
 
   function init() {
+    shareNavWithDesktop();
     document.querySelectorAll('[data-rail-toggle]').forEach((el) => {
       el.addEventListener('click', toggleRail);
     });
