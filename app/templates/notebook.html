@@ -139,13 +139,14 @@
             {% else %}
               <span class="nb-kind-select">{{ icon(kind_icons.get(p.kind, 'file')) }} {{ kinds.get(p.kind, 'Note') }}</span>
             {% endif %}
-            {% if p.role != 'owner' %}<span class="nb-crumb">by {{ p.owner_name }} · {{ 'you can edit' if can_edit else 'view only' }}</span>{% endif %}
+            {% if p.real_role != 'owner' %}<span class="nb-crumb">by {{ p.owner_name }} · {{ 'signed' if p.locked else ('you can edit' if can_edit else 'view only') }}</span>{% endif %}
           </div>
           <div class="nb-page-tools">
             <div class="nb-presence" id="nb-presence" aria-label="Also here"></div>
             <span id="page-saved-state" class="page-saved-state" aria-live="polite"></span>
-            {% if p.role == 'owner' %}<button type="button" class="nb-tool" data-panel="share" title="Share with lab mates">{{ icon('users') }}<span>{% if p.shared %}Shared{% else %}Share{% endif %}</span></button>{% endif %}
+            {% if p.real_role == 'owner' %}<button type="button" class="nb-tool" data-panel="share" title="Share with lab mates">{{ icon('users') }}<span>{% if p.shared %}Shared{% else %}Share{% endif %}</span></button>{% endif %}
             <button type="button" class="nb-tool" data-panel="comments" title="Comments">{{ icon('note') }}<span>Comments</span>{% if p.open_comments %}<b class="nb-badge" id="nb-comment-count">{{ p.open_comments }}</b>{% endif %}</button>
+            <button type="button" class="nb-tool{% if p.locked %} is-signed{% endif %}" data-panel="sign" title="{{ 'Signed and locked: see the signatures, witness it, or amend it' if p.locked else 'Sign this page as the record of your work, which locks it' }}">{{ icon('success' if p.locked else 'edit') }}<span class="nb-hide-sm">{{ 'Signed' if p.locked else 'Sign' }}</span></button>
             <button type="button" class="nb-tool" data-panel="history" title="Version history">{{ icon('history') }}<span class="nb-hide-sm">History</span></button>
             <button type="button" class="nb-tool" id="nb-run" title="Go through the checklist step by step" hidden>{{ icon('list-check') }}<span class="nb-hide-sm">Run</span></button>
             <div class="nb-more">
@@ -156,7 +157,7 @@
                 <button type="button" data-more="print">{{ icon('print') }} Print / PDF</button>
                 <button type="button" data-more="template">{{ icon('template') }} Save as template</button>
                 {% if can_edit %}<button type="button" data-more="version">{{ icon('success') }} Save a named version</button>{% endif %}
-                {% if p.role == 'owner' %}<button type="button" data-more="delete" class="is-danger">{{ icon('trash') }} Delete page</button>{% endif %}
+                {% if p.real_role == 'owner' and not p.signed %}<button type="button" data-more="delete" class="is-danger">{{ icon('trash') }} Delete page</button>{% endif %}
               </div>
             </div>
           </div>
@@ -166,7 +167,7 @@
 
         <div class="page-meta" id="page-meta">
           <input type="date" id="page-entry-date" class="page-date-input" value="{{ p.entry_date }}" aria-label="Page date" {% if not can_edit %}disabled{% endif %}>
-          {% if p.role == 'owner' %}
+          {% if p.real_role == 'owner' %}
             <span class="meta-sep">·</span>
             <label class="topic-mover">Topic
               <select id="page-topic-select">
@@ -189,6 +190,13 @@
           <span class="nb-tags" id="nb-tags"></span>
         </div>
 
+        {% if p.locked %}
+          <div class="nb-callout nb-signed" id="nb-signed-callout">
+            <span>{{ icon('lock') }} Signed by <b>{{ p.signed_by.name }}</b> on <time datetime="{{ p.signed_by.at }}">{{ p.signed_by.local }}</time>: this page is a locked record.
+              {% if p.real_role == 'owner' %}To change it, amend it (the reason stays in the record).{% endif %}</span>
+            <button type="button" class="btn" data-panel="sign">{{ icon('success') }} Signatures</button>
+          </div>
+        {% endif %}
         {% if p.kind == 'experiment' and can_edit and not p.started_at %}
           <div class="nb-callout" id="nb-start-callout">
             <span>Ready to begin? Starting stamps the time, so the record shows when the work began.</span>
@@ -225,7 +233,7 @@
             <button type="submit" class="btn btn-primary">Log</button>
           </form>
         {% endif %}
-        {% if not can_edit %}
+        {% if not can_edit and not p.locked %}
           <div class="nb-callout is-quiet">{{ icon('eye') }} You can read this page and comment on it; {{ p.owner_name }} can let you edit it.</div>
         {% endif %}
 

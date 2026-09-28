@@ -296,6 +296,12 @@ stock**, and statuses and categories can be renamed without losing items.
   - **Experiments**: aim, setup, samples and lot numbers, steps, results.
     *Start* and *Finished* stamp the times; planned, running, done or
     failed shows in the sidebar.
+  - **Sign** a page when it should be the record of your work (your
+    choice, page by page): you confirm who you are, its exact text is
+    fingerprinted and kept, any live experiment in it is frozen, and it is
+    locked. A lab mate can **witness** it; to change it, its owner
+    **amends** it with a reason, which stays in the record with every
+    signature. A signed page can't be deleted.
   - **Colony experiment** (`/experiment`) shows a mouse experiment in the
     page: its manipulations, when each was done and by whom, the amount
     each mouse got, and its body weights as a table and a chart (grams or

@@ -29,7 +29,7 @@ import base64
 import binascii
 import json
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint, Response, abort, g, jsonify, redirect, request, url_for
 from sqlalchemy import delete, func, or_, select
@@ -195,6 +195,10 @@ def load_page(session, page_id: int, need: str = "view"):
         abort(404)
     if need == "edit" and not can_edit_role(role):
         abort(403)
+    if need == "edit":
+        from .signatures import is_locked
+        if is_locked(session, page.id):
+            abort(423)          # signed: its owner amends it to change it (app/signatures.py)
     if need == "owner" and role != "owner":
         abort(403)
     return page, role
@@ -391,6 +395,10 @@ def sync_push(page_id: int):
         if updates or data.get("init"):
             if not can_edit_role(role):
                 return _fail("This page is view only.", 403)
+            from .signatures import refuse_if_locked
+            refused = refuse_if_locked(s, page_id)
+            if refused:
+                return refused
             info = _lock_page_info(s, page_id)
             if data.get("gen") != info.collab_generation:
                 s.rollback()
@@ -470,11 +478,20 @@ def page_payload(session, page: NotebookPage, role: str) -> dict:
         props = json.loads(page.properties) if page.properties else []
     except ValueError:
         props = []
+    from . import signatures
+    locked = signatures.is_locked(session, page.id)
+    last_sign = next((r for r in reversed(signatures.history(session, page.id)) if r.action == "sign"), None)
     return {
+        "signed_by": {"name": last_sign.name or last_sign.username, "at": _iso(last_sign.signed_at),
+                      "local": last_sign.signed_at.replace(tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")}
+        if last_sign else None,
+        # Signed and locked: everyone reads it as a viewer; "real_role" keeps
+        # what the person may do otherwise (the owner still shares it).
+        "locked": locked, "signed": signatures.is_signed(session, page.id), "real_role": role,
         "id": page.id, "tab_id": page.tab_id_fk, "title": page.title, "body": page.body or "",
         "entry_date": _iso(page.entry_date), "properties": props if isinstance(props, list) else [],
         "created_at": _iso(page.created_at), "updated_at": _iso(page.updated_at),
-        "role": role, "owner": owner, "owner_name": names.get(owner, owner),
+        "role": "view" if locked else role, "owner": owner, "owner_name": names.get(owner, owner),
         "kind": info.kind if info else "note", "status": info.status if info else "",
         "tags": tag_list(info.tags if info else ""),
         "started_at": _iso(info.started_at if info else None),

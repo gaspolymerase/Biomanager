@@ -1737,6 +1737,26 @@ class CalendarFeed(Base):
 # ---------------------------------------------------------------------------
 
 
+class RecordSignature(Base):
+    """A notebook page signed, witnessed, or opened again to amend it
+    (app/signatures.py). Signing is the person's choice, page by page.
+    A page is locked while its newest "sign" is not followed by an "amend";
+    each signature keeps a SHA-256 of the exact title and text signed, and
+    the version it made, so it can be checked against the page later."""
+    __tablename__ = "record_signatures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id_fk: Mapped[int] = mapped_column(ForeignKey("notebook_pages.id"), index=True)
+    action: Mapped[str] = mapped_column(String(20))                # sign | witness | amend
+    meaning: Mapped[str] = mapped_column(String(200), default="")  # what the person says by signing
+    reason: Mapped[str] = mapped_column(Text, default="")          # why it is amended
+    username: Mapped[str] = mapped_column(String(80), index=True)
+    name: Mapped[str] = mapped_column(String(160), default="")     # their name as it was then
+    content_sha256: Mapped[str] = mapped_column(String(64), default="")
+    version_id_fk: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    signed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class NotebookPageInfo(Base):
     """What kind of page it is and where it stands: one row per page, made
     the first time anything here is set."""

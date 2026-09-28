@@ -345,6 +345,15 @@ morning notification of what is due is `notify.daily_experiment_reminder`
 notebook page is a person's for an experiment is the app setting
 `experiment_notebook_page:<experiment>:<username>`.
 
+**Signed pages** (`app/signatures.py`, table `record_signatures`): sign,
+witness and amend events, each with the SHA-256 of the title and text at
+that moment and (for a sign) the version it made. A page is locked while
+its newest sign has no amend after it; then `page_payload` gives the
+editor role `view` (`real_role` keeps the owner's sharing),
+`load_page(need="edit")` answers 423, and so do the live-sync push and
+`/notebook/pages/<id>/update`. Signing freezes live `experiment` blocks
+into the text and resets live editing so open editors reload it.
+
 **Who may do what** is `lab_notebook.role_for()`: `owner`, `edit`, `view` or
 nothing. Viewers read and comment; editors also write; only the owner
 shares, moves or deletes. Search, backlinks and the global search use

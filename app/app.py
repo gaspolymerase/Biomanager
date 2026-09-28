@@ -315,6 +315,9 @@ from . import experiments as experiment_pages  # noqa: E402
 from . import experiment_steps  # noqa: E402
 app.register_blueprint(experiment_pages.bp)
 app.register_blueprint(experiment_steps.bp)
+# Signing a notebook page, which locks it (app/signatures.py).
+from . import signatures as record_signatures  # noqa: E402
+app.register_blueprint(record_signatures.bp)
 # Import from Excel into any database (app/sheet_import.py).
 from . import sheet_import  # noqa: E402
 app.register_blueprint(sheet_import.bp)
@@ -5569,6 +5572,10 @@ def notebook_update_page(page_id: int):
             return jsonify({"ok": False}), 404
         if not lab_notebook.can_edit_role(role):
             return jsonify({"ok": False, "error": "This page is view only."}), 403
+        from . import signatures
+        refused = signatures.refuse_if_locked(db_session, page.id)
+        if refused:
+            return refused
         changed = False
         if "title" in request.form:
             title = (request.form.get("title") or "").strip() or "Untitled page"
@@ -5612,6 +5619,13 @@ def notebook_delete_page(page_id: int):
         page = db_session.get(NotebookPage, page_id)
         if page is None or page.tab.owner_username != g.user.username:
             return redirect(url_for("notebook"))
+        from . import signatures
+        if signatures.is_signed(db_session, page.id):
+            message = "A signed page is a record: it can't be deleted."
+            if request.headers.get("X-Requested-With") == "fetch":
+                return jsonify({"ok": False, "error": message}), 409
+            flash(message, "error")
+            return redirect(url_for("notebook", page=page.id))
         tab_id = page.tab_id_fk
         lab_notebook.delete_page_rows(db_session, [page.id])
         db_session.delete(page)

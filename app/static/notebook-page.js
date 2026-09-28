@@ -461,6 +461,70 @@
     var changes = ops.filter(function (o) { return o[0] !== ' '; }).length;
     return changes ? '<div class="nb-diff">' + html.join('') + '</div>' : '<p class="nb-muted">No differences from the page as it is now.</p>';
   }
+  // ---- sign: the page as a locked record (app/signatures.py). The
+  // person's choice: nothing asks for it.
+  PANELS.sign = {
+    title: 'Signatures',
+    render: function (box) {
+      api('/notebook/api/pages/' + page.id + '/signatures').then(function (d) {
+        var when = function (iso) { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); };
+        var label = { sign: 'Signed', review: 'Reviewed', witness: 'Witnessed', amend: 'Opened to amend' };
+        var list = d.entries.length ? '<ol class="nb-sig-list">' + d.entries.map(function (e) {
+          return '<li class="nb-sig" data-action="' + esc(e.action) + '"><b>' + esc(label[e.action] || e.action) + '</b> by ' + esc(e.name) +
+            ' <span class="nb-muted">' + esc(when(e.at)) + '</span>' +
+            (e.meaning ? '<div class="nb-sig-meaning">“' + esc(e.meaning) + '”</div>' : '') +
+            (e.reason ? '<div class="nb-sig-meaning">Reason: ' + esc(e.reason) + '</div>' : '') +
+            (e.sha256 && e.action !== 'amend' ? '<div class="nb-muted nb-sig-hash" title="SHA-256 of the title and text signed">' +
+              (e.matches ? '✓ The page reads exactly as signed' : 'The page has changed since (amended)') + ' · ' + esc(e.sha256.slice(0, 12)) + '…</div>' : '') +
+            '</li>';
+        }).join('') + '</ol>' : '';
+        var identity = d.needs_password
+          ? '<label>Your password <input type="password" id="nb-sig-secret" autocomplete="current-password" required></label>'
+          : '<label>Type your user name (' + esc(d.me) + ') <input id="nb-sig-secret" autocomplete="off" required></label>';
+        var mySign = d.entries.filter(function (e) { return e.action === 'sign'; }).pop();
+        var forms = '';
+        if (!d.locked && d.can_sign) {
+          forms += '<form class="nb-sig-form" data-sig="sign"><p class="nb-muted">Signing makes this page the record of your work: its exact text is ' +
+            'fingerprinted and kept, any live experiment in it is frozen as it is now, and the page is locked. Later changes are ' +
+            'amendments with a reason. Whether to sign is your choice.</p>' +
+            '<label>What you are saying <select id="nb-sig-meaning"><option value="sign">' + esc(d.meanings.sign) + '</option>' +
+            '<option value="review">' + esc(d.meanings.review) + '</option></select></label>' + identity +
+            '<button type="submit" class="btn btn-primary">Sign and lock</button></form>';
+        }
+        if (d.locked && !(mySign && mySign.username === d.me)) {
+          forms += '<form class="nb-sig-form" data-sig="witness"><p class="nb-muted">Witness it: say you have read and understood it.</p>' + identity +
+            '<button type="submit" class="btn">Witness</button></form>';
+        }
+        if (d.locked && d.can_amend) {
+          forms += '<form class="nb-sig-form" data-sig="amend"><p class="nb-muted">Amend: open it again to change it. The reason stays in the ' +
+            'record, and so do the signatures; sign it again when it is done.</p>' +
+            '<label>Why it is being amended <textarea id="nb-sig-reason" rows="2" required></textarea></label>' + identity +
+            '<button type="submit" class="btn">Open to amend</button></form>';
+        }
+        box.innerHTML = (d.locked ? '<p class="nb-sig-state is-locked">Signed and locked.</p>' : (d.signed ? '<p class="nb-sig-state">Being amended: sign it again to lock it.</p>' : '<p class="nb-sig-state">Not signed.</p>')) +
+          list + forms + '<p class="nb-error" id="nb-sig-error" hidden></p>';
+        box.querySelectorAll('.nb-sig-form').forEach(function (form) {
+          form.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var action = form.dataset.sig;
+            var secret = form.querySelector('#nb-sig-secret').value;
+            var body = d.needs_password ? { password: secret } : { confirm: secret };
+            body.action = action === 'sign' ? form.querySelector('#nb-sig-meaning').value : action;
+            if (action === 'amend') body.reason = form.querySelector('#nb-sig-reason').value;
+            var go = action === 'sign' ? flushed() : Promise.resolve();
+            go.then(function () { return api('/notebook/api/pages/' + page.id + '/sign', { body: body }); })
+              .then(function () { window.location.reload(); })
+              .catch(function (err) {
+                var el = box.querySelector('#nb-sig-error');
+                el.textContent = err.message;
+                el.hidden = false;
+              });
+          });
+        });
+      }).catch(function (err) { box.innerHTML = '<p class="nb-error">' + esc(err.message) + '</p>'; });
+    },
+  };
+
   PANELS.history = {
     title: 'Version history',
     render: function (box) {

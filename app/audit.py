@@ -39,7 +39,7 @@ TRACKED_TABLES = {
     "stock_frozen",
 }
 TRACKED_TABLES |= {"plasmid_boxes"}
-TRACKED_TABLES |= {"experiment_steps", "experiment_step_records", "experiment_subjects", "experiment_readings", "experiment_regimens"}   # an experiment's manipulations, planned and done
+TRACKED_TABLES |= {"experiment_steps", "experiment_step_records", "experiment_subjects", "experiment_readings", "experiment_regimens", "record_signatures"}   # an experiment's manipulations, planned and done
 TRACKED_TABLES |= {"user_identities"}   # who connected which Google/Microsoft account, and when   # so deleting a box (which unplaces its plasmids) can be undone
 
 # High-churn or derived rows: logging them would bury the signal.
