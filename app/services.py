@@ -89,7 +89,13 @@ def init_database() -> None:
     # which databases exist (app/lab.py). BIOMANAGER_SEED_DEFAULTS=1 keeps
     # the old start with every default database, for the test suite and
     # scripts/demo-data.py.
-    fresh = not inspect(engine).has_table("users")
+    # Opening a database an older version made changes it: copy it first
+    # (app/upgrade.py), then the frozen start-up steps, then Alembic.
+    from . import upgrade
+    the_plan = upgrade.plan(engine)
+    if the_plan.changes:
+        upgrade.backup_before(engine, the_plan)
+    fresh = the_plan.fresh
     Base.metadata.create_all(bind=engine)
     if fresh and os.environ.get("BIOMANAGER_SEED_DEFAULTS") != "1":
         from . import lab
@@ -101,7 +107,7 @@ def init_database() -> None:
     ensure_integrity()  # ids never reused, foreign keys enforced (app/integrity.py)
     migrate_cage_locations()
     backfill_cage_owners()
-    stamp_alembic_baseline()
+    upgrade.migrate(engine, the_plan)
     warn_if_database_is_synced()
     seed_organism_modules()
     seed_inventories()
@@ -119,6 +125,7 @@ def init_database() -> None:
             for field_name, values in DEFAULT_MOUSE_OPTIONS.items():
                 for value in values:
                     session.add(DropdownOption(field_name=field_name, option_value=value))
+            session.flush()   # so the tidy-up below sees them (the built-in statuses aren't stored)
 
         retired_rows = session.scalars(
             select(DropdownOption).where(DropdownOption.field_name.in_(RETIRED_PRESET_FIELDS))
@@ -155,7 +162,11 @@ def encrypt_stored_tokens() -> int:
     return changed
 
 
-def ensure_schema_updates() -> None:
+def ensure_schema_updates(apply: bool = True) -> list[str]:
+    """The hand-written ALTERs of the versions before 0.8, frozen: they bring
+    an older database up to 0.8's shape. Every schema change since is an
+    Alembic revision (migrations/versions/, app/upgrade.py). With
+    `apply=False`, only says which ALTERs an older database still needs."""
     # These ALTERs were written for SQLite. TRUE/FALSE defaults work on both;
     # PostgreSQL has no DATETIME type, so it gets TIMESTAMP.
     timestamp = "TIMESTAMP" if engine.dialect.name == "postgresql" else "DATETIME"
@@ -351,6 +362,8 @@ def ensure_schema_updates() -> None:
     if "water_systems" in table_columns and "created_by" not in table_columns["water_systems"]:
         alter_statements.append("ALTER TABLE water_systems ADD COLUMN created_by VARCHAR(80) DEFAULT ''")
 
+    if not apply:
+        return alter_statements
     if alter_statements:
         with engine.begin() as connection:
             for statement in alter_statements:
@@ -370,6 +383,7 @@ def ensure_schema_updates() -> None:
             Base.metadata.tables[fish_table].create(bind=engine, checkfirst=True)
     if "water_logs" in table_columns:
         _water_logs_system_nullable()
+    return alter_statements
 
 
 def _water_logs_system_nullable() -> None:

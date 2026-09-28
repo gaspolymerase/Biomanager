@@ -783,6 +783,14 @@ python scripts/dbtool.py relocate ~/BioManagerData  # move it somewhere safe
 python scripts/dbtool.py restore <file>
 ```
 
+**Upgrading is safe.** Before a new version changes a database an older
+one made, it copies it (`backups/before-upgrade-….db` in the data folder;
+the last ten are kept), and every release is tested opening a demo lab
+made by each earlier release, with nothing lost. To go back, close
+BioManager, put that copy in place of `biomanager.db`
+(`python scripts/dbtool.py restore <file>`) and open the version it came
+from. A lab server takes a backup before every update.
+
 A lab server backs itself up every night, checks every backup and
 test-restores one every week, with an optional off-site copy and a nightly
 copy on the admin's Mac. The desktop app can also keep **a copy of the lab

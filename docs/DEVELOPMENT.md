@@ -386,6 +386,20 @@ tokens are redacted; high-churn tables are excluded. Admins read it at
 
 ## Keeping the data safe
 
+**Schema changes are Alembic revisions** (`migrations/versions/`,
+`app/upgrade.py`). On start-up `services.init_database()` asks
+`upgrade.plan()` what opening the database will change; if anything, it
+copies an SQLite database first (`backups/before-upgrade-<from>-to-<to>-<time>.db`,
+ten kept), then runs `create_all()`, the frozen pre-0.8 ALTERs
+(`ensure_schema_updates`, which stop at revision `0002_v0_8_schema`), the
+one-off data migrations, and `alembic upgrade head`. A new database is
+stamped at head instead. Because create_all() runs first, a revision must
+tolerate what it adds already being there: use `migrations/helpers.py`
+(`create_table`, `add_column`). `scripts/upgrade-check.py` makes a demo
+lab with every release tag, opens it with this code and checks the schema,
+the row counts, the revision, the copy and the pages;
+`.github/workflows/upgrade-check.yml` runs it on master and on tags.
+
 **A SQLite file must not live in a cloud-synced folder.** OneDrive, Dropbox
 and Google Drive do not honour SQLite's file locking: a sync mid-write, or
 two machines with the folder open, corrupts the file outright. The app logs a

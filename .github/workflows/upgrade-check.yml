@@ -1,0 +1,29 @@
+name: upgrade-check
+
+# Every earlier release's database has to open in this version with nothing
+# lost (scripts/upgrade-check.py, app/upgrade.py). Runs on master and on
+# release tags, where it matters; a release shouldn't go out if it fails.
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # every release tag
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          grep -v pywebview requirements.txt > /tmp/requirements-ci.txt
+          python -m pip install -r /tmp/requirements-ci.txt
+      - name: Upgrade every release's demo lab
+        run: python scripts/upgrade-check.py

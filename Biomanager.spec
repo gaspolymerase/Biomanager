@@ -18,6 +18,8 @@ block_cipher = None
 datas = [
     ("app/static", "app/static"),
     ("app/templates", "app/templates"),
+    # Opening a database an older version made upgrades it (app/upgrade.py).
+    ("migrations", "migrations"),
 ]
 
 # The version the app shows in About and compares in Check for Updates
@@ -34,6 +36,7 @@ hiddenimports = (
     collect_submodules("webview")
     + collect_submodules("sqlalchemy.dialects.sqlite")
     + ["psycopg"]
+    + collect_submodules("alembic")
 )
 if sys.platform.startswith("linux"):
     # On Linux the window is Qt WebEngine (pip install "pywebview[qt]"),

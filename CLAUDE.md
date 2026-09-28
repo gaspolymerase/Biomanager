@@ -3,6 +3,15 @@
 How the app is built and tested is in `docs/DEVELOPMENT.md`; running a lab
 server is in `deploy/RUNBOOK.md`.
 
+## Changing the database's shape
+
+Never add a column or table by hand-written ALTER at start-up any more
+(`services.ensure_schema_updates` is frozen at 0.8). Make an Alembic
+revision after the newest in `migrations/versions/`, using
+`migrations/helpers.py` so it also runs where the change already exists,
+and run `python scripts/upgrade-check.py` before a release: every earlier
+release's database must still open with nothing lost.
+
 ## The docs follow the app
 
 A change people will see or use is not finished until the pages that describe
