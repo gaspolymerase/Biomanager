@@ -382,9 +382,17 @@ blockquote.req {
 .guide-body .part h2 { margin-top: 4px; font-size: 1.35rem; font-weight: 650; color: var(--fg-2); }
 .guide-body .part > p, .guide-body .part > ul { margin-top: 8px; }
 .guide-body .part + section { border-top: 0; margin-top: 0; }
-.toc .toc-part { margin: 14px 0 4px; padding-left: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.07em;
-  text-transform: uppercase; color: var(--fg-2); }
-.toc .toc-part:first-child { margin-top: 0; }
+/* The contents: each part's name stands out in the accent colour, and its
+   sections sit indented under it along a thin line, which turns teal
+   beside the section being read. */
+.toc .toc-part {
+  margin: 22px 0 6px; padding-left: 8px; font-size: 12px; font-weight: 750; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--accent);
+}
+.toc .toc-part:first-child { margin-top: 4px; }
+.toc ol:has(.toc-part) > li:not(.toc-part) { margin-left: 10px; padding-left: 8px; border-left: 1.5px solid var(--line); }
+.toc ol:has(.toc-part) > li:not(.toc-part) a { padding: 5px 10px; border-radius: 6px; }
+.toc ol:has(.toc-part) > li:not(.toc-part):has(a.on) { border-left-color: var(--accent); }
 .wow { display: grid; gap: 12px; margin: 16px 0; }
 @media (min-width: 700px) { .wow { grid-template-columns: 1fr 1fr; } }
 .wow div { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
