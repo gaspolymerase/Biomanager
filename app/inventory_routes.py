@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import zlib
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from flask import (
@@ -282,6 +282,27 @@ def _mouse_links(session, rows_attrs: list[dict], fields: list[dict]) -> dict[st
         select(MouseRecord.mouse_id, MouseRecord.id).where(MouseRecord.mouse_id.in_(refs)))}
 
 
+RECENT_DAYS = 90
+
+
+def _recent_items(mv, items: list) -> tuple[list, int]:
+    """(the items to list, how many older ended ones are left out)."""
+    cutoff = (date.today() - timedelta(days=RECENT_DAYS)).isoformat()
+    keep, hidden = [], 0
+    for item in items:
+        status = (item.status or "").lower()
+        ended_on = ""
+        if status in svc.TERMINAL_STATUSES:
+            ended_on = str(item.attrs_dict.get(svc.ENDED_ATTR) or "")
+        elif mv.row.kind == "orders" and status == "received" and item.received_on:
+            ended_on = item.received_on.isoformat()
+        if ended_on and ended_on[:10] < cutoff:
+            hidden += 1
+        else:
+            keep.append(item)
+    return keep, hidden
+
+
 @bp.route("/<key>")
 def module(key: str):
     from .services import current_lab_usernames, sample_sources, sample_source_label
@@ -291,6 +312,18 @@ def module(key: str):
         mv = svc.view(row)
         items = list(session.scalars(select(InventoryItem).where(InventoryItem.module_id_fk == row.id)
                                      .order_by(InventoryItem.number.desc())))
+        # An inventory keeps what it ever held: what was used up, discarded or
+        # cancelled (or, for orders, received) over RECENT_DAYS ago waits
+        # behind "Show them", as on the colony's sheets.
+        show_ended = request.args.get("ended") == "all"
+        hidden_old = 0
+        all_items = items
+        if not show_ended:
+            listed, hidden_old = _recent_items(mv, items)
+            # The box grid still shows whatever sits in a box, however old.
+            kept = {i.id for i in listed}
+            all_items = [i for i in items if i.id in kept or i.rack_id_fk]
+            items = listed
         racks = list(session.scalars(select(InventoryRack).where(InventoryRack.module_id_fk == row.id)
                                      .order_by(InventoryRack.name)))
         me = g.user.username
@@ -330,7 +363,8 @@ def module(key: str):
         context = {
             "module": mv, "rows": rows, "racks": racks, "col_sig": format(zlib.crc32(layout.encode()), "x"),
             "manageable_racks": {r.id for r in racks if _can_manage_rack(r)},
-            "grid": _grid_payload(mv, racks, items) if mv.has("storage") else None,
+            "grid": _grid_payload(mv, racks, all_items) if mv.has("storage") else None,
+            "hidden_old": hidden_old, "show_ended": show_ended, "recent_days": RECENT_DAYS,
             "usernames": current_lab_usernames(session), "sources": sources, "mouse_links": mouse_links,
             "plasmid_links": plasmid_links, "plasmid_options": plasmid_options,
             "next_number": svc.next_number(session, row.id),

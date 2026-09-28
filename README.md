@@ -383,7 +383,10 @@ stock**, and statuses and categories can be renamed without losing items.
     <td width="50%" valign="top">
       <h4>📊 Spreadsheet-style editing</h4>
       Click a cell and type; it saves as you go. Every table sorts,
-      filters, exports to CSV and prints.
+      filters, exports to CSV and prints. Years of history stay quick:
+      mice that died, cages emptied, tubes used up and vials discarded
+      more than 90 days ago wait behind <b>Show them</b> at the top of
+      the sheet, and are still found by search and in every export.
     </td>
   </tr>
   <tr>

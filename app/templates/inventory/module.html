@@ -87,6 +87,13 @@
 {% block content %}
 {% from "_switched_off.html" import switched_off_notice with context %}
 {{ switched_off_notice(module.row) }}
+{% if hidden_old %}
+  <p class="mb-3 text-[12px] text-muted" data-hidden-ended>{{ '{:,}'.format(hidden_old) }} {{ m.item_noun_plural }} that ended over {{ recent_days }} days ago aren't listed.
+    <a href="{{ request.path }}?{{ dict(request.args, ended='all') | urlencode }}">Show them</a>.</p>
+{% elif show_ended %}
+  <p class="mb-3 text-[12px] text-muted">Showing everything, however long ago it ended.
+    <a href="{{ request.path }}?{{ dict(request.args) | urlencode | replace('ended=all', '') }}">Only recent</a>.</p>
+{% endif %}
 {{ sheet_ui.owners_list(usernames, 'inv-owner-options') }}
 {% if plasmid_options %}
   <datalist id="inv-plasmid-options">{% for number, pname in plasmid_options %}<option value="{{ number }}">#{{ number }} · {{ pname }}</option>{% endfor %}</datalist>

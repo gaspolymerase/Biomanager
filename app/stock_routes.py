@@ -262,6 +262,12 @@ def module(key: str):
         incubators = svc.incubators_of(session, row.id)
         units = list(session.scalars(select(StockUnit).where(StockUnit.module_id_fk == row.id)
                                      .order_by(StockUnit.active.desc(), StockUnit.number.desc())))
+        # Vials discarded over 90 days ago wait behind "Show them".
+        show_ended = request.args.get("ended") == "all"
+        cutoff = today - timedelta(days=90)
+        hidden_old = 0 if show_ended else sum(1 for u in units if not u.active and u.discarded_on and u.discarded_on < cutoff)
+        if hidden_old:
+            units = [u for u in units if u.active or not u.discarded_on or u.discarded_on >= cutoff]
         genotypes = list(session.scalars(select(StockGenotype).where(StockGenotype.module_id_fk == row.id)
                                          .order_by(StockGenotype.genotype)))
         schedule = svc.schedule(session, mv, today, horizon=_int(request.args.get("horizon"), 14))
@@ -305,6 +311,7 @@ def module(key: str):
         # Remembered layout is by column position; a changed purpose list
         # or parent labels mean a fresh start.
         context["col_sig"] = format(zlib.crc32(json.dumps(mv.s["parents"]).encode()), "x")
+        context.update(hidden_old=hidden_old, show_ended=show_ended, recent_days=90)
         return render_template("stocks/module.html", **context)
 
 

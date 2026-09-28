@@ -629,6 +629,35 @@ documents a known bug; when the bug is fixed it shows up as an "unexpected
 success" — remove the marker then. GitHub Actions runs the suite on every
 push (`.github/workflows/tests.yml`).
 
+### A big lab: the load test
+
+`scripts/load-test.py` fills a demo lab with 100,000 mice (5% alive, the
+rest dead on days spread over five years), their cages, litters and weights,
+zebrafish, fly vials, 40,000 inventory items and notebook pages, then times
+each main page as the demo admin. Run it after changing what a sheet loads:
+
+```bash
+.venv/bin/python scripts/load-test.py /tmp/bm-load
+```
+
+What keeps the sheets usable at that size:
+
+- `colony_context` loads only the tab being opened (`active_view`), with
+  `selectinload` for each row's cage, rack and litter rather than one query
+  a row, and counts in SQL.
+- What ended over `RECENT_DAYS` (90) ago is left out unless `?ended=all`:
+  mice by date of death, cages with no living mouse and no recent death,
+  litters over a year old with no living pup (colony), used-up or
+  cancelled items and received orders (`inventory_routes._recent_items`,
+  by `attrs.used_up_on` and `received_on`), discarded vials
+  (`stock_routes`). The sheet says how many and links to them. Search,
+  exports and the box grid still see everything.
+
+At 100k mice on SQLite, the mouse and cage sheets take 2–3 s and stream
+30–60 MB of rows (about 3 KB a row, a third of it whitespace). The next
+step, if a lab needs it, is paging on the server instead of the sheet's
+client-side pages.
+
 ## Desktop App
 
 **Signed builds.** The release workflow signs and notarises the Mac apps

@@ -69,6 +69,18 @@
         <a href="{{ url_for('admin_colony_overview') }}">Colony overview</a>.
       </span>
     {% endif %}
+    {# The colony keeps every mouse it ever had: what ended long ago waits behind a link. #}
+    {% set hidden_here = hidden[active_view] if active_view in ('mice', 'cages', 'litters') else 0 %}
+    {% if hidden_here %}
+      <span class="text-[12px] text-muted" data-hidden-ended>
+        {{ '{:,}'.format(hidden_here) }} {{ {'mice': 'mice that ended', 'cages': 'empty cages, unused for', 'litters': 'litters born over a year ago, all ended,'}[active_view] }}
+        {% if active_view != 'litters' %}over {{ hidden.days }} days ago{% endif %} aren't listed.
+        <a href="{{ url_for('colony', view=active_view, scope=scope, ended='all') }}">Show them</a>.
+      </span>
+    {% elif hidden.show_ended %}
+      <span class="text-[12px] text-muted">Showing everything, however long ago it ended.
+        <a href="{{ url_for('colony', view=active_view, scope=scope) }}">Only recent</a>.</span>
+    {% endif %}
   </div>
 {% endblock %}
 
@@ -1115,7 +1127,7 @@
           <button type="submit">{{ icon('plus') }} New experiment</button>
         </form>
         <datalist id="cage-id-list">
-          {% for cage in cage_rows %}<option value="{{ cage.cage_id }}"></option>{% endfor %}
+          {% for cage_id in cage_ids %}<option value="{{ cage_id }}"></option>{% endfor %}
         </datalist>
 
         {% if experiments_list %}

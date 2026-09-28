@@ -1202,30 +1202,67 @@ def cage_sheet_row(cage) -> dict:
     }
 
 
-def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[str, object]:
+RECENT_DAYS = 90   # ended mice, empty cages and old litters shown without "Show all"
+
+
+def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_ended: bool = False) -> dict[str, object]:
     """Build the colony page context.
 
     `scope` filters which slice of the colony is listed — your own animals,
     the shared breeder cages, or everything. It is a view filter only: what
     you may *edit* is decided per record by app/access.py, and is the same
     whichever scope you are looking at.
-    """
-    with SessionLocal() as db_session:
-        mice = db_session.scalars(select(MouseRecord).order_by(MouseRecord.mouse_id)).all()
-        cages = db_session.scalars(select(CageRecord).order_by(CageRecord.cage_id)).all()
 
+    Only the open tab's rows are built, with their cages, racks and litters
+    loaded in a few queries rather than one per row. A colony keeps every
+    mouse it ever had, so the Mice, Cages and Litters tabs show the living
+    and what ended in the last RECENT_DAYS days; `show_ended` shows it all.
+    """
+    from sqlalchemy.orm import selectinload
+    me = g.user.username if g.user else ""
+    recent = date.today() - timedelta(days=RECENT_DAYS)
+    with SessionLocal() as db_session:
+        count_of = lambda stmt: db_session.scalar(stmt) or 0  # noqa: E731
         totals = {
-            "all_mice": len(mice),
-            "all_cages": len(cages),
-            "my_mice": sum(1 for m in mice if access.owns(m)),
-            "my_cages": sum(1 for c in cages if access.owns(c)),
-            "shared_cages": sum(1 for c in cages if access.is_shared_cage(c)),
+            "all_mice": count_of(select(func.count(MouseRecord.id))),
+            "all_cages": count_of(select(func.count(CageRecord.id))),
+            "my_mice": count_of(select(func.count(MouseRecord.id)).where(MouseRecord.owner == me)),
+            "my_cages": count_of(select(func.count(CageRecord.id)).where(CageRecord.owner == me)),
+            "shared_cages": count_of(select(func.count(CageRecord.id)).where(
+                CageRecord.is_shared.is_(True) | func.lower(func.trim(CageRecord.purpose)).in_(sorted(access.SHARED_PURPOSES)))),
         }
-        mice = [m for m in mice
-                if access.in_scope(m, scope, shared=access.is_shared_cage(m.cage))]
-        cages = [c for c in cages
-                 if access.in_scope(c, scope, shared=access.is_shared_cage(c))]
-        litters = db_session.scalars(select(LitterRecord).order_by(LitterRecord.litter_id)).all()
+        mice, hidden_mice = [], 0
+        if active_view == "mice":
+            query = select(MouseRecord).options(selectinload(MouseRecord.cage).selectinload(CageRecord.rack),
+                                                selectinload(MouseRecord.litter)).order_by(MouseRecord.mouse_id)
+            if not show_ended:
+                hidden_mice = count_of(select(func.count(MouseRecord.id)).where(MouseRecord.date_of_death < recent))
+                query = query.where(MouseRecord.date_of_death.is_(None) | (MouseRecord.date_of_death >= recent))
+            mice = [m for m in db_session.scalars(query).all()
+                    if access.in_scope(m, scope, shared=access.is_shared_cage(m.cage))]
+        cages, hidden_cages = [], 0
+        if active_view == "cages":
+            all_cages = db_session.scalars(select(CageRecord).options(
+                selectinload(CageRecord.mice).selectinload(MouseRecord.litter),
+                selectinload(CageRecord.rack)).order_by(CageRecord.cage_id)).all()
+            if not show_ended:
+                keep = [c for c in all_cages if cage_is_active(c) or c.created_at and c.created_at.date() >= recent
+                        or any(m.date_of_death and m.date_of_death >= recent for m in c.mice)]
+                hidden_cages = len(all_cages) - len(keep)
+                all_cages = keep
+            cages = [c for c in all_cages if access.in_scope(c, scope, shared=access.is_shared_cage(c))]
+        litters, hidden_litters = [], 0
+        if active_view == "litters":
+            litter_query = select(LitterRecord).options(
+                selectinload(LitterRecord.mice).selectinload(MouseRecord.cage)).order_by(LitterRecord.litter_id)
+            if not show_ended:
+                year_ago = date.today() - timedelta(days=365)
+                with_living = select(MouseRecord.litter_id_fk).where(MouseRecord.date_of_death.is_(None))
+                visible = (LitterRecord.date_of_birth.is_(None) | (LitterRecord.date_of_birth >= year_ago)
+                           | LitterRecord.id.in_(with_living))
+                hidden_litters = count_of(select(func.count(LitterRecord.id)).where(~visible))
+                litter_query = litter_query.where(visible)
+            litters = db_session.scalars(litter_query).all()
         strains = db_session.scalars(select(StrainRecord).order_by(StrainRecord.strain_name)).all()
         dropdowns = dropdown_options_map(db_session)
         dropdown_records = dropdown_records_map(db_session)
@@ -1240,7 +1277,11 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         # appear to save and then be refused.
         for mouse, row in zip(mice, mouse_rows):
             row["editable"] = can_edit_mouse(mouse)
-        cage_rows = [cage_sheet_row(cage) for cage in cages] if active_view in ("cages", "experiments") else []
+        cage_rows = [cage_sheet_row(cage) for cage in cages]
+        # The Experiments tab's "start with a cage" only lists cage numbers.
+        cage_ids = list(db_session.scalars(select(CageRecord.cage_id).where(
+            CageRecord.id.in_(select(MouseRecord.cage_id_fk).where(MouseRecord.date_of_death.is_(None))))
+            .order_by(CageRecord.cage_id))) if active_view == "experiments" else []
         litter_rows = []
         for litter in litters:
             litter_rows.append(
@@ -1270,8 +1311,10 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
             }
             for strain in strains
         ]
-        breeder_rows = breeder_mice(db_session, g.user.username if g.user else None, g.user.role if g.user else None)
-        breeder_summary_rows = breeder_summary(db_session)
+        breeder_rows, breeder_summary_rows = [], []
+        if active_view == "breeders":
+            breeder_rows = breeder_mice(db_session, g.user.username if g.user else None, g.user.role if g.user else None)
+            breeder_summary_rows = breeder_summary(db_session)
         next_mouse_id_value = next_mouse_id(db_session)
         next_cage_id_value = next_cage_id(db_session)
         next_litter_id_value = next_litter_id(db_session)
@@ -1325,6 +1368,9 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         },
         "can_edit_presets": access.can_edit_presets(),
         "litter_rows": litter_rows,
+        "cage_ids": cage_ids,
+        "hidden": {"mice": hidden_mice, "cages": hidden_cages, "litters": hidden_litters,
+                   "show_ended": show_ended, "days": RECENT_DAYS},
         "strain_rows": strain_rows,
         "dropdowns": dropdowns,
         "dropdown_records": dropdown_records,
@@ -2111,7 +2157,7 @@ def colony():
         # on whichever tab happens to be the template's fallback.
         active_view = "mice"
     scope = access.resolve_scope(request.args.get("scope"))
-    context = colony_context(active_view, scope)
+    context = colony_context(active_view, scope, show_ended=request.args.get("ended") == "all")
     context["scope"] = scope
     context["scopes"] = access.SCOPES
     context["scope_hints"] = access.SCOPE_HINTS
@@ -3137,7 +3183,7 @@ def export_mice():
     export_format = request.args.get("format", "csv")
     # The page passes the scope it is showing, so the file holds the mice
     # you were looking at rather than always your own.
-    context = colony_context("mice", access.resolve_scope(request.args.get("scope")))
+    context = colony_context("mice", access.resolve_scope(request.args.get("scope")), show_ended=request.args.get("ended") != "recent")
     if export_format == "pdf":
         return render_template("print_mice.html", mouse_rows=context["mouse_rows"], printed_on=date.today().isoformat())
     payload, filename, mimetype = export_mouse_rows(context["mouse_rows"], export_format)

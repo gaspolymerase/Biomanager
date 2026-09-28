@@ -1107,7 +1107,13 @@ def breeder_summary(session) -> list[dict[str, object]]:
         lambda: {"f_young": 0, "f_old": 0, "m_young": 0, "m_old": 0, "oldest": 0, "total": 0}
     )
 
-    for mouse in session.scalars(select(MouseRecord)).all():
+    from sqlalchemy.orm import selectinload
+    # Living mice in breeder cages, with their litters, in two queries.
+    living_in_breeders = (select(MouseRecord).join(CageRecord, MouseRecord.cage_id_fk == CageRecord.id)
+                          .where(MouseRecord.date_of_death.is_(None),
+                                 func.lower(func.trim(CageRecord.purpose)).in_(BREEDER_PURPOSES))
+                          .options(selectinload(MouseRecord.litter), selectinload(MouseRecord.cage)))
+    for mouse in session.scalars(living_in_breeders).all():
         if not mouse_is_active(mouse):
             continue
         if mouse.cage is None or not is_breeder_purpose(mouse.cage.purpose):
@@ -1158,8 +1164,11 @@ def breeder_summary(session) -> list[dict[str, object]]:
 
 
 def breeder_mice(session, current_username: str | None, current_role: str | None) -> list[dict[str, object]]:
+    from sqlalchemy.orm import selectinload
     cages = session.scalars(
-        select(CageRecord).where(func.lower(func.trim(CageRecord.purpose)).in_(BREEDER_PURPOSES)).order_by(CageRecord.cage_id)
+        select(CageRecord).where(func.lower(func.trim(CageRecord.purpose)).in_(BREEDER_PURPOSES))
+        .options(selectinload(CageRecord.mice).selectinload(MouseRecord.litter), selectinload(CageRecord.rack))
+        .order_by(CageRecord.cage_id)
     ).all()
     grouped: list[dict[str, object]] = []
     for cage in cages:
