@@ -3,6 +3,11 @@
 How the app is built and tested is in `docs/DEVELOPMENT.md`; running a lab
 server is in `deploy/RUNBOOK.md`.
 
+`deploy/` goes to every lab in the public server bundle, so it names no one
+lab's server: our own (its VM, tailnet, Mac and off-site storage) is in
+`docs/OUR-SERVER.md`, which is not bundled. A change to one runbook usually
+belongs in the other too.
+
 ## Changing the database's shape
 
 Never add a column or table by hand-written ALTER at start-up any more

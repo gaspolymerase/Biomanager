@@ -3,7 +3,11 @@
 # other than the cloud VM. Run daily by launchd (install.sh); by hand:
 #   ~/Library/Application\ Support/BioManager/pull-backups.sh
 #
-# Over SSH (Tailscale) as the `biomanager` host in ~/.ssh/config. Only new
+# Over SSH (Tailscale) as the `biomanager` host in ~/.ssh/config, from the
+# server's BACKUP_DIR at /opt/biomanager/backups. A server with other names
+# sets them when installing: BIOMANAGER_SSH_HOST=<host in ~/.ssh/config>
+# BIOMANAGER_SERVER_BACKUPS=<its BACKUP_DIR, e.g.
+# /opt/biomanager/Biomanager/deploy/backups> deploy/mac/install.sh. Only new
 # files are copied and nothing is deleted because the server deleted it, so
 # a damaged or compromised server cannot empty this copy. Each new database
 # dump is checked readable. The newest KEEP are kept.
@@ -15,6 +19,7 @@ set -uo pipefail
 export PATH=/opt/homebrew/bin:/opt/homebrew/opt/postgresql@16/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 HOST=${BIOMANAGER_SSH_HOST:-biomanager}
+FROM=${BIOMANAGER_SERVER_BACKUPS:-/opt/biomanager/backups}
 DEST=${BIOMANAGER_MAC_BACKUPS:-$HOME/BioManagerBackups}
 KEEP=${KEEP:-30}
 STALE_HOURS=${STALE_HOURS:-48}
@@ -32,7 +37,7 @@ ls -1 "$DEST/db" | sort > "$had"
 for kind in db files; do
   rsync -rt --ignore-existing --chmod=Du=rwx,Dgo=,Fu=rw,Fgo= \
         -e "ssh -o BatchMode=yes -o ConnectTimeout=30" --rsync-path="sudo rsync" \
-        "$HOST:/opt/biomanager/backups/$kind/" "$DEST/$kind/" 2>> "$LOG" \
+        "$HOST:$FROM/$kind/" "$DEST/$kind/" 2>> "$LOG" \
     || fail "Could not copy from the server. Is Tailscale on? Details: $LOG"
 done
 

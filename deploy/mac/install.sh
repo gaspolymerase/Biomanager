@@ -4,6 +4,8 @@
 #   deploy/mac/install.sh            install or update
 #   deploy/mac/install.sh --remove   stop it (the copies stay)
 # Needs `ssh biomanager` to work without a prompt (key in the Keychain).
+# BIOMANAGER_SSH_HOST, BIOMANAGER_SERVER_BACKUPS and BIOMANAGER_MAC_BACKUPS,
+# if set when installing, are kept for the nightly run (see pull-backups.sh).
 set -euo pipefail
 label=org.biomanager.pull-backups
 support="$HOME/Library/Application Support/BioManager"
@@ -16,6 +18,11 @@ fi
 
 mkdir -p "$support" "$HOME/Library/LaunchAgents"
 install -m 755 "$(dirname "$0")/pull-backups.sh" "$support/pull-backups.sh"
+settings=""
+for name in BIOMANAGER_SSH_HOST BIOMANAGER_SERVER_BACKUPS BIOMANAGER_MAC_BACKUPS; do
+  [ -n "${!name:-}" ] && settings="$settings<key>$name</key><string>${!name}</string>"
+done
+[ -n "$settings" ] && settings="<key>EnvironmentVariables</key><dict>$settings</dict>"
 cat > "$plist" <<X
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,6 +36,7 @@ cat > "$plist" <<X
   <key>StandardOutPath</key><string>$support/launchd.log</string>
   <key>StandardErrorPath</key><string>$support/launchd.log</string>
   <key>ProcessType</key><string>Background</string>
+  $settings
 </dict>
 </plist>
 X

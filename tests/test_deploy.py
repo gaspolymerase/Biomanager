@@ -4,6 +4,7 @@ from tests.base import *  # noqa: F401,F403
 from tests.base import ON_POSTGRES, POSTGRES_URL, AppTestCase, ROOT, one, uniq
 
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -228,3 +229,13 @@ class ServerBundle(unittest.TestCase):
             self.assertFalse([n for n in names if n.endswith("/.env") or "/backups/" in n], names)
             self.assertFalse([n for n in names if n != "Biomanager" and not n.startswith("Biomanager/deploy")], names)
             self.assertFalse([n for n in names if "/._" in n or n.startswith("._")], names)
+
+    def test_it_names_no_lab_s_own_server(self):
+        # Every lab gets deploy/ in the bundle; our own server's runbook is docs/OUR-SERVER.md.
+        found = []
+        for path in (Path(ROOT) / "deploy").rglob("*"):
+            if path.is_file() and "/backups/" not in str(path) and path.name != ".env":
+                text = path.read_text(errors="ignore")
+                found += [f"{path.name}: {m}" for m in re.findall(r"([a-z0-9-]+)\.ts\.net", text) if m != "tail1234"]
+                found += [f"{path.name}: biomanager-vm" for _ in re.findall(r"\bbiomanager-vm\b", text)]
+        self.assertEqual(found, [])
