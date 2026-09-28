@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block page_title %}API reference{% endblock %}
+{% block page_heading %}API{% endblock %}
+{% block page_subtitle %}The lab's records as JSON, for scripts, instruments and other tools{% endblock %}
+{% block page_shell_class %}shell-page-wide workbench{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('api.openapi') }}" title="For tools that read OpenAPI (Postman, code generators)">{{ icon('download') }} openapi.json</a>
+  {% if allowed %}<a class="btn btn-primary" href="{{ url_for('settings') }}#api-tokens">{{ icon('key') }} Make a token</a>{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid max-w-[980px] grid-cols-1 gap-4 text-[13px] leading-relaxed">
+  <section class="card p-5">
+    <h2 class="text-[15px] font-semibold text-ink">How it works</h2>
+    <ul class="mt-2 list-disc space-y-1.5 pl-5 text-ink-soft">
+      <li><b>A token is you.</b> Make one under <b>Settings → API tokens</b>: <i>Read</i>, or <i>Read and change</i>.
+        It can do exactly what you can on these pages, no more; changes it makes are in the change history under
+        your name, marked with the token's name.</li>
+      <li>Send it with every request: <code>Authorization: Bearer bmt_…</code>. The address is <code>{{ base }}</code>.</li>
+      <li><b>Lists</b> come as <code>{"data": [...], "next": "…"}</code>, {{ '{:,}'.format(100) }} at a time
+        (<code>limit</code> up to {{ '{:,}'.format(max_limit) }}). While <code>next</code> isn't <code>null</code>, get it for the
+        rest.</li>
+      <li><b>Changes</b> are JSON: <code>Content-Type: application/json</code>. A refused change says why, as
+        <code>{"error": "…"}</code> with the HTTP status (400 wrong, 401 no token, 403 not yours, 404 not found).</li>
+      <li>Dates are <code>2026-09-28</code>; times are UTC, <code>2026-09-28T14:05:00Z</code>. At most {{ per_minute }}
+        requests a minute a token.</li>
+    </ul>
+  </section>
+
+  <section class="data-table-card">
+    <div class="dt-scroll">
+      <table class="dt" style="min-width: 820px;">
+        <thead><tr><th style="width: 70px;">Method</th><th style="width: 330px;">Path</th><th>What</th><th style="width: 80px;" title="The token it needs: Read, or Read and change">Token</th></tr></thead>
+        <tbody>
+          {% for method, path, scope, summary, params in endpoints %}
+            <tr>
+              <td><span class="badge {{ 'badge-brand' if method == 'GET' else 'badge-quiet' }}">{{ method }}</span></td>
+              <td><code class="whitespace-normal break-all">{{ path }}</code></td>
+              <td class="whitespace-normal">{{ summary }}
+                {% if params %}<span class="block text-[11.5px] text-muted">?{{ params | join(', ') }}</span>{% endif %}</td>
+              <td>{{ 'Read' if scope == 'read' else 'Change' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card p-5">
+    <h2 class="text-[15px] font-semibold text-ink">Examples</h2>
+    <h3 class="mt-3 font-semibold">curl</h3>
+    <pre class="mt-1 overflow-x-auto rounded-lg bg-sand-100 p-3 font-mono text-[12px]">export BM_TOKEN=bmt_…     # from Settings → API tokens
+curl -H "Authorization: Bearer $BM_TOKEN" "{{ base }}/mice?alive=true&amp;limit=500"
+curl -X POST -H "Authorization: Bearer $BM_TOKEN" -H "Content-Type: application/json" \
+     -d '{"grams": 24.1}' {{ base }}/mice/1043/weights</pre>
+
+    <h3 class="mt-4 font-semibold">Python</h3>
+    <pre class="mt-1 overflow-x-auto rounded-lg bg-sand-100 p-3 font-mono text-[12px]">import os, requests
+
+BASE = "{{ base }}"
+auth = {"Authorization": f"Bearer {os.environ['BM_TOKEN']}"}
+
+def everything(path, **params):
+    url = f"{BASE}{path}"
+    while url:
+        page = requests.get(url, headers=auth, params=params).json()
+        yield from page["data"]
+        url, params = page["next"], None
+
+living = list(everything("/mice", alive="true"))
+requests.post(f"{BASE}/mice/1043/weights", headers=auth, json={"grams": 24.1}).raise_for_status()</pre>
+
+    <h3 class="mt-4 font-semibold">R</h3>
+    <pre class="mt-1 overflow-x-auto rounded-lg bg-sand-100 p-3 font-mono text-[12px]">library(httr2)
+
+bm &lt;- function(path) request("{{ base }}") |&gt; req_url_path_append(path) |&gt;
+  req_auth_bearer_token(Sys.getenv("BM_TOKEN"))
+
+exp &lt;- bm("experiments/12") |&gt; req_perform() |&gt; resp_body_json()
+mice &lt;- bm("mice") |&gt; req_url_query(alive = "true", limit = 1000) |&gt; req_perform() |&gt;
+  resp_body_json(simplifyVector = TRUE)
+head(mice$data)</pre>
+
+    <h3 class="mt-4 font-semibold">What a change looks like</h3>
+    <pre class="mt-1 overflow-x-auto rounded-lg bg-sand-100 p-3 font-mono text-[12px]">PATCH /api/v1/mice/1043             {"cage": "C-118", "note": "moved for the HDM cohort"}
+PATCH /api/v1/inventories/samples/items/57   {"status": "used up"}
+POST  /api/v1/inventories/samples/items      {"name": "Liver, 1043", "box": "Freezer A box 3", "position": "B4",
+                                              "fields": {"source": {"kind": "mouse", "ref": "1043"}}}
+POST  /api/v1/experiments/12/readings        {"date": "2026-09-28", "values": {"1043": 23.8, "1044": 25.1}}</pre>
+  </section>
+</div>
+{% endblock %}

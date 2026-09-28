@@ -89,7 +89,7 @@ def remind_once_a_day():
     """The daily "waiting for genotyping" note, made on someone's first
     page of the day (remembered in their session, so it costs one query)."""
     user = g.get("user")
-    if user is None or request.method != "GET" or request.path.startswith(("/static", "/notifications/count")):
+    if user is None or request.method != "GET" or request.path.startswith(("/static", "/notifications/count", "/api/v1")):
         return None
     today = date.today().isoformat()
     if session.get("reminded_on") == today:

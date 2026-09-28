@@ -479,6 +479,38 @@ on the lab server scans to the lab server. Rendering uses `segno` (pure
 Python, no image libraries), and cards still print without it — just without
 the code.
 
+## The public API
+
+`app/api.py`: `/api/v1`, JSON, for scripts, instruments and other tools;
+the reference page is `/api` and the spec `/api/v1/openapi.json`, both made
+from `ENDPOINTS`, so a new endpoint goes there too.
+
+- **Tokens** (`api_tokens`): made under Settings → API tokens (`api/_card.html`),
+  `bmt_` and 40 random characters, shown once (`api/token.html`); only the
+  SHA-256 and the first ten characters (`hint`) are kept. `scope` is `read` or
+  `write`; `expires_at` 30, 90, 365 days or never. Members make them only
+  while Lab setup's `members_api_tokens` is on (default on); guests never.
+  Admins see and revoke everyone's.
+- **Signing in**: `app.load_current_user` hands `/api/v1…` to
+  `api.authenticate()`, which reads only `Authorization: Bearer` and never
+  the session cookie. So `security.cross_site_reason` skips those paths (a
+  cross-site request can't carry the token), `lab_routes.remind_once_a_day`
+  skips them, and `api._no_cookie` strips any Set-Cookie. A disabled
+  account, a revoked or expired token, or members' tokens switched off: 401.
+  `g.audit_batch = "API: <label>"` marks the change history.
+- `_gate`: 401 without a token, 403 when a read token tries a change, 429
+  past `PER_MINUTE` (600) per token per worker (`_Rate`, in memory).
+- **Lists** page by row id: `?limit` (100, at most 1000) and `?after`;
+  the reply's `next` is the URL of the following page. Filters are in SQL.
+- **Writes reuse the pages' code**, so their rules hold: `PATCH /mice/<id>`
+  fills a form from `mouse_display_row`, overlays the fields sent, and calls
+  `populate_mouse_from_form` (flashed refusals come back as `warnings`);
+  inventory items go through `inventory_routes._item_from_form`, vials
+  through `stock_routes._unit_from_form` (both copy only the fields sent),
+  readouts through `experiments.set_reading`. Permission checks are the
+  same functions (`can_edit_mouse`, `_can_edit`, `can_edit`,
+  `access.can_edit_experiment`). A switched-off built-in database is a 404.
+
 ## Feedback and the usage report
 
 `app/feedback.py`, for a pilot (the plan is `docs/PILOT.md`). **Feedback**

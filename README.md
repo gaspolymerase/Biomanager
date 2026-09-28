@@ -809,11 +809,27 @@ track.
 - **When someone leaves,** the admin's **Overview** shows every cage by
   owner, idle cages and living mice without a cage, and **Racks & boxes**
   hands their racks to someone else.
+- **An API for scripts and instruments.** **Settings → API tokens**
+  makes a token for R, a Python script, a balance or another tool; it
+  reads the lab's records as JSON, or changes them, as you and with your
+  permissions (*Read*, or *Read and change*; it can expire, and you or an
+  admin can revoke it). Mice, cages, litters, strains, tanks and fish,
+  plasmids, fly and worm vials, every inventory and every experiment can be
+  read; a mouse's weights and fields, vials, inventory items and an
+  experiment's readout can be written. Changes are in the change history
+  under your name, marked with the token's name. The reference, with
+  examples in curl, Python and R, is at `/api` on your BioManager
+  (`/api/v1/openapi.json` for tools that read OpenAPI). Lab setup can keep
+  tokens to admins.
+
+  ```bash
+  curl -H "Authorization: Bearer $BM_TOKEN" "https://your-server/api/v1/mice?alive=true"
+  ```
 - Passwords are at least 12 characters, repeated failed sign-ins are
   locked out, and changing a password signs out every other session.
 - **Your data stays with you** — on your computer or your lab's server.
   Nothing is sent anywhere unless you connect Google Calendar, Google or
-  Microsoft sign-in, or reminder emails.
+  Microsoft sign-in, or reminder emails, or a tool you gave a token asks.
 
 ## 💾 Your data and backups
 

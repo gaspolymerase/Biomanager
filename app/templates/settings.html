@@ -265,6 +265,7 @@
       </article>
     {% endif %}
 
+    {% include "api/_card.html" %}
     {% include "lab_copy/_cards.html" %}
     {% if config.LOCAL_SETUP %}
       {# Only the desktop app sets servers up (app/server_setup.py). #}
@@ -291,7 +292,6 @@
         ('Display density', 'compact / cozy / spacious table rows'),
         ('Sessions', 'sign out of all devices, view active sessions'),
         ('Two-factor', 'TOTP for shared lab accounts'),
-        ('API token', 'for scripts pushing data into your colony'),
       ] %}
         <li class="flex items-baseline gap-2 text-[12.5px]">
           <svg class="icon size-4 shrink-0 text-sand-300" aria-hidden="true"><use href="/static/icons.svg#circle"></use></svg>

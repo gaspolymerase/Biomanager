@@ -211,6 +211,10 @@ def cross_site_reason() -> str | None:
     """Why this request looks like it was sent by another site, or None."""
     if request.method in SAFE_METHODS or request.path == CSP_REPORT_PATH:
         return None
+    if request.path == "/api/v1" or request.path.startswith("/api/v1/"):
+        # Signed in by a bearer token only, which another site can't send
+        # for you; the session cookie is never read there (app/api.py).
+        return None
     origin = request.headers.get("Origin", "")
     if origin and origin != "null" and urlparse(origin).netloc in _trusted_hosts():
         return None

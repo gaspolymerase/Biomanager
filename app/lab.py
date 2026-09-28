@@ -82,6 +82,9 @@ MEMBER_PERMISSIONS = {
     "members_keep_copies": ("Members may keep a copy of the lab on their computers",
                             "The desktop app keeps a copy of the whole database, refreshed daily, as a backup. "
                             "Admins always may; a laptop with a copy holds every record.", False),
+    "members_api_tokens": ("Members may make API tokens",
+                           "A token lets a script, a balance or another tool read the lab's records, or change them, "
+                           "as that person. Admins always may.", True),
 }
 
 SETUP_DONE_KEY = "lab_setup_done"

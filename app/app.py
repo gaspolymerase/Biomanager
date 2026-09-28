@@ -272,6 +272,11 @@ def follow_lab_timezone():
 
 @app.before_request
 def load_current_user():
+    if request.path == "/api/v1" or request.path.startswith("/api/v1/"):
+        # The API is signed in by its token alone, never the session cookie (app/api.py).
+        from . import api
+        api.authenticate()
+        return
     user_id = session.get("user_id")
     g.user = None
     if user_id is None:
@@ -318,6 +323,10 @@ app.register_blueprint(experiment_steps.bp)
 # Signing a notebook page, which locks it (app/signatures.py).
 from . import signatures as record_signatures  # noqa: E402
 app.register_blueprint(record_signatures.bp)
+# The public API, and Settings → API tokens (app/api.py).
+from . import api as public_api  # noqa: E402
+app.register_blueprint(public_api.bp)
+app.register_blueprint(public_api.pages)
 # Send feedback and the usage report, for a pilot (app/feedback.py).
 from . import feedback as lab_feedback  # noqa: E402
 app.register_blueprint(lab_feedback.bp)
