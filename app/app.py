@@ -309,6 +309,9 @@ app.register_blueprint(lab_calendar.bp)
 # Setting up a lab server from the desktop app (app/server_setup.py).
 from . import server_setup  # noqa: E402
 app.register_blueprint(server_setup.bp)
+# What is done to an experiment's mice, planned and recorded (app/experiment_steps.py).
+from . import experiment_steps  # noqa: E402
+app.register_blueprint(experiment_steps.bp)
 # Import from Excel into any database (app/sheet_import.py).
 from . import sheet_import  # noqa: E402
 app.register_blueprint(sheet_import.bp)
@@ -2234,8 +2237,13 @@ def experiment_detail(experiment_id: int):
             "start_date": exp.start_date.isoformat() if exp.start_date else "",
             "end_date": exp.end_date.isoformat() if exp.end_date else "",
         }
+        manipulations = experiment_steps.page_data(db_session, exp)
+        start = exp.start_date
+        weight_days = {d: (date.fromisoformat(d) - start).days + 1 for d in all_dates} if start else {}
     return render_template(
         "experiment_detail.html",
+        manipulations=manipulations,
+        weight_days=weight_days,
         experiment=exp_data,
         members=members,
         all_dates=all_dates,
@@ -4320,6 +4328,8 @@ def calendar_items(db_session, start: date | None, end: date | None, owner: str 
     zebrafish = zebrafish_home_summary() if features.get("zebrafish", True) else None
     items += lab_calendar.agenda_items(db_session, start, end, features, zebrafish, owner=owner)
     items += lab_calendar.protocol_items(db_session, start, end, owner=owner)
+    if features.get("colony", True):
+        items += experiment_steps.calendar_items(db_session, start, end, owner=owner)
     items += lab_calendar.booking_items(db_session, start, end, owner=owner)
     items += lab_calendar.absence_items(db_session, start, end, owner=owner)
 

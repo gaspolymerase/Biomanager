@@ -24,6 +24,7 @@ import { mountCalc, defaultCalc, CALC_TYPES } from './calc.js';
 import { mountPlate, defaultPlate } from './plate.js';
 import { mountQpcr, defaultQpcr } from './qpcr.js';
 import { mountDiagram, defaultDiagram } from './diagram.js';
+import { mountExperiment, defaultExperiment } from './experiment.js';
 
 export const BLOCKS = {
   sheet: { label: 'Data sheet', json: true, mount: mountSheet, make: defaultSheet },
@@ -31,6 +32,7 @@ export const BLOCKS = {
   calc: { label: 'Calculator', json: true, mount: mountCalc, make: () => defaultCalc('dilution') },
   plate: { label: 'Plate reader', json: true, mount: mountPlate, make: defaultPlate },
   qpcr: { label: 'qPCR ΔΔCt', json: true, mount: mountQpcr, make: defaultQpcr },
+  experiment: { label: 'Colony experiment', json: true, mount: mountExperiment, make: defaultExperiment },
   mermaid: { label: 'Diagram', json: false, mount: mountDiagram, make: () => defaultDiagram('mermaid') },
   mindmap: { label: 'Mind map', json: false, mount: mountDiagram, make: () => defaultDiagram('mindmap') },
   math: { label: 'Equation', json: false, mount: mountDiagram, make: () => defaultDiagram('math') },

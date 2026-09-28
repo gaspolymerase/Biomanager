@@ -590,6 +590,63 @@ class Experiment(Base):
     memberships: Mapped[list["ExperimentMouse"]] = relationship(
         back_populates="experiment", cascade="all, delete-orphan"
     )
+    steps: Mapped[list["ExperimentStep"]] = relationship(
+        back_populates="experiment", cascade="all, delete-orphan",
+        order_by="(ExperimentStep.position, ExperimentStep.id)",
+    )
+
+
+class ExperimentStep(Base):
+    """One manipulation in an experiment's plan: what is done to its mice,
+    on which days (day 1 is the start date), and to which group. What
+    was actually done, and when, is in ExperimentStepRecord
+    (app/experiment_steps.py)."""
+    __tablename__ = "experiment_steps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    experiment_id_fk: Mapped[int] = mapped_column(ForeignKey("experiments.id"), index=True)
+    days: Mapped[str] = mapped_column(String(120), default="1")          # "1", "2-5", "1, 8, 15"
+    kind: Mapped[str] = mapped_column(String(30), default="injection")
+    agent: Mapped[str] = mapped_column(String(200), default="")          # Tamoxifen, HDM
+    dose: Mapped[str] = mapped_column(String(80), default="")            # 20 mg/kg, 25 µg
+    route: Mapped[str] = mapped_column(String(60), default="")           # i.p., intranasal
+    concentration: Mapped[str] = mapped_column(String(60), default="")   # 10 mg/mL: gives the volume
+    treatment_group: Mapped[str] = mapped_column(String(80), default="")  # blank: every mouse
+    notes: Mapped[str] = mapped_column(Text, default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    experiment: Mapped[Experiment] = relationship(back_populates="steps")
+    records: Mapped[list["ExperimentStepRecord"]] = relationship(
+        back_populates="step", cascade="all, delete-orphan")
+
+    @property
+    def audit_label(self) -> str:
+        return f"{self.agent or self.kind} (day {self.days})"
+
+
+class ExperimentStepRecord(Base):
+    """A manipulation done: which day of the plan, the date it was done,
+    by whom, to which mice, and the amount each got (from its weight)."""
+    __tablename__ = "experiment_step_records"
+    __table_args__ = (UniqueConstraint("step_id_fk", "day", name="uq_experiment_step_day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    step_id_fk: Mapped[int] = mapped_column(ForeignKey("experiment_steps.id"), index=True)
+    day: Mapped[int] = mapped_column(Integer)
+    done_on: Mapped[date] = mapped_column(Date, default=date.today)
+    done_by: Mapped[str] = mapped_column(String(80), default="")
+    # [{"mouse": row id, "mouse_id": 1042, "grams": 24.1, "amount": "0.48 mg", "volume": "48 µL"}]
+    mice: Mapped[str] = mapped_column(Text, default="[]")
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    step: Mapped[ExperimentStep] = relationship(back_populates="records")
+
+    @property
+    def audit_label(self) -> str:
+        return f"{self.step.agent or self.step.kind}, day {self.day}" if self.step else f"day {self.day}"
 
 
 class ExperimentMouse(Base):

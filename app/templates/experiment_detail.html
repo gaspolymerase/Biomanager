@@ -9,10 +9,23 @@
   {%- if experiment.start_date %} · started {{ experiment.start_date }}{% endif %}
 {% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='experiment-steps.css') }}?v={{ asset_version('experiment-steps.css') }}">
+{% endblock %}
 
 {% block page_actions %}
   <span class="sheet-save" data-save-status aria-live="polite"></span>
   <a class="btn" href="{{ url_for('colony', view='experiments') }}">{{ icon('back') }} All experiments</a>
+  {% if manipulations.notebook_on %}
+    {% if manipulations.notebook_page %}
+      <a class="btn" href="{{ url_for('notebook', page=manipulations.notebook_page) }}"
+         title="Your notebook page for this experiment, with its manipulations and body weights">{{ icon('notebook') }} Notebook page</a>
+    {% else %}
+      <form method="post" action="{{ url_for('expsteps.add_to_notebook', experiment_id=experiment.id) }}">
+        <button type="submit" class="btn" title="A page in your notebook with this experiment's manipulations and body weights, kept up to date">{{ icon('notebook') }} Add to notebook</button>
+      </form>
+    {% endif %}
+  {% endif %}
   {% if experiment.editable %}
     <form method="post" action="{{ url_for('delete_experiment', experiment_id=experiment.id) }}"
           data-confirm="Delete the experiment {{ experiment.name }}? Its mice are not deleted, only their membership.">
@@ -130,6 +143,8 @@
   </article>
 </section>
 
+{% include "_experiment_steps.html" %}
+
 {# Weight matrix — date columns × mouse rows. Only shows if there are weights. #}
 {% if all_dates %}
   <section class="panel" style="margin-top: 14px;">
@@ -140,7 +155,7 @@
           <tr>
             <th>Mouse</th>
             <th>Group</th>
-            {% for d in all_dates %}<th>{{ d[5:] }}</th>{% endfor %}
+            {% for d in all_dates %}<th>{{ d[5:] }}{% if weight_days.get(d) is not none %}<span class="xs-day-tag">day {{ weight_days[d] }}</span>{% endif %}</th>{% endfor %}
             <th>Trend</th>
           </tr>
         </thead>

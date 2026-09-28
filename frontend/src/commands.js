@@ -83,6 +83,7 @@ export const ITEMS = [
   { id: 'sheet', group: 'Data', icon: 'table', label: 'Data sheet', hint: 'Enter data; plot it; t-test / ANOVA', keywords: 'table spreadsheet plot chart graph stats', run: block('sheet') },
   { id: 'sheet-xy', group: 'Data', icon: 'chart', label: 'X–Y plot', hint: 'A sheet set up for a scatter with a fitted line', keywords: 'scatter line regression standard curve', run: block('sheet', { ...defaultSheet(), columns: [{ name: 'x', type: 'number' }, { name: 'y', type: 'number' }], rows: [['', ''], ['', ''], ['', ''], ['', '']], chart: { type: 'scatter', x: 0, y: [1], group: -1, error: 'sem', fit: true, logY: false }, showStats: false, stats: { group: 0, value: 1, test: 'none', control: '' } }) },
   { id: 'plate', group: 'Data', icon: 'plate', label: 'Plate reader', hint: 'Heatmap, layout, standard curve', keywords: 'bca elisa absorbance 96 well plate', run: block('plate') },
+  { id: 'experiment', group: 'Data', icon: 'flask', label: 'Colony experiment', hint: 'A mouse experiment’s manipulations and body weights', keywords: 'mouse experiment cohort injection dose treatment tamoxifen body weight colony', run: block('experiment') },
   { id: 'qpcr', group: 'Data', icon: 'chart', label: 'qPCR ΔΔCt', hint: 'Paste Ct values, get fold change', keywords: 'pcr ct cq ddct expression', run: block('qpcr') },
   // ---- Bench
   // The protocol library opens in the page's side panel (notebook-page.js), where one is picked and inserted.

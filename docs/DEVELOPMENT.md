@@ -285,6 +285,23 @@ the rules; the editor is `frontend/src/` and the page around it is
 | `notebook_recipes` | the lab's buffer library (the built-in ones are `PRESET_RECIPES`) |
 | `notebook_meeting_series` | a meeting's rotation (`members` in order, `next_index`), day and time |
 
+**Colony experiments in a page.** The `experiment` block
+(`frontend/src/blocks/experiment.js`) keeps only `{"id", "show",
+"percent"}` and reads `/colony/experiments/<id>/notebook.json`; *Freeze a
+copy* stores that payload in the block as `frozen`, so the page's
+versions keep it. The payload, the plan and the records are
+`app/experiment_steps.py`:
+
+| Table | Holds |
+| --- | --- |
+| `experiment_steps` | an experiment's manipulations: days (`"2–5"`, day 1 = the start date), kind, agent, dose, route, concentration, treatment group |
+| `experiment_step_records` | one per step and day done: date, who, and per mouse the weight used and the amount and volume given (`mice`, JSON) |
+
+A `weigh` step writes `mouse_weights` when recorded. Undone days are
+`auto` items on the calendar (`experiment_steps.calendar_items`). Which
+notebook page is a person's for an experiment is the app setting
+`experiment_notebook_page:<experiment>:<username>`.
+
 **Who may do what** is `lab_notebook.role_for()`: `owner`, `edit`, `view` or
 nothing. Viewers read and comment; editors also write; only the owner
 shares, moves or deletes. Search, backlinks and the global search use

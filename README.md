@@ -101,6 +101,15 @@ The most complete module, built around how a mouse room actually works.
   flagged.
 - **Strains** and **Experiments** — your lab's lines with owners, and
   groups of mice under one experiment with a shared treatment group.
+  An experiment's **Manipulations** are what is done to its mice, day by
+  day: *Tamoxifen 20 mg/kg i.p. on day 1, HDM 25 µg intranasal on days
+  2–5*, for every mouse or one group. Day 1 is the start date, so each day
+  has its date, and the days still to do are on the calendar. **Record**
+  a day as it's done: the date, who, which mice. For a dose per body
+  weight it keeps the amount each mouse got, from its latest weight (and
+  the volume, given the solution's concentration). A **Body weight** day
+  takes the weights themselves, into the body-weight table, where each
+  column now shows its day number.
 
 <table>
   <tr>
@@ -253,6 +262,13 @@ stock**, and statuses and categories can be renamed without losing items.
   - **Experiments**: aim, setup, samples and lot numbers, steps, results.
     *Start* and *Finished* stamp the times; planned, running, done or
     failed shows in the sidebar.
+  - **Colony experiment** (`/experiment`) shows a mouse experiment in the
+    page: its manipulations, when each was done and by whom, the amount
+    each mouse got, and its body weights as a table and a chart (grams or
+    % of the first weight, manipulation days marked), kept up to date.
+    **Freeze a copy** keeps what it shows at that moment in the page. On
+    the experiment itself, **Add to notebook** makes your notebook page
+    for it with that block already in.
   - **Protocols** with numbered versions. *Start an experiment from it*
     copies the steps as a checklist and records which version was followed.
     **Protocols** in the sidebar (or `/protocol` in a page) opens the
@@ -621,7 +637,9 @@ weaning, add the pups with **Add many** and move them to their new cages.
 
 Tick the mice on **Mice** (shift-click selects a range). In the bar that
 rises from the bottom, choose **Add to experiment** and name the treatment
-group.
+group. On the experiment, **Add manipulation** for each injection,
+challenge or weighing day, then **Record** each day as it's done. **Add to
+notebook** puts all of it in a notebook page.
 </details>
 
 <details>

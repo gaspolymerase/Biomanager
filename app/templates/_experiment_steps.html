@@ -1,0 +1,98 @@
+{# Manipulations of an experiment: the plan, each day's record, the record dialog.
+   Drawn by static/experiment-steps.js from #xs-data; saved through app/experiment_steps.py. #}
+<section class="panel xs-panel" id="manipulations" style="margin-top: 14px;">
+  <header class="xs-head">
+    <div>
+      <h2>Manipulations</h2>
+      <p class="xs-sub">
+        {% if experiment.start_date %}Day 1 is the start date, {{ experiment.start_date }}.
+        {% else %}Give the experiment a start date and each day gets its date.{% endif %}
+        Record each day as it is done: the date, who, which mice, and the dose each got from its weight.
+      </p>
+    </div>
+    {% if experiment.editable %}
+      <button type="button" class="btn btn-primary" data-xs-add>{{ icon('plus') }} Add manipulation</button>
+    {% endif %}
+  </header>
+  <div class="xs-plan" data-xs-plan></div>
+  <div class="xs-schedule" data-xs-schedule></div>
+</section>
+
+{# Add or change a manipulation #}
+<dialog class="xs-dialog" id="xs-step-dialog" aria-labelledby="xs-step-title">
+  <form method="dialog" class="xs-form" data-xs-step-form>
+    <header class="xs-dialog-head">
+      <h3 id="xs-step-title">Add a manipulation</h3>
+      <button type="button" class="csv-modal-close" data-xs-close aria-label="Close">×</button>
+    </header>
+    <div class="xs-dialog-body xs-grid">
+      <input type="hidden" name="id">
+      <label>Kind
+        <select name="kind">
+          {% for k in manipulations.kinds %}<option value="{{ k.key }}">{{ k.label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>What <input name="agent" placeholder="Tamoxifen, HDM, vehicle…" autocomplete="off"></label>
+      <label>Days <input name="days" placeholder="1, or 2-5, or 1, 8, 15" autocomplete="off" required></label>
+      <label>Dose <input name="dose" placeholder="20 mg/kg, or 25 µg" autocomplete="off"></label>
+      <label>Route <input name="route" placeholder="i.p., intranasal, oral gavage" list="xs-routes" autocomplete="off"></label>
+      <label>Solution <input name="concentration" placeholder="10 mg/mL: gives each volume" autocomplete="off"></label>
+      <label>Group
+        <select name="group">
+          <option value="">Every mouse</option>
+          {% for grp in manipulations.groups %}<option value="{{ grp }}">{{ grp }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="xs-wide">Notes <textarea name="notes" rows="2" placeholder="Vehicle, volume, anaesthesia, what to watch for"></textarea></label>
+      <p class="xs-error" data-xs-error hidden></p>
+    </div>
+    <footer class="csv-modal-foot">
+      <button type="button" class="dt-bottom-action" data-xs-close>Cancel</button>
+      <button type="submit" class="dt-bottom-action is-primary">Save</button>
+    </footer>
+  </form>
+  <datalist id="xs-routes">
+    <option value="i.p."><option value="s.c."><option value="i.v."><option value="intranasal">
+    <option value="oral gavage"><option value="in drinking water"><option value="in food"><option value="topical">
+    <option value="i.m."><option value="intratracheal">
+  </datalist>
+</dialog>
+
+{# Record a day as done #}
+<dialog class="xs-dialog xs-dialog-wide" id="xs-record-dialog" aria-labelledby="xs-record-title">
+  <form method="dialog" class="xs-form" data-xs-record-form>
+    <header class="xs-dialog-head">
+      <div>
+        <h3 id="xs-record-title"></h3>
+        <p class="xs-sub" data-xs-record-sub></p>
+      </div>
+      <button type="button" class="csv-modal-close" data-xs-close aria-label="Close">×</button>
+    </header>
+    <div class="xs-dialog-body">
+      <div class="xs-record-top">
+        <label>Done on <input type="date" name="done_on" required></label>
+        <p class="xs-sub" data-xs-dose-note></p>
+      </div>
+      <div class="table-wrap">
+        <table class="dense-table fit-table xs-mice">
+          <thead data-xs-mice-head></thead>
+          <tbody data-xs-mice></tbody>
+        </table>
+      </div>
+      <label class="xs-wide">Note <textarea name="note" rows="2" placeholder="Anything that differed: a missed mouse, a leak, a reaction"></textarea></label>
+      <p class="xs-error" data-xs-error hidden></p>
+    </div>
+    <footer class="csv-modal-foot">
+      <button type="button" class="dt-bottom-action xs-undo" data-xs-undo hidden>Undo: not done</button>
+      <span class="xs-spacer"></span>
+      <button type="button" class="dt-bottom-action" data-xs-close>Cancel</button>
+      <button type="submit" class="dt-bottom-action is-primary" data-xs-save>Record as done</button>
+    </footer>
+  </form>
+</dialog>
+
+<script type="application/json" id="xs-data">{{ {
+  "experiment": experiment.id, "editable": experiment.editable, "start": experiment.start_date,
+  "steps": manipulations.steps, "schedule": manipulations.schedule
+} | tojson }}</script>
+<script src="{{ url_for('static', filename='experiment-steps.js') }}?v={{ asset_version('experiment-steps.js') }}" defer></script>
