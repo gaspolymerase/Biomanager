@@ -110,16 +110,11 @@ p { margin: 0 0 1em; color: var(--fg-2); }
 
 /* ------------------------------------------------------------ hero */
 .hero { text-align: center; padding: 64px 0 40px; overflow: hidden; }
-/* The glow is a shadow on a layer behind the icon, not a filter on the
-   icon: a filtered image is painted as a bitmap, and goes soft when the
-   page is zoomed. The layer covers the icon's rounded square (824 of its
-   1024 units, corners 22.5%). */
-.hero-icon { position: relative; width: 96px; height: 96px; margin: 0 auto 22px; }
-.hero-icon::before {
-  content: ""; position: absolute; inset: 9.4%; border-radius: 22.5%;
-  box-shadow: 0 12px 24px rgba(11, 114, 104, 0.3);
-}
-.hero-icon img { position: relative; }
+/* No glow here: the icon already draws its own shadow, and a second one
+   only fattens the halo round its edge. Never put a `filter` on the icon
+   either — a filtered image is painted as a bitmap, and goes soft when the
+   page is zoomed. */
+.hero-icon { width: 96px; height: 96px; margin: 0 auto 22px; }
 .lede { font-size: clamp(1.05rem, 2.2vw, 1.3rem); max-width: 720px; margin: 0 auto 28px; color: var(--fg-2); }
 .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .fine { font-size: 14px; color: var(--fg-3); margin-top: 16px; }
