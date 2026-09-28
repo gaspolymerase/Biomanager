@@ -37,6 +37,10 @@ hiddenimports = (
     + collect_submodules("sqlalchemy.dialects.sqlite")
     + ["psycopg"]
     + collect_submodules("alembic")
+    # migrations/ ships as files that Alembic runs (datas above), so the
+    # analysis never sees what they import: env.py's logging.config, and
+    # each revision's migrations.helpers.
+    + ["logging.config", "logging.handlers", "migrations", "migrations.helpers"]
 )
 if sys.platform.startswith("linux"):
     # On Linux the window is Qt WebEngine (pip install "pywebview[qt]"),

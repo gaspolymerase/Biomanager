@@ -44,3 +44,24 @@ class Upgrade(unittest.TestCase):
                 self.assertEqual(c.execute("select count(*) from users").fetchone()[0], 1)
             self.assertLessEqual(len(list((Path(tmp) / "backups").glob("before-upgrade-*.db"))), upgrade.KEEP_BACKUPS)
             eng.dispose()
+
+
+class PackagedApp(unittest.TestCase):
+    """migrations/ ships in the desktop app as files Alembic runs, so the
+    build never sees their imports: each must be bundled some other way
+    (v0.10.0's first build lacked logging.config and would not start)."""
+
+    def test_every_import_of_the_migrations_is_bundled(self):
+        import ast
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        spec = (root / "Biomanager.spec").read_text()
+        bundled_whole = {"__future__", "alembic", "sqlalchemy", "app"}    # collected, or the app itself
+        for path in [root / "migrations" / "env.py", *sorted((root / "migrations" / "versions").glob("*.py"))]:
+            for node in ast.walk(ast.parse(path.read_text())):
+                names = [a.name for a in node.names] if isinstance(node, ast.Import) else \
+                    [node.module] if isinstance(node, ast.ImportFrom) and node.module else []
+                for name in names:
+                    if name.split(".")[0] in bundled_whole:
+                        continue
+                    self.assertIn(f'"{name}"', spec, f"{path.name} imports {name}: add it to hiddenimports in Biomanager.spec")
