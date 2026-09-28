@@ -180,6 +180,16 @@ def split_header(rows: list[list[str]]) -> tuple[list[str], list[list[str]], int
     return headers, rows[at + 1:], at + 2
 
 
+TOTAL_WORDS = {"total", "totals", "grand total", "subtotal", "sub total", "sum"}
+
+
+def is_total(row: list[str]) -> bool:
+    """A summary line under the records: its first filled cell is only
+    "TOTAL", "Grand total:" or the like ("Total RNA" is a record)."""
+    first = next((c for c in row if c.strip()), "")
+    return norm(first) in TOTAL_WORDS
+
+
 # ---------------------------------------------------------------- matching
 
 _WORD_NUMBER = {"no", "num", "nr", "nbr"}
@@ -469,6 +479,9 @@ class MiceTarget(Target):
             mouse_id = ctx["next"]
             if typed:
                 extras.insert(0, ("ID in the spreadsheet", typed))
+            if typed.isdigit() and int(typed) > 0:
+                warnings.append(f"Mouse ID {typed} is taken (in the colony or by an earlier row), "
+                                f"so this one is #{mouse_id}; {typed} is kept in its notes.")
         ctx["taken"].add(mouse_id)
         owner = _owner(ctx, v.get("owner", ""), warnings, extras)
         form = {k: v[k] for k in ("gender", "cage_id", "cage_location", "litter_id", "date_of_birth", "status",
@@ -1107,8 +1120,13 @@ def run(target: Target, headers: list[str], rows: list[list[str]], plan: Plan, c
     if missing:
         raise ImportProblem("Match a column, or give a value for every row, for: "
                             + ", ".join(f.label for f in missing) + ".")
-    # Each mapped column, tidied as a whole (dates are read per column).
     where = numbers or [n + 2 for n in range(len(rows))]
+    # A sheet's own summary line ("TOTAL", "Grand total") is not a record.
+    totals = [n for n, r in zip(where, rows) if is_total(r)]
+    if totals:
+        kept = [(n, r) for n, r in zip(where, rows) if not is_total(r)]
+        where, rows = [n for n, _r in kept], [r for _n, r in kept]
+    # Each mapped column, tidied as a whole (dates are read per column).
     columns = {i: [r[i] if i < len(r) else "" for r in rows] for i in range(len(headers))}
     tidy_notes: list[str] = []
     for i, key in plan.mapping.items():
@@ -1117,6 +1135,7 @@ def run(target: Target, headers: list[str], rows: list[list[str]], plan: Plan, c
             columns[i], notes = tidy_dates(columns[i])
             tidy_notes += [f"{headers[i]}: {n}" for n in notes]
     unknown_choices: dict[str, set[str]] = {}
+    tidy_notes += [f"Row {n} looks like the sheet's total, so it's left out." for n in totals]
     results = {"created": [], "problems": [], "warnings": [], "added_columns": [], "tidied": tidy_notes,
                "total": len(rows)}
     with SessionLocal() as session:

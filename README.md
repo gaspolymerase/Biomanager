@@ -473,8 +473,10 @@ it is:
   own statuses, people by name.
 - **You see a preview first.** It runs through the same checks as the
   database's own dialogs and lists every row that would be skipped and why,
-  by its row number in Excel. The import itself is one batch, so
-  **Batch history** can undo it.
+  by its row number in Excel. A *Total* line under the records is left out,
+  and a mouse whose ID is taken (by the colony or an earlier row) gets the
+  next free one, with the preview saying so. The import itself is one
+  batch, so **Batch history** can undo it.
 
 ### 📱 Cage cards that open on your phone
 

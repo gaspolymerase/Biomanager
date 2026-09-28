@@ -170,6 +170,9 @@ class MigrateToPostgres(unittest.TestCase):
         # The deleted strain's id 3 is never handed out again.
         (next_id,), = self.target("SELECT nextval(pg_get_serial_sequence('strains', 'id'))")
         self.assertGreater(next_id, 3)
+        # At the copy's revision, so the app's first start upgrades nothing.
+        from app import upgrade
+        self.assertEqual(self.target("SELECT version_num FROM alembic_version"), [(upgrade.head_revision(),)])
         (token,), = self.target("SELECT refresh_token FROM google_calendar_links")
         self.assertTrue(token.startswith("enc:v1:"))  # encrypted on the way (start-up step)
 
