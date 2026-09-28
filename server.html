@@ -363,9 +363,20 @@ ACME_EMAIL=you@yourlab.org       # Let's Encrypt writes here before a certificat
           databases. See the <a href="guide.html#first-run">user guide</a>.</dd>
         <dt>People</dt>
         <dd>Sign-ups wait for approval in <b>Manage users</b>, where admins also make others admin, disable leavers and reset
-          passwords. Optional: sign-in with Google or Microsoft (<code>deploy/README.md</code> in the bundle has the steps).</dd>
+          passwords, and give animal-facility staff the <b>Animal care</b> or <b>Facility manager</b> role
+          (<a href="guide.html#lab">what each may do</a>).</dd>
+        <dt id="sign-in">Sign-in with Google, Microsoft or your institution</dt>
+        <dd>Optional, each one a few lines in <code>deploy/.env</code> and a restart (<code>deploy/README.md</code> in the bundle
+          has the steps). Your institution's own sign-in works through OpenID Connect (Okta, Keycloak, Azure AD, Shibboleth's
+          OIDC plugin): register BioManager with your IT, redirect address <code>https://DOMAIN/auth/institution/callback</code>,
+          and set <code>BIOMANAGER_OIDC_ISSUER</code>, <code>_CLIENT_ID</code>, <code>_CLIENT_SECRET</code> and
+          <code>BIOMANAGER_OIDC_NAME</code> (what the button says). A university that only speaks SAML (InCommon, eduGAIN)
+          comes in through <a href="https://cilogon.org">CILogon</a>: <code>BIOMANAGER_CILOGON_CLIENT_ID</code> and
+          <code>_SECRET</code>, and <code>BIOMANAGER_CILOGON_IDP</code> to go straight to your university.</dd>
         <dt>Cage cards with QR codes</dt>
-        <dd>On a server, a card's QR code opens that cage on any phone that can reach the server.</dd>
+        <dd>On a server, a card's QR code opens that cage on any phone that can reach the server. A Zebra label printer on
+          the lab's network can be sent labels straight from the server (<a href="guide.html#label-printers">how</a>) when the
+          server can reach it: a server in the cloud can't reach a printer in your lab, unless the printer is on Tailscale too.</dd>
         <dt>Alerts</dt>
         <dd>The ntfy topic from <code>install.sh</code> tells you if the site stops answering, a container stops, the disk
           fills, or backups stop. <code>deploy/RUNBOOK.md</code> says what to do for each.</dd>
@@ -376,7 +387,8 @@ ACME_EMAIL=you@yourlab.org       # Let's Encrypt writes here before a certificat
 docker compose exec backup backup.sh      # a fresh backup first
 curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz \
   &amp;&amp; tar -xzf /tmp/b.tar.gz -C /opt/biomanager &amp;&amp; host/load-image.sh &amp;&amp; docker compose up -d --build</code></pre>
-          Your <code>.env</code> and backups are never in the bundle, so unpacking over it keeps them.</dd>
+          Your <code>.env</code> and backups are never in the bundle, so unpacking over it keeps them. The new version
+          brings the database up to date as it starts; every release is tested upgrading a lab made by each earlier one.</dd>
       </dl>
     </section>
 

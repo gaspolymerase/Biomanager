@@ -77,7 +77,9 @@ Ask these, then recommend an option (the table after them) and wait for a yes.
   With `TLS=tailscale` also `COMPOSE_FILE=compose.yaml:compose.tailscale.yaml`.
   With `TLS=acme` also `ACME_EMAIL`. Optional: `RESTIC_*`/`AWS_*` (off-site,
   set by `host/offsite-setup.sh`), `HEALTHCHECK_PING_URL`,
-  `BIOMANAGER_GOOGLE_*`/`BIOMANAGER_MICROSOFT_*` (sign-in), SMTP.
+  `BIOMANAGER_GOOGLE_*`/`BIOMANAGER_MICROSOFT_*` (sign-in), `BIOMANAGER_OIDC_*` (the
+  institution's own sign-in, OpenID Connect) or `BIOMANAGER_CILOGON_*` (a SAML-only
+  university, through CILogon), SMTP.
 - **First account:** the app prints a one-time setup code in its log; the
   first account created at `https://DOMAIN/register` with it is the admin.
   Later sign-ups wait for an admin's approval.

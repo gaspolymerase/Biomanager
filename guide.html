@@ -62,6 +62,7 @@
       <li><a href="#data">Your data and backups</a></li>
       <li><a href="#keys">Keyboard shortcuts</a></li>
       <li><a href="#trouble">Troubleshooting</a></li>
+      <li><a href="#feedback">Feedback</a></li>
     </ol>
    </details>
   </aside>
@@ -140,8 +141,10 @@
           <b>More info → Run anyway</b>.</td></tr>
         <tr><th>Linux</th><td>Mark <code>BioManager-Linux.AppImage</code> executable (right-click → Properties, or <code>chmod +x</code>) and open it.</td></tr>
         <tr><th>Updates</th><td>The desktop app checks for a new version once a day and offers it, with what's new; <b>BioManager →
-          Check for Updates…</b> (on Windows and Linux, <b>Help</b>) asks now. <b>Download</b> gets the file for your computer; install it
-          as above. Your data stays where it is. Turn the daily check off with <b>Check for Updates Automatically</b>.</td></tr>
+          Check for Updates…</b> (on Windows and Linux, <b>Help</b>) asks now. <b>Install and Restart</b> downloads it, checks it, and
+          swaps it in as the app quits; where it can't (the Linux <code>.tar.gz</code>, a folder it can't write to), it opens the download
+          to install as above. Your data stays where it is, and before a new version changes it a copy is kept
+          (<a href="#data">Your data</a>). Turn the daily check off with <b>Check for Updates Automatically</b>.</td></tr>
         <tr><th>A lab server</th><td>Nothing to install: open the address your admin gives you. A welcome page shows what
           BioManager does and leads to <b>Sign in</b> or <b>Create an account</b>. Setting one up is on
           <a href="server.html">Run it for your lab</a>.</td></tr>
@@ -262,6 +265,10 @@
           <b>Board</b>, a column per status: drag a card along.</dd>
         <dt>Suggestions</dt>
         <dd>Text columns suggest what's been typed before, so the lab spells a vendor or a unit one way.</dd>
+        <dt>What ended long ago</dt>
+        <dd>Mice that died, cages emptied, tubes used up and vials discarded over 90 days ago aren't listed, so a colony with years of
+          history opens quickly. A line at the top says how many; <b>Show them</b> lists everything. Search still finds them, and the
+          mouse export includes them.</dd>
       </dl>
     </section>
 
@@ -491,7 +498,8 @@
       <h3>At the bench, and afterwards</h3>
       <ul>
         <li><b>Bench mode</b> (scan its QR code with a phone): pick what you are doing, then one animal at a time with big numbers —
-          type each weight or count, or give each today's manipulation and tap <b>Given ✓</b>; record it at the end.</li>
+          type each weight or count, or give each today's manipulation and tap <b>Given ✓</b>; record it at the end. <b>Scan a card</b> reads a
+          cage, tank or vial card with the phone's camera and jumps to the animal in it.</li>
         <li><b>Export</b> downloads an Excel workbook: the readout, long (for Prism or R) and wide, each animal's manipulations, and
           the tests by day.</li>
         <li><b>Add to notebook</b> makes your notebook page for the experiment, with a live view of its manipulations and readout
@@ -616,6 +624,12 @@
           for dilution, molarity, master mix, serial dilution, ligation, cells, gels and DNA/RNA. Durations in a step get a
           <b>⏱</b> timer.</li>
       </ul>
+      <h3 id="signing">Signing a page</h3>
+      <p>When a page should be the record of your work, <b>Sign</b> it — your choice, page by page; nothing asks you to. You confirm who
+        you are (your password, or your user name if you sign in with Google or Microsoft) and what signing means. Its exact text is
+        fingerprinted and kept as a version, any live experiment in it is frozen as it is then, and the page is locked: nobody can change
+        or delete it. A lab mate can <b>Witness</b> it. To change it, its owner <b>Amends</b> it with a reason; the reason and every
+        signature stay with the page, each showing whether the page still reads as it did when signed.</p>
       <h3>Working together</h3>
       <p>Share a page to read or edit; editors type in it at the same time. Comments on a passage, with <code>@name</code> telling that
         person (switch these notices off under <b>Settings → Notifications</b>). <b>Version history</b> keeps every editing session to
@@ -637,6 +651,9 @@
         <li><b>Everyone sees the lab's databases</b>, because a census with holes is not a census.</li>
         <li><b>Personal databases</b> (<i>Just you</i> on their tile) are seen only by their owner and admins.</li>
         <li><b>Admins</b> can change anything, run Lab setup, approve people, and read the audit log.</li>
+        <li><b>Animal care</b> (technicians, vets; a role in <b>Manage users</b>) may change any lab's animals, cages, tanks and vials, but
+          not experiments, notebooks or settings. A <b>Facility manager</b> also runs the racks, rooms, incubators, water systems and each
+          database's settings, but not accounts.</li>
         <li><b>Racks &amp; boxes</b> (admins, in the account menu) says who may resize, rename or delete each rack, box and incubator,
           in every database — fish racks and the racks of your own databases too. One with nobody is for admins only.</li>
       </ul>
@@ -647,7 +664,8 @@
       <h2>People and guests</h2>
       <dl class="gdl">
         <dt>Joining</dt><dd>New sign-ups wait for an admin's approval in <b>Manage users</b>. Members can also sign in with Google or
-          Microsoft if the server offers it, and connect it under <b>Settings → Sign-in methods</b>.</dd>
+          Microsoft, or with the institution's own account, if the server offers it, and connect it under <b>Settings → Sign-in
+          methods</b> (<a href="server.html#sign-in">setting it up</a>).</dd>
         <dt>Admins</dt><dd><b>Manage users</b> promotes and demotes admins, disables accounts and resets passwords; <b>Lab setup</b> can also
           make someone admin. Keep at least two.</dd>
         <dt>Leaving</dt><dd><b>Overview</b> in the sidebar (admins) lists every cage by who manages it, idle cages and living mice without a cage; hand racks over in
@@ -683,7 +701,14 @@
         <dt>iPhone and iPad</dt><dd>Open the server in <b>Safari</b> and tap <b>Share → Add to Home Screen</b>. BioManager gets its own icon
           and opens full screen like an app; your camera scans cage cards. (Android without the app: Chrome → <b>⋮ → Install app</b>.)</dd>
         <dt id="cards">Cage cards</dt><dd><b>Cages → Cage cards</b> prints cards sized for standard card stock — owner, purpose, where it goes (rack and
-          position), animals with how many of each sex, genotype and a QR code. Scanning it opens that cage, ready to edit, at the rack.</dd>
+          position), animals with how many of each sex, genotype and a QR code. Scanning it opens that cage, ready to edit, at the rack.
+          <b>Tank labels</b> (Zebrafish), <b>Labels</b> on a fly or worm database, and <b>Labels</b> on ticked samples, reagents or any
+          inventory's rows do the same for tanks, vials and tubes.</dd>
+        <dt id="label-printers">Label printers</dt><dd><b>Print on</b> chooses a sheet of cards for any printer, or a label printer's
+          roll: Brother QL (62 × 29, 90 × 29, 100 × 62 mm), Zebra (2 × 1, 3 × 1, 4 × 2, 4 × 2.5 in) or cryo-tube labels. It then prints one
+          label a page, typed to fit; in the print dialog pick the label printer and that label size, margins <b>None</b>. Your choice is
+          remembered. For a Zebra, <b>Download for Zebra (.zpl)</b> gives the labels in its own language; or an admin adds the Zebra's
+          address on the lab's network once (under <b>Send labels straight to a Zebra</b>), and <b>Send to Zebra</b> prints them at once.</dd>
       </dl>
       <div class="note">Phones reach a <b>server</b>, not the desktop app: the app on one computer is private to that computer.</div>
       <figure class="gshot gshot-phone"><a href="assets/screenshots/phone-cage.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/phone-cage.webp" alt="A cage opened on a phone after scanning its card" loading="lazy" width="780" height="1333"></a><figcaption>A cage opened on a phone after scanning its card</figcaption></figure>
@@ -703,6 +728,8 @@
       </table>
       <ul>
         <li>Your data lives outside the app, so updating or reinstalling never touches it.</li>
+        <li>Before a new version changes the database an older one made, it copies it to <code>backups/before-upgrade-….db</code> in
+          that folder (the last ten are kept). Every release is tested opening a lab made by each earlier release, with nothing lost.</li>
         <li>Back that folder up with Time Machine or File History, copying it while BioManager is closed.</li>
       </ul>
       <div class="note warn"><b>Don't keep BioManager's data in Dropbox, OneDrive, Google Drive or iCloud Drive.</b> Syncing corrupts
@@ -773,9 +800,20 @@
           they and admins see, or an admin may have switched it off.</dd>
         <dt>A database disappeared from the sidebar</dt><dd>An admin may have switched it off in <b>Setup</b>; its data is kept, and it
           comes back when it is switched on.</dd>
-        <dt>Something else</dt><dd><a href="https://github.com/gaspolymerase/biomanager-app/issues">Open an issue</a> — say which system you use
-          and what you expected to happen.</dd>
+        <dt>Something else</dt><dd><b>Feedback</b> in the sidebar (see below), or <a href="https://github.com/gaspolymerase/biomanager-app/issues">open an issue</a> —
+          say which system you use and what you expected to happen.</dd>
       </dl>
+    </section>
+
+    <section id="feedback">
+      <h2>Feedback</h2>
+      <p><b>Feedback</b>, under Help in the sidebar, is for something that went wrong, an idea or a question, from the page you're on.
+        It is kept in your lab: its admins are told, read it on the same page and mark it <b>Done</b>. To tell BioManager's makers too,
+        <b>Open as a GitHub issue</b>: a new issue opens with your text, the page, the version and the browser filled in (not your server's
+        address, nor your name), for you to check and submit. You need a GitHub account.</p>
+      <p>Admins also find a <b>Usage report</b> there: for each of the last eight weeks, how many people changed something and how many
+        changes in each area, and what the lab holds now. Counts only — no names, nothing anyone wrote — and nothing is sent anywhere: copy
+        the text at the bottom into an email, for instance to whoever runs a pilot with your lab.</p>
     </section>
   </main>
 </div>
