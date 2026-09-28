@@ -39,10 +39,40 @@ for _ in 1 2 3; do
   if wait_for MainActivity; then connected=1; break; fi
 done
 [ -n "$connected" ] || { shot 2-connected; echo "did not reach the main screen"; exit 1; }
-for _ in $(seq 30); do grep -q "GET /login" "$SERVER_LOG" && break; sleep 2; done
-sleep 5
+# Tap the on-screen element whose text (or description) is exactly $1: its
+# place comes from the accessibility tree, which includes the WebView's links.
+tap_text() {
+  for _ in $(seq 10); do
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
+    xy=$(adb exec-out cat /sdcard/ui.xml 2>/dev/null | python3 -c '
+import re, sys
+want = sys.argv[1]
+for node in re.findall(r"<node [^>]*>", sys.stdin.read()):
+    text = re.search(r"text=\"([^\"]*)\"", node)
+    desc = re.search(r"content-desc=\"([^\"]*)\"", node)
+    if want in ((text.group(1) if text else "").strip(), (desc.group(1) if desc else "").strip()):
+        x1, y1, x2, y2 = map(int, re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", node).groups())
+        print((x1 + x2) // 2, (y1 + y2) // 2)
+        break
+' "$1")
+    [ -n "$xy" ] && { adb shell input tap $xy; return 0; }
+    sleep 2
+  done
+  return 1
+}
+# Signed out, the app opens the lab's welcome page; its Sign in button leads
+# to the sign-in form. (An older server went straight to /login.)
+for _ in $(seq 30); do grep -q "GET / \|GET /login" "$SERVER_LOG" && break; sleep 2; done
+sleep 3
 shot 2-connected
-grep -q "GET /login" "$SERVER_LOG" || { echo "the server never saw the app"; cat "$SERVER_LOG"; exit 1; }
+grep -q "GET / \|GET /login" "$SERVER_LOG" || { echo "the server never saw the app"; cat "$SERVER_LOG"; exit 1; }
+if ! grep -q "GET /login" "$SERVER_LOG"; then
+  tap_text "Sign in" || { shot 2b-welcome; echo "no Sign in button on the welcome page"; exit 1; }
+  for _ in $(seq 15); do grep -q "GET /login" "$SERVER_LOG" && break; sleep 2; done
+  sleep 3
+  shot 2b-sign-in
+  grep -q "GET /login" "$SERVER_LOG" || { echo "Sign in did not open the sign-in page"; exit 1; }
+fi
 # Sign in to the demo lab (its throwaway account from scripts/demo-data.py).
 # The username field has focus on the sign-in page.
 adb shell input text "alex"
