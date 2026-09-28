@@ -445,6 +445,8 @@ stock**, and statuses and categories can be renamed without losing items.
       Admins find a <b>Usage report</b> on the Feedback page: for each of
       the last eight weeks, how many people changed something and how many
       changes in each area — counts only, no names — to copy into an email.
+      It also shows, word for word, the anonymous counts BioManager sends
+      its makers once a day, with <b>Switch off</b>.
     </td>
   </tr>
 </table>
@@ -828,8 +830,20 @@ track.
 - Passwords are at least 12 characters, repeated failed sign-ins are
   locked out, and changing a password signs out every other session.
 - **Your data stays with you** — on your computer or your lab's server.
-  Nothing is sent anywhere unless you connect Google Calendar, Google or
+  None of it is sent anywhere unless you connect Google Calendar, Google or
   Microsoft sign-in, or reminder emails, or a tool you gave a token asks.
+- **Anonymous counts, once a day.** So BioManager's makers know how many
+  labs use it, each installation sends one short message a day: the
+  version, desktop app or server, the operating system and database, how
+  many members and how many were active this week (as ranges: 1, 2–5,
+  6–15, 16–50, 51+), which built-in functions are on and how many databases
+  of each kind, and a random id for the installation. Never names, email
+  addresses, anything anyone wrote, what your databases are called, or the
+  computer's name or address. It goes to PostHog, which is asked not to
+  work out where it came from. The admin chooses in the setup survey, and
+  the **Usage report** (Feedback → Usage report) shows exactly what is sent
+  and has **Switch off**. On a server, `BIOMANAGER_TELEMETRY=0` or
+  `DO_NOT_TRACK=1` turns it off for good.
 
 ## 💾 Your data and backups
 

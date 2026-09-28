@@ -22,7 +22,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
                    session, url_for)
 from sqlalchemy import select
 
-from . import lab, notify
+from . import lab, notify, telemetry
 from .db import SessionLocal
 from .models import NotificationRecord, UserAccount
 from .services import WEAN_OFFSET_DAYS
@@ -128,6 +128,9 @@ def setup():
                 flash(f"“{zone}” is not a time zone BioManager knows; the time zone was left as it was. "
                       "Pick one from the list, such as America/New_York.", "error")
             switched_on = lab.apply_survey(db_session, request.form, g.user.username)
+            if first_run and not telemetry.off_by_env():
+                # The first survey asks about the anonymous daily counts; afterwards it's on the Usage report.
+                telemetry.set_lab_on(db_session, request.form.get("heartbeat") == "1")
             if switched_on and not first_run:
                 notify.tell_lab(db_session, g.user.username,
                                 f"{g.user.display_name or g.user.username} added "
@@ -157,7 +160,8 @@ def setup():
             admins=[{"id": a.id, "username": a.username, "name": a.display_name or a.username} for a in admins],
             members=[{"id": m.id, "username": m.username, "name": m.display_name or m.username} for m in members],
             date_styles=lab.DATE_STYLES, timezones=lab.timezone_names(), server_timezone=lab.server_timezone(),
-            local_setup=bool(current_app.config.get("LOCAL_SETUP")), wean_offset_days=WEAN_OFFSET_DAYS)
+            local_setup=bool(current_app.config.get("LOCAL_SETUP")), wean_offset_days=WEAN_OFFSET_DAYS,
+            heartbeat_off_by_server=telemetry.off_by_env())
 
 
 # ---------------------------------------------------------------- welcome tour
