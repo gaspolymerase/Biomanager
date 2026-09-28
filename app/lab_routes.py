@@ -97,8 +97,11 @@ def remind_once_a_day():
     session["reminded_on"] = today
     with SessionLocal() as db_session:
         fresh = db_session.get(UserAccount, user.id)
-        if fresh is not None and notify.daily_genotyping_reminder(db_session, fresh):
-            db_session.commit()
+        if fresh is not None:
+            reminded = notify.daily_genotyping_reminder(db_session, fresh)
+            reminded = notify.daily_experiment_reminder(db_session, fresh) or reminded
+            if reminded:
+                db_session.commit()
     return None
 
 

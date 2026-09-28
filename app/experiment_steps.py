@@ -33,7 +33,7 @@ from sqlalchemy import select
 from . import access, lab
 from . import experiments as ex
 from .db import SessionLocal
-from .models import Experiment, ExperimentStep, ExperimentStepRecord
+from .models import Experiment, ExperimentRegimen, ExperimentStep, ExperimentStepRecord, InventoryItem
 
 bp = Blueprint("expsteps", __name__, url_prefix="/colony/experiments")
 
@@ -206,17 +206,39 @@ def _record_dict(r: ExperimentStepRecord) -> dict:
         if not e.get("subject") and e.get("mouse"):
             e = {**e, "subject": f"mouse:{e['mouse']}", "label": e.get("label") or f"#{e.get('mouse_id', '')}"}
         subjects.append(e)
+    def load(raw, empty):
+        try:
+            value = json.loads(raw or "")
+        except ValueError:
+            return empty
+        return value if isinstance(value, type(empty)) else empty
     return {"id": r.id, "done_on": r.done_on.isoformat(), "done_by": r.done_by, "note": r.note,
-            "mice": subjects, "subjects": subjects, "count": len(subjects)}
+            "mice": subjects, "subjects": subjects, "count": len(subjects),
+            "reagent": load(r.reagent, {}), "samples": load(r.samples, [])}
 
 
-def step_dict(step: ExperimentStep, family: str = "mouse") -> dict:
+def step_dict(step: ExperimentStep, family: str = "mouse", session=None) -> dict:
     label, icon = ex.kind_info(family, step.kind)
+    reagent = reagent_snapshot(session, step.reagent_item_id_fk) if session is not None and step.reagent_item_id_fk else {}
     return {"id": step.id, "days": step.days, "days_label": days_label(safe_days(step)) or step.days,
             "kind": "reading" if step.kind == "weigh" else step.kind, "kind_label": label, "icon": icon,
             "agent": step.agent, "dose": step.dose, "route": step.route, "concentration": step.concentration,
             "group": step.treatment_group, "notes": step.notes, "per_weight": per_weight(step.dose),
-            "reading": ex.is_reading(step.kind)}
+            "reading": ex.is_reading(step.kind), "reagent_id": step.reagent_item_id_fk, "reagent": reagent}
+
+
+def reagent_snapshot(session, item_id) -> dict:
+    """An inventory item as a manipulation keeps it: name, lot, expiry."""
+    if not item_id:
+        return {}
+    item = session.get(InventoryItem, int(item_id))
+    if item is None:
+        return {}
+    from .models import InventoryModule
+    module = session.get(InventoryModule, item.module_id_fk)
+    return {"id": item.id, "name": item.name or "", "lot": item.lot or "",
+            "expires": item.expires_on.isoformat() if item.expires_on else "",
+            "inventory": module.label if module else ""}
 
 
 def step_title(step: ExperimentStep, family: str = "mouse", readout: dict | None = None) -> str:
@@ -386,6 +408,9 @@ def _fill_step(session, exp, place, data, days, step=None):
     step.concentration = str(data.get("concentration") or "").strip()[:60]
     step.treatment_group = str(data.get("group") or "").strip()[:80]
     step.notes = str(data.get("notes") or "").strip()
+    if "reagent_id" in data:
+        raw = str(data.get("reagent_id") or "")
+        step.reagent_item_id_fk = int(raw) if raw.isdigit() and session.get(InventoryItem, int(raw)) else None
     exp.updated_at = datetime.utcnow()
     session.flush()
     return step, None
@@ -503,8 +528,71 @@ def _record(session, exp, place, step, day, data):
     record.done_on, record.done_by = on, g.user.username
     record.mice = json.dumps(_entries(session, exp, place, step, chosen, on))
     record.note = str(data.get("note") or "").strip()
+    # The reagent used: the plan's, or the one picked at the bench.
+    reagent_id = data.get("reagent_id", step.reagent_item_id_fk)
+    snapshot = reagent_snapshot(session, reagent_id) if str(reagent_id or "").isdigit() else {}
+    record.reagent = json.dumps(snapshot) if snapshot else ""
+    if snapshot.get("expires") and snapshot["expires"] < on.isoformat():
+        problems.append(f"{snapshot['name']}{' lot ' + snapshot['lot'] if snapshot.get('lot') else ''} "
+                        f"expired on {snapshot['expires']}.")
+    # Sample records, only when the person asked for them.
+    if data.get("make_samples") and not _record_dict(record)["samples"]:
+        made, trouble = make_samples(session, exp, place, step, day, chosen, on, str(data.get("sample_inventory") or ""),
+                                     str(data.get("sample_name") or ""))
+        record.samples = json.dumps(made) if made else ""
+        problems += trouble
     exp.updated_at = datetime.utcnow()
     return problems, None
+
+
+def make_samples(session, exp, place, step, day, chosen, on: date, inventory_key: str, name: str):
+    """One sample record per animal in the inventory chosen, its Source
+    the animal: through the inventory's own save code, so its required
+    columns and permissions hold."""
+    from . import inventory_service as inv
+    from .inventory_routes import Refused, _item_from_form
+    module = inv.get_module(session, inventory_key)
+    if module is None or not lab.can_see(module):
+        return [], ["There is no such inventory for the samples."]
+    mv = inv.view(module)
+    source = next((f for f in mv.fields if f["type"] == "source"), None)
+    dated = next((f for f in mv.fields if f["type"] == "date" and f["key"] in ("collected_on", "collected", "date")), None)
+    what = (name or step.agent or ex.kind_info(place.family, step.kind)[0]).strip()
+    made, trouble = [], []
+    for x in chosen:
+        item = InventoryItem(module_id_fk=module.id, number=inv.next_number(session, module.id), owner=g.user.username,
+                             status=mv.statuses[0] if mv.statuses else "")
+        session.add(item)
+        session.flush()
+        form = {"name": f"{what} · {x.label} · day {day}"[:200], "owner": g.user.username,
+                "notes": f"From the experiment {exp.name}, day {day} ({on.isoformat()})."}
+        if source:
+            kind, ref = _source_of(place, x)
+            form[f"attr_{source['key']}_kind"], form[f"attr_{source['key']}_ref"] = kind, ref
+        if dated:
+            form[f"attr_{dated['key']}"] = on.isoformat()
+        savepoint = session.begin_nested()
+        try:
+            _item_from_form(session, mv, item, form, creating=True)
+            savepoint.commit()
+            made.append({"id": item.id, "number": item.number, "name": item.name, "inventory": mv.label,
+                         "key": module.key})
+        except Refused as error:
+            savepoint.rollback()
+            session.delete(item)
+            trouble.append(f"No sample for {x.label}: {error}")
+            break
+    return made, trouble
+
+
+def _source_of(place, x) -> tuple[str, str]:
+    if x.kind == "mouse":
+        return "mouse", str(x.record.mouse_id)
+    if x.kind in ("fish", "clutch"):
+        return "fish", x.housing or x.label
+    if x.kind in ("organism", "cohort"):
+        return f"organism:{place.module.key}", x.label
+    return "other", f"{place.label} {x.label}"
 
 
 @bp.post("/<int:experiment_id>/steps/<int:step_id>/day/<int(signed=True):day>/record")
@@ -623,6 +711,82 @@ def undo_day(experiment_id: int, step_id: int, day: int):
             ExperimentStepRecord.day == day))
         if record is not None:
             s.delete(record)
+            s.commit()
+        return _answer(s, exp, place)
+
+
+# ---------------------------------------------------------------- saved regimens
+
+def regimens_for(session, family: str) -> list[dict]:
+    """The lab's saved regimens for this kind of animal."""
+    me = g.user.username if g.get("user") else ""
+    out = []
+    for r in session.scalars(select(ExperimentRegimen).where(ExperimentRegimen.family == family)
+                             .order_by(ExperimentRegimen.name)):
+        try:
+            steps = json.loads(r.steps or "[]")
+        except ValueError:
+            steps = []
+        out.append({"id": r.id, "name": r.name, "owner": r.owner, "steps": steps,
+                    "summary": "; ".join(f"day {st.get('days')}: {st.get('agent') or ex.kind_info(family, st.get('kind') or '')[0]}"
+                                         for st in steps[:4]),
+                    "mine": r.owner == me or access.is_admin()})
+    return out
+
+
+@bp.post("/<int:experiment_id>/regimens/save")
+def save_regimen(experiment_id: int):
+    """Keep this experiment's regimen, to start the next one from."""
+    data = _json()
+    with SessionLocal() as s:
+        exp, place = _load(s, experiment_id)
+        name = str(data.get("name") or "").strip()[:200]
+        if not name:
+            return jsonify({"ok": False, "error": "Give the regimen a name."}), 400
+        if not exp.steps:
+            return jsonify({"ok": False, "error": "This experiment has nothing planned to save yet."}), 400
+        steps = [{"kind": st.kind, "agent": st.agent, "dose": st.dose, "route": st.route,
+                  "concentration": st.concentration, "days": st.days, "group": st.treatment_group, "notes": st.notes,
+                  "reagent_id": st.reagent_item_id_fk} for st in exp.steps]
+        s.add(ExperimentRegimen(name=name, family=place.family, steps=json.dumps(steps), owner=g.user.username))
+        s.commit()
+        return _answer(s, exp, place, message=f"Saved the regimen {name}.")
+
+
+@bp.post("/<int:experiment_id>/regimens/<int:regimen_id>/apply")
+def apply_regimen(experiment_id: int, regimen_id: int):
+    """Plan a saved regimen's days in this experiment. Nothing is done yet:
+    each day is recorded as it happens."""
+    with SessionLocal() as s:
+        exp, place = _load(s, experiment_id)
+        refused = ex._refuse(exp)
+        if refused:
+            return refused
+        regimen = s.get(ExperimentRegimen, regimen_id)
+        if regimen is None:
+            return jsonify({"ok": False, "error": "That regimen is gone."}), 404
+        added = 0
+        for st in json.loads(regimen.steps or "[]"):
+            try:
+                days = parse_days(str(st.get("days") or ""))
+            except ValueError:
+                continue
+            step, error = _fill_step(s, exp, place, {**st, "id": 0}, days)
+            if error is None:
+                added += 1
+        s.commit()
+        return _answer(s, exp, place, message=f"Planned {added} line{'s' if added != 1 else ''} from {regimen.name}.")
+
+
+@bp.post("/<int:experiment_id>/regimens/<int:regimen_id>/delete")
+def delete_regimen(experiment_id: int, regimen_id: int):
+    with SessionLocal() as s:
+        exp, place = _load(s, experiment_id)
+        regimen = s.get(ExperimentRegimen, regimen_id)
+        if regimen is not None:
+            if regimen.owner != g.user.username and not access.is_admin():
+                return jsonify({"ok": False, "error": f"That regimen is {regimen.owner}’s."}), 403
+            s.delete(regimen)
             s.commit()
         return _answer(s, exp, place)
 

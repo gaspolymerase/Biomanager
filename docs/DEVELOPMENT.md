@@ -306,10 +306,21 @@ animals the same shape whatever they are. One page serves them all:
 | --- | --- |
 | `experiment_subjects` | the animals of an experiment that isn't the colony's: a fish row, a vial or plate, an organism; its treatment group and how many there were at the start |
 | `experiment_readings` | one readout per animal, readout and day (a mouse's body weight is a `mouse_weights` row instead) |
+| `experiment_regimens` | saved regimens: an experiment's lines and days, per kind of animal, to plan the next one from (planning never records anything done) |
 | `experiment_steps` | an experiment's manipulations: days (`"2–5"`, day 1 = the start date), kind, agent, dose, route, concentration, treatment group |
 | `experiment_step_records` | one per step and day done: date, who, and per mouse the weight used and the amount and volume given (`mice`, JSON) |
 
-A `reading` step (`weigh` in the first version) writes the readout when recorded. Undone days are
+A `reading` step (`weigh` in the first version) writes the readout when recorded.
+A step may name the inventory item it uses (`reagent_item_id_fk`); a record
+keeps that item as it was then (`reagent`: name, lot, expiry) and any sample
+records the person chose to make with it (`samples`), made through
+`inventory_routes._item_from_form` with the animal as their Source. Subjects
+are `mouse`, `fish`, `clutch`, `unit`, `organism` or `cohort`.
+`exp_stats.py` compares the groups on each day (Welch, ANOVA, χ²);
+`/experiments/<id>/export.xlsx` and bench mode (`/experiments/<id>/bench`,
+`static/experiment-bench.js`) are in `experiments.py`. The owner's
+morning notification of what is due is `notify.daily_experiment_reminder`
+(category `experiments`, `users.notify_experiments`). Undone days are
 `auto` items on the calendar (`experiment_steps.calendar_items`). Which
 notebook page is a person's for an experiment is the app setting
 `experiment_notebook_page:<experiment>:<username>`.

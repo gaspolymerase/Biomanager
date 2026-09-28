@@ -89,9 +89,12 @@
       <button type="button" class="dt-chip" role="tab" data-xp-view="readout" aria-pressed="false">{{ icon('chart') }} <span data-xp-readout-label>{{ readout.label }}</span></button>
     </div>
     <div class="dt-toolbar-spacer"></div>
+    <a class="dt-toolbar-btn" href="{{ url_for('experiments.export', experiment_id=experiment.id, fmt='xlsx') }}" download
+       title="An Excel workbook: the readout (long, for Prism or R, and wide), each animal's manipulations, and the tests by day">{{ icon('download') }} Export</a>
+    <button type="button" class="dt-toolbar-btn" data-xp-open="bench" title="One animal at a time, on a phone at the bench">{{ icon('qrcode') }} Bench mode</button>
     {% if experiment.editable %}
       <button type="button" class="dt-toolbar-btn" data-xp-open="add">{{ icon('plus') }} Add {{ place.nouns }}</button>
-      <button type="button" class="dt-toolbar-btn" data-xp-open="plan">{{ icon('calendar') }} Plan</button>
+      <button type="button" class="dt-toolbar-btn" data-xp-open="plan" title="What is to be done, and on which days">{{ icon('calendar') }} Regimen</button>
       <button type="button" class="dt-toolbar-btn" data-xp-open="reading">{{ icon('chart') }} <span data-xp-reading-verb>{{ readout.verb }}</span></button>
       <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]" data-xp-open="record">{{ icon('syringe') }} Record manipulation</button>
     {% endif %}
@@ -110,11 +113,15 @@
     </div>
   </header>
   <div class="xp-chart" data-xp-chart></div>
+  <details class="xp-stats" data-xp-stats hidden>
+    <summary>Tests by day <span class="xp-muted">(each day on its own, not corrected for the number of days)</span></summary>
+    <div class="table-wrap" data-xp-stats-table></div>
+  </details>
 </section>
 
 {# 4 · The plan, day by day (the calendar links here) #}
 <section class="panel xp-days-card">
-  <h2>Day by day <span class="xp-muted" data-xp-days-count></span></h2>
+  <h2>Regimen, day by day <span class="xp-muted" data-xp-days-count></span></h2>
   <ol class="xp-days" data-xp-days></ol>
 </section>
 
@@ -149,12 +156,14 @@
 {# The plan #}
 <dialog class="xp-dialog xp-dialog-wide" id="xp-plan" aria-labelledby="xp-plan-title">
   <form method="dialog" class="xp-form" data-xp-form="plan">
-    <header class="xp-dialog-head"><div><h3 id="xp-plan-title">Plan</h3>
-      <p class="xp-sub">What is to be done, and on which days. Day 1 is the start date.</p></div>
+    <header class="xp-dialog-head"><div><h3 id="xp-plan-title">Regimen</h3>
+      <p class="xp-sub">What is to be done, and on which days (day 1 is the start date). The days show on the calendar and in
+        your notifications; each is still recorded here as it is done.</p></div>
       <button type="button" class="csv-modal-close" data-xp-close aria-label="Close">×</button></header>
     <div class="xp-dialog-body">
+      <div class="xp-regimens" data-xp-regimens></div>
       <div class="table-wrap" data-xp-plan-list></div>
-      <h4 class="xp-h4" data-xp-plan-form-title>Add to the plan</h4>
+      <h4 class="xp-h4" data-xp-plan-form-title>Add to the regimen</h4>
       <div class="xp-grid" data-xp-step-fields>
         <input type="hidden" name="id">
         <label>Kind <select name="kind" data-xp-kinds></select></label>
@@ -164,13 +173,15 @@
         <label>Route <input name="route" list="xp-routes" autocomplete="off"></label>
         <label>Solution <input name="concentration" placeholder="10 mg/mL: gives each volume" autocomplete="off"></label>
         <label>Group <select name="group" data-xp-group-select></select></label>
+        <label class="xp-wide">Reagent <select name="reagent_id" data-xp-reagents></select></label>
         <label class="xp-wide">Notes <input name="notes" placeholder="Vehicle, volume, what to watch for" autocomplete="off"></label>
       </div>
       <p class="xp-error" data-xp-error hidden></p>
     </div>
-    <footer class="csv-modal-foot"><button type="button" class="dt-bottom-action" data-xp-plan-new hidden>New line</button><span class="xp-spacer"></span>
+    <footer class="csv-modal-foot"><button type="button" class="dt-bottom-action" data-xp-plan-new hidden>New line</button>
+      <button type="button" class="dt-bottom-action" data-xp-regimen-save title="Keep these lines to start the next experiment from">Save as a regimen…</button><span class="xp-spacer"></span>
       <button type="button" class="dt-bottom-action" data-xp-close>Done</button>
-      <button type="submit" class="dt-bottom-action is-primary" data-xp-plan-save>Add to the plan</button></footer>
+      <button type="submit" class="dt-bottom-action is-primary" data-xp-plan-save>Add to the regimen</button></footer>
   </form>
 </dialog>
 
@@ -196,6 +207,17 @@
         <p class="xp-sub" data-xp-dose-note></p>
       </div>
       <div class="table-wrap"><table class="dense-table fit-table xp-animals"><thead data-xp-animals-head></thead><tbody data-xp-animals></tbody></table></div>
+      <div class="xp-grid">
+        <label class="xp-wide">Reagent used <select name="reagent_id" data-xp-reagents></select></label>
+      </div>
+      <div class="xp-samples" data-xp-samples hidden>
+        <label class="xp-check"><input type="checkbox" name="make_samples"> Make a sample record for each one ticked</label>
+        <div class="xp-grid" data-xp-sample-fields hidden>
+          <label>In <select name="sample_inventory" data-xp-sample-inventories></select></label>
+          <label class="xp-span2">Named <input name="sample_name" placeholder="Serum, lung, BAL fluid… (then the animal and the day)" autocomplete="off"></label>
+        </div>
+        <p class="xp-sub" data-xp-samples-made></p>
+      </div>
       <label class="xp-wide">Note <textarea name="note" rows="2" placeholder="Anything that differed: one missed, a leak, a reaction"></textarea></label>
       <p class="xp-error" data-xp-error hidden></p>
     </div>
@@ -222,6 +244,22 @@
   </form>
 </dialog>
 {% endif %}
+
+{# Bench mode on a phone #}
+<dialog class="xp-dialog" id="xp-bench" aria-labelledby="xp-bench-title">
+  <form method="dialog" class="xp-form">
+    <header class="xp-dialog-head"><div><h3 id="xp-bench-title">Bench mode</h3>
+      <p class="xp-sub">One {{ place.noun }} at a time with big numbers: {{ readout.verb|lower }} each, or give each today's
+        manipulation and tick it. Scan this with a phone that can reach this BioManager, or open it here.</p></div>
+      <button type="button" class="csv-modal-close" data-xp-close aria-label="Close">×</button></header>
+    <div class="xp-dialog-body xp-bench-qr">
+      <img src="{{ url_for('experiments.bench_qr', experiment_id=experiment.id) }}" alt="A QR code that opens bench mode" width="200" height="200" loading="lazy">
+    </div>
+    <footer class="csv-modal-foot"><span class="xp-spacer"></span>
+      <button type="button" class="dt-bottom-action" data-xp-close>Close</button>
+      <a class="dt-bottom-action is-primary" href="{{ url_for('experiments.bench', experiment_id=experiment.id) }}">Open here</a></footer>
+  </form>
+</dialog>
 
 <datalist id="xp-routes">
   {% for r in ['i.p.', 's.c.', 'i.v.', 'intranasal', 'oral gavage', 'in drinking water', 'in food', 'topical', 'i.m.', 'intratracheal', 'bath immersion', 'microinjection', 'on the plate', 'in the food'] %}<option value="{{ r }}">{% endfor %}

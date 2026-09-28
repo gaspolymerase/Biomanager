@@ -37,6 +37,7 @@ CATEGORIES = {
     "orders": ("Orders", "Your orders placed, received or cancelled"),
     "lab": ("Lab news", "Databases or functions added for the lab"),
     "notebook": ("Notebook", "Pages shared with you, comments and @mentions, meeting notes and action items"),
+    "experiments": ("Experiments", "Once a day: manipulations and readouts due in your experiments"),
 }
 MAX_LISTED = 5
 
@@ -439,4 +440,47 @@ def daily_genotyping_reminder(session, user) -> bool:
     session.add(NotificationRecord(recipient_username=user.username,
                                    title="Waiting for genotyping: " + " and ".join(parts),
                                    category="genotyping", link=link, actor=""))
+    return True
+
+
+def daily_experiment_reminder(session, user) -> bool:
+    """Once a day, the first time someone opens the app: the manipulations
+    and readout days due today (and any overdue) in their active
+    experiments. Silent when nothing is, or they turned it off. Each is
+    still recorded on the experiment's page."""
+    if not getattr(user, "notify_experiments", True):
+        return False
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    already = session.scalar(select(func.count(NotificationRecord.id)).where(
+        NotificationRecord.recipient_username == user.username, NotificationRecord.category == "experiments",
+        NotificationRecord.actor == "", NotificationRecord.created_at >= today_start))
+    if already:
+        return False
+    from . import experiment_steps as xs
+    from . import experiments as ex
+    from .models import Experiment
+    due, overdue, first = [], 0, None
+    for exp in session.scalars(select(Experiment).where(Experiment.owner_username == user.username,
+                                                        Experiment.status == "active",
+                                                        Experiment.start_date.is_not(None))):
+        if not exp.steps:
+            continue
+        place = ex.place_for(session, exp.db or "colony")
+        if place is None:
+            continue
+        for row in xs.schedule(session, exp, place):
+            if row["state"] == "today":
+                due.append(f"{row['title']} ({exp.name}, day {row['day']})")
+                first = first or ex.page_url(exp) + f"#day-{row['day']}"
+            elif row["state"] == "overdue":
+                overdue += 1
+                first = first or ex.page_url(exp) + f"#day-{row['day']}"
+    if not due and not overdue:
+        return False
+    title = ("Due today: " + "; ".join(due[:3]) + (f" and {len(due) - 3} more" if len(due) > 3 else "")) if due \
+        else "Nothing due today in your experiments"
+    if overdue:
+        title += f" · {overdue} overdue, not recorded yet"
+    session.add(NotificationRecord(recipient_username=user.username, title=title[:200], category="experiments",
+                                   link=first or "", actor=""))
     return True

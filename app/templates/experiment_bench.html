@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{# Bench mode (app/experiments.py bench): one animal at a time, on a phone at the bench.
+   Drawn by static/experiment-bench.js from #xb-data. #}
+{% block page_title %}Bench · {{ data.name }}{% endblock %}
+{% block page_heading %}{{ data.name }}{% endblock %}
+{% block page_subtitle %}Bench mode · {{ place.label }} · {{ data.subjects|length }} {{ place.nouns }}{% endblock %}
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='experiment-page.css') }}?v={{ asset_version('experiment-page.css') }}">
+{% endblock %}
+{% block page_actions %}
+  <a class="btn" href="{{ page_url }}">{{ icon('back') }} The experiment</a>
+{% endblock %}
+{% block content %}
+<div class="xb" data-xb>
+  <section class="xb-pick" data-xb-pick></section>
+  <section class="xb-run" data-xb-run hidden>
+    <div class="xb-progress"><span data-xb-count></span><span class="xb-bar"><i data-xb-bar></i></span></div>
+    <div class="xb-card" data-xb-card></div>
+    <div class="xb-jump" data-xb-jump></div>
+  </section>
+  <section class="xb-done" data-xb-done hidden></section>
+</div>
+<script type="application/json" id="xb-data">{{ data | tojson }}</script>
+<script src="{{ url_for('static', filename='experiment-bench.js') }}?v={{ asset_version('experiment-bench.js') }}" defer></script>
+{% endblock %}

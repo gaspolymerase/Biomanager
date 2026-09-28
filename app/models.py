@@ -339,6 +339,7 @@ class UserAccount(Base):
     notify_lab: Mapped[bool] = mapped_column(Boolean, default=True)
     # Notebook pages shared with them, comments and @mentions, meeting notes and action items.
     notify_notebook: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_experiments: Mapped[bool] = mapped_column(Boolean, default=True)
     # When they finished (or skipped) the welcome tour; None shows it once.
     welcomed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # A temporary account (a guest pass, app/guests.py) stops working then.
@@ -657,6 +658,8 @@ class ExperimentStep(Base):
     concentration: Mapped[str] = mapped_column(String(60), default="")   # 10 mg/mL: gives the volume
     treatment_group: Mapped[str] = mapped_column(String(80), default="")  # blank: every mouse
     notes: Mapped[str] = mapped_column(Text, default="")
+    # The inventory item used (a reagent, its lot): offered when it is recorded.
+    reagent_item_id_fk: Mapped[int | None] = mapped_column(Integer, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -684,6 +687,10 @@ class ExperimentStepRecord(Base):
     # [{"mouse": row id, "mouse_id": 1042, "grams": 24.1, "amount": "0.48 mg", "volume": "48 µL"}]
     mice: Mapped[str] = mapped_column(Text, default="[]")
     note: Mapped[str] = mapped_column(Text, default="")
+    # What was used, as it was then: {"id", "name", "lot", "expires", "inventory"}.
+    reagent: Mapped[str] = mapped_column(Text, default="")
+    # Sample records made with it, if the person chose to: [{"id", "number", "name", "inventory"}].
+    samples: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     step: Mapped[ExperimentStep] = relationship(back_populates="records")
@@ -691,6 +698,20 @@ class ExperimentStepRecord(Base):
     @property
     def audit_label(self) -> str:
         return f"{self.step.agent or self.step.kind}, day {self.day}" if self.step else f"day {self.day}"
+
+
+class ExperimentRegimen(Base):
+    """A saved regimen: an experiment's manipulations and their days, kept
+    to start the next cohort from. Starting from one plans the days; each
+    is still recorded as it is done."""
+    __tablename__ = "experiment_regimens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    family: Mapped[str] = mapped_column(String(20), default="mouse", index=True)   # mouse | fish | fly | worm | organism
+    steps: Mapped[str] = mapped_column(Text, default="[]")    # [{"kind", "agent", "dose", "route", "concentration", "days", "group", "notes"}]
+    owner: Mapped[str] = mapped_column(String(80), default="", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class ExperimentMouse(Base):

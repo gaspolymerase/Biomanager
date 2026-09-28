@@ -173,6 +173,13 @@ def ensure_schema_updates() -> None:
                     "ALTER TABLE mice ADD COLUMN transgene_4 VARCHAR(200) DEFAULT ''",
                 ]
             )
+    if "experiment_steps" in table_columns and "reagent_item_id_fk" not in table_columns["experiment_steps"]:
+        alter_statements.append("ALTER TABLE experiment_steps ADD COLUMN reagent_item_id_fk INTEGER")
+    if "experiment_step_records" in table_columns and "reagent" not in table_columns["experiment_step_records"]:
+        alter_statements.extend([
+            "ALTER TABLE experiment_step_records ADD COLUMN reagent TEXT DEFAULT ''",
+            "ALTER TABLE experiment_step_records ADD COLUMN samples TEXT DEFAULT ''",
+        ])
     if "experiments" in table_columns and "db" not in table_columns["experiments"]:
         # Experiments on every database's animals, not only mice (app/experiments.py).
         alter_statements.extend([
@@ -223,7 +230,7 @@ def ensure_schema_updates() -> None:
             alter_statements.append("ALTER TABLE users ADD COLUMN notify_picked BOOLEAN DEFAULT TRUE")
         if "notify_breeder_aging" not in existing:
             alter_statements.append("ALTER TABLE users ADD COLUMN notify_breeder_aging BOOLEAN DEFAULT TRUE")
-        for column in ("notify_genotyping", "notify_orders", "notify_lab", "notify_notebook"):
+        for column in ("notify_genotyping", "notify_orders", "notify_lab", "notify_notebook", "notify_experiments"):
             if column not in existing:
                 alter_statements.append(f"ALTER TABLE users ADD COLUMN {column} BOOLEAN DEFAULT TRUE")
         if "welcomed_at" not in existing:

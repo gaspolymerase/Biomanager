@@ -107,12 +107,28 @@ The most complete module, built around how a mouse room actually works.
   typed in place); then the body weight over the days as a chart, the
   manipulation days dashed, each saying what was done when you point at
   it. **Record manipulation** records what you just did (Tamoxifen
-  20 mg/kg i.p. to the HDM group, today), or a day of the **Plan**
+  20 mg/kg i.p. to the HDM group, today), or a day of the **Regimen**
   (HDM 25 µg intranasal on days 2–5), with each mouse's dose worked out
   from its latest weight, and the volume given the solution's
-  concentration. Day 1 is the start date; the days still to do are on the
-  calendar. The readout can be body weight, tumour volume, a clinical
-  score, survival or your own.
+  concentration. Day 1 is the start date. The readout can be body weight,
+  tumour volume, a clinical score, survival or your own.
+  - **The regimen reminds you; you record it.** Days still to do are on
+    the calendar, and the experiment's owner gets a notification each
+    morning of what is due (Settings → Notifications → Experiments).
+    Nothing is marked done until someone records it. **Save as a
+    regimen…** keeps a regimen to start the next cohort from.
+  - **What was used**: pick the reagent from your inventories and its lot
+    is kept with the day (an expired lot is flagged). When a day is a
+    sampling, you can choose to **make a sample record for each mouse** in
+    Samples, its source that mouse.
+  - **Tests by day**: stars on the chart where the groups differ (Welch's
+    t-test for two groups, one-way ANOVA for more, χ² for survival
+    counts), with each test in a table below it.
+  - **Export** gives an Excel workbook: the readout (long, for Prism or R,
+    and wide), each animal's manipulations, and the tests.
+  - **Bench mode**, on a phone (scan its QR code): one animal at a time,
+    with big numbers: weigh or count each, or give each today's
+    manipulation and tick it.
 
 <table>
   <tr>
@@ -131,10 +147,10 @@ Lines, tanks, individual fish, clutches, matings (and returning the fish
 afterwards), water systems with water-quality logs, and a sac log. A tank
 can hold a group with a headcount, or resolve into named individuals.
 **Experiments** (beside the database's name) work as the mouse colony's
-do, with fish in mind: add a tank's fish rows at once, record drug in the
-water, microinjection, a heat shock or an injury, and follow survival (how
-many of those at the start are still alive), standard length or a
-phenotype.
+do, with fish in mind: add a tank's fish rows at once, or a clutch's
+larvae, record drug in the water, microinjection, a heat shock or an
+injury, and follow survival (how many of those at the start are still
+alive), standard length or a phenotype.
 
 ### 🪰 Drosophila and C. elegans
 
@@ -183,8 +199,9 @@ sheet, and describe your organism:
 - **Schedules** like "wean at P21", which can vary with rearing
   temperature.
 - **Your own columns** — text, numbers, dates, dropdowns, people or links.
-- **Experiments**, the same as the mouse colony's, on your animals or
-  groups, with body weight, length, survival or your own readout.
+- **Experiments**, the same as the mouse colony's, on your animals,
+  groups or cohorts, with body weight, length, survival or your own
+  readout.
 
 <p align="center">
   <img src="docs/screenshots/new-database.webp" alt="The Add database page with presets for flies, worms, inventories and organisms" width="100%">

@@ -193,3 +193,142 @@ class Notebook(Base):
         r = self.a.post(f"/colony/experiments/{exp}/notebook")
         body = one("select body from notebook_pages where id=?", int(location(r).split("page=")[1]))
         self.assertIn("```experiment", body)
+
+
+class Regimens(Base):
+    def mouse_exp(self, start=TODAY):
+        r = self.a.post("/colony/experiments/create", data={"name": uniq("Asthma "), "start_date": start.isoformat()})
+        return int(location(r).rsplit("/", 1)[1])
+
+    def test_a_saved_regimen_plans_the_next_cohort_but_records_nothing(self):
+        first = self.mouse_exp()
+        self.a.post(f"/colony/experiments/{first}/steps/save", json={"kind": "injection", "agent": "Tamoxifen", "dose": "20 mg/kg", "days": "1"})
+        self.a.post(f"/colony/experiments/{first}/steps/save", json={"kind": "challenge", "agent": "HDM", "dose": "25 µg", "days": "2-5"})
+        name = uniq("TAM then HDM ")
+        self.a.post(f"/colony/experiments/{first}/regimens/save", json={"name": name})
+        second = self.mouse_exp()
+        regimen = next(r for r in self.data(second)["regimens"] if r["name"] == name)
+        data = self.a.post(f"/colony/experiments/{second}/regimens/{regimen['id']}/apply", json={}).get_json()
+        self.assertEqual([(s["agent"], s["days_label"]) for s in data["steps"]], [("Tamoxifen", "1"), ("HDM", "2–5")])
+        self.assertTrue(all(r["record"] is None for r in data["schedule"]))          # planned, not done
+        self.assertEqual(count("experiment_step_records", "step_id_fk in (select id from experiment_steps where experiment_id_fk=?)", second), 0)
+
+    def test_the_owner_is_reminded_once_a_day_of_what_is_due(self):
+        from app import notify
+        from app.db import SessionLocal
+        from app.models import UserAccount
+        from tests.base import client_for, make_user
+        who = make_user(uniq("owner"))                 # nobody who opened a page today, so not reminded yet
+        c = client_for(who)
+        r = c.post("/colony/experiments/create", data={"name": uniq("Asthma "), "start_date": (TODAY - timedelta(days=1)).isoformat()})
+        exp = int(location(r).rsplit("/", 1)[1])
+        c.post(f"/colony/experiments/{exp}/steps/save", json={"kind": "challenge", "agent": "HDM", "dose": "25 µg", "days": "1-2"})
+        execute_ = __import__("tests.base", fromlist=["execute"]).execute
+        execute_("delete from notifications where recipient_username=?", who)
+        from app.app import app
+        with app.test_request_context(), SessionLocal() as s:
+            from flask import g
+            user = s.scalar(__import__("sqlalchemy").select(UserAccount).where(UserAccount.username == who))
+            g.user = user
+            self.assertTrue(notify.daily_experiment_reminder(s, user))
+            s.commit()
+            self.assertFalse(notify.daily_experiment_reminder(s, user))               # once a day
+        title = one("select title from notifications where recipient_username=? and category='experiments' order by id desc limit 1", who)
+        self.assertIn("HDM 25 µg", title)
+        self.assertIn("overdue", title)
+
+
+class ReagentsAndSamples(Base):
+    def test_the_lot_used_is_kept_and_an_expired_one_is_flagged(self):
+        item = self.make_item(self.a, "reagents", name=uniq("HDM extract "), lot="L-77", expires_on=(TODAY - timedelta(days=3)).isoformat())
+        r = self.a.post("/colony/experiments/create", data={"name": uniq("HDM "), "start_date": TODAY.isoformat()})
+        exp = int(location(r).rsplit("/", 1)[1])
+        self.add(exp, "one", str(self.make_mouse(self.a, self.admin)))
+        self.assertIn(item, [x["id"] for x in self.data(exp)["reagents"]])
+        data = self.a.post(f"/colony/experiments/{exp}/record-now", json={
+            "kind": "challenge", "agent": "HDM", "dose": "25 µg", "done_on": TODAY.isoformat(), "reagent_id": str(item)}).get_json()
+        rec = data["schedule"][0]["record"]
+        self.assertEqual((rec["reagent"]["lot"], rec["reagent"]["id"]), ("L-77", item))
+        self.assertTrue(any("expired" in p for p in data["problems"]))
+
+    def test_sample_records_only_when_asked(self):
+        r = self.a.post("/colony/experiments/create", data={"name": uniq("Harvest "), "start_date": TODAY.isoformat()})
+        exp = int(location(r).rsplit("/", 1)[1])
+        mice = [self.make_mouse(self.a, self.admin) for _ in range(2)]
+        for m in mice:
+            self.add(exp, "one", str(m))
+        self.assertIn("samples", [i["key"] for i in self.data(exp)["sample_inventories"]])
+        before = count("inventory_items")
+        self.a.post(f"/colony/experiments/{exp}/record-now", json={"kind": "sample", "agent": "Blood", "done_on": TODAY.isoformat()})
+        self.assertEqual(count("inventory_items"), before)                             # not asked: none
+        data = self.a.post(f"/colony/experiments/{exp}/record-now", json={
+            "kind": "sample", "agent": "Lung", "done_on": TODAY.isoformat(), "make_samples": True,
+            "sample_inventory": "samples", "sample_name": "Lung"}).get_json()
+        made = data["schedule"][-1]["record"]["samples"]
+        self.assertEqual(len(made), 2)
+        mouse_id = one("select mouse_id from mice where id=?", mice[0])
+        attrs = __import__("json").loads(one("select attrs from inventory_items where id=?", made[0]["id"]))
+        self.assertEqual(attrs["source"], {"kind": "mouse", "ref": str(mouse_id)})
+        self.assertIn("Lung", one("select name from inventory_items where id=?", made[0]["id"]))
+
+
+class StatsAndExport(Base):
+    def test_groups_compared_day_by_day_and_exported(self):
+        from app import exp_stats
+        tank_a, tank_b = self.make_tank(self.a), self.make_tank(self.a)
+        for t in (tank_a, tank_b):
+            for _ in range(3):
+                self.a.post("/zebrafish/fish/create", data={"tank_id_fk": str(t), "count": "10"})
+        exp = self.new("zebrafish", readout="length", start=TODAY)
+        self.add(exp, "group", str(tank_a), group="Drug")
+        self.add(exp, "group", str(tank_b), group="Vehicle")
+        subs = self.data(exp)["subjects"]
+        values = {s["key"]: str((3.1 + i * 0.1) if s["group"] == "Drug" else (4.0 + i * 0.1)) for i, s in enumerate(subs)}
+        day = self.read(exp, TODAY, values).get_json()["table"]["stats"]["raw"][0]
+        self.assertEqual(day["test"], "Welch's t-test")
+        self.assertLess(day["p"], 0.05)
+        self.assertEqual(exp_stats.chi_square([(10, 0), (10, 0)])["p"], 1.0)
+        xlsx = self.a.get(f"/experiments/{exp}/export.xlsx")
+        self.assertEqual(xlsx.status_code, 200)
+        from openpyxl import load_workbook
+        import io
+        book = load_workbook(io.BytesIO(xlsx.data))
+        self.assertEqual(book.sheetnames, ["Readout", "Readout, wide", "Manipulations", "Tests by day"])
+        self.assertEqual(book["Readout"].max_row, len(subs) + 1)
+        csv = self.a.get(f"/experiments/{exp}/export.csv").get_data(as_text=True)
+        self.assertIn("Standard length (mm)", csv.splitlines()[0])
+
+    def test_bench_mode_and_its_qr(self):
+        exp = self.new("zebrafish")
+        html = self.get_ok(self.a, f"/experiments/{exp}/bench")
+        self.assertIn("xb-data", html)
+        qr = self.a.get(f"/experiments/{exp}/bench.svg")
+        self.assertIn(qr.status_code, (200, 404))          # 404 only without segno
+        if qr.status_code == 200:
+            self.assertIn("<svg", qr.get_data(as_text=True))
+
+
+class ClutchesAndCohorts(Base):
+    def test_larvae_of_a_clutch_and_an_organism_cohort(self):
+        from app.db import SessionLocal
+        from app.models import ClutchRecord, OrgCohort
+        with SessionLocal() as s:
+            clutch = ClutchRecord(clutch_id=uniq("CL"), date_of_fertilization=TODAY - timedelta(days=5), larvae_count=60)
+            s.add(clutch)
+            s.commit()
+            clutch_id = clutch.id
+        exp = self.new("zebrafish")
+        page = self.get_ok(self.a, f"/experiments/{exp}")
+        self.assertIn(f'value="clutch:{clutch_id}"', page)
+        subs = self.add(exp, "one", f"clutch:{clutch_id}").get_json()["subjects"]
+        self.assertEqual((subs[0]["key"], subs[0]["start"]), (f"clutch:{clutch_id}", 60))
+        key = self.make_organism_module(self.a)
+        mid = self.organism_module_id(key)
+        with SessionLocal() as s:
+            cohort = OrgCohort(module_id_fk=mid, code=uniq("C"), count_initial=30, count_current=28)
+            s.add(cohort)
+            s.commit()
+            cohort_id = cohort.id
+        exp2 = self.new(f"organisms:{key}")
+        subs = self.add(exp2, "one", f"cohort:{cohort_id}").get_json()["subjects"]
+        self.assertEqual((subs[0]["key"], subs[0]["start"]), (f"cohort:{cohort_id}", 30))

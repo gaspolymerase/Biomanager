@@ -62,7 +62,8 @@
   }
 
   function apply(data, { sheet = true } = {}) {
-    ['subjects', 'groups', 'steps', 'schedule', 'table', 'readout', 'weighs', 'start_date', 'editable', 'kinds'].forEach((k) => {
+    ['subjects', 'groups', 'steps', 'schedule', 'table', 'readout', 'weighs', 'start_date', 'editable', 'kinds',
+      'regimens', 'reagents', 'sample_inventories'].forEach((k) => {
       if (data[k] !== undefined) D[k] = data[k];
     });
     if (data.add) refreshAddOptions(data.add);
@@ -160,7 +161,8 @@
     }
     const entry = rec.subjects.find((e) => e.subject === subject.key);
     const detail = entry ? [entry.amount, entry.volume].filter(Boolean).join(' · ') : '';
-    const title = entry ? `Given ${niceDate(rec.done_on)} by ${rec.done_by}${detail ? `: ${detail}` : ''}` : `Not given (recorded ${niceDate(rec.done_on)})`;
+    const lot = rec.reagent && rec.reagent.name ? ` · ${rec.reagent.name}${rec.reagent.lot ? ` lot ${rec.reagent.lot}` : ''}` : '';
+    const title = entry ? `Given ${niceDate(rec.done_on)} by ${rec.done_by}${detail ? `: ${detail}` : ''}${lot}` : `Not given (recorded ${niceDate(rec.done_on)})`;
     const inner = entry ? `<span class="xp-tick">✓</span>${detail ? `<span class="xp-amount">${esc(detail)}</span>` : ''}` : '<span class="xp-miss">—</span>';
     return D.editable
       ? `<td class="xp-t" data-t="${entry ? 'given' : 'missed'}"><button type="button" class="xp-tbtn" data-xp-toggle="${col.step_id}:${col.day}" data-subject="${esc(subject.key)}" data-given="${entry ? 1 : 0}" title="${esc(title)} (click to change)">${inner}</button></td>`
@@ -298,9 +300,30 @@
       const text = items.map((c) => `${c.title}${c.group ? ` · ${c.group}` : ''} — ${c.record ? `done ${niceDate(c.record.done_on)} by ${c.record.done_by}` : STATE[c.state].toLowerCase()}`);
       svg += `<rect x="${sx(d) - 8}" y="${T}" width="16" height="${H - T - B}" class="xp-hit" data-tip-title="${esc(`Day ${d}${items[0].date ? ` · ${niceDate(items[0].date, true)}` : ''}`)}" data-tip="${esc(text.join('\n'))}"/>`;
     });
+    // Stars over the days where the groups differ (the table below has each test).
+    const stats = (D.table.stats || {})[pct && !fraction() ? 'pct' : 'raw'] || [];
+    stats.forEach((st, i) => {
+      if (!st.stars || st.stars === 'ns') return;
+      const x = xs[i];
+      if (x === undefined) return;
+      svg += `<text x="${sx(x)}" y="${T + 10}" text-anchor="middle" class="xp-star" data-tip="${esc(`Day ${x}: ${st.test}, p = ${st.p < 0.001 ? st.p.toExponential(1) : st.p.toFixed(3)}`)}">${st.stars}</text>`;
+    });
     svg += '</svg>';
+    drawStats(stats);
     const legend = series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('');
     host.innerHTML = `${svg}<div class="xp-tip" hidden></div><div class="xp-legend">${legend}<span class="xp-muted">${fraction() && pct ? '% of those at the start' : 'mean ± SEM'}${marks.size ? ' · dashed: manipulation days (point at one)' : ''}</span></div>`;
+  }
+
+  function drawStats(stats) {
+    const box = $('[data-xp-stats]');
+    const tested = stats.filter((st) => st.test);
+    box.hidden = !tested.length;
+    if (!tested.length) return;
+    const unit = scale === 'pct' || fraction() ? '%' : (D.readout.unit ? ` ${D.readout.unit}` : '');
+    $('[data-xp-stats-table]').innerHTML = `<table class="dense-table fit-table"><thead><tr><th>Day</th><th>Groups</th><th>Test</th><th>p</th><th></th></tr></thead><tbody>${
+      stats.map((st) => `<tr><td>${st.day !== null ? `Day ${st.day}` : ''} <span class="xp-muted">${esc(niceDate(st.date))}</span></td>
+        <td>${st.groups.map((g) => `${esc(g.group)}: ${num(g.value, 2)}${unit}${g.sem != null ? ` ± ${num(g.sem, 2)}` : ''} <span class="xp-muted">n=${g.n}</span>`).join('<br>')}</td>
+        <td>${esc(st.test || '—')}</td><td>${st.p == null ? '' : (st.p < 0.001 ? st.p.toExponential(1) : st.p.toFixed(3))}</td><td><b>${esc(st.stars)}</b></td></tr>`).join('')}</tbody></table>`;
   }
 
   const chartHost = $('[data-xp-chart]');
@@ -335,7 +358,9 @@
       <li class="xp-day" id="day-${day}"><div class="xp-day-head"><b>Day ${day}</b><span>${esc(niceDate(rows[0].date, true))}</span></div>
       <ul class="xp-items">${rows.map((r) => {
         const rec = r.record;
-        const status = rec ? `Done ${esc(niceDate(rec.done_on))} by ${esc(rec.done_by)} · ${rec.count} of ${r.group_size}` : STATE[r.state];
+        const extra = rec ? [rec.reagent && rec.reagent.name ? `${rec.reagent.name}${rec.reagent.lot ? ` lot ${rec.reagent.lot}` : ''}` : '',
+          rec.samples && rec.samples.length ? `${rec.samples.length} sample${rec.samples.length === 1 ? '' : 's'} in ${rec.samples[0].inventory}` : ''].filter(Boolean).map(esc).join(' · ') : '';
+        const status = rec ? `Done ${esc(niceDate(rec.done_on))} by ${esc(rec.done_by)} · ${rec.count} of ${r.group_size}${extra ? ` · ${extra}` : ''}` : STATE[r.state];
         const action = r.reading
           ? (D.editable ? `<button type="button" class="xp-link" data-xp-open="reading" data-on="${esc(r.date)}">${esc(D.readout.verb || 'Record')}</button>` : '')
           : `<button type="button" class="${rec || !D.editable ? 'xp-link' : 'btn xp-record-btn'}" data-xp-day="${r.step_id}:${r.day}">${rec || !D.editable ? 'Details' : 'Record'}</button>`;
@@ -359,6 +384,10 @@
   }
   function fillGroups(select, chosen) {
     select.innerHTML = [`<option value="">Every ${esc(D.noun)}</option>`, ...D.groups.map((g) => `<option value="${esc(g)}" ${g === chosen ? 'selected' : ''}>${esc(g)}</option>`)].join('');
+  }
+
+  function fillReagents(select, chosen) {
+    select.innerHTML = '<option value="">None recorded</option>' + (D.reagents || []).map((r) => `<option value="${r.id}" ${Number(chosen) === r.id ? 'selected' : ''}>${esc(r.label)}${r.expires && r.expires < today() ? ' (expired)' : ''}</option>`).join('');
   }
 
   function open(which, arg) {
@@ -400,6 +429,12 @@
   // The plan
   let editing = null;
   function openPlan(dialog) {
+    const saved = D.regimens || [];
+    $('[data-xp-regimens]', dialog).innerHTML = saved.length ? `<label class="xp-regimen-pick">Start from a saved regimen
+      <span class="xp-row"><select data-xp-regimen>${saved.map((r) => `<option value="${r.id}">${esc(r.name)} — ${esc(r.summary)}${r.mine ? '' : ` (${esc(r.owner)})`}</option>`).join('')}</select>
+      <button type="button" class="dt-bottom-action" data-xp-regimen-apply>Plan it</button>
+      <button type="button" class="xp-link xp-danger" data-xp-regimen-delete aria-label="Delete this saved regimen" title="Delete this saved regimen">×</button></span></label>
+      <p class="xp-sub">Planning one adds its days here; each is still recorded as it is done.</p>` : '';
     const list = $('[data-xp-plan-list]', dialog);
     list.innerHTML = D.steps.length ? `<table class="dense-table fit-table xp-plan"><thead><tr><th>Days</th><th>Kind</th><th>What</th><th>Dose</th><th>Route</th><th>Group</th><th></th></tr></thead><tbody>${D.steps.map((s) => `
       <tr><td class="xp-days-cell">Day ${esc(s.days_label)}</td><td><span class="xp-kind">${icon(s.icon)}${esc(s.reading ? `${D.readout.label} day` : s.kind_label)}</span></td>
@@ -414,8 +449,9 @@
     fillKinds(f.kind, step ? step.kind : D.kinds[0].key);
     fillGroups(f.group, step ? step.group : '');
     ['id', 'agent', 'days', 'dose', 'route', 'concentration', 'notes'].forEach((n) => { f[n].value = step ? (step[n] || '') : ''; });
-    $('[data-xp-plan-form-title]', dialog).textContent = step ? 'Change this line' : 'Add to the plan';
-    $('[data-xp-plan-save]', dialog).textContent = step ? 'Save' : 'Add to the plan';
+    fillReagents(f.reagent_id, step ? step.reagent_id : '');
+    $('[data-xp-plan-form-title]', dialog).textContent = step ? 'Change this line' : 'Add to the regimen';
+    $('[data-xp-plan-save]', dialog).textContent = step ? 'Save' : 'Add to the regimen';
     $('[data-xp-plan-new]', dialog).hidden = !step;
     editing = step ? step.id : null;
   }
@@ -425,7 +461,7 @@
       event.preventDefault();
       const dialog = planForm.closest('dialog');
       const f = planForm.elements;
-      const body = Object.fromEntries(['id', 'kind', 'agent', 'days', 'dose', 'route', 'concentration', 'group', 'notes'].map((n) => [n, f[n].value]));
+      const body = Object.fromEntries(['id', 'kind', 'agent', 'days', 'dose', 'route', 'concentration', 'group', 'notes', 'reagent_id'].map((n) => [n, f[n].value]));
       try {
         apply(await send(`${API}/steps/save`, body));
         editing = null;
@@ -439,6 +475,21 @@
       const dialog = planForm.closest('dialog');
       if (t.dataset.xpEdit) { resetStepForm(dialog, D.steps.find((s) => s.id === Number(t.dataset.xpEdit))); }
       if (t.matches('[data-xp-plan-new]')) resetStepForm(dialog, null);
+      if (t.matches('[data-xp-regimen-save]')) {
+        if (!D.steps.length) return showError(dialog, 'Plan something first: this experiment has nothing to save yet.');
+        const name = await (window.BioDialog ? BioDialog.prompt('Name this regimen', '') : Promise.resolve(window.prompt('Name this regimen')));
+        if (!name) return undefined;
+        try { const data = await send(`${API}/regimens/save`, { name }); apply(data); openPlan(dialog); say('saved', data.message); } catch (error) { showError(dialog, error.message); }
+      }
+      if (t.matches('[data-xp-regimen-apply]')) {
+        const id = $('[data-xp-regimen]', dialog).value;
+        try { const data = await send(`${API}/regimens/${id}/apply`, {}); apply(data); openPlan(dialog); say('saved', data.message); } catch (error) { showError(dialog, error.message); }
+      }
+      if (t.matches('[data-xp-regimen-delete]')) {
+        const r = (D.regimens || []).find((x) => String(x.id) === $('[data-xp-regimen]', dialog).value);
+        if (!r || !(await confirmAsk(`Delete the saved regimen ${r.name}? Experiments planned from it keep their days.`, true))) return undefined;
+        try { apply(await send(`${API}/regimens/${r.id}/delete`, {})); openPlan(dialog); } catch (error) { showError(dialog, error.message); }
+      }
       if (t.dataset.xpDelete) {
         const step = D.steps.find((s) => s.id === Number(t.dataset.xpDelete));
         if (!(await confirmAsk(`Delete ${step.agent || step.kind_label} (day ${step.days_label}) from the plan?`, true))) return;
@@ -470,6 +521,10 @@
     fillGroups(f.group, '');
     f.done_on.value = today();
     f.done_on.max = today();
+    const inventories = D.sample_inventories || [];
+    $('[data-xp-samples]', dialog).hidden = !inventories.length;
+    $('[data-xp-sample-inventories]', dialog).innerHTML = inventories.map((i) => `<option value="${esc(i.key)}">${esc(i.label)}</option>`).join('');
+    $('[data-xp-sample-fields]', dialog).hidden = true;
     chooseRecord(dialog);
   }
 
@@ -507,6 +562,12 @@
       ${weighs ? `<td>${a.grams != null ? `${num(a.grams)} g <span class="xp-muted">${esc(niceDate(a.weighed_on))}</span>` : '<span class="xp-muted">no weight</span>'}</td>` : (D.family !== 'mouse' ? `<td>${a.start == null ? '' : a.start}</td>` : '')}
       <td>${a.needs ? '<span class="xp-warn">needs a weight</span>' : esc(a.amount || '')}</td><td>${esc(a.volume || '')}</td></tr>`).join('')
       : `<tr><td colspan="6" class="xp-muted">No ${esc(D.nouns)} in this group.</td></tr>`;
+    if (!on) fillReagents(f.reagent_id, adhoc ? '' : ((data.record && data.record.reagent && data.record.reagent.id) || (data.step && data.step.reagent_id) || ''));
+    const made = (data.record && data.record.samples) || [];
+    $('[data-xp-samples-made]', dialog).textContent = made.length ? `Sample records made: ${made.map((m) => `#${m.number}`).join(', ')} in ${made[0].inventory}.` : '';
+    $('.xp-check', dialog).hidden = made.length > 0;
+    const kind = adhoc ? f.kind.value : (data.step && data.step.kind);
+    if (kind === 'sample' && !made.length && !f.sample_name.value) f.sample_name.value = adhoc ? f.agent.value : (data.step.agent || '');
     $('[data-xp-undo]', dialog).hidden = !(recordCtx.data.record);
     $('[data-xp-record-save]', dialog).textContent = recordCtx.data.record ? 'Save' : 'Record as done';
   }
@@ -520,6 +581,8 @@
       const dialog = recordForm.closest('dialog');
       const t = event.target;
       if (t.matches('[data-xp-all]')) { $$('[data-xp-animal]', dialog).forEach((b) => { b.checked = t.checked; }); return; }
+      if (t.name === 'make_samples') { $('[data-xp-sample-fields]', dialog).hidden = !t.checked; return; }
+      if (['reagent_id', 'sample_inventory', 'sample_name', 'note'].includes(t.name)) return;
       if (t.name === 'which') {
         if (t.value === 'adhoc') recordForm.elements.done_on.value = today();   // something done now, usually
         chooseRecord(dialog);
@@ -537,14 +600,17 @@
       const dialog = recordForm.closest('dialog');
       const f = recordForm.elements;
       const subjects = $$('[data-xp-animal]:checked', dialog).map((b) => b.dataset.xpAnimal);
-      const common = { done_on: f.done_on.value, subjects, note: f.note.value };
+      const common = { done_on: f.done_on.value, subjects, note: f.note.value, reagent_id: f.reagent_id.value,
+        make_samples: Boolean(f.make_samples && f.make_samples.checked), sample_inventory: f.sample_inventory ? f.sample_inventory.value : '',
+        sample_name: f.sample_name ? f.sample_name.value : '' };
       try {
         const data = recordCtx.adhoc
           ? await send(`${API}/record-now`, { ...common, kind: f.kind.value, agent: f.agent.value, dose: f.dose.value, route: f.route.value, concentration: f.concentration.value, group: f.group.value })
           : await send(`${API}/steps/${recordCtx.stepId}/day/${recordCtx.day}/record`, common);
         apply(data);
         dialog.close();
-        if (data.message) alertSay(data.message);
+        const notes = [data.message, ...(data.problems || [])].filter(Boolean);
+        if (notes.length) alertSay(notes.join('\n'));
       } catch (error) { showError(dialog, error.message); }
     });
     $('[data-xp-undo]').addEventListener('click', async () => {

@@ -33,8 +33,8 @@ from sqlalchemy import select
 
 from . import access, lab
 from .db import SessionLocal
-from .models import (CageRecord, Experiment, ExperimentMouse, ExperimentReading, ExperimentSubject, FishRecord,
-                     MouseRecord, MouseWeight, Organism, StockUnit, TankRecord)
+from .models import (CageRecord, ClutchRecord, Experiment, ExperimentMouse, ExperimentReading, ExperimentSubject,
+                     FishRecord, MouseRecord, MouseWeight, OrgCohort, Organism, StockUnit, TankRecord)
 
 bp = Blueprint("experiments", __name__, url_prefix="/experiments")
 
@@ -249,6 +249,10 @@ def subjects(session, exp: Experiment, place: Place, group: str = "") -> list[Su
             records.update({("unit", u.id): u for u in session.scalars(select(StockUnit).where(StockUnit.id.in_(by_kind["unit"])))})
         if by_kind.get("organism"):
             records.update({("organism", o.id): o for o in session.scalars(select(Organism).where(Organism.id.in_(by_kind["organism"])))})
+        if by_kind.get("clutch"):
+            records.update({("clutch", c.id): c for c in session.scalars(select(ClutchRecord).where(ClutchRecord.id.in_(by_kind["clutch"])))})
+        if by_kind.get("cohort"):
+            records.update({("cohort", c.id): c for c in session.scalars(select(OrgCohort).where(OrgCohort.id.in_(by_kind["cohort"])))})
         for r in rows:
             rec = records.get((r.subject_kind, r.subject_id))
             if rec is None:
@@ -269,6 +273,15 @@ def _describe(place: Place, row: ExperimentSubject, rec) -> Subject:
         return Subject(key, "fish", rec.id, label or f"Fish {rec.id}", rec.sex or "", rec.genotype or "", tank,
                        start=row.start_count if row.start_count is not None else rec.count,
                        alive=rec.status == "alive", **common)
+    if row.subject_kind == "clutch":
+        # Embryos or larvae of one clutch, before they are fish rows in a tank.
+        start = row.start_count if row.start_count is not None else (rec.larvae_count or rec.embryo_count or None)
+        return Subject(key, "clutch", rec.id, f"Clutch {rec.clutch_id}", "", rec.line.name if rec.line else "",
+                       f"fertilised {rec.date_of_fertilization.isoformat()}", start=start, alive=True, **common)
+    if row.subject_kind == "cohort":
+        start = row.start_count if row.start_count is not None else (rec.count_initial or rec.count_current or None)
+        return Subject(key, "cohort", rec.id, rec.code, "", rec.line.name if rec.line else "", rec.stage or "",
+                       start=start, alive=bool(rec.count_current), **common)
     if row.subject_kind == "unit":
         mv = place.mv
         from .stock_service import position_label
@@ -306,8 +319,14 @@ def candidates(session, exp: Experiment, place: Place) -> dict:
             live = [f for f in t.fish if f.status == "alive" and f"fish:{f.id}" not in have]
             if live:
                 groups.append((str(t.id), f"Tank {t.tank_id}", len(live)))
-                single += [(str(f.id), f"{t.tank_id} · {f.count} {f.sex or ''} {f.line.name if f.line else ''} {f.genotype or ''}".strip())
+                single += [(f"fish:{f.id}", f"{t.tank_id} · {f.count} {f.sex or ''} {f.line.name if f.line else ''} {f.genotype or ''}".strip())
                            for f in live]
+        recent = date.today().toordinal() - 60
+        for c in session.scalars(select(ClutchRecord).order_by(ClutchRecord.date_of_fertilization.desc()).limit(200)):
+            if f"clutch:{c.id}" not in have and c.date_of_fertilization.toordinal() >= recent:
+                n = c.larvae_count or c.embryo_count
+                single.append((f"clutch:{c.id}", f"Clutch {c.clutch_id} · {c.date_of_fertilization.isoformat()}"
+                                                 + (f" · {n} larvae" if n else "") + (f" · {c.line.name}" if c.line else "")))
     elif place.subject_kind == "unit":
         units = session.scalars(select(StockUnit).where(StockUnit.module_id_fk == place.module.id,
                                                         StockUnit.active.is_(True)).order_by(StockUnit.number)).all()
@@ -328,9 +347,13 @@ def candidates(session, exp: Experiment, place: Place) -> dict:
                 continue
             if o.housing_id_fk:
                 houses.setdefault(o.housing_id_fk, []).append(o)
-            single.append((str(o.id), " · ".join(filter(None, [o.code or f"{o.count} {place.nouns}", o.sex, o.genotype]))))
+            single.append((f"organism:{o.id}", " · ".join(filter(None, [o.code or f"{o.count} {place.nouns}", o.sex, o.genotype]))))
         codes = {h.id: h.code for h in session.scalars(select(OrgHousing).where(OrgHousing.id.in_(list(houses) or [0])))}
         groups = [(str(hid), f"{place.housing.capitalize()} {codes.get(hid, hid)}", len(v)) for hid, v in houses.items()]
+        cohort_noun = (place.mv.cohort_noun or "cohort").capitalize() if place.mv else "Cohort"
+        for c in session.scalars(select(OrgCohort).where(OrgCohort.module_id_fk == place.module.id).order_by(OrgCohort.code)):
+            if f"cohort:{c.id}" not in have and c.count_current:
+                single.append((f"cohort:{c.id}", f"{cohort_noun} {c.code} · {c.count_current}"))
     return {"groups": groups, "single": single}
 
 
@@ -423,9 +446,11 @@ def readout_table(session, exp: Experiment, place: Place, subs: list[Subject] | 
         rows.append({"key": s.key, "mouse": s.id if s.kind == "mouse" else None,
                      "mouse_id": s.label.lstrip("#") if s.kind == "mouse" else s.label, "label": s.label,
                      "group": s.group, "sex": s.sex, "start": s.start, "values": values, "pct": pct})
-    return {"dates": [d.isoformat() for d in dates],
-            "days": [((d - start).days + 1) if start else None for d in dates], "rows": rows,
-            "readout": readout}
+    table = {"dates": [d.isoformat() for d in dates],
+             "days": [((d - start).days + 1) if start else None for d in dates], "rows": rows, "readout": readout}
+    from . import exp_stats
+    table["stats"] = {"raw": exp_stats.by_day(table), "pct": exp_stats.by_day(table, percent=True)}
+    return table
 
 
 # ---------------------------------------------------------------- the page's data
@@ -443,10 +468,47 @@ def payload(session, exp: Experiment, place: Place) -> dict:
         "readout": readout, "weighs": readout["key"] == "body_weight",
         "subjects": [s.as_dict() for s in subs], "groups": groups,
         "kinds": [{"key": k, "label": label, "icon": icon} for k, label, icon in kinds_for(place.family)],
-        "steps": [xs.step_dict(st, place.family) for st in exp.steps],
+        "steps": [xs.step_dict(st, place.family, session) for st in exp.steps],
         "schedule": xs.schedule(session, exp, place, subs),
         "table": readout_table(session, exp, place, subs),
+        "regimens": xs.regimens_for(session, place.family),
+        "reagents": reagent_choices(session),
+        "sample_inventories": sample_inventories(session),
     }
+
+
+def reagent_choices(session, limit: int = 400) -> list[dict]:
+    """Inventory items to say a manipulation used: the lab's reagents,
+    antibodies and the like, with their lot, newest first."""
+    from . import inventory_service as inv
+    from .models import InventoryItem
+    out = []
+    for module in inv.list_modules(session):
+        if module.kind in ("orders", "samples") or not lab.can_see(module):
+            continue
+        mv = inv.view(module)
+        rows = session.scalars(select(InventoryItem).where(InventoryItem.module_id_fk == module.id)
+                               .order_by(InventoryItem.id.desc()).limit(limit)).all()
+        for item in rows:
+            if mv.is_available(item.status) is False:
+                continue
+            out.append({"id": item.id, "label": " · ".join(filter(None, [item.name, f"lot {item.lot}" if item.lot else "",
+                                                                         mv.label])),
+                        "expires": item.expires_on.isoformat() if item.expires_on else ""})
+    return out[:limit]
+
+
+def sample_inventories(session) -> list[dict]:
+    """Inventories a sample record can go in: those with a Source column."""
+    from . import inventory_service as inv
+    out = []
+    for module in inv.list_modules(session):
+        if not lab.can_see(module):
+            continue
+        mv = inv.view(module)
+        if any(f["type"] == "source" for f in mv.fields):
+            out.append({"key": module.key, "label": mv.label})
+    return out
 
 
 def _load(session, experiment_id: int) -> tuple[Experiment, Place]:
@@ -621,12 +683,13 @@ def add_subjects(experiment_id: int):
                 added += 1
         else:
             records = _records_to_add(s, place, how, value)
-            for rec, start in records:
-                key = f"{place.subject_kind}:{rec.id}"
+            for kind, rec, start in records:
+                key = f"{kind}:{rec.id}"
                 if key in have:
                     continue
-                s.add(ExperimentSubject(experiment_id_fk=exp.id, subject_kind=place.subject_kind, subject_id=rec.id,
+                s.add(ExperimentSubject(experiment_id_fk=exp.id, subject_kind=kind, subject_id=rec.id,
                                         treatment_group=group, start_count=start))
+                have.add(key)
                 added += 1
         s.commit()
         s.refresh(exp)
@@ -637,12 +700,24 @@ def add_subjects(experiment_id: int):
                         "add": candidates(s, exp, place)})
 
 
-def _records_to_add(session, place: Place, how: str, value: str) -> list[tuple[object, int | None]]:
-    """(record, animals at the start) for the fish rows of a tank, the vials
-    in a rack, the animals in a housing, or one."""
-    if not value.isdigit():
+def _records_to_add(session, place: Place, how: str, value: str) -> list[tuple[str, object, int | None]]:
+    """(kind, record, animals at the start) for the fish rows of a tank, the
+    vials in a rack, the animals in a housing, or one ("fish:12",
+    "clutch:3", "organism:40", "cohort:2", or a bare id)."""
+    kind, _, raw = value.rpartition(":")
+    if not raw.isdigit():
         return []
-    ident = int(value)
+    ident = int(raw)
+    if how != "group" and kind == "clutch" and place.subject_kind == "fish":
+        c = session.get(ClutchRecord, ident)
+        return [("clutch", c, c.larvae_count or c.embryo_count or None)] if c else []
+    if how != "group" and kind == "cohort" and place.subject_kind == "organism":
+        c = session.get(OrgCohort, ident)
+        return [("cohort", c, c.count_initial or c.count_current or None)] if c and c.module_id_fk == place.module.id else []
+    return [(place.subject_kind, rec, start) for rec, start in _plain_records(session, place, how, ident)]
+
+
+def _plain_records(session, place: Place, how: str, ident: int) -> list[tuple[object, int | None]]:
     if place.subject_kind == "fish":
         if how == "group":
             tank = session.get(TankRecord, ident)
@@ -749,3 +824,115 @@ def delete(experiment_id: int):
         s.commit()
     flash(f"Deleted experiment {name}. Its {place.nouns} are unchanged.", "success")
     return redirect(place.list_url)
+
+
+# ---------------------------------------------------------------- export
+
+def _rows_for_export(session, exp, place):
+    from . import experiment_steps as xs
+    subs = subjects(session, exp, place)
+    table = readout_table(session, exp, place, subs)
+    by_key = {x.key: x for x in subs}
+    readout = table["readout"]
+    unit = f" ({readout['unit']})" if readout["unit"] else ""
+    long_rows = [["Experiment", "Database", place.noun.capitalize(), "Group", "Sex", "Genotype", place.housing.capitalize(),
+                  "Date", "Day", f"{readout['label']}{unit}", "At start", "% of first" if readout["kind"] == "value" else "% of start"]]
+    for r in table["rows"]:
+        x = by_key.get(r["key"])
+        for i, d in enumerate(table["dates"]):
+            if r["values"][i] is None:
+                continue
+            long_rows.append([exp.name, place.label, r["label"], r["group"], r["sex"], x.genotype if x else "",
+                              x.housing if x else "", d, table["days"][i], r["values"][i], r["start"], r["pct"][i]])
+    wide = [[place.noun.capitalize(), "Group"] + [f"Day {n}" if n is not None else d for d, n in zip(table["dates"], table["days"])]]
+    wide += [[r["label"], r["group"]] + r["values"] for r in table["rows"]]
+    manip = [["Day", "Date planned", "Done on", "Done by", "What", "Kind", "Dose", "Route", "Group", place.noun.capitalize(),
+              "Given", "Amount", "Volume", "Weight used", "Reagent", "Lot", "Note"]]
+    for row in xs.schedule(session, exp, place, subs):
+        if row["reading"]:
+            continue
+        step = next(st for st in exp.steps if st.id == row["step_id"])
+        rec = row["record"]
+        given = {e["subject"]: e for e in (rec["subjects"] if rec else [])}
+        reagent = (rec or {}).get("reagent") or {}
+        for x in subs:
+            if step.treatment_group and x.group.strip().lower() != step.treatment_group.strip().lower():
+                continue
+            e = given.get(x.key)
+            manip.append([row["day"], row["date"], rec["done_on"] if rec else "", rec["done_by"] if rec else "",
+                          step.agent, kind_info(place.family, step.kind)[0], step.dose, step.route, step.treatment_group,
+                          x.label, ("yes" if e else "no") if rec else "", (e or {}).get("amount", ""),
+                          (e or {}).get("volume", ""), (e or {}).get("grams", ""), reagent.get("name", ""),
+                          reagent.get("lot", ""), rec["note"] if rec else ""])
+    stats = [["Day", "Date", "Groups", "Test", "p", ""]]
+    for day in table["stats"]["raw"]:
+        stats.append([day["day"], day["date"],
+                      "; ".join(f"{g['group']}: {g['value']}" + (f" ± {g['sem']}" if g.get("sem") is not None else "")
+                                + f" (n={g['n']})" for g in day["groups"]),
+                      day["test"], day["p"], day["stars"]])
+    return long_rows, wide, manip, stats
+
+
+@bp.get("/<int:experiment_id>/export.<fmt>")
+def export(experiment_id: int, fmt: str):
+    """The readout (long, for Prism or R, and wide), each animal's
+    manipulations, and the day-by-day tests: an Excel workbook, or the
+    long readout as CSV."""
+    import csv
+    import io
+    import re as _re
+    from flask import Response
+    with SessionLocal() as s:
+        exp, place = _load(s, experiment_id)
+        long_rows, wide, manip, stats = _rows_for_export(s, exp, place)
+        base = _re.sub(r"[^A-Za-z0-9._-]+", "-", exp.name).strip("-")[:60] or "experiment"
+    if fmt == "csv":
+        out = io.StringIO()
+        csv.writer(out).writerows(long_rows)
+        return Response(out.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename={base}-readout.csv"})
+    if fmt != "xlsx":
+        abort(404)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    book = Workbook()
+    for i, (title, rows) in enumerate((("Readout", long_rows), ("Readout, wide", wide), ("Manipulations", manip),
+                                       ("Tests by day", stats))):
+        sheet = book.active if i == 0 else book.create_sheet()
+        sheet.title = title
+        for row in rows:
+            sheet.append(row)
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        sheet.freeze_panes = "A2"
+    if len(stats) > 1:
+        book["Tests by day"].append([])
+        book["Tests by day"].append(["Each day is tested on its own, not corrected for the number of days."])
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return Response(buffer.getvalue(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename={base}.xlsx"})
+
+
+# ---------------------------------------------------------------- bench mode
+
+@bp.get("/<int:experiment_id>/bench")
+def bench(experiment_id: int):
+    """One animal at a time, for a phone at the bench: weigh or count each,
+    or give each today's manipulation and tick it."""
+    with SessionLocal() as s:
+        exp, place = _load(s, experiment_id)
+        data = payload(s, exp, place)
+        return render_template("experiment_bench.html", place=place, data=data, page_url=page_url(exp))
+
+
+@bp.get("/<int:experiment_id>/bench.svg")
+def bench_qr(experiment_id: int):
+    """A QR code of bench mode's address, to open it on a phone."""
+    from flask import Response
+    from .labels import _qr_svg
+    url = request.host_url.rstrip("/") + url_for("experiments.bench", experiment_id=experiment_id)
+    svg = _qr_svg(url, scale=5)
+    if not svg:
+        abort(404)
+    return Response(svg, mimetype="image/svg+xml", headers={"Cache-Control": "private, max-age=3600"})
