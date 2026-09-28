@@ -8,8 +8,13 @@ workflow sets from the tag). Run from source, it asks git.
 asks GitHub for the latest release on gaspolymerase/biomanager-app. That
 request carries only the app's version in its User-Agent; turn the daily
 check off with "Check for Updates Automatically". A newer release is
-offered, with its notes, and "Download" opens the file for this computer
-in the browser. The app never replaces itself.
+offered with its notes. "Install and Restart" downloads the file for this
+computer, checks it against the SHA-256 GitHub publishes for it, and swaps
+it in once the app has quit (install_update): the Mac app in its folder,
+the Windows folder, or the Linux AppImage. The old one is kept beside it
+until the new one has started. Where that isn't possible (run from
+source, a folder it can't write to, the Linux .tar.gz) "Download" opens
+the file in the browser instead.
 
 Preferences (the automatic check, a skipped version, appearance and zoom)
 are desktop-prefs.json in the data folder (app/paths.py), not in the lab's
@@ -121,11 +126,14 @@ def fetch_latest(timeout: float = 8.0) -> dict:
     tag = str(data.get("tag_name") or "")
     if parse_version(tag) is None:
         raise ValueError("GitHub's answer had no version in it.")
-    assets = {a.get("name"): a.get("browser_download_url") for a in data.get("assets") or [] if a.get("name")}
+    assets = {a.get("name"): a for a in data.get("assets") or [] if a.get("name")}
     wanted = asset_for_this_computer(list(assets))
+    asset = assets.get(wanted) if wanted else None
+    digest = str((asset or {}).get("digest") or "")
     return {"version": tag.lstrip("v"), "notes": summary(str(data.get("body") or "")),
             "page": str(data.get("html_url") or RELEASES_PAGE),
-            "download": assets.get(wanted) if wanted else None}
+            "download": asset.get("browser_download_url") if asset else None,
+            "asset": wanted, "sha256": digest.split(":", 1)[1] if digest.startswith("sha256:") else ""}
 
 
 def summary(notes: str, limit: int = 700) -> str:
@@ -168,3 +176,119 @@ def check(manual: bool, now: float | None = None, fetch=fetch_latest) -> dict:
     if is_newer(release["version"], current) and (manual or release["version"] != prefs["skip_version"]):
         return {"state": "newer", "release": release, "current": current}
     return {"state": "current", "version": current} if manual else {"state": "quiet"}
+
+
+# ---------------------------------------------------------------- installing
+
+def installed_location() -> Path | None:
+    """What an update replaces: the .app, the Windows folder, or the
+    AppImage. None when run from source or from the Linux .tar.gz."""
+    import os
+    if not getattr(sys, "frozen", False):
+        return None
+    exe = Path(sys.executable).resolve()
+    if sys.platform == "darwin":
+        app = next((p for p in exe.parents if p.suffix == ".app"), None)
+        return app
+    if sys.platform.startswith("win"):
+        return exe.parent
+    appimage = os.environ.get("APPIMAGE")
+    return Path(appimage) if appimage else None
+
+
+def can_install(release: dict) -> bool:
+    import os
+    where = installed_location()
+    return bool(where and release.get("download") and os.access(where.parent, os.W_OK))
+
+
+def _download(url: str, target: Path, sha256: str, progress=None) -> None:
+    import hashlib
+    request = urllib.request.Request(url, headers={"User-Agent": f"BioManager/{version()}"})
+    digest = hashlib.sha256()
+    with urllib.request.urlopen(request, timeout=30) as response, open(target, "wb") as out:  # noqa: S310
+        total = int(response.headers.get("Content-Length") or 0)
+        done = 0
+        while True:
+            chunk = response.read(1 << 20)
+            if not chunk:
+                break
+            out.write(chunk)
+            digest.update(chunk)
+            done += len(chunk)
+            if progress and total:
+                progress(done / total)
+    if sha256 and digest.hexdigest() != sha256.lower():
+        target.unlink(missing_ok=True)
+        raise ValueError("The download doesn't match the checksum GitHub published for it, so it wasn't installed.")
+
+
+def swap_script(platform_name: str, pid: int, old: Path, new: Path, keep: Path) -> tuple[str, str]:
+    """(file name, script) that waits for this app to quit, moves the old one
+    to `keep`, puts the new one in its place and starts it."""
+    if platform_name.startswith("win"):
+        return "biomanager-update.cmd", "\r\n".join([
+            "@echo off",
+            f":wait",
+            f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul && (timeout /t 1 /nobreak >nul & goto wait)',
+            f'move "{old}" "{keep}"',
+            f'move "{new}" "{old}"',
+            f'start "" "{old}\\BioManager.exe"',
+            "",
+        ])
+    launch = f'open "{old}"' if platform_name == "darwin" else f'chmod +x "{old}" && nohup "{old}" >/dev/null 2>&1 &'
+    return "biomanager-update.sh", "\n".join([
+        "#!/bin/sh",
+        f"while kill -0 {pid} 2>/dev/null; do sleep 0.5; done",
+        f'mv "{old}" "{keep}" && mv "{new}" "{old}" && {launch}',
+        "",
+    ])
+
+
+def install_update(release: dict, progress=None) -> str:
+    """Download and check the new version, and leave a helper waiting to
+    swap it in when this app quits. Returns what to tell the person; the
+    caller then quits the app. Raises ValueError or OSError when it can't."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    import zipfile
+    where = installed_location()
+    if not can_install(release):
+        raise ValueError("This copy of BioManager can't update itself; download the new one instead.")
+    work = Path(tempfile.mkdtemp(prefix="biomanager-update-"))
+    download = work / release["asset"]
+    _download(release["download"], download, release.get("sha256", ""), progress)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    if sys.platform == "darwin":
+        subprocess.run(["ditto", "-x", "-k", str(download), str(work / "new")], check=True)
+        new = next((work / "new").glob("*.app"))
+        staged = where.parent / f".BioManager-{release['version']}.app"
+        if staged.exists():
+            shutil.rmtree(staged)
+        shutil.move(str(new), str(staged))
+        keep = Path(tempfile.gettempdir()) / f"BioManager-before-{stamp}.app"
+    elif sys.platform.startswith("win"):
+        with zipfile.ZipFile(download) as z:
+            z.extractall(work / "new")
+        new = next((work / "new").glob("*"))
+        staged = where.parent / f"BioManager-{release['version']}"
+        if staged.exists():
+            shutil.rmtree(staged)
+        shutil.move(str(new), str(staged))
+        keep = where.parent / f"BioManager-before-{stamp}"
+    else:
+        staged = where.parent / f".BioManager-{release['version']}.AppImage"
+        shutil.move(str(download), str(staged))
+        os.chmod(staged, 0o755)
+        keep = Path(tempfile.gettempdir()) / f"BioManager-before-{stamp}.AppImage"
+    name, script = swap_script(sys.platform, os.getpid(), where, staged, keep)
+    helper = work / name
+    helper.write_text(script)
+    if sys.platform.startswith("win"):
+        subprocess.Popen(["cmd", "/c", str(helper)], creationflags=0x00000008 | 0x00000200)  # detached, new group
+    else:
+        os.chmod(helper, 0o755)
+        subprocess.Popen(["/bin/sh", str(helper)], start_new_session=True)
+    return f"BioManager {release['version']} is ready. It opens as soon as this one quits."

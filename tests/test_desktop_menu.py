@@ -130,3 +130,35 @@ class Port(unittest.TestCase):
             self.assertEqual(du.load_prefs()["port"], desktop._choose_port())
         with mock.patch.dict("os.environ", {"BIOMANAGER_PORT": "5999"}):
             self.assertEqual(desktop._choose_port(), 5999)
+
+
+class Installing(unittest.TestCase):
+    def test_run_from_source_it_offers_the_download_instead(self):
+        self.assertIsNone(du.installed_location())
+        self.assertFalse(du.can_install({"download": "https://example.org/x.zip"}))
+
+    def test_a_download_must_match_its_published_checksum(self):
+        import hashlib
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "BioManager.zip"
+            source.write_bytes(b"new version")
+            good = hashlib.sha256(b"new version").hexdigest()
+            du._download(source.as_uri(), Path(tmp) / "a.zip", good)
+            self.assertTrue((Path(tmp) / "a.zip").exists())
+            with self.assertRaises(ValueError):
+                du._download(source.as_uri(), Path(tmp) / "b.zip", "0" * 64)
+            self.assertFalse((Path(tmp) / "b.zip").exists())
+
+    def test_the_swap_waits_for_this_app_then_keeps_the_old_one(self):
+        from pathlib import Path
+        name, script = du.swap_script("darwin", 4242, Path("/Applications/BioManager.app"),
+                                      Path("/Applications/.BioManager-0.9.0.app"), Path("/tmp/keep.app"))
+        self.assertEqual(name, "biomanager-update.sh")
+        self.assertIn("kill -0 4242", script)
+        self.assertIn('mv "/Applications/BioManager.app" "/tmp/keep.app"', script)
+        self.assertIn('open "/Applications/BioManager.app"', script)
+        name, script = du.swap_script("win32", 4242, Path("C:/Apps/BioManager"), Path("C:/Apps/new"), Path("C:/Apps/keep"))
+        self.assertTrue(name.endswith(".cmd"))
+        self.assertIn('PID eq 4242', script)

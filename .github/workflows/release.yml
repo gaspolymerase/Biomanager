@@ -41,6 +41,10 @@ jobs:
             assets: BioManager-Linux.AppImage BioManager-Linux.tar.gz
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    env:
+      # Only to decide whether to sign (a step's `if` can't read secrets).
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
     defaults:
       run:
         shell: bash
@@ -71,6 +75,33 @@ jobs:
 
       - name: Build
         run: BIOMANAGER_VERSION="${TAG#v}" ./scripts/build-desktop.sh
+
+      # Signed and notarised when the lab's Apple developer account is set up
+      # (secrets, see scripts/sign-macos.sh); otherwise unsigned, as before.
+      - name: Sign and notarise (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: ./scripts/sign-macos.sh
+      # Signed with the lab's code-signing certificate when there is one:
+      # WINDOWS_CERT_PFX (the .pfx, base64) and WINDOWS_CERT_PASSWORD.
+      - name: Sign (Windows)
+        if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 dist/BioManager/BioManager.exe
+          & $signtool.FullName verify /pa dist/BioManager/BioManager.exe
+          Remove-Item $pfx
 
       - name: Package (macOS)
         if: runner.os == 'macOS'

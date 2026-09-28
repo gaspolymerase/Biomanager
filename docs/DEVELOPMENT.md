@@ -631,6 +631,25 @@ push (`.github/workflows/tests.yml`).
 
 ## Desktop App
 
+**Signed builds.** The release workflow signs and notarises the Mac apps
+(`scripts/sign-macos.sh`, entitlements in `desktop/entitlements.plist`) and
+signs the Windows exe when these repository secrets exist; without them it
+builds unsigned, as before:
+
+| Secret | What |
+| --- | --- |
+| `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD` | A "Developer ID Application" certificate with its key, exported from Keychain Access as .p12 and base64-encoded (`base64 -i cert.p12 \| pbcopy`), and the export password. Needs an Apple Developer Program membership. |
+| `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | The developer account's Apple ID, its team ID, and an app-specific password (appleid.apple.com → Sign-In and Security), for notarisation. |
+| `WINDOWS_CERT_PFX`, `WINDOWS_CERT_PASSWORD` | A code-signing certificate (.pfx, base64) and its password. |
+
+**Updating itself** (`desktop_updates.install_update`): the file for this
+computer is downloaded, checked against the SHA-256 GitHub publishes in the
+release's asset `digest`, staged beside the installed copy, and a small
+script waits for the app's process to end, moves the old copy aside and the
+new one into place, and opens it. A file the app downloads itself carries
+no quarantine flag, so an update opens without the first-launch warning
+even while the builds are unsigned.
+
 `desktop.py` starts Flask on a free local port and opens it in a
 pywebview window. `desktop_menu.py` builds the menus: on a Mac, the whole
 menu bar through AppKit (installed on the main thread once the window is

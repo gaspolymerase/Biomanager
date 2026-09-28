@@ -552,7 +552,10 @@ On Windows and Linux the same destinations are in File, Go and Help.
 
 **Check for Updates…** (in the BioManager menu, or Help on Windows and
 Linux) asks GitHub for the latest release and, if it is newer, shows
-what's new and downloads the file for your computer in your browser. The
+what's new. **Install and Restart** downloads it, checks it against the
+checksum GitHub publishes, and swaps it in as the app quits (the old one
+is kept until the new one opens); where it can't (the Linux .tar.gz, a
+folder it can't write to), it opens the download in your browser. The
 app also checks by itself, at most once a day; turn that off with
 **Check for Updates Automatically**. The check sends nothing but the app's
 version.

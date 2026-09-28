@@ -120,12 +120,53 @@ def check_on_launch() -> None:
     threading.Thread(target=later, daemon=True).start()
 
 
+def _install(release: dict) -> None:
+    """Download, check and stage the update, then quit so it takes over."""
+    def run():
+        try:
+            message = updates.install_update(release)
+        except (OSError, ValueError) as error:
+            _say(f"The update wasn't installed: {error}", release)
+            return
+        _quit(message)
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _say(message: str, release: dict | None = None) -> None:
+    if sys.platform == "darwin":
+        from PyObjCTools import AppHelper
+        AppHelper.callAfter(_mac_message, message, release)
+    else:
+        window = _state["window"]
+        if window.create_confirmation_dialog("BioManager", message + ("\n\nDownload it instead?" if release else "")) and release:
+            webbrowser.open(release["download"] or release["page"])
+
+
+def _quit(message: str) -> None:
+    if sys.platform == "darwin":
+        from PyObjCTools import AppHelper
+
+        def done():
+            import AppKit
+            _mac_message(message, None)
+            AppKit.NSApplication.sharedApplication().terminate_(None)
+        AppHelper.callAfter(done)
+    else:
+        window = _state["window"]
+        window.create_confirmation_dialog("BioManager", message)
+        window.destroy()
+
+
 def _plain_update_dialog(answer: dict) -> None:
     window = _state["window"]
     if answer["state"] == "newer":
         r = answer["release"]
-        if window.create_confirmation_dialog(f"BioManager {r['version']} is available",
-                                             f"You have {answer['current']}. Download it now?\n\n{r['notes']}"):
+        if updates.can_install(r):
+            if window.create_confirmation_dialog(f"BioManager {r['version']} is available",
+                                                 f"You have {answer['current']}. Install it and restart?\n\n{r['notes']}"):
+                _install(r)
+        elif window.create_confirmation_dialog(f"BioManager {r['version']} is available",
+                                               f"You have {answer['current']}. Download it now?\n\n{r['notes']}"):
             webbrowser.open(r["download"] or r["page"])
     elif answer["state"] == "current":
         window.create_confirmation_dialog("BioManager is up to date", f"{answer['version']} is the latest version.")
@@ -316,17 +357,20 @@ def _mac_update_alert(answer: dict, manual: bool) -> None:
         alert.setIcon_(icon)
     if answer["state"] == "newer":
         r = answer["release"]
+        installable = updates.can_install(r)
         alert.setMessageText_(f"BioManager {r['version']} is available")
-        alert.setInformativeText_(f"You have {answer['current']}.\n\n{r['notes']}".strip())
-        alert.addButtonWithTitle_("Download")
+        alert.setInformativeText_(f"You have {answer['current']}. Your data stays where it is.\n\n{r['notes']}".strip())
+        alert.addButtonWithTitle_("Install and Restart" if installable else "Download")
         alert.addButtonWithTitle_("Later")
         if not manual:
             alert.addButtonWithTitle_("Skip This Version")
         AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         choice = alert.runModal()
         if choice == AppKit.NSAlertFirstButtonReturn:
-            url = AppKit.NSURL.URLWithString_(r["download"] or r["page"])
-            AppKit.NSWorkspace.sharedWorkspace().openURL_(url)
+            if installable:
+                _install(r)
+            else:
+                AppKit.NSWorkspace.sharedWorkspace().openURL_(AppKit.NSURL.URLWithString_(r["download"] or r["page"]))
         elif choice == AppKit.NSAlertThirdButtonReturn:
             updates.save_prefs(skip_version=r["version"])
         return
@@ -338,6 +382,18 @@ def _mac_update_alert(answer: dict, manual: bool) -> None:
         alert.setInformativeText_(answer["message"])
     alert.addButtonWithTitle_("OK")
     alert.runModal()
+
+
+def _mac_message(message: str, release: dict | None) -> None:
+    import AppKit
+    alert = AppKit.NSAlert.alloc().init()
+    alert.setMessageText_("BioManager")
+    alert.setInformativeText_(message)
+    alert.addButtonWithTitle_("OK")
+    if release:
+        alert.addButtonWithTitle_("Download Instead")
+    if alert.runModal() == AppKit.NSAlertSecondButtonReturn and release:
+        AppKit.NSWorkspace.sharedWorkspace().openURL_(AppKit.NSURL.URLWithString_(release["download"] or release["page"]))
 
 
 def _rebuild_go_menu() -> None:
