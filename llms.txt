@@ -1,6 +1,6 @@
 # BioManager
 
-> A lab database for animal colonies (mice, zebrafish, flies, worms, any organism), plasmids, samples, orders, reagents, antibodies, a calendar and a notebook. Desktop apps for macOS, Windows and Linux; a Docker server for a whole lab; an Android app and iPhone home-screen web app for the server.
+> A lab database for animal colonies (mice, zebrafish, flies, worms, any organism), plasmids, samples, orders, reagents, antibodies, viruses, a calendar and a notebook. Desktop apps for macOS, Windows and Linux; a Docker server for a whole lab; an Android app and iPhone home-screen web app for the server.
 
 - [Deploying a lab server, for AI assistants](https://gaspolymerase.github.io/biomanager-app/deploy-with-ai.md): facts, questions to ask, exact commands, checks and safety rules
 - [Run it for your lab](https://gaspolymerase.github.io/biomanager-app/server.html): every hosting option with costs and steps

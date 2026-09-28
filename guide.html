@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>User guide — BioManager</title>
-  <meta name="description" content="How to use BioManager, and how to move your lab in from Excel: the mouse colony, zebrafish, flies, worms, any organism, plasmids, samples, orders, reagents, antibodies, the calendar and the notebook.">
+  <meta name="description" content="How to use BioManager, and how to move your lab in from Excel: the mouse colony, zebrafish, flies, worms, any organism, plasmids, samples, orders, reagents, antibodies, viruses, the calendar and the notebook.">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="icon" href="assets/icon-192.png" sizes="192x192" type="image/png">
@@ -50,7 +50,7 @@
       <li><a href="#custom">Any other organism</a></li>
       <li><a href="#experiments">Experiments</a></li>
       <li><a href="#plasmids">Plasmids</a></li>
-      <li><a href="#inventory">Samples, orders, reagents</a></li>
+      <li><a href="#inventory">Samples, orders, reagents, viruses</a></li>
       <li><a href="#calendar">Calendar</a></li>
       <li><a href="#notebook">Notebook and utilities</a></li>
       <li class="toc-part">Working as a lab</li>
@@ -80,7 +80,7 @@
       <span id="start"></span><!-- #start, #basics, #cards, #lab-server: where older links pointed -->
       <h2>What BioManager is</h2>
       <p>BioManager is one place for what a biology lab keeps: animals (mice, zebrafish, flies, worms, or any organism
-        you describe), plasmids, samples, orders, reagents and antibodies, with a calendar and a notebook beside them.
+        you describe), plasmids, samples, orders, reagents, antibodies and viruses, with a calendar and a notebook beside them.
         It looks and edits like a spreadsheet, but underneath it is a database that understands your lab: it knows a mouse
         lives in a cage on a rack, that a litter born today is weaned at P21, that a vial at 18 °C is flipped half as often
         as at 25 °C, and that an antibody expires next month.</p>
@@ -158,7 +158,7 @@
         <li><b>Your lab</b> — its name, time zone, how dates are written and the genotyping day
           (<a href="#setup">what these do</a>).</li>
         <li><b>What does your lab keep?</b> Tick animals and stocks (mice, zebrafish, flies, worms, other organisms) and molecular
-          and supplies (plasmids, samples, orders, reagents, antibodies). For each, a little more: a name (e.g. <i>Mouse room B</i>);
+          and supplies (plasmids, samples, orders, reagents, antibodies, viruses). For each, a little more: a name (e.g. <i>Mouse room B</i>);
           for the colony how many racks, their size and how positions are labelled; for flies and worms which incubator
           temperatures you run. Blank means the usual.</li>
         <li><b>Which lab functions?</b> The calendar and the notebook.</li>
@@ -291,7 +291,7 @@
         <li><b>The search box</b> above a sheet filters it as you type: an ID, a genotype, a cage, a note.</li>
         <li><b>Chips</b> beside it narrow it: <i>All</i>, <i>Alive</i>, <i>Mine</i>, <i>Lab common</i>, a status, <i>Expiring soon</i>.</li>
         <li><b>Search everything</b> with <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd>, from anywhere: mice, cages, litters, experiments,
-          strains, vials, tanks, lines, clutches, plasmids, orders, samples, reagents, antibodies and notebook pages. Arrows to move,
+          strains, vials, tanks, lines, clutches, plasmids, orders, samples, reagents, antibodies, viruses and notebook pages. Arrows to move,
           Enter to open.</li>
         <li><b>Tabs.</b> Following a link moves the tab you're in; <b>+</b> opens a new tab on your start page
           (<b>Settings → Default landing page</b>; Home if none). Drag to reorder, <kbd>Alt</kbd> (<kbd>⌥ Option</kbd> on a Mac) +
@@ -444,7 +444,7 @@
         <li><b>Who it is for</b> — <i>Just me</i> (a personal database only you and admins see) or <i>The whole lab</i>.</li>
       </ul>
       <p>Change any of it later under the database's <b>Configure</b>, without losing records. The same page offers inventories
-        (samples, orders, reagents, antibodies, a custom list) and fly or worm stock databases. An icon is picked from a grid of the
+        (samples, orders, reagents, antibodies, viruses, a custom list) and fly or worm stock databases. An icon is picked from a grid of the
         icons themselves; hover over one for its name.</p>
       <figure class="gshot"><a href="assets/screenshots/new-database.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/new-database.webp" alt="The Add database page" loading="lazy" width="2000" height="1250"></a><figcaption>The Add database page</figcaption></figure>
       <p><b>Experiments</b> (beside the name) work as the mouse colony's do, for your animals, groups and cohorts: see <a href="#experiments">Experiments</a>.</p>
@@ -506,15 +506,16 @@
         <li><b>New plasmid</b> takes a name, backbone, insert, resistance, owner and a box position (blank takes the next free one) —
           or paste a list of names to make several. Drop in a SnapGene <code>.dna</code>, GenBank, FASTA or plain-text sequence.</li>
         <li>Open a plasmid to see its sequence and features on an interactive map you can edit (edits save themselves), full screen if
-          you like; <b>Storage</b> and <b>Properties</b> are the other tabs.</li>
+          you like; <b>Storage</b> and <b>Properties</b> are the other tabs. <b>Storage</b> also lists the viruses made from the plasmid
+          (<a href="#inventory">Viruses</a>).</li>
         <li>Select plasmids to set owner or resistance, move them to a box, or delete. <b>Import from Excel</b> brings in your old list.</li>
       </ul>
       <figure class="gshot"><a href="assets/screenshots/plasmid-map.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/plasmid-map.webp" alt="A plasmid map" loading="lazy" width="2000" height="1250"></a><figcaption>A plasmid map</figcaption></figure>
     </section>
 
     <section id="inventory">
-      <h2>Samples, orders, reagents, antibodies</h2>
-      <p>One engine, five starting points, each with its own columns and statuses:</p>
+      <h2>Samples, orders, reagents, antibodies, viruses</h2>
+      <p>One engine, six starting points, each with its own columns and statuses:</p>
       <table class="gtable">
         <tr><th>Samples</th><td>Tissue and material, linked to the animal it came from, stored at RT, 4 °C, −20 °C, −80 °C or LN₂ in a freezer
           box position. Available, in use, used up, discarded.</td></tr>
@@ -523,6 +524,8 @@
         <tr><th>Reagents</th><td>Quantity, concentration, CAS number, storage temperature, hazard, lot and expiry. In stock, low, empty,
           discarded.</td></tr>
         <tr><th>Antibodies</th><td>Host, clonality, clone, conjugate, reactivity, applications, dilution, isotype, RRID, and where each vial is.</td></tr>
+        <tr><th>Viruses</th><td>AAV, lentivirus, rabies and other vectors: serotype, the plasmid it was made from (<b>Made from</b>), promoter,
+          payload, titer, biosafety level, the date made, and each aliquot's place in a −80 °C box. In stock, low, used up, discarded.</td></tr>
         <tr><th>Custom list</th><td>Whatever you define.</td></tr>
       </table>
       <h3>Ordering, start to shelf</h3>
@@ -531,11 +534,11 @@
           Type an item or catalogue number the lab has used before and pick it: the vendor, price and grant fill in from last time.</li>
         <li><b>Follow it.</b> The status chips — <i>Requested, Ordered, Received, Cancelled</i> — show each stage in one tap; the person who
           requested it is notified as it moves.</li>
-        <li><b>It arrives.</b> Mark it received and BioManager asks <b>Add it to stock?</b>: a new reagent or antibody with its name,
+        <li><b>It arrives.</b> Mark it received and BioManager asks <b>Add it to stock?</b>: a new reagent, antibody or virus with its name,
           vendor, catalogue number, lot, quantity and expiry already filled in, opened for you to add where it's kept. (Later, the
           <b>To stock</b> button on the order does the same.) From then on the order shows <i>Reagents #8</i> and the reagent shows the
           order it came from; each opens the other.</li>
-        <li><b>Running low?</b> On any reagent or antibody, the cart button, <b>Order again</b>, opens a new order with its details and the
+        <li><b>Running low?</b> On any reagent, antibody or virus, the cart button, <b>Order again</b>, opens a new order with its details and the
           quantity, price and grant of the last time it was ordered.</li>
       </ol>
       <h3>Every inventory</h3>
@@ -545,6 +548,9 @@
         <li><b>Box grid</b> places items in freezer boxes; the same boxes as everywhere else.</li>
         <li><b>Configure</b> (its creator, or an admin): the name, what it tracks, the choices and statuses (renaming one relabels its items),
           your own columns, and which fields are <b>needed for a new item</b>.</li>
+        <li><b>A plasmid column</b> (the Viruses' <b>Made from</b>, or one you add in Configure as <i>A plasmid</i>): type the plasmid's
+          number or name, or pick it from the list, and the cell opens that plasmid. The plasmid's <b>Storage</b> tab lists everything
+          made from it, under <i>Made from this plasmid</i>.</li>
       </ul>
       <figure class="gshot"><a href="assets/screenshots/reagents.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/reagents.webp" alt="The reagents sheet" loading="lazy" width="2000" height="1250"></a><figcaption>The reagents sheet</figcaption></figure>
       <figure class="gshot"><a href="assets/screenshots/orders.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/orders.webp" alt="The orders board" loading="lazy" width="2000" height="1250"></a><figcaption>The orders board</figcaption></figure>
