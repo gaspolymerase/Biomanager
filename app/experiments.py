@@ -216,10 +216,23 @@ class Subject:
     row: object = None        # the membership row
     record: object = None     # the animal's own record
 
+    @property
+    def card(self) -> str:
+        """The anchor its cage or housing card's QR code opens (#cage-12…),
+        for scanning in bench mode."""
+        rec = self.record
+        if self.kind == "mouse" and getattr(rec, "cage_id_fk", None):
+            return f"cage-{rec.cage_id_fk}"
+        if self.kind == "fish" and getattr(rec, "tank_id_fk", None):
+            return f"tank-{rec.tank_id_fk}"
+        if self.kind == "organism" and getattr(rec, "housing_id_fk", None):
+            return f"unit-{rec.housing_id_fk}"
+        return ""
+
     def as_dict(self) -> dict:
         return {"key": self.key, "label": self.label, "sex": self.sex, "genotype": self.genotype,
                 "housing": self.housing, "group": self.group, "start": self.start, "note": self.note,
-                "alive": self.alive}
+                "alive": self.alive, "card": self.card}
 
 
 def subjects(session, exp: Experiment, place: Place, group: str = "") -> list[Subject]:

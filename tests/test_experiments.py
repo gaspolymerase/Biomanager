@@ -47,6 +47,8 @@ class Zebrafish(Base):
         self.assertEqual(r.status_code, 200, r.get_json())
         subs = r.get_json()["subjects"]
         self.assertEqual(sorted(s["start"] for s in subs), [8, 12])
+        # Bench mode's scanner finds them by the tank card's QR anchor.
+        self.assertEqual({s["card"] for s in subs}, {f"tank-{self.tank}"})
         big = next(s["key"] for s in subs if s["start"] == 12)
         data = self.read(exp, TODAY, {big: "9"}).get_json()
         row = next(r for r in data["table"]["rows"] if r["key"] == big)

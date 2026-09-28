@@ -205,3 +205,8 @@
 .xp-check { flex-direction: row !important; align-items: center; gap: 8px !important; font-weight: 600; }
 .xp-bench-qr { align-items: center; }
 .xp-bench-qr img { border-radius: 10px; background: #fff; padding: 8px; }
+.xb-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.xb-scan { height: 36px; }
+.xb-jump .xb-scan { height: 28px; padding: 0 10px; font-size: 12px; }
+.xb-camera { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgb(0 0 0 / 0.85); }
+.xb-camera video { width: min(92vw, 520px); border-radius: 14px; }

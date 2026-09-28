@@ -702,6 +702,27 @@ open dist/BioManager.app
 
 The script installs `pywebview` + `pyinstaller`, ensures the frontend bundle is built, and produces `dist/BioManager.app` (macOS) or `dist/BioManager/` (Windows/Linux). The app's SQLite database and uploads live in `~/Library/Application Support/Biomanager/` so rebuilds don't wipe your data. To skip the bundling step and just run a desktop window from source: `python desktop.py`.
 
+## The phone apps
+
+`android/` (Kotlin, Gradle) and `ios/` (SwiftUI, XcodeGen) are the same
+small thing: a setup screen that asks for the lab server's address and
+checks `/healthz` answers `ok`, then a web view of that server, plus a
+native QR scanner. Links to other hosts open in the system browser.
+
+- **iOS**: `ios/project.yml` generates the Xcode project (`cd ios &&
+  xcodegen`; the `.xcodeproj` is not committed). `Scanner.swift` is
+  VisionKit's `DataScannerViewController`. A page on the server can borrow
+  it: `window.webkit.messageHandlers.bmScan.postMessage('scan')` opens the
+  scanner and the code comes back as `window.bmScanned(text)`
+  (`LabWebView.swift`, which only answers pages from the server's own
+  host). Bench mode (`experiment-bench.js`) uses it for **Scan a card**,
+  and in a browser falls back to `BarcodeDetector` on the camera when the
+  browser has it. `.github/workflows/ios.yml` builds it for the simulator
+  on a macOS runner and screenshots it against a demo server; shipping it
+  needs an Apple developer account (`DEVELOPMENT_TEAM`).
+- **Android**: `.github/workflows/android.yml` builds the APK, checks it in
+  an emulator, and the release workflow publishes it.
+
 ## Shared Server Setup
 
 **The supported way is the Docker stack in [`deploy/`](../deploy/README.md)**:

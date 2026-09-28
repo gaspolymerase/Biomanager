@@ -1,0 +1,71 @@
+name: ios
+
+# Builds the iPhone companion app for the simulator and opens it against a
+# real BioManager server, keeping screenshots. Runs on changes to ios/ and
+# by hand. It is not signed: running it on a phone or shipping it needs an
+# Apple developer account (set DEVELOPMENT_TEAM in ios/project.yml).
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml", "app/static/experiment-bench.js"]
+  workflow_dispatch:
+
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen
+
+      - name: Build
+        run: |
+          xcodebuild -project ios/BioManager.xcodeproj -scheme BioManager -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -40
+          test -d build/Build/Products/Debug-iphonesimulator/BioManager.app
+
+      # ---- smoke test: the app against a demo server, in the simulator
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Start a demo BioManager server
+        run: |
+          grep -v pywebview requirements.txt > "$RUNNER_TEMP/req.txt"
+          python -m pip install -q -r "$RUNNER_TEMP/req.txt"
+          python scripts/demo-data.py "$RUNNER_TEMP/demo"
+          BIOMANAGER_DATA_DIR="$RUNNER_TEMP/demo" PORT=5077 nohup python run.py > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 30); do curl -fsS http://127.0.0.1:5077/healthz && break; sleep 1; done
+
+      - name: Simulator
+        run: |
+          mkdir -p smoke
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = [d for rt, ds in json.load(sys.stdin)["devices"].items() if "iOS" in rt for d in ds if d["name"].startswith("iPhone")]
+          print(devs[-1]["udid"])')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" build/Build/Products/Debug-iphonesimulator/BioManager.app
+          # First the setup screen, as someone new sees it.
+          xcrun simctl launch "$DEVICE" org.biomanager.app
+          sleep 8
+          xcrun simctl io "$DEVICE" screenshot smoke/1-setup.png
+          xcrun simctl terminate "$DEVICE" org.biomanager.app
+          # Then pointed at the demo server (the "server" setting, given at launch).
+          xcrun simctl launch "$DEVICE" org.biomanager.app -server http://localhost:5077
+          sleep 15
+          xcrun simctl io "$DEVICE" screenshot smoke/2-server.png
+          grep -q "GET /login" "$RUNNER_TEMP/server.log" || grep -q "GET / " "$RUNNER_TEMP/server.log" \
+            || { echo "::error::The app never opened the server."; tail -40 "$RUNNER_TEMP/server.log"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-smoke-screenshots
+          path: smoke/

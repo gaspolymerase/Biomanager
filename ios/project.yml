@@ -1,0 +1,44 @@
+# The BioManager iPhone app: a companion for a lab's BioManager server.
+# Generate the Xcode project with XcodeGen (brew install xcodegen), then build:
+#
+#   cd ios && xcodegen && open BioManager.xcodeproj
+#
+# The .xcodeproj is generated, not committed.
+name: BioManager
+options:
+  bundleIdPrefix: org.biomanager
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""          # set to your Apple team to run on a phone or ship
+targets:
+  BioManager:
+    type: application
+    platform: iOS
+    sources: [BioManager]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.biomanager.app
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: BioManager
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSCameraUsageDescription: "BioManager uses the camera to scan the QR code on cage, tank and vial cards."
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "BioManager saves exported images you choose to keep."
+    info:
+      path: BioManager/Info.plist
+      properties:
+        # Lab servers are private. Plain http is allowed only on the local
+        # network (a server on the lab's LAN with BIOMANAGER_HTTPS=0);
+        # anything else must be https, which the setup screen explains.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true

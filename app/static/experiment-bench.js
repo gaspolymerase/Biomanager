@@ -24,13 +24,64 @@
     return data;
   }
 
+  // ---- scanning a cage, tank or housing card: jump to its animal. The iOS
+  // app lends its scanner (LabWebView.swift, "bmScan"); a browser that can
+  // read QR codes itself (BarcodeDetector) uses the camera here.
+  const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bmScan;
+  const canScan = Boolean(native) || ('BarcodeDetector' in window && navigator.mediaDevices);
+  const scanButton = () => (canScan ? '<button type="button" class="btn xb-scan" data-xb-scan>Scan a card</button>' : '');
+
+  window.bmScanned = (value) => {
+    const text = String(value || '').trim();
+    const anchor = text.includes('#') ? text.split('#').pop() : '';
+    const list = task ? task.animals : D.subjects;
+    const keyOf = (a) => a.key || a.subject;
+    const subject = D.subjects.find((x) => (anchor && x.card === anchor) || x.label === text || x.label.replace(/^#/, '') === text);
+    const index = subject ? list.findIndex((a) => keyOf(a) === subject.key) : -1;
+    if (index < 0) {
+      if (window.BioDialog) BioDialog.alert(anchor ? 'No animal of this experiment is on that card.' : `“${text}” isn't a card of this experiment.`);
+      return;
+    }
+    if (!task) { start('reading').then(() => { at = index; show(); }); return; }
+    at = index;
+    show();
+  };
+
+  async function scanHere() {
+    const box = document.createElement('div');
+    box.className = 'xb-camera';
+    box.innerHTML = '<video playsinline muted></video><button type="button" class="btn">Cancel</button>';
+    document.body.appendChild(box);
+    const video = box.querySelector('video');
+    let stream = null;
+    let done = false;
+    const stop = () => { done = true; if (stream) stream.getTracks().forEach((t) => t.stop()); box.remove(); };
+    box.querySelector('button').addEventListener('click', stop);
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
+      await video.play();
+      const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      const look = async () => {
+        if (done) return;
+        const codes = await detector.detect(video).catch(() => []);
+        if (codes.length) { stop(); window.bmScanned(codes[0].rawValue); return; }
+        requestAnimationFrame(look);
+      };
+      look();
+    } catch (_e) {
+      stop();
+      if (window.BioDialog) BioDialog.alert('The camera could not be opened here.');
+    }
+  }
+
   function pick() {
     const due = D.schedule.filter((r) => !r.record && !r.reading && (r.state === 'today' || r.state === 'overdue'));
     const later = D.schedule.filter((r) => !r.record && !r.reading && r.state !== 'today' && r.state !== 'overdue');
     const button = (r) => `<button type="button" class="xb-choice" data-step="${r.step_id}:${r.day}"><b>${esc(r.title)}</b>
       <span>Day ${r.day}${r.date ? ` · ${esc(nice(r.date))}` : ''}${r.group ? ` · ${esc(r.group)}` : ''} · ${r.state === 'overdue' ? 'overdue' : r.state === 'today' ? 'due today' : 'to come'}</span></button>`;
     $('[data-xb-pick]').innerHTML = `
-      <h2>What are you doing now?</h2>
+      <div class="xb-pick-head"><h2>What are you doing now?</h2>${scanButton()}</div>
       ${D.editable ? `<button type="button" class="xb-choice xb-main" data-reading><b>${esc(D.readout.verb || 'Record')}: ${esc(D.readout.label)}</b><span>Today, ${D.subjects.length} ${esc(D.nouns)}, one at a time</span></button>
       ${due.map(button).join('')}
       ${later.length ? `<details class="xb-later"><summary>Planned for other days (${later.length})</summary>${later.map(button).join('')}</details>` : ''}`
@@ -96,7 +147,7 @@
           <button type="button" class="btn" data-xb-miss>Not given</button>
           <button type="button" class="btn btn-primary" data-xb-give>Given ✓</button></div>`;
     }
-    $('[data-xb-jump]').innerHTML = list.map((x, i) => {
+    $('[data-xb-jump]').innerHTML = scanButton() + list.map((x, i) => {
       const k = x.key || x.subject;
       const state = task.kind === 'step' ? (given.get(k) ? 'given' : 'missed') : (previous(k) && previous(k).today ? 'given' : '');
       return `<button type="button" class="xb-chip${i === at ? ' is-now' : ''}" data-xb-go="${i}" data-state="${state}">${esc(x.label)}</button>`;
@@ -143,6 +194,7 @@
   document.addEventListener('click', async (event) => {
     const t = event.target.closest('button');
     if (!t) return;
+    if (t.matches('[data-xb-scan]')) { if (native) native.postMessage('scan'); else scanHere(); return; }
     if (t.matches('[data-reading]')) start('reading');
     else if (t.dataset.step) start(t.dataset.step);
     else if (t.matches('[data-xb-save]')) saveReading();

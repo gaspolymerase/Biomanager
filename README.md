@@ -128,7 +128,8 @@ The most complete module, built around how a mouse room actually works.
     and wide), each animal's manipulations, and the tests.
   - **Bench mode**, on a phone (scan its QR code): one animal at a time,
     with big numbers: weigh or count each, or give each today's
-    manipulation and tick it.
+    manipulation and tick it. **Scan a card** reads a cage, tank or vial
+    card with the phone's camera and jumps to the animal in it.
 
 <table>
   <tr>
