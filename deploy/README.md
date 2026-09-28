@@ -114,6 +114,28 @@ the two values in `.env` and run `docker compose up -d`.
 A university or hospital tenant may not let you register apps yourself;
 then IT registers it with the same redirect URI.
 
+**Your institution's sign-in** (Okta, Keycloak, Azure AD, Google Workspace,
+or Shibboleth with its OpenID Connect plugin): ask IT for an OpenID Connect
+client with the redirect URI `https://DOMAIN/auth/institution/callback`
+and the scopes `openid email profile`. Put its issuer address in
+`BIOMANAGER_OIDC_ISSUER`, the client ID and secret in
+`BIOMANAGER_OIDC_CLIENT_ID` and `BIOMANAGER_OIDC_CLIENT_SECRET`, and what
+the button should say (the name people know it by, e.g. CampusKey) in
+`BIOMANAGER_OIDC_NAME`.
+
+**A university that only speaks SAML** (Shibboleth, InCommon, eduGAIN):
+register at cilogon.org/oauth2/register (free for research and education)
+with the redirect URI `https://DOMAIN/auth/cilogon/callback` and the scopes
+`openid email profile org.cilogon.userinfo`. CILogon lets people sign in
+with their university account and hands BioManager an OpenID Connect
+token. Put the client ID and secret in `BIOMANAGER_CILOGON_CLIENT_ID` and
+`BIOMANAGER_CILOGON_CLIENT_SECRET`; set `BIOMANAGER_CILOGON_IDP` to the
+university's entityID to skip CILogon's list of institutions.
+
+Either way, as with Google and Microsoft, a new person's first sign-in is
+a request an admin approves, and accounts are matched by the provider's
+own identifier, never by email.
+
 ## Moving an existing lab onto the server
 
 The SQLite database from a laptop or the desktop app is copied once,

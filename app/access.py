@@ -30,9 +30,34 @@ def current_user():
     return g.get("user") if g else None
 
 
+# The roles an admin gives (Manage users), besides pending and guest:
+ROLES = {
+    "member": ("Member", "Changes their own records, and the lab's shared ones."),
+    "care": ("Animal care", "Technicians and vets: may change any lab's animals, cages, tanks and vials "
+                            "(weights, moves, flips, health), but not experiments, notebooks or settings."),
+    "facility": ("Facility manager", "Animal care, plus the facility's racks, rooms, incubators, water systems "
+                                     "and databases' settings. Not accounts."),
+    "admin": ("Admin", "Everything, including accounts and Lab setup."),
+}
+# Records animal care staff look after, whoever owns them.
+CARE_RECORDS = {"MouseRecord", "CageRecord", "TankRecord", "FishRecord", "StockUnit", "Organism", "OrgHousing",
+                "OrgCohort", "ClutchRecord", "LitterRecord"}
+
+
 def is_admin(user=None) -> bool:
     user = user or current_user()
     return getattr(user, "role", None) == "admin"
+
+
+def is_facility(user=None) -> bool:
+    user = user or current_user()
+    return getattr(user, "role", None) in ("facility", "admin")
+
+
+def is_care(user=None) -> bool:
+    """Animal care staff (technicians, vets), a facility manager or an admin."""
+    user = user or current_user()
+    return getattr(user, "role", None) in ("care", "facility", "admin")
 
 
 def username(user=None) -> str:
@@ -68,6 +93,8 @@ def can_edit(record, user=None, shared: bool = False) -> bool:
         return True
     if shared:
         return True
+    if type(record).__name__ in CARE_RECORDS and is_care(user):
+        return True
     return owns(record, user) or is_unowned(record)
 
 
@@ -100,7 +127,7 @@ def can_edit_litter(litter, user=None) -> bool:
     its mice (an empty litter by anyone)."""
     if litter is None:
         return False
-    if is_admin(user):
+    if is_admin(user) or is_care(user):
         return True
     return all(can_edit_mouse(mouse, user) for mouse in (getattr(litter, "mice", None) or []))
 
@@ -112,7 +139,7 @@ def can_edit_rack(rack, user=None) -> bool:
     Used for mouse racks, inventory boxes and fly/worm racks alike."""
     if rack is None:
         return False
-    if is_admin(user):
+    if is_facility(user):
         return True
     creator = (getattr(rack, "created_by", "") or "").strip()
     return bool(creator) and creator == username(user)
@@ -149,7 +176,7 @@ def can_configure(module, user=None) -> bool:
     whoever created it. Records inside it follow can_edit."""
     if module is None:
         return False
-    if is_admin(user):
+    if is_facility(user):
         return True
     creator = (getattr(module, "created_by", "") or "").strip()
     return bool(creator) and creator == username(user)

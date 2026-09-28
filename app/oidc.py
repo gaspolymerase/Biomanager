@@ -32,11 +32,28 @@ Settings (a provider is offered only when both of its values are set):
                                 accounts) | organizations | consumers | a
                                 tenant ID, to accept one organisation only
 
+Your institution's own sign-in, through any OpenID Connect provider (Okta,
+Keycloak, Azure AD, Google Workspace, Shibboleth with its OIDC plugin):
+
+  BIOMANAGER_OIDC_ISSUER        https://login.example.edu (its discovery
+                                document is <issuer>/.well-known/openid-configuration)
+  BIOMANAGER_OIDC_CLIENT_ID, BIOMANAGER_OIDC_CLIENT_SECRET
+  BIOMANAGER_OIDC_NAME          what the button says, e.g. "CampusKey"
+
+Universities in InCommon or eduGAIN (SAML) through CILogon, which turns
+their sign-in into OpenID Connect (free for research; cilogon.org/oauth2/register):
+
+  BIOMANAGER_CILOGON_CLIENT_ID, BIOMANAGER_CILOGON_CLIENT_SECRET
+  BIOMANAGER_CILOGON_IDP        optional: the university's entityID, to skip
+                                CILogon's list of institutions
+
 Register this redirect URI with the provider (BIOMANAGER_BASE_URL, or the
 address the request came to):
 
   https://<server>/auth/google/callback
   https://<server>/auth/microsoft/callback
+  https://<server>/auth/institution/callback
+  https://<server>/auth/cilogon/callback
 """
 from __future__ import annotations
 
@@ -67,7 +84,8 @@ from .models import UserAccount, UserIdentity
 bp = Blueprint("oidc", __name__, url_prefix="/auth")
 log = logging.getLogger("biomanager.oidc")
 
-LABELS = {"google": "Google", "microsoft": "Microsoft"}
+LABELS = {"google": "Google", "microsoft": "Microsoft", "institution": "Your institution",
+          "cilogon": "Your university (CILogon)"}
 SIGN_IN_WINDOW = 10 * 60      # seconds between starting and finishing a sign-in
 DISCOVERY_TTL = 24 * 3600
 HTTP_TIMEOUT = 10
@@ -84,6 +102,9 @@ class Provider:
     discovery_url: str
     client_id: str
     client_secret: str
+    # Added to the authorization request: Google and Microsoft let the person
+    # pick an account; CILogon can be sent straight to one university.
+    extra: tuple = (("prompt", "select_account"),)
 
 
 def providers() -> dict[str, Provider]:
@@ -103,6 +124,21 @@ def providers() -> dict[str, Provider]:
         found["microsoft"] = Provider(
             "microsoft", LABELS["microsoft"],
             f"https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration", mid, msecret)
+    issuer = os.environ.get("BIOMANAGER_OIDC_ISSUER", "").strip().rstrip("/")
+    iid = os.environ.get("BIOMANAGER_OIDC_CLIENT_ID", "").strip()
+    isecret = os.environ.get("BIOMANAGER_OIDC_CLIENT_SECRET", "").strip()
+    if issuer and iid and isecret:
+        if not issuer.startswith("https://"):
+            raise RuntimeError("BIOMANAGER_OIDC_ISSUER must be an https:// address")
+        name = os.environ.get("BIOMANAGER_OIDC_NAME", "").strip()[:40] or LABELS["institution"]
+        found["institution"] = Provider("institution", name, f"{issuer}/.well-known/openid-configuration",
+                                        iid, isecret, extra=())
+    cid = os.environ.get("BIOMANAGER_CILOGON_CLIENT_ID", "").strip()
+    csecret = os.environ.get("BIOMANAGER_CILOGON_CLIENT_SECRET", "").strip()
+    if cid and csecret:
+        idp = os.environ.get("BIOMANAGER_CILOGON_IDP", "").strip()
+        found["cilogon"] = Provider("cilogon", LABELS["cilogon"], "https://cilogon.org/.well-known/openid-configuration",
+                                    cid, csecret, extra=(("idphint", idp),) if idp else ())
     return found
 
 
@@ -251,7 +287,7 @@ def start(key: str):
         "nonce": pending["nonce"],
         "code_challenge": _b64url(hashlib.sha256(verifier.encode()).digest()),
         "code_challenge_method": "S256",
-        "prompt": "select_account",
+        **dict(provider.extra),
     }
     return redirect(conf["authorization_endpoint"] + "?" + urllib.parse.urlencode(params))
 

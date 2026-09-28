@@ -144,7 +144,7 @@ def setup():
         admins = db_session.scalars(select(UserAccount).where(UserAccount.role == "admin",
                                                               UserAccount.disabled.is_(False))
                                     .order_by(UserAccount.username)).all()
-        members = db_session.scalars(select(UserAccount).where(UserAccount.role == "member",
+        members = db_session.scalars(select(UserAccount).where(UserAccount.role.in_(["member", "care", "facility"]),
                                                                UserAccount.disabled.is_(False))
                                      .order_by(UserAccount.username)).all()
         from .stocks import PRESETS as STOCK_PRESETS

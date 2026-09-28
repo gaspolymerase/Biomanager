@@ -747,6 +747,16 @@ track.
 - **You edit what you own.** Your mice, cages and records are yours.
   **Breeder cages and anything marked shared belong to the whole lab.**
   Admins can change anything.
+- **Roles for a facility** (Manage users → role): **Animal care**
+  (technicians, vets) may change any lab's animals, cages, tanks and
+  vials, but not experiments, notebooks or settings; a **Facility
+  manager** also runs the racks, rooms, incubators, water systems and
+  databases' settings, but not accounts.
+- **Sign in with your institution.** Besides Google and Microsoft, a
+  server can offer the institution's own sign-in (any OpenID Connect
+  provider: Okta, Keycloak, Azure AD, Shibboleth's OIDC plugin), or a
+  university that only speaks SAML (InCommon, eduGAIN) through CILogon
+  (deploy/README.md).
 - **Everyone sees every lab database** — a census with holes is not a
   census. The **My colony / Shared / Everyone** switch filters the view
   without changing who may edit what.

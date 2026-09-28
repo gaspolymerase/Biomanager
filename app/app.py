@@ -1945,7 +1945,7 @@ def admin_users():
             }
             for u in users
         ]
-    return render_template("admin_users.html", users=rows)
+    return render_template("admin_users.html", users=rows, roles=access.ROLES)
 
 
 @app.route("/admin/users/<int:user_id>/role", methods=["POST"])
@@ -1962,14 +1962,22 @@ def admin_toggle_role(user_id: int):
         if target.role == "pending":
             flash(f"Approve {target.username} before changing their role.", "error")
             return redirect(url_for("admin_users"))
-        target.role = "member" if target.role == "admin" else "admin"
+        wanted = request.form.get("role", "")
+        if wanted and wanted not in access.ROLES:
+            flash("That isn't a role.", "error")
+            return redirect(url_for("admin_users"))
+        target.role = wanted or ("member" if target.role == "admin" else "admin")
+        if target.role in ("care", "facility"):
+            notify.send(db_session, target.username,
+                        f"{g.user.display_name or g.user.username} made you {access.ROLES[target.role][0].lower()}",
+                        access.ROLES[target.role][1], category="lab", actor=g.user.username)
         if target.role == "admin":
             notify.send(db_session, target.username,
                         f"{g.user.display_name or g.user.username} made you a lab admin",
                         "You can now change Lab setup, approve sign-ups and edit any record.",
                         category="lab", link=url_for("lab.setup"), actor=g.user.username)
         db_session.commit()
-        flash(f"{target.username} is now {'an admin' if target.role == 'admin' else 'a member'}.", "success")
+        flash(f"{target.username} is now {access.ROLES.get(target.role, (target.role,))[0].lower()}.", "success")
     referrer = request.referrer or ""
     return redirect(referrer if referrer.startswith(request.host_url) else url_for("admin_users"))
 
