@@ -37,6 +37,15 @@
     {% set src = value if value is mapping else {} %}
     {% set mouse_row = links.get(src.ref|string) if src.kind in ['mouse', 'colony'] else none %}
     <span class="sheet-cell-text">{% if src.kind or src.ref %}<span class="source-chip">{% if src.kind %}<span class="source-chip-kind">{{ src_label or src.kind.split(':')[-1]|replace('_', ' ')|title }}</span>{% endif %}{% if mouse_row %}<a class="ident source-chip-link" href="{{ url_for('colony', view='mice', scope='all') }}#mouse-update-{{ mouse_row }}" title="Open mouse {{ src.ref }} in the colony">{{ src.ref }}</a>{% else %}<span class="ident" {% if src.kind in ['mouse', 'colony'] and src.ref %}title="No mouse {{ src.ref }} in the colony"{% endif %}>{{ src.ref or '—' }}</span>{% endif %}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</span>
+  {% elif field.type == 'plasmid' %}
+    {# The plasmid's number, editable; its name links to the plasmid when there is one. #}
+    {% set plasmid = plasmid_links.get(value|string) %}
+    <span class="plasmid-cell">
+      <input class="ident" name="{{ name }}" form="{{ form_id }}" value="{{ value }}" list="inv-plasmid-options" placeholder="#"
+             data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
+      {% if plasmid %}<a class="plasmid-cell-link" href="{{ url_for('plasmid_detail', row_id=plasmid.row_id) }}"
+         title="Open plasmid #{{ plasmid.number }}">{{ plasmid.name or ('#' ~ plasmid.number) }}</a>{% endif %}
+    </span>
   {% elif field.type == 'url' and value %}
     <a class="sheet-link font-normal" href="{{ value }}" target="_blank" rel="noopener">{{ value|replace('https://', '')|truncate(28) }}</a>
   {% else %}
@@ -79,6 +88,9 @@
 {% from "_switched_off.html" import switched_off_notice with context %}
 {{ switched_off_notice(module.row) }}
 {{ sheet_ui.owners_list(usernames, 'inv-owner-options') }}
+{% if plasmid_options %}
+  <datalist id="inv-plasmid-options">{% for number, pname in plasmid_options %}<option value="{{ number }}">#{{ number }} · {{ pname }}</option>{% endfor %}</datalist>
+{% endif %}
 {% for column, values in remembered.suggest.items() %}
   <datalist id="inv-rem-{{ column }}">{% for v in values %}<option value="{{ v }}"></option>{% endfor %}</datalist>
 {% endfor %}
@@ -451,8 +463,11 @@
       <fieldset class="record-group" data-new-only>
         <legend>How many</legend>
         <label>How many <input type="number" name="count" min="1" max="50" value="1" data-add-count></label>
-        <label class="col-span-full">Or paste {{ m.name_label|lower }}s, one per line
-          <textarea name="names" rows="2" placeholder="S-201&#10;S-202" data-add-names></textarea>
+        {% set examples = {'samples': 'S-201&#10;S-202', 'orders': 'Taq polymerase&#10;PBS tablets',
+                           'reagents': 'Tris base&#10;Agarose', 'antibodies': 'anti-GFP&#10;anti-NeuN',
+                           'viruses': 'AAV9-hSyn-GCaMP8m&#10;AAV5-CAG-tdTomato'} %}
+        <label class="col-span-full">Or paste a list, one {{ m.name_label|lower }} per line
+          <textarea name="names" rows="2" placeholder="{{ examples.get(m.kind, 'First&#10;Second')|safe }}" data-add-names></textarea>
           <span class="add-many-hint">One {{ m.item_noun }} per line, named after it; everything else below is the same for all.
             {% if m.has('storage') %}In a box they go side by side from the position, into the next free cells.{% endif %}
             {% set shared_required = module.required_labels.values() | list | reject('equalto', m.name_label) | list %}
@@ -507,6 +522,9 @@
               <label>ID in that colony <input name="{{ name }}_ref" data-source-ref autocomplete="off" placeholder="e.g. mouse 12, tank T004"></label>
             {% elif fd.type == 'select' %}
               <label><span>{{ fd.label }}{{ star(name) }}</span> <select name="{{ name }}"{{ req(name) }}><option value="">Not set</option>{% for o in fd.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></label>
+            {% elif fd.type == 'plasmid' %}
+              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}" list="inv-plasmid-options" autocomplete="off"
+                     placeholder="Plasmid # or name"{{ req(name) }}></label>
             {% elif fd.type == 'textarea' %}
               <label class="col-span-full"><span>{{ fd.label }}{{ star(name) }}</span> <textarea name="{{ name }}" rows="2"{{ req(name) }}></textarea></label>
             {% else %}

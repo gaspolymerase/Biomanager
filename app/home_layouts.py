@@ -265,7 +265,7 @@ def build_agenda(session, today: date, horizon: int, features: dict, zebrafish: 
     org_items, org_tracks = _organism_items(session, horizon, today)
     tracks.update(org_tracks)
     items += org_items
-    if any(m.kind in ("reagents", "antibodies") for m in inventory_service.list_modules(session)):
+    if any(m.kind in inventory_service.RESTOCK_KINDS for m in inventory_service.list_modules(session)):
         tracks["supplies"] = ("Supplies", "Expiry & low stock", "")
         items += _supply_items(session, today, horizon)
     order = {key: n for n, key in enumerate(tracks)}

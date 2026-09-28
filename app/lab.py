@@ -70,6 +70,7 @@ INVENTORY_CHOICES = {
     "orders": ("Orders", "What the lab has asked to buy, and when it arrived.", "cart"),
     "reagents": ("Reagents", "Chemicals and kits, with lots, expiry and low-stock warnings.", "flask"),
     "antibodies": ("Antibodies", "Antibodies with host, target and dilution.", "antibody"),
+    "viruses": ("Viruses", "AAV, lentivirus and other vectors: titer, serotype, the plasmid each came from.", "virus"),
 }
 
 # Member permissions (app_settings), with their defaults.

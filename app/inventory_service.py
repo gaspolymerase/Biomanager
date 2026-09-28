@@ -53,7 +53,7 @@ class ModuleView:
 
     @property
     def name_label(self) -> str:
-        return {"samples": "Sample ID", "orders": "Item", "antibodies": "Target"}.get(self.row.kind, "Name")
+        return {"samples": "Sample ID", "orders": "Item", "antibodies": "Target", "viruses": "Virus"}.get(self.row.kind, "Name")
 
     @property
     def requirable(self) -> list[tuple[str, str]]:
@@ -214,6 +214,9 @@ def expiry_state(item: InventoryItem, today: date | None = None) -> str:
 # Statuses after which an item is gone: used up, emptied, thrown out,
 # cancelled. Moving into one stamps the day in attrs[ENDED_ATTR].
 TERMINAL_STATUSES = {"used up", "empty", "discarded", "cancelled"}
+# Stock that runs out or expires: Home's "Expiring & low stock", and what a
+# received order can be added to (inventory_routes.STOCK_KINDS).
+RESTOCK_KINDS = ("reagents", "antibodies", "viruses")
 ENDED_ATTR = "used_up_on"
 
 # The statuses that mean "usable" (or, for orders, "still open"): the green
@@ -222,6 +225,7 @@ AVAILABLE_BY_KIND = {
     "samples": {"available", "in use"},
     "reagents": {"in stock", "low"},
     "antibodies": {"in stock", "low"},
+    "viruses": {"in stock", "low"},
     "orders": {"requested", "ordered"},
 }
 
@@ -393,7 +397,7 @@ def attention_items(session, days: int = 30, limit: int = 12) -> list[dict]:
     """Reagents and antibodies to restock: expiring within `days` (or
     already expired) or marked low, and not already used up."""
     today = date.today()
-    modules = {m.id: m for m in list_modules(session) if m.kind in ("reagents", "antibodies")}
+    modules = {m.id: m for m in list_modules(session) if m.kind in RESTOCK_KINDS}
     if not modules:
         return []
     rows = session.scalars(select(InventoryItem).where(
@@ -447,6 +451,63 @@ def apply_position(session, item: InventoryItem, rack_raw, position_raw) -> str 
         return f"{rack.name} · {position_raw} already holds {holder.name or '#' + str(holder.number)}. Drag on the grid to swap."
     item.rack_id_fk, (item.rack_row, item.rack_col) = rack.id, cell
     return None
+
+
+# ---------------------------------------------------------------------------
+# Columns that name a plasmid (field type "plasmid")
+# ---------------------------------------------------------------------------
+
+def plasmid_fields(mv) -> list[dict]:
+    return [f for f in mv.fields if f["type"] == "plasmid"]
+
+
+def resolve_plasmid(session, raw: str):
+    """The plasmid a typed value names, or None: its number ("42", "#42",
+    "Plasmid 42", or "42 · pAAV-…" picked from the list), else its exact
+    name, ignoring case."""
+    from .models import PlasmidRecord
+    import re
+
+    text = (raw or "").strip()
+    if not text:
+        return None
+    number = re.match(r"^(?:plasmid\s*)?#?\s*(\d+)\b", text, re.I)
+    if number:
+        found = session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == int(number.group(1))))
+        if found is not None:
+            return found
+    return session.scalar(select(PlasmidRecord).where(func.lower(PlasmidRecord.name) == text.lower()).limit(1))
+
+
+def plasmid_links(session, values) -> dict[str, dict]:
+    """{stored value: {"row_id", "number", "name"}} for the values that are
+    a plasmid's number, to link the sheet's cells to the plasmid."""
+    from .models import PlasmidRecord
+
+    numbers = {int(v) for v in values if str(v).strip().isdigit()}
+    if not numbers:
+        return {}
+    return {str(p.plasmid_id): {"row_id": p.id, "number": p.plasmid_id, "name": p.name or ""}
+            for p in session.scalars(select(PlasmidRecord).where(PlasmidRecord.plasmid_id.in_(numbers)))}
+
+
+def made_from_plasmid(session, plasmid_number: int) -> list[dict]:
+    """The records (a virus, say) that name this plasmid in a plasmid column,
+    in the inventories this person can see: for the plasmid's own page."""
+    out = []
+    for module in list_modules(session):
+        mv = view(module)
+        keys = [f["key"] for f in plasmid_fields(mv)]
+        if not keys:
+            continue
+        for item in session.scalars(select(InventoryItem).where(
+                InventoryItem.module_id_fk == module.id,
+                InventoryItem.attrs.like(f'%"{plasmid_number}"%')).order_by(InventoryItem.number.desc())):
+            attrs = item.attrs_dict
+            if any(str(attrs.get(k, "")).strip() == str(plasmid_number) for k in keys):
+                out.append({"module": module, "item": item, "noun": mv.item_noun,
+                            "available": is_available(mv, item.status)})
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
-"""Lab inventory presets: what a samples, orders, reagents or antibodies
-database tracks, and how it behaves.
+"""Lab inventory presets: what a samples, orders, reagents, antibodies or
+viruses database tracks, and how it behaves.
 
 An inventory module's `settings` JSON holds:
 
@@ -16,6 +16,9 @@ An inventory module's `settings` JSON holds:
   statuses    the status workflow, first is the default
   fields      extra, preset-specific columns kept in `attrs`:
                 {key, label, type, options?, icon?, width?, in_table?}
+              type "plasmid" holds a plasmid's number (Plasmids'
+              #): the sheet links to that plasmid, and its page lists
+              the records made from it.
 
 Presets are starting points; everything is editable in Configure.
 """
@@ -24,7 +27,7 @@ from __future__ import annotations
 
 import json
 
-FIELD_TYPES = ("text", "textarea", "number", "date", "select", "user", "url", "source")
+FIELD_TYPES = ("text", "textarea", "number", "date", "select", "user", "url", "source", "plasmid")
 
 FEATURES = {
     "storage": "Freezer boxes and shelves with positions, shown as a grid",
@@ -62,7 +65,7 @@ PRESETS: dict[str, dict] = {
         "blurb": "What the lab has asked for and where each order stands, on a board from requested to received.",
         "features": ["board", "quantity", "supplier", "received"],
         "category_label": "Category",
-        "categories": ["reagent", "antibody", "consumable", "equipment", "service", "other"],
+        "categories": ["reagent", "antibody", "virus", "consumable", "equipment", "service", "other"],
         "statuses": ["requested", "ordered", "received", "cancelled"],
         # What has to be filled in before an order can be placed.
         "required": ["name", "vendor", "catalog_number", "quantity"],
@@ -111,6 +114,27 @@ PRESETS: dict[str, dict] = {
             {"key": "dilution", "label": "Dilution", "type": "text", "icon": "droplet", "width": 110},
             {"key": "isotype", "label": "Isotype", "type": "text", "icon": "tag", "width": 90, "in_table": False},
             {"key": "rrid", "label": "RRID", "type": "text", "icon": "link", "width": 130},
+        ],
+    },
+    "viruses": {
+        "label": "Viruses",
+        "icon": "virus",
+        "item_noun": "virus", "item_noun_plural": "viruses",
+        "blurb": "Viral vectors — AAV, lentivirus, rabies and more — with serotype, titer, the plasmid each was made from, "
+                 "biosafety level and aliquots in −80 °C boxes.",
+        "features": ["storage", "sharing", "quantity", "supplier", "expiry", "received"],
+        "category_label": "Vector",
+        "categories": ["AAV", "lentivirus", "retrovirus", "adenovirus", "rabies", "HSV", "VSV", "other"],
+        "statuses": ["in stock", "low", "used up", "discarded"],
+        "fields": [
+            {"key": "serotype", "label": "Serotype", "type": "text", "icon": "tag", "width": 110},
+            {"key": "plasmid", "label": "Made from", "type": "plasmid", "icon": "plasmid", "width": 150},
+            {"key": "promoter", "label": "Promoter", "type": "text", "icon": "signpost", "width": 100},
+            {"key": "payload", "label": "Payload", "type": "text", "icon": "dna", "width": 150},
+            {"key": "titer", "label": "Titer", "type": "text", "icon": "amount", "width": 124},
+            {"key": "biosafety", "label": "Biosafety", "type": "select",
+             "options": ["BSL-1", "BSL-2", "BSL-2+", "BSL-3"], "icon": "warning", "width": 100},
+            {"key": "made_on", "label": "Made", "type": "date", "icon": "calendar", "width": 130},
         ],
     },
     "custom": {
@@ -184,4 +208,4 @@ REQUIRABLE = (
 
 # Icon for a field type, used when a custom field has none.
 FIELD_TYPE_ICONS = {"text": "type", "textarea": "note", "number": "count", "date": "calendar",
-                    "select": "tag", "user": "user", "url": "link", "source": "signpost"}
+                    "select": "tag", "user": "user", "url": "link", "source": "signpost", "plasmid": "plasmid"}

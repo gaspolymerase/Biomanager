@@ -1534,7 +1534,7 @@ def home_dashboard():
     with SessionLocal() as db_session:
         visible_inventories = _inv.list_modules(db_session)
         has_orders = any(m.kind == "orders" for m in visible_inventories)
-        has_restock = any(m.kind in ("reagents", "antibodies") for m in visible_inventories)
+        has_restock = any(m.kind in _inv.RESTOCK_KINDS for m in visible_inventories)
         has_stocks = bool(stock_service.list_modules(db_session))
         setup_needed = g.user.role == "admin" and not lab.setup_done(db_session)
         for_you = [{"id": n.id, "title": n.title, "created_at": n.created_at}
@@ -5023,7 +5023,8 @@ def global_search():
             })
 
         # Every lab inventory: samples, orders, reagents, antibodies, custom.
-        kind_type = {"orders": "order", "samples": "sample", "reagents": "reagent", "antibodies": "antibody"}
+        kind_type = {"orders": "order", "samples": "sample", "reagents": "reagent", "antibodies": "antibody",
+                     "viruses": "virus"}
         # Only databases this person sees: the lab's and their own (app/lab.py).
         from . import inventory_service as inventories
         modules = {m.id: m for m in inventories.list_modules(db_session)}
@@ -6591,7 +6592,15 @@ def plasmid_detail(row_id: int):
             "locked": not access.can_edit(p),
             "denied": _plasmid_denied(p),
         }
-    return render_template("plasmid_detail.html", plasmid=data, boxes=boxes, usernames=usernames)
+        # Viruses (or anything with a plasmid column) made from it.
+        from . import inventory_service as inventories
+        made_from = [{
+            "label": m["item"].name or f"#{m['item'].number}", "number": m["item"].number,
+            "database": m["module"].label, "status": m["item"].status, "available": m["available"],
+            "url": url_for("inventory.module", key=m["module"].key, open=m["item"].id),
+        } for m in inventories.made_from_plasmid(db_session, p.plasmid_id)]
+    return render_template("plasmid_detail.html", plasmid=data, boxes=boxes, usernames=usernames,
+                           made_from=made_from)
 
 
 @app.route("/plasmids/<int:row_id>/upload-sequence", methods=["POST"])

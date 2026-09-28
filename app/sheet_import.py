@@ -975,6 +975,20 @@ class InventoryTarget(Target):
         return f"#{item.number} {(item.name or '')[:40]}", warnings
 
 
+# Other names a lab's sheet uses for a preset's own columns (inventory.py
+# PRESETS fields), by the column's key.
+ATTR_ALIASES = {
+    "serotype": ("serotype", "capsid", "pseudotype", "envelope", "coat"),
+    "plasmid": ("plasmid", "made from", "transfer plasmid", "plasmid id", "plasmid number", "addgene plasmid",
+                "source plasmid"),
+    "promoter": ("promoter", "driver"),
+    "payload": ("payload", "transgene", "insert", "gene", "cargo", "expresses"),
+    "titer": ("titer", "titre", "gc/ml", "vg/ml", "tu/ml", "ifu/ml", "pfu/ml", "titer (gc/ml)", "titre (vg/ml)"),
+    "biosafety": ("biosafety", "bsl", "biosafety level", "containment", "safety level"),
+    "made_on": ("made", "date made", "produced", "production date", "prep date", "packaged", "made on"),
+}
+
+
 def inventory_target(session, module) -> Target:
     from . import inventory_service as svc
     from .inventory_routes import _can_configure
@@ -982,9 +996,10 @@ def inventory_target(session, module) -> Target:
     required = set(mv.required)
     fields = [
         Field("name", mv.name_label, ("name", "item", "item name", "product", "product name", "reagent", "antibody",
-                               "chemical", "sample", "sample name", "title", "compound", "target"),
+                               "chemical", "sample", "sample name", "title", "compound", "target", "virus", "virus name",
+                               "construct"),
               required="name" in required or mv.row.kind == "orders"),
-        Field("category", mv.category_label, ("category", "type", "kind", "class", "group")),
+        Field("category", mv.category_label, ("category", "type", "kind", "class", "group", "vector type", "virus type")),
         Field("status", "Status", ("status", "state", "stage")),
         Field("quantity", "Quantity", ("quantity", "qty", "amount", "volume", "count", "number of", "stock")),
         Field("unit", "Unit", ("unit", "units", "uom", "size")),
@@ -1016,7 +1031,8 @@ def inventory_target(session, module) -> Target:
         if f["type"] == "source":
             continue
         kind = {"number": "number", "date": "date"}.get(f["type"], "text")
-        fields.append(Field(f"attr_{f['key']}", f["label"], (f["key"].replace("_", " "),), kind=kind,
+        names = (f["key"].replace("_", " "), *ATTR_ALIASES.get(f["key"], ()))
+        fields.append(Field(f"attr_{f['key']}", f["label"], names, kind=kind,
                             required=f"attr_{f['key']}" in required, custom=True))
     for f in fields:
         if f.key in required:

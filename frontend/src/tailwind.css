@@ -376,7 +376,9 @@
   .card-head {
     @apply flex items-center justify-between gap-3 border-b border-sand-100 px-4 py-3;
   }
-  .card-head h2 { @apply flex min-w-0 items-center gap-2 truncate; }
+  /* Its size set here too, not only by the base h2: the plasmid editor's
+     stylesheet (layer vendor, after base) makes every h2 28px light. */
+  .card-head h2 { @apply m-0 flex min-w-0 items-center gap-2 truncate text-[15px] font-semibold tracking-[-0.012em] text-ink; line-height: 1.3; }
   .card-head h2 svg { @apply size-[15px] shrink-0 text-sand-400; }
   .card-head-link { @apply shrink-0 text-[12px] font-medium text-muted transition-colors; }
   .card-head-link:hover { @apply text-brand-700; }
@@ -1133,6 +1135,10 @@
   }
   .row-stock-btn[hidden] { @apply hidden; }
   .row-stock-link { @apply bg-sand-100 font-medium text-ink-soft no-underline hover:bg-sand-200; }
+  /* A plasmid column: the number to type, and the plasmid's name to open it. */
+  .plasmid-cell { @apply flex min-w-0 items-center gap-1; }
+  .plasmid-cell input { @apply w-14 flex-none; }
+  .plasmid-cell-link { @apply min-w-0 truncate text-[12px] font-medium text-brand-700; }
   .row-stock-btn svg { @apply size-3; }
   @media (hover: hover) {
     .sheet-table tbody tr .sheet-actions { @apply opacity-40 transition-opacity; }

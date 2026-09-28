@@ -18,7 +18,7 @@
   const TYPE_LABEL = {
     mouse: 'Mouse', cage: 'Cage', litter: 'Litter', experiment: 'Experiment', strain: 'Strain',
     vial: 'Fly / worm', tank: 'Tank', 'fish-line': 'Fish line', clutch: 'Clutch', organism: 'Animal database',
-    plasmid: 'Plasmid', order: 'Order', sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', item: 'Item',
+    plasmid: 'Plasmid', order: 'Order', sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', virus: 'Virus', item: 'Item',
     page: 'Notebook',
   };
 
@@ -107,7 +107,7 @@
       if (!groups[item.type]) groups[item.type] = [];
       groups[item.type].push({ ...item, _idx: idx });
     });
-    const known = ['mouse', 'cage', 'litter', 'experiment', 'strain', 'vial', 'tank', 'fish-line', 'clutch', 'organism', 'plasmid', 'order', 'sample', 'reagent', 'antibody', 'item', 'page'];
+    const known = ['mouse', 'cage', 'litter', 'experiment', 'strain', 'vial', 'tank', 'fish-line', 'clutch', 'organism', 'plasmid', 'order', 'sample', 'reagent', 'antibody', 'virus', 'item', 'page'];
     // Any other type the server sends still shows, after the known ones.
     const order = known.concat(Object.keys(groups).filter((t) => !known.includes(t)));
     let html = '';

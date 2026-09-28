@@ -218,7 +218,18 @@ pages are in `app/lab_routes.py`.
   column's earlier values (datalists `inv-rem-<column>`) and a fill map by
   name and catalogue number. Inventories that track a supplier lend each
   other name, vendor and catalogue number, never quantity.
-- **Order again:** a reagent or antibody row links to
+- **Stock kinds:** `inventory_service.RESTOCK_KINDS` (reagents, antibodies,
+  viruses) are what a received order can become (`STOCK_KINDS`), what
+  offers **Order again**, and what Home's *Expiring & low stock* watches.
+- **Plasmid columns:** field type `plasmid` (the Viruses preset's *Made
+  from*; any inventory can add one in Configure) stores the plasmid's
+  number as text. `_item_from_form` reads a number, `#42`, a name or a
+  picked `42 · name` through `inventory_service.resolve_plasmid()` and
+  keeps the number; one it can't find is kept as typed, with a note.
+  `plasmid_links()` links the sheet's cells; `made_from_plasmid()` fills
+  the plasmid page's *Made from this plasmid* card. Import matches it by
+  `sheet_import.ATTR_ALIASES` like any preset column.
+- **Order again:** a reagent, antibody or virus row links to
   `/inventory/<orders>?reorder=<key>:<id>`; `_reorder_payload()` builds the
   new-order dialog, taking quantity, price and grant from the last order
   of the same thing (by `stocked_as`, then catalogue number).

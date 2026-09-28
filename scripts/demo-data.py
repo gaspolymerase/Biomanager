@@ -354,6 +354,25 @@ for name, host, dil, vendor, cat in (
                                                              "attr_host": host, "attr_dilution": dil,
                                                              "is_shared": "1"})
 
+# Viral vectors, each made from one of the plasmids above, in a −80 °C box.
+viruses = keys_of("viruses") or module("viruses", "Viruses")
+alex.post(f"/inventory/{viruses}/racks/save", data={"id": "", "name": "Virus box −80 #1", "rows": "9", "cols": "9",
+                                                    "kind": "box", **GRID})
+virus_box = one("select id from inventory_racks where name='Virus box −80 #1'")
+for i, (name, vector, serotype, plasmid, promoter, payload, titer, status) in enumerate((
+    ("AAV9-EF1a-DIO-GCaMP6s", "AAV", "AAV9", "pAAV-EF1a-DIO-GCaMP6s", "EF1a", "GCaMP6s (Cre-dependent)", "2.1e13 GC/mL", "in stock"),
+    ("AAV5-hSyn-ChR2-mCherry", "AAV", "AAV5", "pAAV-hSyn-ChR2-mCherry", "hSyn", "ChR2-mCherry", "4.0e12 GC/mL", "low"),
+    ("AAV-PHP.eB-CAG-FLEX-tdTomato", "AAV", "PHP.eB", "pAAV-CAG-FLEX-tdTomato", "CAG", "tdTomato (Cre-dependent)", "1.2e13 GC/mL", "in stock"),
+    ("AAV8-hSyn-DIO-hM4D(Gi)", "AAV", "AAV8", "pAAV-hSyn-DIO-hM4D(Gi)", "hSyn", "hM4D(Gi)-mCherry", "7.5e12 GC/mL", "in stock"),
+    ("LV-CMV-Puro", "lentivirus", "VSV-G", "pLenti-CMV-Puro", "CMV", "puromycin resistance", "3.0e8 TU/mL", "in stock"),
+)):
+    sam.post(f"/inventory/{viruses}/items/save", data={
+        "id": "", "name": name, "category": vector, "status": status, "is_shared": "1",
+        "quantity": str(6 - i), "unit": "× 10 µL", "rack_id": str(virus_box), "position": f"A{i + 1}",
+        "attr_serotype": serotype, "attr_plasmid": plasmid, "attr_promoter": promoter, "attr_payload": payload,
+        "attr_titer": titer, "attr_biosafety": "BSL-2" if vector == "lentivirus" else "BSL-1",
+        "attr_made_on": ago(40 + 9 * i), "expires_on": ahead(320 - 30 * i)})
+
 samples = keys_of("samples")
 if samples:
     for name, ref, kind in (("Brain, perfused", "", "tissue"), ("Tail clip", "", "tissue")):

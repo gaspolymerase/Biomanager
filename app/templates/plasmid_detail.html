@@ -134,6 +134,25 @@
       </p>
     {% endif %}
   </div>
+  {# What was made from it: a virus's "Made from" column names this plasmid. #}
+  <article class="card mt-3 max-w-[760px]" id="made-from">
+    <header class="card-head"><h2>{{ icon('virus') }} Made from this plasmid</h2>
+      {% if made_from %}<span class="badge badge-quiet">{{ made_from|length }}</span>{% endif %}</header>
+    {% if made_from %}
+      <div class="flex flex-col">
+        {% for m in made_from %}
+          <a class="row-line" href="{{ m.url }}">
+            <span class="life-dot{% if m.available %} is-alive{% endif %}"></span>
+            <span class="min-w-0 flex-1 truncate font-medium text-ink">{{ m.label }}</span>
+            <span class="shrink-0 text-[12px] text-muted">{{ m.database }} #{{ m.number }}{% if m.status %} · {{ m.status }}{% endif %}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="px-4 py-3 text-[12.5px] text-muted">Nothing yet. A virus whose <b>Made from</b> names plasmid
+        #{{ plasmid.plasmid_id }} shows here.</p>
+    {% endif %}
+  </article>
 </section>
 
 {# ============ Properties ============ #}

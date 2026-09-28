@@ -1,4 +1,4 @@
-"""Routes for lab inventories (samples, orders, reagents, antibodies, custom).
+"""Routes for lab inventories (samples, orders, reagents, antibodies, viruses, custom).
 
 One page per inventory with three layouts: a sheet (edit in place), a box
 grid for anything stored in freezer boxes or on shelves, and a status board
@@ -297,6 +297,10 @@ def module(key: str):
         source_fields = [f for f in mv.fields if f["type"] == "source"]
         sources = sample_sources(session) if source_fields else []
         mouse_links = _mouse_links(session, [i.attrs_dict for i in items], source_fields) if source_fields else {}
+        # A plasmid column: each cell links to its plasmid; the dialog offers the lab's plasmids.
+        plasmid_keys = [f["key"] for f in svc.plasmid_fields(mv)]
+        plasmid_links = svc.plasmid_links(session, [i.attrs_dict.get(k, "") for i in items for k in plasmid_keys])
+        plasmid_options = _plasmid_options(session) if plasmid_keys else []
         rows = []
         for item in items:
             attrs = item.attrs_dict
@@ -328,6 +332,7 @@ def module(key: str):
             "manageable_racks": {r.id for r in racks if _can_manage_rack(r)},
             "grid": _grid_payload(mv, racks, items) if mv.has("storage") else None,
             "usernames": current_lab_usernames(session), "sources": sources, "mouse_links": mouse_links,
+            "plasmid_links": plasmid_links, "plasmid_options": plasmid_options,
             "next_number": svc.next_number(session, row.id),
             "stock_targets": stock_targets, "order_module": order_module, "reorder": reorder,
             "stock_links": _order_stock_links(session, row, items),
@@ -389,6 +394,17 @@ def _reorder_payload(session, mv, orders: list[InventoryItem], ref: str) -> dict
 # ---------------------------------------------------------------------------
 # Items
 # ---------------------------------------------------------------------------
+
+
+def _plasmid_options(session) -> list[tuple[int, str]]:
+    """(number, name) of every plasmid, newest first, for a plasmid column's
+    suggestions. None when the lab has no Plasmids database."""
+    from .models import PlasmidRecord
+
+    if not lab.request_features().get("plasmids", True):
+        return []
+    return [(n, name or "") for n, name in session.execute(
+        select(PlasmidRecord.plasmid_id, PlasmidRecord.name).order_by(PlasmidRecord.plasmid_id.desc()).limit(2000))]
 
 
 def _mouse_exists(session, ref: str) -> bool:
@@ -469,6 +485,14 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
                     float(value.replace(",", ""))
                 except ValueError:
                     raise Refused(f"{field['label']} is a number column: “{value}” isn't a number.")
+            if field["type"] == "plasmid" and value:
+                # Kept as the plasmid's number, which the sheet links to;
+                # a name or "#42 · pAAV…" from the list is read the same way.
+                plasmid = svc.resolve_plasmid(session, value)
+                if plasmid is not None:
+                    value = str(plasmid.plasmid_id)
+                elif value != str(attrs.get(k, "")):
+                    notes.append(f"There is no plasmid “{value}” in Plasmids; {field['label']} was saved as typed.")
             attrs[k] = value
     if json.dumps(attrs, sort_keys=True) != before:
         item.attrs = json.dumps(attrs)
@@ -762,13 +786,13 @@ def set_status(key: str, item_id: int):
         return jsonify(answer)
 
 
-STOCK_KINDS = ("reagents", "antibodies")
+STOCK_KINDS = svc.RESTOCK_KINDS
 # The order category that belongs in each kind of stock, and back.
-STOCK_CATEGORY = {"reagents": "reagent", "antibodies": "antibody"}
+STOCK_CATEGORY = {"reagents": "reagent", "antibodies": "antibody", "viruses": "virus"}
 
 
 def _stock_targets(session) -> list[InventoryModule]:
-    """The reagent and antibody inventories this person can add to."""
+    """The reagent, antibody and virus inventories this person can add to."""
     return [m for m in svc.list_modules(session) if m.kind in STOCK_KINDS]
 
 
@@ -843,7 +867,7 @@ def order_to_reagents(key: str, item_id: int):
             return _done(key, error=f"{order.name or 'That order'} is already in stock ({stocked.replace(':', ' #')}).")
         target = svc.get_module(session, target_key) if target_key else svc.first_of_kind(session, "reagents")
         if target is None or target.kind not in STOCK_KINDS or not lab.can_see(target):
-            return _done(key, error="Pick a reagents or antibodies inventory to add it to.")
+            return _done(key, error="Pick a reagents, antibodies or viruses inventory to add it to.")
         tv = svc.view(target)
         attrs = order.attrs_dict
         draft = _stock_from_order(session, mv, tv, order, shared=request.form.get("shared") == "1")

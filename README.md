@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Your lab's animals, stocks and supplies — in one place, instead of twenty spreadsheets.</b><br>
-  Mice · zebrafish · flies · worms · plasmids · samples · orders · reagents · antibodies · calendar · notebook
+  Mice · zebrafish · flies · worms · plasmids · samples · orders · reagents · antibodies · viruses · calendar · notebook
 </p>
 
 <p align="center">
@@ -74,7 +74,7 @@ everyone signs in to from a browser, including on their phone at the rack.
 | 🪰 | [**Drosophila & C. elegans**](#-drosophila-and-c-elegans) | Vials and plates, crosses, and temperature-aware flip schedules |
 | 🦎 | [**Any other organism**](#-any-other-organism) | Your own database, in your own words, with no programming |
 | 🧬 | [**Plasmids**](#-plasmids) | Sequences with an interactive map, and where each tube lives |
-| 🧪 | [**Lab inventories**](#-lab-inventories) | Samples, orders, reagents, antibodies, or a list of your own |
+| 🧪 | [**Lab inventories**](#-lab-inventories) | Samples, orders, reagents, antibodies, viruses, or a list of your own |
 | 📅 | [**Calendar & notebook**](#-calendar-and-notebook) | Experiments, to-dos and colony dates; a shared lab notebook with data sheets, protocols and meeting notes |
 
 ### 🐭 Mouse colony
@@ -240,6 +240,7 @@ change:
 | 🛒 **Orders** | a board from *requested* to *ordered* to *received*, with vendor, catalogue number, price and grant account |
 | ⚗️ **Reagents** | quantity, concentration, CAS number, hazard, supplier and lot, and expiry dates with warnings |
 | 🔬 **Antibodies** | host, clonality, clone, conjugate, reactivity, applications, dilution, RRID and where each vial is stored |
+| 🦠 **Viruses** | AAV, lentivirus, rabies and other vectors: serotype, promoter, payload, titer, biosafety level, the date made, and the plasmid each was made from — which opens that plasmid, whose page lists every virus made from it |
 | 📝 **Custom** | whatever you define |
 
 Each inventory can keep **your own stock** apart from **lab common
@@ -253,10 +254,10 @@ stock**, and statuses and categories can be renamed without losing items.
 - **Type it once** — every column suggests what the lab has typed before;
   pick an earlier item or catalogue number and the vendor, price and grant
   fill themselves in.
-- **Order again** — one click on a reagent or antibody starts a new order
+- **Order again** — one click on a reagent, antibody or virus starts a new order
   with its details, and the quantity, price and grant of the last time.
 - **From the box to the shelf** — when an order is marked received,
-  BioManager offers to add it to Reagents or Antibodies with everything
+  BioManager offers to add it to Reagents, Antibodies or Viruses with everything
   already filled in.
 
 <table>
