@@ -138,6 +138,9 @@
         <tr><th>Windows</th><td>Extract the zip, open the <b>BioManager</b> folder, run <b>BioManager.exe</b>. At the warning choose
           <b>More info → Run anyway</b>.</td></tr>
         <tr><th>Linux</th><td>Mark <code>BioManager-Linux.AppImage</code> executable (right-click → Properties, or <code>chmod +x</code>) and open it.</td></tr>
+        <tr><th>Updates</th><td>The desktop app checks for a new version once a day and offers it, with what's new; <b>BioManager →
+          Check for Updates…</b> (on Windows and Linux, <b>Help</b>) asks now. <b>Download</b> gets the file for your computer; install it
+          as above. Your data stays where it is. Turn the daily check off with <b>Check for Updates Automatically</b>.</td></tr>
         <tr><th>A lab server</th><td>Nothing to install: open the address your admin gives you. A welcome page shows what
           BioManager does and leads to <b>Sign in</b> or <b>Create an account</b>. Setting one up is on
           <a href="server.html">Run it for your lab</a>.</td></tr>
@@ -376,6 +379,15 @@
         <li><b>Experiments</b> group mice into a cohort with a treatment plan and groups; add members one by one or <b>+ All mice in cage</b>,
           and record body weights, with the trend worked out for you. (The notebook's experiments are the write-ups; these are the
           animals.)</li>
+        <li><b>Manipulations</b>, on each experiment, are what is done to its mice, day by day. <b>Add manipulation</b>: the kind
+          (injection, challenge, treatment, surgery, behaviour, sample, imaging, body weight), what (<i>Tamoxifen</i>, <i>HDM</i>),
+          the dose (<i>20 mg/kg</i>, <i>25 µg</i>), the route, which group (or every mouse) and the days — <code>1</code>,
+          <code>2-5</code>, <code>2/3/4/5</code> or <code>1, 8, 15</code>. Day 1 is the experiment's start date, so each day has its
+          date, and the days still to do are on the calendar.</li>
+        <li><b>Record</b> a day as it's done: the date, which mice (all are ticked) and a note. For a dose per body weight it works out
+          each mouse's amount from its latest weight, and the volume too if you gave the solution (<i>10 mg/mL</i>), and keeps
+          them. A <b>Body weight</b> day takes the weights themselves, into the body-weight table, which shows each column's day
+          number. A recorded day can be undone.</li>
         <li><b>Strains</b> is the lab's reference list of lines and alleles.</li>
         <li><b>Dropdowns</b> keeps the choices each column offers, so the lab uses the same words. Everyone sees them; only admins
           change them.</li>
@@ -536,6 +548,11 @@
       <ul>
         <li><b>Experiments</b>: aim, setup, samples and lot numbers, steps, results. <i>Start</i> and <i>Finished</i> stamp the times;
           planned, running, done or failed shows in the sidebar. (The colony's <b>Experiments</b> tab groups the animals.)</li>
+        <li><b>Colony experiment</b> (<code>/experiment</code>) shows a mouse experiment in the page: each day's manipulation, when it
+          was done and by whom, the amount each mouse got, and the body weights as a table and a chart (grams or % of the first
+          weight, with the manipulation days marked). It stays up to date; <b>Freeze a copy</b> keeps what it shows now in the page,
+          so later changes to the experiment don't alter your record. On the experiment itself, <b>Add to notebook</b> makes your
+          page for it with this block already in.</li>
         <li><b>Protocols</b> with numbered versions. <i>Start an experiment from it</i> copies the steps as a checklist and records the
           version; <b>Run mode</b> takes you through it at the bench, one step at a time. <b>Protocols</b> in the sidebar (or
           <code>/protocol</code>) opens the library: the lab's protocols and a dozen common ones built in, to insert or copy.</li>
@@ -673,6 +690,17 @@
         <tr><th><kbd>Esc</kbd></th><td>Close a menu or dialog</td></tr>
         <tr><th>Shift-click</th><td>Select a range of rows</td></tr>
         <tr><th><kbd>⌘</kbd>/<kbd>Ctrl</kbd> <kbd>D</kbd></th><td>Fill down, in the mice's <b>Add many</b> preview</td></tr>
+      </table>
+      <p>In the desktop app on a Mac, the menu bar has the usual ones as well:</p>
+      <table class="gtable">
+        <tr><th><kbd>⌘</kbd> <kbd>T</kbd> · <kbd>⌘</kbd> <kbd>W</kbd></th><td>New tab · close this tab</td></tr>
+        <tr><th><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>]</kbd> <kbd>[</kbd></th><td>Next / previous tab</td></tr>
+        <tr><th><kbd>⌘</kbd> <kbd>1</kbd>…<kbd>9</kbd></th><td>Your databases, in the sidebar's order (all of the sidebar is in <b>Go</b>)</td></tr>
+        <tr><th><kbd>⌘</kbd> <kbd>[</kbd> <kbd>]</kbd> · <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>H</kbd></th><td>Back / forward · Home</td></tr>
+        <tr><th><kbd>⌘</kbd> <kbd>,</kbd></th><td>Settings</td></tr>
+        <tr><th><kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>E</kbd> · <kbd>⌘</kbd> <kbd>P</kbd></th><td>Export this sheet · print</td></tr>
+        <tr><th><kbd>⌘</kbd> <kbd>R</kbd> · <kbd>⌘</kbd> <kbd>=</kbd> <kbd>-</kbd> <kbd>0</kbd></th><td>Reload · zoom in, out, actual size.
+          <b>View → Appearance</b> sets light or dark whatever the system uses.</td></tr>
       </table>
     </section>
 
