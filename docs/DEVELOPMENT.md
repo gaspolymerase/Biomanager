@@ -68,6 +68,15 @@ rounded square inset in a 1024 canvas with a 185.4 corner radius — so it
 sits correctly beside native apps in the Dock. The mark is a double helix,
 the one symbol every organism in the app shares.
 
+One drawing in `app/appearance.py` serves every size, from 28px beside a
+heading to 512px on a desktop, so the two `feDropShadow` filters there are
+kept tight: a wide blur reads as depth at the large end and as haze at the
+small one, which is what makes an icon look blurred rather than small.
+`scripts/build-app-icon.py` re-renders the SVG and every PNG, `.icns`, `.ico`
+and Android layer after a change; the copies in the website repo
+(`assets/icon.svg`, `icon-192.png`, `apple-touch-icon.png`) are updated by
+hand from `app/static/`.
+
 ## Interface
 
 The UI is a collapsible icon rail plus a persistent **workspace tab strip**:

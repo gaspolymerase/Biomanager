@@ -6,7 +6,10 @@ Apple's macOS icon grid: a 1024 canvas with the rounded square inset to
 824 × 824 and a 185.4 corner radius. The style is Apple's Liquid Glass: flat
 shapes in two layers, solid white in front and translucent glass behind with
 a bright rim, lit from above. Details are cut out of the white so the
-background shows through; there is never a second colour.
+background shows through; there is never a second colour. Shadows are kept
+tight: the same drawing is shown at 28 px beside a heading and at 512 px on a
+desktop, and a wide blur that reads as depth at the large end is only haze at
+the small one.
 
 The colour also becomes the app's accent (`--color-brand-*`), so buttons,
 links and selections match the icon. Mint is the default and matches the
@@ -133,10 +136,10 @@ def _defs(pal: Palette) -> str:
       <stop offset="1" stop-color="#fff" stop-opacity="0.55"/>
     </linearGradient>
     <filter id="bm-drop" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="{pal.shade}" flood-opacity="0.30"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="11" flood-color="{pal.shade}" flood-opacity="0.28"/>
     </filter>
     <filter id="bm-soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="{pal.shade}" flood-opacity="0.30"/>
+      <feDropShadow dx="0" dy="9" stdDeviation="9" flood-color="{pal.shade}" flood-opacity="0.26"/>
     </filter>'''
 
 
