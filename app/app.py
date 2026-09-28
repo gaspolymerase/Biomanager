@@ -478,7 +478,7 @@ NAV_FOOTER: list[dict] = [
     {"key": "admin-colony", "label": "Colony overview", "short": "Overview",
      "hint": "Every member's mice and cages at a glance",
      "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True, "feature": "colony"},
-    {"key": "batches", "label": "Batches", "icon": "layers", "endpoint": "batches_view",
+    {"key": "batches", "label": "Batch history", "short": "Batches", "icon": "layers", "endpoint": "batches_view",
      "hint": "Changes made many records at a time (Add many, bulk edits, imports), each with Undo"},
     {"key": "audit", "label": "Audit log", "icon": "history", "endpoint": "audit_log_view",
      "hint": "Who changed what, and when",
@@ -4004,7 +4004,7 @@ def strain_denied(strain) -> str:
             if who else f"Strain {strain.strain_name} predates recorded creators; only an admin can change or remove it.")
 
 
-PRESETS_DENIED = "Only an admin can add, rename or remove presets. You can still pick them everywhere."
+PRESETS_DENIED = "Only an admin can add, rename or remove dropdown choices. You can still pick them everywhere."
 
 
 @app.route("/colony/strains/create", methods=["POST"])

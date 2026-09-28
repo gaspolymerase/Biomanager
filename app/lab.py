@@ -603,7 +603,7 @@ def getting_started(session, user, on_server: bool) -> list[dict]:
     if features["colony"]:
         steps.append(step("Add a rack", "Cages → Rack grid → New rack, labelled like the stickers on your racks.",
                           url_for("colony", view="cages"), exists(select(MouseRack.id))))
-        steps.append(step("Bring in your mice", "Mice → Add many: describe a group, or upload your spreadsheet as a CSV.",
+        steps.append(step("Bring in your mice", "Mice → Import from Excel brings in the sheet you keep them in; Add many describes a new group.",
                           url_for("colony", view="mice"), exists(select(MouseRecord.id))))
         steps.append(step("Print cage cards", "Cages → Cage cards. Scanning a card's QR code opens its cage.",
                           url_for("labels.cage_cards"), did(session, user, "cage_cards")))

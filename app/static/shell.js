@@ -180,15 +180,18 @@
       // browser's own Cmd/Ctrl+number and Cmd/Ctrl+W bindings.
       if (!event.altKey || event.metaKey || event.ctrlKey || !tabs) return;
 
-      if (event.key >= '1' && event.key <= '9') {
+      // By the physical key (event.code): on a Mac, Option turns 1 into ¡
+      // and W into ∑, so event.key never matches there.
+      const code = event.code || '';
+      const digit = /^(?:Digit|Numpad)([1-9])$/.exec(code);
+      if (digit) {
         event.preventDefault();
-        tabs.activate(parseInt(event.key, 10) - 1);
+        tabs.activate(parseInt(digit[1], 10) - 1);
         return;
       }
-      const key = event.key.toLowerCase();
-      if (key === 'w') { event.preventDefault(); tabs.closeCurrent(); return; }
-      if (event.key === 'ArrowLeft' || key === '[') { event.preventDefault(); tabs.step(-1); return; }
-      if (event.key === 'ArrowRight' || key === ']') { event.preventDefault(); tabs.step(1); }
+      if (code === 'KeyW') { event.preventDefault(); tabs.closeCurrent(); return; }
+      if (event.key === 'ArrowLeft' || code === 'BracketLeft') { event.preventDefault(); tabs.step(-1); return; }
+      if (event.key === 'ArrowRight' || code === 'BracketRight') { event.preventDefault(); tabs.step(1); }
     });
   }
 
