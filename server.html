@@ -28,22 +28,28 @@
 
 <div class="wrap guide">
   <aside class="toc" aria-label="Contents">
-    <p class="toc-title">Run it for your lab</p>
+   <details class="toc-box" open>
+    <summary class="toc-title">Contents</summary>
     <ol>
+      <li class="toc-part">Start here</li>
       <li><a href="#two-ways">App or server?</a></li>
       <li><a href="#choose">Choose how</a></li>
+      <li class="toc-part">Ways to run it</li>
       <li><a href="#desktop">A · One computer</a></li>
       <li><a href="#lan">B · A lab computer on your network</a></li>
       <li><a href="#campus">C · A university server</a></li>
       <li><a href="#tailscale">D · Cloud VM + Tailscale</a></li>
       <li><a href="#domain">E · Cloud VM + your own domain</a></li>
       <li><a href="#other">Other routes</a></li>
+      <li class="toc-part">Once it's running</li>
       <li><a href="#after">After it's running</a></li>
       <li><a href="#safe">Keeping the data safe</a></li>
       <li><a href="#move">Moving from the app to a server</a></li>
+      <li class="toc-part">Help</li>
       <li><a href="#ai">Set it up with an AI assistant</a></li>
       <li><a href="#faq">Questions</a></li>
     </ol>
+   </details>
   </aside>
 
   <main class="guide-body">
@@ -52,6 +58,8 @@
     <p class="lede-left">BioManager runs on your own computer in two minutes, or on a server that the whole lab
       opens from any browser and phone. This page lays out every way to host it, what each costs, and exactly
       how to set it up. Most labs pay nothing.</p>
+
+    <div class="part"><p class="part-label">Part one</p><h2>Start here</h2></div>
 
     <!-- ======================================================= two ways -->
     <section id="two-ways">
@@ -97,6 +105,9 @@
           Only if you want an ordinary web address that works with no app at all, use <a href="#domain">your own
           domain</a> (E).</li>
       </ol>
+      <div class="note"><b>Let the desktop app do it.</b> In the desktop app, <b>Settings → Set up a lab server</b> sets up
+        B, C, D or E for you: it asks where the server should go, shows what it will do before anything runs, does every
+        step below, and can bring the app's records along. The steps on this page are what it does, for doing it by hand.</div>
 
       <div class="table-scroll">
       <table class="gtable compare">
@@ -122,6 +133,10 @@
         bundle</b>, a small download with everything that runs it, and the app itself as a file for Intel or ARM
         machines, which the bundle's <code>host/load-image.sh</code> fetches for you. No accounts or registries.</div>
     </section>
+
+    <div class="part"><p class="part-label">Part two</p><h2>Ways to run it</h2>
+      <p>Five ways, from one computer to a cloud server the whole lab reaches from anywhere. Pick one in
+        <a href="#choose">Choose how</a>, then follow its steps.</p></div>
 
     <!-- ======================================================= A -->
     <section id="desktop">
@@ -337,6 +352,8 @@ ACME_EMAIL=you@yourlab.org       # Let's Encrypt writes here before a certificat
       </dl>
     </section>
 
+    <div class="part"><p class="part-label">Part three</p><h2>Once it's running</h2></div>
+
     <!-- ======================================================= after -->
     <section id="after">
       <h2>After it's running</h2>
@@ -409,6 +426,8 @@ docker compose cp /tmp/lab/uploads/. app:/data/uploads/</code></pre></li>
         <li>Sign in with your existing account. <code>--dry-run</code> after the script name checks everything first and changes nothing.</li>
       </ol>
     </section>
+
+    <div class="part"><p class="part-label">Part four</p><h2>Help</h2></div>
 
     <!-- ======================================================= ai -->
     <section id="ai">
