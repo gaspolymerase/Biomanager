@@ -517,6 +517,9 @@ app also checks by itself, at most once a day; turn that off with
 **Check for Updates Automatically**. The check sends nothing but the app's
 version.
 
+The window keeps you signed in and keeps your tabs from one launch to
+the next, as a browser does.
+
 Your data lives outside the app, so updating or reinstalling never
 touches it:
 

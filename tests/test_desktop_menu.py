@@ -109,3 +109,24 @@ class Bridge(unittest.TestCase):
     def test_windows_and_linux_get_plain_menus(self):
         titles = [m.title for m in desktop_menu.plain_menus()]
         self.assertEqual(titles, ["File", "Go", "Help"])
+
+
+@unittest.skipUnless(__import__("importlib").util.find_spec("webview"), "pywebview isn't installed (CI)")
+class Port(unittest.TestCase):
+    def test_the_window_comes_back_on_last_time_s_port(self):
+        from app.app import app
+        was = app.config.get("LOCAL_SETUP")
+        import desktop                      # it switches the app to desktop mode: undo that for the other tests
+        if was is None:
+            app.config.pop("LOCAL_SETUP", None)
+        else:
+            app.config["LOCAL_SETUP"] = was
+        du.save_prefs(port=0)
+        with mock.patch.dict("os.environ", {"BIOMANAGER_PORT": ""}):
+            first = desktop._choose_port()
+            self.assertEqual(desktop._choose_port(), first)
+            with mock.patch.object(desktop, "_port_free", return_value=False):
+                self.assertNotEqual(desktop._choose_port(), first)          # taken: another one, remembered
+            self.assertEqual(du.load_prefs()["port"], desktop._choose_port())
+        with mock.patch.dict("os.environ", {"BIOMANAGER_PORT": "5999"}):
+            self.assertEqual(desktop._choose_port(), 5999)

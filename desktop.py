@@ -28,6 +28,31 @@ def _pick_free_port() -> int:
         return sock.getsockname()[1]
 
 
+def _port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _choose_port() -> int:
+    """The same port as last time, when it is free. The window keeps its
+    sign-in and tabs per address (http://127.0.0.1:<port>), so a new port
+    each launch would start it afresh every time."""
+    pinned = int(os.environ.get("BIOMANAGER_PORT") or 0)
+    if pinned:
+        return pinned
+    import desktop_updates
+    saved = int(desktop_updates.load_prefs().get("port") or 0)
+    if saved and _port_free(saved):
+        return saved
+    port = _pick_free_port()
+    desktop_updates.save_prefs(port=port)
+    return port
+
+
 def _run_flask(port: int) -> None:
     # threaded=True so concurrent requests (autosave + page navigation) don't
     # deadlock. use_reloader=False because the reloader spawns a child
@@ -47,8 +72,8 @@ def _wait_until_ready(url: str, timeout_s: float = 8.0) -> None:
 
 def main() -> int:
     # BIOMANAGER_PORT pins the port, so the release workflow can check that a
-    # freshly built app answers; otherwise any free one.
-    port = int(os.environ.get("BIOMANAGER_PORT") or 0) or _pick_free_port()
+    # freshly built app answers; otherwise last time's, or any free one.
+    port = _choose_port()
     server_thread = threading.Thread(target=_run_flask, args=(port,), daemon=True)
     server_thread.start()
 
@@ -76,7 +101,14 @@ def main() -> int:
     # menus carry the same destinations (desktop_menu.py). Either way the
     # app checks for a newer release, at most once a day.
     menus = [] if sys.platform == "darwin" else desktop_menu.plain_menus()
-    webview.start(desktop_menu.start, (window,), debug=False, menu=menus)
+    # Not private mode (pywebview's default), which forgets the sign-in and
+    # the open tabs at every launch. Windows and Linux keep that browser data
+    # in the data folder; a Mac keeps it where WebKit keeps every app's.
+    from app.paths import data_dir
+    storage = data_dir() / "window"
+    storage.mkdir(parents=True, exist_ok=True)
+    webview.start(desktop_menu.start, (window,), debug=False, menu=menus,
+                  private_mode=False, storage_path=str(storage))
     return 0
 
 
