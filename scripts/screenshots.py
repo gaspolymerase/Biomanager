@@ -49,6 +49,12 @@ def sign_in(page):
     page.fill("input[name=password]", PASSWORD)
     page.press("input[name=password]", "Enter")
     page.wait_for_load_state("networkidle")
+    # A lab past its first days has put Home's "Getting started" list away.
+    page.goto(f"{BASE}/home")
+    hide = page.get_by_role("button", name="Hide this list")
+    if hide.count():
+        hide.first.click()
+        page.wait_for_load_state("networkidle")
 
 
 def shoot(page, name, path, click=None, full=False):
