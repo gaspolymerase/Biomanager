@@ -1,6 +1,7 @@
 /* BioManager website. System fonts, the app's teal, light and dark. */
 
 :root {
+  --read: #2d2d30;        /* running text in the guide: near black, not grey */
   --bg: #ffffff;
   --bg-band: #f5f5f7;
   --fg: #1d1d1f;
@@ -20,6 +21,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --read: #dcdce0;
     --bg: #161618;
     --bg-band: #1d1d20;
     --fg: #f5f5f7;
@@ -253,46 +255,83 @@ details p { font-size: 16px; }
 /* ------------------------------------------------------------ user guide */
 .guide { display: grid; gap: 40px; padding-top: 40px; padding-bottom: 80px; }
 @media (min-width: 960px) { .guide { grid-template-columns: 230px minmax(0, 1fr); gap: 56px; } }
-.toc { font-size: 14px; }
+.toc { font-size: 14.5px; line-height: 1.45; }
 @media (min-width: 960px) { .toc { position: sticky; top: 76px; align-self: start; max-height: calc(100vh - 96px); overflow: auto; } }
 @media (max-width: 959px) {
   .toc { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; background: var(--bg-band); }
 }
 .toc-title { font-weight: 650; color: var(--fg); margin: 0 0 8px; }
+/* Not the FAQ's details: no rule above, no padding. */
+.toc .toc-box { margin: 0; padding: 0; border: 0; }
+.toc-box > summary { cursor: pointer; list-style: none; padding: 0; position: static; }
+.toc-box > summary::-webkit-details-marker { display: none; }
+.toc-box > summary::after { content: "+"; float: right; position: static; transform: none; font-size: 20px; line-height: 1;
+  color: var(--accent); }
+.toc-box[open] > summary::after { content: "–"; transform: none; }
+.toc-box:not([open]) > summary { margin: 0; }
+@media (min-width: 960px) {
+  .toc-box > summary { pointer-events: none; }
+  .toc-box > summary::after, .toc-box[open] > summary::after { content: none; }
+}
 .toc ol { list-style: none; margin: 0; padding: 0; }
 .toc ol ol { padding-left: 14px; }
 .toc a { display: block; padding: 4px 8px; border-radius: 7px; color: var(--fg-2); }
 .toc a:hover { text-decoration: none; background: var(--accent-soft); color: var(--fg); }
 .toc a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
-.guide-body { max-width: 760px; min-width: 0; }
-.guide-body h1 { font-size: clamp(2rem, 5vw, 3rem); }
-.guide-body section { padding-top: 28px; margin-top: 28px; border-top: 1px solid var(--line); }
+/* Reading type: 17px (the front page's size) at 1.7 line height, in one
+   near-black for all running text, and lines kept to about 70 characters.
+   Tables, pictures and code may use the full column. */
+.guide-body {
+  max-width: 760px; min-width: 0;
+  font-size: 17px; line-height: 1.7; color: var(--read);
+  text-rendering: optimizeLegibility; font-kerning: normal;
+}
+.guide-body p, .guide-body ul, .guide-body ol, .guide-body dl, .guide-body .note { max-width: 42em; }
+.guide-body p { margin: 0 0 1em; text-wrap: pretty; }
+.guide-body b, .guide-body strong { font-weight: 620; color: var(--fg); }
+.guide-body h1 { font-size: clamp(2.1rem, 5vw, 3rem); line-height: 1.1; }
+.guide-body section { padding-top: 36px; margin-top: 36px; border-top: 1px solid var(--line); }
 .guide-body section:first-of-type { border-top: 0; margin-top: 8px; }
-.guide-body h2 { font-size: 1.7rem; margin-bottom: 0.6em; }
-.guide-body h3 { font-size: 1.15rem; margin: 1.6em 0 0.5em; }
-.guide-body p, .guide-body li, .guide-body dd { font-size: 16px; }
-.guide-body ul, .guide-body ol { padding-left: 1.3em; color: var(--fg-2); }
-.guide-body li { margin: 6px 0; }
-.lede-left { font-size: 1.15rem; color: var(--fg-2); }
+.guide-body h2 { font-size: 1.9rem; font-weight: 700; margin-bottom: 0.55em; color: var(--fg); }
+.guide-body h3 { font-size: 1.28rem; font-weight: 650; margin: 1.9em 0 0.55em; color: var(--fg); }
+.guide-body ul, .guide-body ol { padding-left: 1.4em; margin: 0 0 1.1em; }
+.guide-body li { margin: 0.45em 0; padding-left: 0.2em; }
+.guide-body li::marker { color: var(--fg-3); }
+.lede-left { font-size: 1.2rem; line-height: 1.6; color: var(--fg-2); }
 .steps-list li::marker { color: var(--accent); font-weight: 700; }
 
-.gtable { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 15px; }
-.gtable th, .gtable td { text-align: left; vertical-align: top; padding: 10px 12px; border-top: 1px solid var(--line); }
-.gtable th { width: 110px; color: var(--fg); font-weight: 600; white-space: nowrap; }
-.gtable td { color: var(--fg-2); }
-@media (max-width: 560px) { .gtable th { width: 80px; } .gtable th, .gtable td { padding: 8px 6px; } }
+.gtable { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 16px; line-height: 1.6; }
+.gtable th, .gtable td { text-align: left; vertical-align: top; padding: 12px 14px; border-top: 1px solid var(--line); }
+.gtable tr:last-child th, .gtable tr:last-child td { border-bottom: 1px solid var(--line); }
+.gtable th { width: 130px; color: var(--fg); font-weight: 620; }
+.gtable td { color: var(--read); }
+.gtable thead th { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-3);
+  border-top: 0; padding-bottom: 8px; }
+@media (max-width: 560px) { .gtable th { width: 96px; } .gtable th, .gtable td { padding: 10px 8px; } }
 
-.gdl { margin: 12px 0; }
-.gdl dt { font-weight: 650; color: var(--fg); margin-top: 16px; }
-.gdl dd { margin: 4px 0 0; color: var(--fg-2); }
+/* Definition lists: a hairline between terms, so a long one isn't a wall;
+   on a wide screen the term sits in its own column. */
+.gdl { margin: 14px 0 20px; }
+.gdl dt { font-weight: 650; color: var(--fg); padding-top: 14px; border-top: 1px solid var(--line); }
+.gdl dt:first-child { padding-top: 0; border-top: 0; }
+.gdl dd { margin: 4px 0 14px; color: var(--read); }
+@media (min-width: 700px) {
+  .gdl { display: grid; grid-template-columns: 11rem minmax(0, 1fr); column-gap: 20px; }
+  .gdl dt, .gdl dd { padding-top: 14px; border-top: 1px solid var(--line); margin: 0; padding-bottom: 14px; }
+  .gdl dt:first-child, .gdl dt:first-child + dd { padding-top: 0; border-top: 0; }
+}
 
 .note {
-  margin: 16px 0; padding: 12px 16px; border-radius: 12px; font-size: 15px; color: var(--fg-2);
+  margin: 18px 0; padding: 14px 18px; border-radius: 12px; font-size: 16px; line-height: 1.6; color: var(--read);
   background: var(--accent-soft); border-left: 3px solid var(--accent);
 }
 .note.warn { background: rgba(255, 159, 10, 0.12); border-left-color: #ff9f0a; }
-.gshot { margin: 18px 0 8px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); }
+.gshot { margin: 20px 0 12px; }
+.gshot a { display: block; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); cursor: zoom-in; }
+.gshot figcaption { margin-top: 8px; font-size: 14px; color: var(--fg-3); text-align: center; }
+.gshot-phone { max-width: 300px; margin-inline: auto; }
+.gshot-phone a { border-radius: 24px; }
 .nav-links a[aria-current="page"] { color: var(--fg); font-weight: 600; }
 
 /* ------------------------------------------------------------ guide extras */
@@ -312,7 +351,7 @@ details p { font-size: 16px; }
 @media (min-width: 700px) { .opt-grid { grid-template-columns: 1fr 1fr; } }
 .opt { padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
 .opt h3 { margin: 2px 0 8px; font-size: 1.1rem; }
-.opt p { font-size: 15px; }
+.opt p { font-size: 16px; }
 .opt-kicker { font-size: 13px; font-weight: 650; color: var(--accent); margin: 0; }
 .opt-meta { font-size: 14px; color: var(--fg-3); margin-top: -4px; }
 .opt .opt-meta { margin: 0; }
@@ -325,7 +364,7 @@ details p { font-size: 16px; }
 .gtable.layers th { width: 150px; white-space: normal; }
 blockquote.req {
   margin: 12px 0; padding: 12px 16px; border-left: 3px solid var(--line); background: var(--bg-band);
-  border-radius: 0 10px 10px 0; font-size: 15px; color: var(--fg-2);
+  border-radius: 0 10px 10px 0; font-size: 16px; color: var(--read);
 }
 .prompt {
   white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0 10px; padding: 14px 16px; border-radius: 12px;
@@ -338,15 +377,25 @@ blockquote.req {
 .map td b { color: var(--fg); }
 .part { margin: 48px 0 0; padding-top: 18px; border-top: 2px solid var(--accent); }
 .part-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; color: var(--accent); margin: 0; }
-.part h2 { margin-top: 4px; }
+/* A part names a group of sections; the section right after it carries the
+   big heading, so the part's own title is smaller. */
+.guide-body .part h2 { margin-top: 4px; font-size: 1.35rem; font-weight: 650; color: var(--fg-2); }
+.guide-body .part > p, .guide-body .part > ul { margin-top: 8px; }
 .guide-body .part + section { border-top: 0; margin-top: 0; }
 .toc .toc-part { margin: 14px 0 4px; padding-left: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.07em;
-  text-transform: uppercase; color: var(--fg-3); }
+  text-transform: uppercase; color: var(--fg-2); }
 .toc .toc-part:first-child { margin-top: 0; }
 .wow { display: grid; gap: 12px; margin: 16px 0; }
 @media (min-width: 700px) { .wow { grid-template-columns: 1fr 1fr; } }
 .wow div { padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
 .wow b { display: block; color: var(--fg); margin-bottom: 4px; }
-.wow p { font-size: 15px; margin: 0; }
+.wow p { font-size: 16px; line-height: 1.6; margin: 0; }
 /* Long commands and paths in running text wrap on a phone instead of widening the page. */
 .guide-body :not(pre) > code { overflow-wrap: anywhere; }
+
+/* A phone: a touch smaller, so a line still holds a sentence's worth. */
+@media (max-width: 560px) {
+  .guide-body { font-size: 16.5px; line-height: 1.65; }
+  .guide-body h2 { font-size: 1.6rem; }
+  .guide-body h3 { font-size: 1.18rem; }
+}
