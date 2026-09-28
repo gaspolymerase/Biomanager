@@ -118,6 +118,7 @@
         </div>
         <div class="dt-toolbar-spacer"></div>
         {{ sheet_ui.tools() }}
+        <a class="dt-toolbar-btn" href="{{ url_for('labels.stock_cards', key=key) }}" title="Labels with a QR code for the {{ m.units }} in use, for any printer or a label printer">{{ icon('qrcode') }} Labels</a>
         <a class="dt-toolbar-btn" href="{{ sheet_import_url('stocks:' ~ key) }}" title="Bring in the Excel or CSV sheet you kept your {{ m.units }} in">{{ icon('import') }} Import from Excel</a>
         <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                 data-record-edit="unit-dialog" data-record-payload='{{ new_payload | tojson }}'>
@@ -284,6 +285,9 @@
         <form method="post" action="{{ url_for('stocks.bulk', key=key) }}" class="selbar-group" data-selection-form>
           <input type="hidden" name="action" value="restore">
           <button type="submit" class="btn btn-sm btn-ghost">Restore</button>
+        </form>
+        <form method="get" action="{{ url_for('labels.stock_cards', key=key) }}" class="selbar-group" data-selection-form>
+          <button type="submit" class="btn btn-sm" title="Labels for the ticked {{ m.units }}">{{ icon('qrcode') }} Labels</button>
         </form>
         <div class="selbar-spacer"></div>
         <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>

@@ -187,6 +187,7 @@
       ]) }}
       <div class="dt-toolbar-spacer"></div>
       {{ sheet_ui.tools() }}
+      <a class="dt-toolbar-btn" href="{{ url_for('labels.tank_cards') }}" title="Labels with a QR code for every tank in use">{{ icon('qrcode') }} Tank labels</a>
       <button type="button" class="dt-toolbar-btn" title="Several tanks with consecutive IDs, side by side in a rack"
               data-record-edit="tank-dialog" data-record-payload="{{ {'tank_id': next_tank_id, 'owner': me, 'purpose': 'stock', 'active': '1', 'how_many': 10} | tojson | forceescape }}">
         {{ icon('duplicate') }} Add many
@@ -335,6 +336,9 @@
             data-confirm="Delete {n} tank(s)? Tanks that still hold fish are kept. Clutches and sac-log entries naming them lose the link. Undo from Batch history.">
         <input type="hidden" name="action" value="delete">
         <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+      </form>
+      <form method="get" action="{{ url_for('labels.tank_cards') }}" class="selbar-group" data-selection-form>
+        <button type="submit" class="btn btn-sm" title="Labels for the ticked tanks">{{ icon('qrcode') }} Labels</button>
       </form>
       <div class="selbar-spacer"></div>
       <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>

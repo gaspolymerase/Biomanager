@@ -2,10 +2,20 @@
 
 {% block page_title %}{{ heading }}{% endblock %}
 {% block page_heading %}{{ heading }}{% endblock %}
-{% block page_subtitle %}{{ cards|length }} card{{ '' if cards|length == 1 else 's' }} · scan the code to open the record{% endblock %}
+{% block page_subtitle %}{{ cards|length }} {{ 'card' if not layout else 'label' }}{{ '' if cards|length == 1 else 's' }} · scan the code to open the record{% endblock %}
 
 {% block page_actions %}
   <a class="btn" href="{{ back_url }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Back</a>
+  {% if printer and cards %}
+    <form method="post" action="{{ url_for('labels.send') }}" class="inline">
+      <input type="hidden" name="kind" value="{{ kind }}">
+      <input type="hidden" name="ids" value="{{ ids }}">
+      <input type="hidden" name="scope" value="{{ request.args.get('scope', '') }}">
+      <input type="hidden" name="stock" value="{{ stock }}">
+      <input type="hidden" name="back" value="{{ here }}">
+      <button type="submit" class="btn" title="Straight to the Zebra at {{ printer }}">{{ icon('print') }} Send to Zebra</button>
+    </form>
+  {% endif %}
   <button type="button" class="btn btn-primary" data-on-click="print">
     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> Print
   </button>
@@ -36,6 +46,8 @@
   }
   .label-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .label-title {
+    flex: none;             /* overflow: hidden would otherwise let it shrink away */
+    line-height: 1.15;
     font-size: 3.6mm;
     font-weight: 700;
     letter-spacing: -0.01em;
@@ -44,7 +56,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .label-rows { display: grid; grid-template-columns: max-content 1fr; gap: 0.3mm 2mm; }
+  .label-rows { display: grid; grid-template-columns: max-content 1fr; gap: 0.3mm 2mm; min-height: 0; overflow: hidden; line-height: 1.25; }
   .label-key {
     font-size: 2.1mm;
     text-transform: uppercase;
@@ -63,6 +75,8 @@
   .label-qr svg { width: {{ (size[1] * 0.62) | round(1) }}mm; height: auto; display: block; }
   .label-flag {
     margin-top: auto;
+    flex: none;
+    line-height: 1.25;
     font-size: 2.1mm;
     font-weight: 700;
     text-transform: uppercase;
@@ -70,33 +84,86 @@
     color: #1c6445;
   }
 
+  {% if layout %}
+  /* A label printer: one label a page, at the roll's size, typed to fit it. */
+  .label-card { padding: {{ layout.pad }}mm; gap: {{ layout.pad }}mm; }
+  .label-title { font-size: {{ layout.title }}mm; margin-bottom: 0.4mm; }
+  .label-key { font-size: {{ (layout.row * 0.82) | round(2) }}mm; }
+  .label-val { font-size: {{ layout.row }}mm; }
+  .label-qr svg { width: {{ layout.qr }}mm; height: {{ layout.qr }}mm; }
+  .label-flag { font-size: {{ (layout.row * 0.82) | round(2) }}mm; }
+  {% endif %}
+  .label-setup { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: end; margin-bottom: 14px; }
+  .label-setup label { display: grid; gap: 3px; font-size: 12px; color: var(--muted, #6b757d); }
+  .label-setup select, .label-setup input { min-width: 0; }
+
   @media print {
+    {% if layout %}
+    @page { size: {{ size[0] }}mm {{ size[1] }}mm; margin: 0; }
+    .card-sheet { display: block !important; }
+    .label-card { border: none !important; border-radius: 0 !important; break-after: page; page-break-after: always; }
+    {% endif %}
     /* Print only the cards: no rail, no tab strip, no page chrome. */
     .rail, .topstrip, .page-head, .rail-scrim, .no-print { display: none !important; }
     .shell { display: block !important; height: auto !important; }
     .shell-main, .shell-scroll { overflow: visible !important; height: auto !important; }
     .shell-page, .shell-page-wide { padding: 0 !important; max-width: none !important; }
     body { background: #fff !important; }
+    {% if not layout %}
     .card-sheet { gap: 3mm; }
     @page { margin: 8mm; }
+    {% endif %}
   }
 </style>
 {% endblock %}
 
 {% block content %}
 {% if cards %}
+  <form method="get" class="no-print label-setup">
+    {% for k, v in base_args.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <label>Print on
+      <select name="stock">
+        {% for key, (name, _size) in stocks.items() %}<option value="{{ key }}" {% if key == stock %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-sm">Show</button>
+    <a class="btn btn-sm btn-ghost" href="{{ request.path }}?{{ dict(base_args, stock=stock, format='zpl', dpi=dpi) | urlencode }}"
+       title="The labels in Zebra's own language, ZPL, for Zebra Setup Utilities or the printer's web page">{{ icon('download') }} Download for Zebra (.zpl)</a>
+  </form>
   <p class="no-print mb-4 text-[12.5px] text-muted">
     Printed {{ printed_on }}. Each code opens its record on this server — scan it with
     any phone camera on the same network.
+    {% if layout %}
+      In the print dialog choose the label printer, paper size {{ size[0] }} × {{ size[1] }} mm
+      (the printer's own name for this label), margins <b>None</b> and scale 100%.
+    {% endif %}
   </p>
+  {% if can_set_printer %}
+    <details class="no-print mb-4 text-[12.5px]">
+      <summary class="cursor-pointer text-muted">{{ 'Zebra on the network: ' ~ printer ~ ' (' ~ dpi ~ ' dpi)' if printer else 'Send labels straight to a Zebra on the network' }}</summary>
+      <form method="post" action="{{ url_for('labels.set_printer') }}" class="label-setup mt-2">
+        <input type="hidden" name="back" value="{{ here }}">
+        <label>Its address on the lab's network
+          <input name="address" value="{{ printer }}" placeholder="192.168.1.50" autocomplete="off">
+        </label>
+        <label>Resolution
+          <select name="dpi"><option value="203" {% if dpi != 300 %}selected{% endif %}>203 dpi</option><option value="300" {% if dpi == 300 %}selected{% endif %}>300 dpi</option></select>
+        </label>
+        <button type="submit" class="btn btn-sm">Save</button>
+        <span class="text-muted">Printed on its own port 9100, from wherever BioManager runs. Leave it empty to remove it.</span>
+      </form>
+    </details>
+  {% endif %}
   <div class="card-sheet">
     {% for card in cards %}
       <div class="label-card">
         <div class="label-body">
           <div class="label-title">{{ card.title }}</div>
-          <div class="label-rows">
+          {# A tube label is too small for the names: the values alone. #}
+          {% set bare = layout and size[1] < 20 %}
+          <div class="label-rows"{% if bare %} style="grid-template-columns: 1fr"{% endif %}>
             {% for key, value in card.rows %}
-              <span class="label-key">{{ key }}</span>
+              {% if not bare %}<span class="label-key">{{ key }}</span>{% endif %}
               <span class="label-val">{{ value }}</span>
             {% endfor %}
           </div>

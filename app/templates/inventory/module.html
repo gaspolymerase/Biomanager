@@ -218,7 +218,7 @@
               {% set f = 'inv-' ~ i.id %}
               {% set locked = not r.editable %}
               {% set fixed = locked or not r.manageable %}
-              <tr data-id="{{ i.id }}" data-number="{{ i.number }}"
+              <tr data-id="{{ i.id }}" id="item-{{ i.id }}" data-number="{{ i.number }}"
                   data-mine="{{ 'true' if r.mine else 'false' }}" data-shared="{{ 'true' if i.is_shared else 'false' }}"
                   data-open="{{ 'true' if i.status in m.open_statuses else 'false' }}" data-status="{{ (i.status or '')|lower }}"
                   data-active="{{ 'false' if r.available == false else 'true' }}"
@@ -400,6 +400,9 @@
               data-confirm="Delete {n} {{ m.item_noun_plural }}? Batch history can undo it.">
           <input type="hidden" name="action" value="delete">
           <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+        <form method="get" action="{{ url_for('labels.inventory_cards', key=key) }}" class="selbar-group" data-selection-form>
+          <button type="submit" class="btn btn-sm" title="Labels with a QR code for the ticked {{ m.item_noun_plural }}">{{ icon('qrcode') }} Labels</button>
         </form>
         <div class="selbar-spacer"></div>
         <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>

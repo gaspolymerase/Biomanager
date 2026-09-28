@@ -463,11 +463,21 @@ it is:
 
 ### 📱 Cage cards that open on your phone
 
-Print correctly sized cards for cages, tanks and vials. Scan the QR code
+Print correctly sized cards for cages, tanks and vials, and labels for
+tubes: tick samples or reagents and press **Labels**. Scan the QR code
 with any phone camera at the rack and that cage opens, ready to edit —
 nobody walks back to a computer to type an ID. On a phone every sheet row
 becomes a card with its columns under their names, and rack grids get a
 **Move** button: tap a cage, then where it goes.
+
+- **Label printers**: **Print on** chooses a sheet of cards for any
+  printer, or a label printer's roll — Brother QL (62 × 29, 90 × 29,
+  100 × 62 mm), Zebra (2 × 1, 3 × 1, 4 × 2, 4 × 2.5 in) or cryo-tube
+  labels — and prints one label a page, typed to fit. Each person's
+  choice is remembered.
+- **Zebra**: **Download for Zebra (.zpl)** gives the labels in the
+  printer's own language. Or an admin adds the Zebra's address on the
+  lab's network once, and **Send to Zebra** prints them straight away.
 
 <table>
   <tr>

@@ -454,8 +454,24 @@ for backwards compatibility, but new changes belong in a revision.
 Printable, correctly-sized cards with a QR that opens the record — so someone
 at the rack scans instead of walking back to type an ID.
 
-- Mouse cages: **Print cage cards** on the Cages view, or `/labels/cards/cages`
+- Mouse cages: **Cage cards** on the Cages view, or `/labels/cards/cages`
+- Zebrafish tanks: **Tank labels**, or `/labels/cards/tanks`
 - Organism modules: **Labels** on the Housing view, or `/labels/cards/<module>`
+- Fly and worm stocks: **Labels**, or `/labels/cards/stocks/<key>`
+- Inventories: **Labels** on the ticked rows, `/labels/cards/inventory/<key>?ids=…`
+
+Each takes `ids=1,2,3` or the selection bar's repeated `selected_ids`.
+`?stock=` picks what they print on (`labels.STOCKS`): `sheet`, or a label
+printer's size, which prints one label a page (`@page { size }`, no
+margin) with type sized by `labels.fit()`; the last choice for each kind is
+kept in the session cookie. `?format=zpl&dpi=203|300` returns ZPL II
+(`labels.to_zpl`: `^CI28` UTF-8, text through `^FH_` so `^ ~ _` are hex,
+`^BQN` QR at the largest magnification that fits). An admin sets the lab's
+Zebra (`app_settings.label_printer`, host or host:port, and
+`label_printer_dpi`); `POST /labels/send` opens a socket to it on port
+9100. `labels.printer_address` only accepts private, loopback, link-local
+and Tailscale (100.64/10) addresses, so the server never sends to the
+internet.
 
 Cards are laid out in millimetres and print without any app chrome. QR
 payloads are absolute URLs built from the incoming request, so a card printed
