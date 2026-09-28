@@ -586,6 +586,13 @@ class Experiment(Base):
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Which database's animals it is on (app/experiments.py): "colony" (mice,
+    # in ExperimentMouse), "zebrafish", "stocks:<key>" or "organisms:<key>"
+    # (in ExperimentSubject); and what is measured over its days, as JSON
+    # {"key", "label", "unit", "kind": "value" | "fraction"}. Blank: the
+    # database's usual one (body weight for mice, survival for flies…).
+    db: Mapped[str] = mapped_column(String(120), default="colony", index=True)
+    readout: Mapped[str] = mapped_column(Text, default="")
 
     memberships: Mapped[list["ExperimentMouse"]] = relationship(
         back_populates="experiment", cascade="all, delete-orphan"
@@ -594,6 +601,43 @@ class Experiment(Base):
         back_populates="experiment", cascade="all, delete-orphan",
         order_by="(ExperimentStep.position, ExperimentStep.id)",
     )
+
+
+class ExperimentSubject(Base):
+    """An animal, or a group of them, in an experiment that isn't the mouse
+    colony's: a zebrafish row, a fly vial or worm plate, an organism."""
+    __tablename__ = "experiment_subjects"
+    __table_args__ = (UniqueConstraint("experiment_id_fk", "subject_kind", "subject_id", name="uq_experiment_subject"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    experiment_id_fk: Mapped[int] = mapped_column(ForeignKey("experiments.id"), index=True)
+    subject_kind: Mapped[str] = mapped_column(String(20))            # fish | unit | organism
+    subject_id: Mapped[int] = mapped_column(Integer)
+    treatment_group: Mapped[str] = mapped_column(String(80), default="")
+    start_count: Mapped[int | None] = mapped_column(Integer, nullable=True)   # animals at the start, for a survival
+    note: Mapped[str] = mapped_column(String(200), default="")
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    experiment: Mapped[Experiment] = relationship()
+
+
+class ExperimentReading(Base):
+    """One day's readout for one animal or group of an experiment: a
+    length, a score, how many are alive. (A mouse's body weight is a
+    MouseWeight instead, so it is on the mouse too.)"""
+    __tablename__ = "experiment_readings"
+    __table_args__ = (UniqueConstraint("experiment_id_fk", "subject", "readout_key", "read_on",
+                                       name="uq_experiment_reading"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    experiment_id_fk: Mapped[int] = mapped_column(ForeignKey("experiments.id"), index=True)
+    subject: Mapped[str] = mapped_column(String(40), index=True)        # "fish:12", "unit:3", "mouse:9"
+    readout_key: Mapped[str] = mapped_column(String(40), default="")
+    read_on: Mapped[date] = mapped_column(Date, index=True)
+    value: Mapped[float] = mapped_column(Float)
+    note: Mapped[str] = mapped_column(String(200), default="")
+    recorded_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class ExperimentStep(Base):

@@ -309,8 +309,11 @@ app.register_blueprint(lab_calendar.bp)
 # Setting up a lab server from the desktop app (app/server_setup.py).
 from . import server_setup  # noqa: E402
 app.register_blueprint(server_setup.bp)
-# What is done to an experiment's mice, planned and recorded (app/experiment_steps.py).
+# Experiments on every database's animals (app/experiments.py), and what is
+# done to them, planned and recorded (app/experiment_steps.py).
+from . import experiments as experiment_pages  # noqa: E402
 from . import experiment_steps  # noqa: E402
+app.register_blueprint(experiment_pages.bp)
 app.register_blueprint(experiment_steps.bp)
 # Import from Excel into any database (app/sheet_import.py).
 from . import sheet_import  # noqa: E402
@@ -1278,7 +1281,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
                 {"id": e.id, "name": e.name}
                 for e in db_session.scalars(
                     select(Experiment)
-                    .where(Experiment.status.in_(["active", "paused"]))
+                    .where(Experiment.status.in_(["active", "paused"]), Experiment.db == "colony")
                     .order_by(Experiment.name)
                 ).all()
             ]
@@ -1286,7 +1289,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE) -> dict[
         experiments_list = []
         if active_view == "experiments":
             experiments = db_session.scalars(
-                select(Experiment).order_by(Experiment.status, Experiment.created_at.desc())
+                select(Experiment).where(Experiment.db == "colony")
+                .order_by(Experiment.status, Experiment.created_at.desc())
             ).all()
             for exp in experiments:
                 experiments_list.append({
@@ -2175,82 +2179,9 @@ def create_experiment():
 @app.route("/colony/experiments/<int:experiment_id>")
 @login_required
 def experiment_detail(experiment_id: int):
-    with SessionLocal() as db_session:
-        exp = db_session.get(Experiment, experiment_id)
-        if exp is None:
-            flash("Experiment not found.", "error")
-            return redirect(url_for("colony", view="experiments"))
-
-        # Members + each mouse's full weight history.
-        members = []
-        for em in sorted(exp.memberships, key=lambda m: m.mouse.mouse_id if m.mouse else 0):
-            mouse = em.mouse
-            if mouse is None:
-                continue
-            weights = db_session.scalars(
-                select(MouseWeight)
-                .where(MouseWeight.mouse_id_fk == mouse.id)
-                .order_by(MouseWeight.weigh_date.asc())
-            ).all()
-            members.append({
-                "membership_id": em.id,
-                "mouse_row_id": mouse.id,
-                "mouse_id": mouse.mouse_id,
-                "gender": mouse.gender,
-                "genotype": mouse.genotype,
-                "cage_id": mouse.cage.cage_id if mouse.cage else "",
-                "treatment_group": em.treatment_group,
-                "can_weigh": can_edit_mouse(mouse),
-                "weights": [
-                    {"date": w.weigh_date.isoformat(), "grams": w.grams, "notes": w.notes}
-                    for w in weights
-                ],
-            })
-
-        # Collect a unified date axis (every weigh_date observed across all
-        # mice, sorted) for the weight matrix view.
-        all_dates = sorted({w["date"] for m in members for w in m["weights"]})
-
-        # All cages for the "add cage" picker.
-        all_cages = db_session.scalars(select(CageRecord).order_by(CageRecord.cage_id)).all()
-        cages_data = [{"id": c.id, "cage_id": c.cage_id, "mouse_count": len(c.mice)} for c in all_cages]
-
-        # Mice you could add individually: alive, yours to edit, not in yet.
-        existing_ids = {m["mouse_row_id"] for m in members}
-        candidate_mice = db_session.scalars(
-            select(MouseRecord).where(MouseRecord.date_of_death.is_(None)).order_by(MouseRecord.mouse_id)
-        ).all()
-        candidate_mice_data = [
-            {"id": m.id, "mouse_id": m.mouse_id, "label": f"#{m.mouse_id} · {m.gender or '?'} · {m.genotype or '(no geno)'}"}
-            for m in candidate_mice
-            if m.id not in existing_ids and mouse_is_active(m) and can_edit_mouse(m)
-        ]
-
-        exp_data = {
-            "id": exp.id,
-            "name": exp.name,
-            "description": exp.description,
-            "treatment_plan": exp.treatment_plan,
-            "status": exp.status,
-            "owner": exp.owner_username,
-            "editable": access.can_edit_experiment(exp),
-            "start_date": exp.start_date.isoformat() if exp.start_date else "",
-            "end_date": exp.end_date.isoformat() if exp.end_date else "",
-        }
-        manipulations = experiment_steps.page_data(db_session, exp)
-        start = exp.start_date
-        weight_days = {d: (date.fromisoformat(d) - start).days + 1 for d in all_dates} if start else {}
-    return render_template(
-        "experiment_detail.html",
-        manipulations=manipulations,
-        weight_days=weight_days,
-        experiment=exp_data,
-        members=members,
-        all_dates=all_dates,
-        cages=cages_data,
-        candidate_mice=candidate_mice_data,
-        statuses=EXPERIMENT_STATUSES,
-    )
+    """An experiment's page: the same for every database's animals
+    (app/experiments.py)."""
+    return experiment_pages.render_page(experiment_id)
 
 
 @app.route("/colony/experiments/<int:experiment_id>/update", methods=["POST"])
@@ -5053,8 +4984,9 @@ def global_search():
                 "type": "experiment",
                 "id": exp.id,
                 "label": exp.name,
-                "sublabel": " · ".join(filter(None, [exp.status, f"{len(exp.memberships)} mice", exp.owner_username])),
-                "url": url_for("experiment_detail", experiment_id=exp.id),
+                "sublabel": " · ".join(filter(None, [exp.status, f"{len(exp.memberships)} mice"
+                                                     if (exp.db or "colony") == "colony" else "", exp.owner_username])),
+                "url": experiment_pages.page_url(exp),
             })
         strain_stmt = select(StrainRecord).where(
             StrainRecord.strain_name.ilike(like) | StrainRecord.strain_number.ilike(like)

@@ -173,6 +173,12 @@ def ensure_schema_updates() -> None:
                     "ALTER TABLE mice ADD COLUMN transgene_4 VARCHAR(200) DEFAULT ''",
                 ]
             )
+    if "experiments" in table_columns and "db" not in table_columns["experiments"]:
+        # Experiments on every database's animals, not only mice (app/experiments.py).
+        alter_statements.extend([
+            "ALTER TABLE experiments ADD COLUMN db VARCHAR(120) DEFAULT 'colony'",
+            "ALTER TABLE experiments ADD COLUMN readout TEXT DEFAULT ''",
+        ])
     if "audit_log" in table_columns and "batch_id_fk" not in table_columns["audit_log"]:
         alter_statements.extend([
             "ALTER TABLE audit_log ADD COLUMN batch_id_fk INTEGER",

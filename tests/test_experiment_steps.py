@@ -140,10 +140,10 @@ class Recording(AppTestCase):
 
     def test_the_page_shows_the_panel(self):
         html = self.get_ok(self.a, f"/colony/experiments/{self.exp}")
-        self.assertIn('id="manipulations"', html)
-        self.assertIn("Add manipulation", html)
+        self.assertIn("data-xp-sheet", html)
+        self.assertIn("Record manipulation", html)
         self.assertIn("Add to notebook", html)
-        self.assertNotIn("Add manipulation</button>", self.get_ok(self.m, f"/colony/experiments/{self.exp}"))
+        self.assertNotIn("Record manipulation", self.get_ok(self.m, f"/colony/experiments/{self.exp}"))
 
     def test_add_to_notebook_makes_one_page_with_the_block(self):
         r = self.a.post(f"/colony/experiments/{self.exp}/notebook")

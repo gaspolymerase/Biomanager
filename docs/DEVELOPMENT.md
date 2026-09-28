@@ -292,12 +292,24 @@ copy* stores that payload in the block as `frozen`, so the page's
 versions keep it. The payload, the plan and the records are
 `app/experiment_steps.py`:
 
+Experiments are on any database's animals (`app/experiments.py`):
+`experiments.db` says which (`colony`, `zebrafish`, `stocks:<key>`,
+`organisms:<key>`) and `experiments.readout` what is measured (JSON; blank
+is the database's usual one). `experiments.Place` is what an experiment
+needs to know of its database (nouns, housing, the kinds of manipulation
+its animals get, the readouts that fit), and `subjects()` gives its
+animals the same shape whatever they are. One page serves them all:
+`templates/experiment.html`, drawn by `static/experiment-page.js` from
+`/experiments/<id>/data.json`, and every change answers with that data.
+
 | Table | Holds |
 | --- | --- |
+| `experiment_subjects` | the animals of an experiment that isn't the colony's: a fish row, a vial or plate, an organism; its treatment group and how many there were at the start |
+| `experiment_readings` | one readout per animal, readout and day (a mouse's body weight is a `mouse_weights` row instead) |
 | `experiment_steps` | an experiment's manipulations: days (`"2–5"`, day 1 = the start date), kind, agent, dose, route, concentration, treatment group |
 | `experiment_step_records` | one per step and day done: date, who, and per mouse the weight used and the amount and volume given (`mice`, JSON) |
 
-A `weigh` step writes `mouse_weights` when recorded. Undone days are
+A `reading` step (`weigh` in the first version) writes the readout when recorded. Undone days are
 `auto` items on the calendar (`experiment_steps.calendar_items`). Which
 notebook page is a person's for an experiment is the app setting
 `experiment_notebook_page:<experiment>:<username>`.

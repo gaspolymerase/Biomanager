@@ -630,13 +630,13 @@ class ExperimentPermissionTests(AppTestCase):
         html = self.get_ok(self.m, f"/colony/experiments/{self.exp}")
         self.assertRegex(html, r'name="name"[^>]*disabled')
         self.assertNotIn("Delete experiment", html)
-        self.assertNotIn("/add-cage", html)
+        self.assertNotIn('data-xp-open="add"', html)
 
     def test_detail_page_is_editable_for_the_owner(self):
         html = self.get_ok(self.a, f"/colony/experiments/{self.exp}")
         self.assertNotRegex(html, r'name="name"[^>]*disabled')
         self.assertIn("Delete experiment", html)
-        self.assertIn("/add-cage", html)
+        self.assertIn('data-xp-open="add"', html)
 
     def test_experiments_tab_shows_a_lock_on_someone_elses_experiment(self):
         html = self.get_ok(self.m, "/colony?view=experiments")

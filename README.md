@@ -101,15 +101,18 @@ The most complete module, built around how a mouse room actually works.
   flagged.
 - **Strains** and **Experiments** — your lab's lines with owners, and
   groups of mice under one experiment with a shared treatment group.
-  An experiment's **Manipulations** are what is done to its mice, day by
-  day: *Tamoxifen 20 mg/kg i.p. on day 1, HDM 25 µg intranasal on days
-  2–5*, for every mouse or one group. Day 1 is the start date, so each day
-  has its date, and the days still to do are on the calendar. **Record**
-  a day as it's done: the date, who, which mice. For a dose per body
-  weight it keeps the amount each mouse got, from its latest weight (and
-  the volume, given the solution's concentration). A **Body weight** day
-  takes the weights themselves, into the body-weight table, where each
-  column now shows its day number.
+  An experiment's page has its details on top; then a **sheet of its
+  mice** that switches between **Treatment** (each manipulation day as a
+  column: who got it, and how much) and **Body weight** (a column a day,
+  typed in place); then the body weight over the days as a chart, the
+  manipulation days dashed, each saying what was done when you point at
+  it. **Record manipulation** records what you just did (Tamoxifen
+  20 mg/kg i.p. to the HDM group, today), or a day of the **Plan**
+  (HDM 25 µg intranasal on days 2–5), with each mouse's dose worked out
+  from its latest weight, and the volume given the solution's
+  concentration. Day 1 is the start date; the days still to do are on the
+  calendar. The readout can be body weight, tumour volume, a clinical
+  score, survival or your own.
 
 <table>
   <tr>
@@ -127,6 +130,11 @@ The most complete module, built around how a mouse room actually works.
 Lines, tanks, individual fish, clutches, matings (and returning the fish
 afterwards), water systems with water-quality logs, and a sac log. A tank
 can hold a group with a headcount, or resolve into named individuals.
+**Experiments** (beside the database's name) work as the mouse colony's
+do, with fish in mind: add a tank's fish rows at once, record drug in the
+water, microinjection, a heat shock or an injury, and follow survival (how
+many of those at the start are still alive), standard length or a
+phenotype.
 
 ### 🪰 Drosophila and C. elegans
 
@@ -142,6 +150,12 @@ incubators.
 - **Each rack's grid says when it was last flipped** and when the next is
   due (red when overdue), with a **Flipped today** button beside Edit.
 - Frozen-stock records for worms.
+- **Experiments** (beside the database's name) on vials or plates, with
+  the manipulations flies and worms get: drug in the food or on the plate,
+  RNAi feeding, a temperature shift, starvation, infection, flipping to
+  fresh food. They have no body weight, so the readout is **survival**
+  (how many of those at the start are alive), or eclosion and climbing for
+  flies, brood size and paralysis for worms.
 
 <table>
   <tr>
@@ -169,6 +183,8 @@ sheet, and describe your organism:
 - **Schedules** like "wean at P21", which can vary with rearing
   temperature.
 - **Your own columns** — text, numbers, dates, dropdowns, people or links.
+- **Experiments**, the same as the mouse colony's, on your animals or
+  groups, with body weight, length, survival or your own readout.
 
 <p align="center">
   <img src="docs/screenshots/new-database.webp" alt="The Add database page with presets for flies, worms, inventories and organisms" width="100%">

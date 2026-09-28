@@ -71,7 +71,7 @@ export function mountExperiment(host, ctx) {
     const list = el('div', { class: 'nb-exp-pick' });
     items.forEach((e) => {
       const b = el('button', { type: 'button', class: 'nb-exp-pick-item' });
-      b.innerHTML = `<b>${esc(e.name)}</b><span class="nb-muted">${esc(e.status)} · ${e.mice} mice${e.start_date ? ` · from ${esc(niceDate(e.start_date))}` : ''}${e.mine ? '' : ` · ${esc(e.owner)}`}</span>`;
+      b.innerHTML = `<b>${esc(e.name)}</b><span class="nb-muted">${esc(e.db_label || 'Mouse colony')} · ${esc(e.status)} · ${e.mice} ${esc(e.nouns || 'mice')}${e.start_date ? ` · from ${esc(niceDate(e.start_date))}` : ''}${e.mine ? '' : ` · ${esc(e.owner)}`}</span>`;
       b.addEventListener('click', () => { commit({ ...data, id: e.id }); load(); });
       list.appendChild(b);
     });
@@ -83,12 +83,12 @@ export function mountExperiment(host, ctx) {
     const title = el('a', { href: exp.url, class: 'nb-exp-title', text: exp.name });
     title.addEventListener('click', (ev) => { ev.preventDefault(); openInAppTab(exp.url); });
     bar.appendChild(title);
-    const meta = [exp.status, `${exp.members.length} mice`, exp.start_date ? `day 1 = ${niceDate(exp.start_date)}` : 'no start date']
+    const meta = [exp.db_label, exp.status, `${exp.members.length} ${exp.nouns || 'mice'}`, exp.start_date ? `day 1 = ${niceDate(exp.start_date)}` : 'no start date']
       .concat(data.frozen ? [`frozen ${data.frozen.at}`] : [`as of ${exp.as_of.slice(11)}`]);
     bar.appendChild(el('span', { class: 'nb-muted', text: meta.join(' · ') }));
     bar.appendChild(el('span', { class: 'nb-spacer' }));
     if (editable) {
-      [['plan', 'Manipulations'], ['weights', 'Body weight']].forEach(([key, label]) => {
+      [['plan', 'Manipulations'], ['weights', (exp.readout && exp.readout.label) || 'Body weight']].forEach(([key, label]) => {
         const on = data.show.includes(key);
         const b = el('button', { type: 'button', class: `nb-mini${on ? ' is-on' : ''}`, text: label, 'aria-pressed': String(on) });
         b.addEventListener('click', () => {
@@ -163,7 +163,7 @@ export function mountExperiment(host, ctx) {
     }));
     const all = series.flatMap((s) => s.points.flatMap((p) => [p.y - p.sem, p.y + p.sem]));
     if (!all.length) return null;
-    const marks = exp.schedule.filter((r) => r.kind !== 'weigh').map((r) => r.day);
+    const marks = exp.schedule.filter((r) => !r.reading && r.kind !== 'weigh').map((r) => r.day);
     const xMin = Math.min(...xs, ...(marks.length ? marks : xs));
     const xMax = Math.max(...xs, ...(marks.length ? marks : xs));
     let yMin = Math.min(...all);
@@ -174,7 +174,7 @@ export function mountExperiment(host, ctx) {
     const sx = (x) => L + ((x - xMin) / ((xMax - xMin) || 1)) * (W - L - R);
     const sy = (y) => T + (1 - (y - yMin) / ((yMax - yMin) || 1)) * (H - T - B);
     const ticks = 4;
-    let svg = `<svg viewBox="0 0 ${W} ${H}" class="nb-exp-chart" role="img" aria-label="Mean body weight by group over the days of the experiment">`;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="nb-exp-chart" role="img" aria-label="The readout by group over the days of the experiment">`;
     for (let i = 0; i <= ticks; i += 1) {
       const y = yMin + ((yMax - yMin) * i) / ticks;
       svg += `<line x1="${L}" x2="${W - R}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(--viz-grid)"/>`;
@@ -197,16 +197,18 @@ export function mountExperiment(host, ctx) {
     svg += '</svg>';
     const box = el('div', { class: 'nb-exp-chart-box' });
     box.innerHTML = svg + `<div class="nb-exp-legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}
-      <span class="nb-muted">mean ± SEM · ${pct ? '% of first weight' : 'grams'} · x: day${marks.length ? ' · dashed: manipulation days' : ''}</span></div>`;
+      <span class="nb-muted">mean ± SEM · ${pct ? (exp.readout && exp.readout.kind === 'fraction' ? '% of those at the start' : '% of the first') : ((exp.readout && exp.readout.unit) || 'grams')} · x: day${marks.length ? ' · dashed: manipulation days' : ''}</span></div>`;
     return box;
   }
 
   function weightTable(exp) {
     const wrap = el('div', { class: 'nb-exp-section' });
     const head = el('div', { class: 'nb-exp-subhead' });
-    head.appendChild(el('h4', { text: 'Body weight' }));
+    const readout = exp.readout || { label: 'Body weight', unit: 'g', kind: 'value' };
+    const fraction = readout.kind === 'fraction';
+    head.appendChild(el('h4', { text: readout.label }));
     if (editable || data.percent) {
-      const b = el('button', { type: 'button', class: `nb-mini${data.percent ? ' is-on' : ''}`, text: '% of first', 'aria-pressed': String(Boolean(data.percent)) });
+      const b = el('button', { type: 'button', class: `nb-mini${data.percent ? ' is-on' : ''}`, text: fraction ? '% of start' : '% of first', 'aria-pressed': String(Boolean(data.percent)) });
       b.disabled = !editable;
       b.addEventListener('click', () => commit({ ...data, percent: !data.percent }));
       head.appendChild(b);
@@ -214,14 +216,14 @@ export function mountExperiment(host, ctx) {
     wrap.appendChild(head);
     const w = exp.weights;
     if (!w.dates.length) {
-      wrap.appendChild(el('p', { class: 'nb-muted', text: 'No weights yet. Weigh the mice on the experiment page, or plan a Body weight day.' }));
+      wrap.appendChild(el('p', { class: 'nb-muted', text: `No ${readout.label.toLowerCase()} yet: record it on the experiment page.` }));
       return wrap;
     }
     const chart = weightChart(exp);
     if (chart) wrap.appendChild(chart);
     const cols = w.dates.map((d, i) => `<th>${w.days[i] !== null ? `Day ${w.days[i]}<br>` : ''}<span class="nb-muted">${esc(niceDate(d))}</span></th>`).join('');
-    const rows = w.rows.map((r) => `<tr><td>#${esc(r.mouse_id)} <span class="nb-muted">${esc(r.sex)}</span></td><td>${esc(r.group)}</td>${
-      (data.percent ? r.pct : r.values).map((v) => `<td class="nb-exp-num">${v === null ? '' : (data.percent ? `${v.toFixed(0)}%` : v.toFixed(1))}</td>`).join('')}</tr>`).join('');
+    const rows = w.rows.map((r) => `<tr><td>${esc(r.label || `#${r.mouse_id}`)} <span class="nb-muted">${esc(r.sex)}</span></td><td>${esc(r.group)}</td>${
+      (data.percent ? r.pct : r.values).map((v) => `<td class="nb-exp-num">${v === null ? '' : (data.percent ? `${v.toFixed(0)}%` : (fraction && r.start != null ? `${v.toFixed(0)}/${r.start}` : v.toFixed(1)))}</td>`).join('')}</tr>`).join('');
     const table = el('div', { class: 'nb-exp-scroll' });
     table.innerHTML = `<table class="nb-exp-table"><thead><tr><th>Mouse</th><th>Group</th>${cols}</tr></thead><tbody>${rows}</tbody></table>`;
     wrap.appendChild(table);
