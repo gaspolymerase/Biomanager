@@ -48,6 +48,7 @@
       <li><a href="#fish">Zebrafish</a></li>
       <li><a href="#flies">Flies and worms</a></li>
       <li><a href="#custom">Any other organism</a></li>
+      <li><a href="#experiments">Experiments</a></li>
       <li><a href="#plasmids">Plasmids</a></li>
       <li><a href="#inventory">Samples, orders, reagents</a></li>
       <li><a href="#calendar">Calendar</a></li>
@@ -376,18 +377,9 @@
 
       <h3>Experiments, strains, dropdowns</h3>
       <ul>
-        <li><b>Experiments</b> group mice into a cohort with a treatment plan and groups; add members one by one or <b>+ All mice in cage</b>,
-          and record body weights, with the trend worked out for you. (The notebook's experiments are the write-ups; these are the
+        <li><b>Experiments</b> group mice into a cohort with treatment groups, what is done to them day by day and their body weights:
+          see <a href="#experiments">Experiments, for every animal</a>. (The notebook's experiments are the write-ups; these are the
           animals.)</li>
-        <li><b>Manipulations</b>, on each experiment, are what is done to its mice, day by day. <b>Add manipulation</b>: the kind
-          (injection, challenge, treatment, surgery, behaviour, sample, imaging, body weight), what (<i>Tamoxifen</i>, <i>HDM</i>),
-          the dose (<i>20 mg/kg</i>, <i>25 µg</i>), the route, which group (or every mouse) and the days — <code>1</code>,
-          <code>2-5</code>, <code>2/3/4/5</code> or <code>1, 8, 15</code>. Day 1 is the experiment's start date, so each day has its
-          date, and the days still to do are on the calendar.</li>
-        <li><b>Record</b> a day as it's done: the date, which mice (all are ticked) and a note. For a dose per body weight it works out
-          each mouse's amount from its latest weight, and the volume too if you gave the solution (<i>10 mg/mL</i>), and keeps
-          them. A <b>Body weight</b> day takes the weights themselves, into the body-weight table, which shows each column's day
-          number. A recorded day can be undone.</li>
         <li><b>Strains</b> is the lab's reference list of lines and alleles.</li>
         <li><b>Dropdowns</b> keeps the choices each column offers, so the lab uses the same words. Everyone sees them; only admins
           change them.</li>
@@ -408,6 +400,7 @@
         <dt>Water</dt><dd><b>Add system</b> for each recirculating system, and <b>Log reading</b> for temperature, pH, conductivity and
           salinity, with a chart. Tick <b>Raise an alarm with this reading</b> to flag a problem.</dd>
       </dl>
+      <p><b>Experiments</b> (beside the name) put fish rows, a tank's fish or a clutch's larvae under a treatment and follow their survival, length or a phenotype: see <a href="#experiments">Experiments</a>.</p>
     </section>
 
     <section id="flies">
@@ -431,6 +424,7 @@
         the words and purposes to your lab's.</p>
       <figure class="gshot"><a href="assets/screenshots/fly-stocks.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/fly-stocks.webp" alt="Fly vials" loading="lazy" width="2000" height="1250"></a><figcaption>Fly vials</figcaption></figure>
       <figure class="gshot"><a href="assets/screenshots/fly-grid.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/fly-grid.webp" alt="A fly rack as a grid, with its flip schedule above it" loading="lazy" width="2000" height="1250"></a><figcaption>A fly rack as a grid, with its flip schedule above it</figcaption></figure>
+      <p><b>Experiments</b> (beside the name) put vials or plates under a drug, RNAi or a temperature shift and follow their survival: see <a href="#experiments">Experiments</a>.</p>
     </section>
 
     <section id="custom">
@@ -453,6 +447,56 @@
         (samples, orders, reagents, antibodies, a custom list) and fly or worm stock databases. An icon is picked from a grid of the
         icons themselves; hover over one for its name.</p>
       <figure class="gshot"><a href="assets/screenshots/new-database.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/new-database.webp" alt="The Add database page" loading="lazy" width="2000" height="1250"></a><figcaption>The Add database page</figcaption></figure>
+      <p><b>Experiments</b> (beside the name) work as the mouse colony's do, for your animals, groups and cohorts: see <a href="#experiments">Experiments</a>.</p>
+    </section>
+
+    <section id="experiments">
+      <h2>Experiments, for every animal</h2>
+      <p>Mice, zebrafish, flies, worms and your own organisms all have <b>Experiments</b>: the mouse colony on its
+        <b>Experiments</b> tab, the others with the <b>Experiments</b> button beside the database's name. One page shows it all.</p>
+      <table class="gtable">
+        <tr><th>Mice</th><td>Mice, or a whole cage. Body weight (or tumour volume, a clinical score, survival). Injections,
+          challenges, treatments, surgery, behaviour, sampling, imaging.</td></tr>
+        <tr><th>Zebrafish</th><td>Fish rows, a whole tank, or a clutch's larvae. Survival (how many of those at the start are
+          alive), standard length or a phenotype. Drug in the water, microinjection, heat shock, injury or fin clip.</td></tr>
+        <tr><th>Flies and worms</th><td>Vials or plates, or a whole rack; say how many each started with. They have no body weight:
+          survival, or eclosion and climbing for flies, brood size and paralysis for worms. Drug in the food or on the plate, RNAi
+          feeding, temperature shifts, starvation, infection, flipping to fresh food.</td></tr>
+        <tr><th>Any other organism</th><td>Animals, groups or cohorts, or a whole housing. Body weight, length, survival or a score.</td></tr>
+      </table>
+      <p>Any experiment can follow a readout of its own (<b>Readout → Something else…</b>): a number for each, or how many of
+        those at the start.</p>
+      <h3>The page</h3>
+      <ul>
+        <li><b>The experiment</b> on top: name, status, start (day 1), end, readout and description, saved as you type.</li>
+        <li><b>The sheet of its animals</b> switches between <b>Treatment</b> — each manipulation day a column: ✓ and the amount for
+          each animal that got it (click to change) — and the readout, a column a day, typed in place (<b>Another day</b> adds one).
+          Each animal's group is edited here too.</li>
+        <li><b>Record manipulation</b> records what was just done — <i>the HDM group got Tamoxifen 20 mg/kg i.p. today</i> — or a day
+          of the regimen. For a dose per body weight it works out each animal's amount from its latest weight, and the volume
+          given the solution (<i>10 mg/mL</i>). Tick the animals it was done to, pick the <b>Reagent used</b> (its lot is kept; an
+          expired one is flagged) and, if you want, <b>make a sample record for each one</b> in Samples, with the animal as its
+          source.</li>
+        <li><b>The chart</b> shows the readout by group over the days (the value, or its % of the first; for a count, % of those at
+          the start). Each manipulation day is a dashed line: point at it to see what was done that day, by whom. Stars mark the
+          days the groups differ, and <b>Tests by day</b> below lists each test (Welch's t-test for two groups, one-way ANOVA for
+          more, χ² for counts), each day on its own.</li>
+      </ul>
+      <h3>The regimen</h3>
+      <p><b>Regimen</b> lists what is to be done and on which days: the kind, what, dose, route, solution, group and days
+        (<code>1</code>, <code>2-5</code>, <code>2/3/4/5</code>, <code>1, 8, 15</code>). Day 1 is the start date. The days to do
+        are on the calendar, and the experiment's owner gets a notification each morning of what is due (turn it off in
+        <b>Settings → Notifications → Experiments</b>). Nothing is done until someone records it on the page. <b>Save as a
+        regimen…</b> keeps it to plan the next cohort from.</p>
+      <h3>At the bench, and afterwards</h3>
+      <ul>
+        <li><b>Bench mode</b> (scan its QR code with a phone): pick what you are doing, then one animal at a time with big numbers —
+          type each weight or count, or give each today's manipulation and tap <b>Given ✓</b>; record it at the end.</li>
+        <li><b>Export</b> downloads an Excel workbook: the readout, long (for Prism or R) and wide, each animal's manipulations, and
+          the tests by day.</li>
+        <li><b>Add to notebook</b> makes your notebook page for the experiment, with a live view of its manipulations and readout
+          (<code>/experiment</code> adds one to any page; <b>Freeze a copy</b> keeps it as it is now).</li>
+      </ul>
     </section>
 
     <section id="plasmids">
@@ -548,7 +592,7 @@
       <ul>
         <li><b>Experiments</b>: aim, setup, samples and lot numbers, steps, results. <i>Start</i> and <i>Finished</i> stamp the times;
           planned, running, done or failed shows in the sidebar. (The colony's <b>Experiments</b> tab groups the animals.)</li>
-        <li><b>Colony experiment</b> (<code>/experiment</code>) shows a mouse experiment in the page: each day's manipulation, when it
+        <li><b>Colony experiment</b> (<code>/experiment</code>) shows an experiment on any of your animals in the page: each day's manipulation, when it
           was done and by whom, the amount each mouse got, and the body weights as a table and a chart (grams or % of the first
           weight, with the manipulation days marked). It stays up to date; <b>Freeze a copy</b> keeps what it shows now in the page,
           so later changes to the experiment don't alter your record. On the experiment itself, <b>Add to notebook</b> makes your
