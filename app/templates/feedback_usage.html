@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block page_title %}Usage report{% endblock %}
+{% block page_heading %}Usage report{% endblock %}
+{% block page_subtitle %}The last {{ weeks }} weeks, in counts only: no names, nothing anyone wrote{% endblock %}
+{% block page_shell_class %}shell-page-wide workbench{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('feedback.index') }}">{{ icon('back') }} Feedback</a>
+{% endblock %}
+
+{% block content %}
+<p class="mb-4 max-w-[760px] text-[13px] text-muted">
+  For a pilot: how much the lab uses BioManager, week by week — the people who changed something, and
+  the changes in each area from the change history. Nothing is sent anywhere. To share it, copy the text
+  at the bottom into an email.
+</p>
+
+<section class="data-table-card mb-6">
+  <div class="dt-scroll">
+    <table class="dt" style="min-width: 900px;">
+      <thead>
+        <tr>
+          <th>Week of</th>
+          <th>People</th>
+          {% for area in report.areas %}<th>{{ area }}</th>{% endfor %}
+          <th>Notebook pages</th>
+          <th>Calendar events</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.weeks %}
+          <tr>
+            <td>{{ row.week.strftime('%b %d') }}</td>
+            <td class="font-medium">{{ row.people }}</td>
+            {% for area in report.areas %}<td>{{ '{:,}'.format(row.areas[area]) if row.areas[area] else '·' }}</td>{% endfor %}
+            <td>{{ row.pages or '·' }}</td>
+            <td>{{ row.events or '·' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<h2 class="mb-2 text-[14px] font-semibold">In the lab now</h2>
+<p class="mb-6 text-[13px]">
+  {% for name, value in report.now %}<span class="mr-4 inline-block">{{ name }} <b>{{ '{:,}'.format(value) }}</b></span>{% endfor %}
+</p>
+
+<h2 class="mb-2 text-[14px] font-semibold">As text</h2>
+<textarea class="w-full font-mono text-[12px]" rows="{{ report.weeks | length + 8 }}" readonly data-usage-text>{{ text }}</textarea>
+{% endblock %}

@@ -1737,6 +1737,24 @@ class CalendarFeed(Base):
 # ---------------------------------------------------------------------------
 
 
+class Feedback(Base):
+    """Something someone in the lab reported from Send feedback
+    (app/feedback.py): a problem, an idea or a question. It stays in the
+    lab's own database for its admins; it reaches BioManager's makers only
+    if someone opens it as a GitHub issue."""
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(80), index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="problem")    # problem | idea | question
+    text: Mapped[str] = mapped_column(Text, default="")
+    page: Mapped[str] = mapped_column(String(300), default="")          # the path it was sent from
+    app_version: Mapped[str] = mapped_column(String(40), default="")
+    platform: Mapped[str] = mapped_column(String(200), default="")      # desktop or server, and the browser
+    status: Mapped[str] = mapped_column(String(20), default="open")     # open | done
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class RecordSignature(Base):
     """A notebook page signed, witnessed, or opened again to amend it
     (app/signatures.py). Signing is the person's choice, page by page.

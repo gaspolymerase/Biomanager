@@ -96,6 +96,11 @@
                data-label="User guide" data-milestone="guide">
               {{ icon('info') }}<span class="rail-label">Help</span>
             </a>
+            <a class="rail-item {% if request.endpoint == 'feedback.index' %}is-active{% endif %}"
+               href="{{ url_for('feedback.index', **({'from': request.full_path.rstrip('?')} if request.endpoint and not request.endpoint.startswith('feedback.') else {})) }}"
+               data-label="Send feedback" title="Something went wrong, an idea or a question">
+              {{ icon('mail') }}<span class="rail-label">Feedback</span>
+            </a>
             <button type="button" class="rail-toggle" data-rail-toggle
                     aria-label="Hide or show the sidebar">
               {{ icon('chevrons-right') }}<span class="rail-label">Hide sidebar</span>

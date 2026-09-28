@@ -432,6 +432,21 @@ stock**, and statuses and categories can be renamed without losing items.
       list what is overdue or coming up for each person.
     </td>
   </tr>
+  <tr>
+    <td valign="top">
+      <h4>💬 Feedback, kept in the lab</h4>
+      <b>Feedback</b>, under Help: say what went wrong, an idea or a
+      question, from the page you're on. The lab's admins read it and mark
+      it done; <b>Open as a GitHub issue</b> sends it on to BioManager's
+      makers, only if you choose.
+    </td>
+    <td valign="top">
+      <h4>📈 A usage report for a pilot</h4>
+      Admins find a <b>Usage report</b> on the Feedback page: for each of
+      the last eight weeks, how many people changed something and how many
+      changes in each area — counts only, no names — to copy into an email.
+    </td>
+  </tr>
 </table>
 
 ### 📥 Coming from Excel

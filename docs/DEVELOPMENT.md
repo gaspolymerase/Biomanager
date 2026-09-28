@@ -479,6 +479,23 @@ on the lab server scans to the lab server. Rendering uses `segno` (pure
 Python, no image libraries), and cards still print without it — just without
 the code.
 
+## Feedback and the usage report
+
+`app/feedback.py`, for a pilot (the plan is `docs/PILOT.md`). **Feedback**
+in the rail opens `/feedback?from=<the page>`; a note is a `feedback` row
+(kind, text, the page's path, `app_version()`, a short platform string)
+and each admin gets a notification. Admins see every note and mark it done;
+members see their own. `issue_url()` builds a GitHub "new issue" link on
+gaspolymerase/biomanager-app with the text, path, version and platform —
+never the server's host or the person — which the person submits
+themselves: nothing is sent by the server.
+
+`/feedback/usage` (admins) is `usage()`: for each of the last eight weeks
+(Monday to Sunday), the distinct lab accounts in the change history and
+its rows per area (`AREAS`, by table-name prefix), notebook pages and
+calendar events created; and totals now. `usage_text()` is the same as
+plain text to paste into an email.
+
 ## Reminder emails
 
 A daily digest of what is overdue or imminent: module schedule items (flips,

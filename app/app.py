@@ -318,6 +318,9 @@ app.register_blueprint(experiment_steps.bp)
 # Signing a notebook page, which locks it (app/signatures.py).
 from . import signatures as record_signatures  # noqa: E402
 app.register_blueprint(record_signatures.bp)
+# Send feedback and the usage report, for a pilot (app/feedback.py).
+from . import feedback as lab_feedback  # noqa: E402
+app.register_blueprint(lab_feedback.bp)
 # Import from Excel into any database (app/sheet_import.py).
 from . import sheet_import  # noqa: E402
 app.register_blueprint(sheet_import.bp)
