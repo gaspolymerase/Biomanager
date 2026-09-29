@@ -313,7 +313,11 @@
                       {# A button like its neighbours (a form that only opens a page), not a link. #}
                       <form method="get" action="{{ url_for('inventory.module', key=order_module.key) }}">
                         <input type="hidden" name="reorder" value="{{ key }}:{{ i.id }}">
-                        <button type="submit" class="row-icon-btn" title="Order again: a new order in {{ order_module.label }} with these details">{{ icon('cart') }}</button>
+                        {% if on_order.get(i.id) %}
+                          <button type="submit" class="row-stock-btn row-stock-link" title="{{ on_order[i.id] }}. Order again anyway?">{{ icon('cart') }}On order</button>
+                        {% else %}
+                          <button type="submit" class="row-icon-btn" title="Order again: a new order in {{ order_module.label }} with these details">{{ icon('cart') }}</button>
+                        {% endif %}
                       </form>
                     {% endif %}
                     <button type="button" class="row-icon-btn" title="Open" data-record-edit="item-dialog" data-open-item
@@ -903,7 +907,7 @@
         ? label.firstElementChild : label;
       return ((head && head.firstChild && head.firstChild.textContent) || el.name).trim();
     };
-    const say = (text) => { hint.textContent = text; hint.hidden = !text; };
+    const say = (text, warn) => { hint.textContent = text; hint.hidden = !text; hint.classList.toggle('is-warning', Boolean(warn)); };
     function fillFrom(input) {
       if (!isNew) return;
       const found = (fills[input.dataset.fillKey] || {})[input.value.trim().toLowerCase()];
@@ -931,7 +935,7 @@
       const { data, isNew: fresh } = event.detail || {};
       isNew = Boolean(fresh);
       form.querySelectorAll('.is-filled').forEach((el) => el.classList.remove('is-filled'));
-      say((data && data._hint) || '');
+      say((data && data._hint) || '', data && data._warn);
     });
   })();
 

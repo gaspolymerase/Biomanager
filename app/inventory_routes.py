@@ -372,6 +372,9 @@ def module(key: str):
             "next_number": svc.next_number(session, row.id),
             "stock_targets": stock_targets, "order_module": order_module, "reorder": reorder,
             "stock_links": _order_stock_links(session, row, items),
+            "on_order": ({i: "Already on order: " + "; ".join(_on_order_text(o) for o in found[:3])
+                          for i, found in _open_orders_of(session, row, items).items()}
+                         if row.kind in STOCK_KINDS else {}),
             "remembered": svc.remembered(session, mv, items),
             "can_configure": _can_configure(row), "is_admin": access.is_admin(),
             "bulk_fields": bulk_fields(mv),
@@ -388,6 +391,41 @@ def module(key: str):
             },
         }
     return render_template("inventory/module.html", **context)
+
+
+def _same_thing(order: InventoryItem, stock: InventoryItem, source: InventoryModule) -> bool:
+    """An order for this stock item: made from it with Order again, or the
+    same catalog number (the same name when it has none)."""
+    if (order.notes or "").startswith(f"Reorder of {source.label} #{stock.number}"):
+        return True
+    cat = (stock.catalog_number or "").strip().lower()
+    if cat:
+        return (order.catalog_number or "").strip().lower() == cat
+    name = (stock.name or "").strip().lower()
+    return bool(name) and (order.name or "").strip().lower() == name
+
+
+def _open_orders_of(session, source: InventoryModule, stock: list[InventoryItem]) -> dict[int, list[InventoryItem]]:
+    """Stock item id → the orders for it still open (requested, ordered)."""
+    orders = _order_module(session)
+    if orders is None or not stock:
+        return {}
+    omv = svc.view(orders)
+    open_orders = list(session.scalars(select(InventoryItem).where(
+        InventoryItem.module_id_fk == orders.id, InventoryItem.status.in_(omv.open_statuses))
+        .order_by(InventoryItem.number.desc())))
+    found = {}
+    for item in stock:
+        same = [o for o in open_orders if _same_thing(o, item, source)]
+        if same:
+            found[item.id] = same
+    return found
+
+
+def _on_order_text(order: InventoryItem) -> str:
+    """"#14, ordered, asked for by sasha on 28 Sep"."""
+    when = f" on {order.created_at:%d %b}" if order.created_at else ""
+    return f"#{order.number}, {order.status or 'requested'}, asked for by {order.owner or 'someone'}{when}"
 
 
 def _reorder_payload(session, mv, orders: list[InventoryItem], ref: str) -> dict | None:
@@ -417,6 +455,11 @@ def _reorder_payload(session, mv, orders: list[InventoryItem], ref: str) -> dict
             or next((o for o in orders if same(o, "catalog_number")), None)
             or next((o for o in orders if same(o, "name") and not stock.catalog_number), None))
     hint = f"Ordering {stock.name or 'it'} again from {source.label} #{stock.number}."
+    already = [o for o in orders if o.status in mv.open_statuses and _same_thing(o, stock, source)]
+    if already:
+        hint = (f"Already on order: {'; '.join(_on_order_text(o) for o in already[:3])}. "
+                f"Save only if you need more. " + hint)
+        payload["_warn"] = True
     if last is not None:
         payload.update(quantity=last.quantity, unit=last.unit)
         attrs = last.attrs_dict

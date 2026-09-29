@@ -1254,6 +1254,7 @@
   .record-fill-hint {
     @apply -mt-2 rounded-lg border border-brand-100 bg-brand-50 px-2.5 py-1.5 text-[12px] leading-snug text-brand-800;
   }
+  .record-fill-hint.is-warning { @apply border-amber-200 bg-amber-50 text-amber-900; }
   .record-dialog-body label > .is-filled { @apply border-brand-200 bg-brand-50/60; }
   /* "Used in notebook pages" (static/used-in.js). */
   .used-in h4 { @apply mb-1 text-[12.5px] font-semibold text-ink; }
