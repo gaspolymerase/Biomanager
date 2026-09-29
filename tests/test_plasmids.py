@@ -179,6 +179,16 @@ class CreatePlasmidTests(AppTestCase):
         self.post(self.a, f"/plasmids/{pid}/update", data={"box_id": str(new_box), "position": ""})
         self.assertEqual(plasmid(pid, "box_id_fk, box_row, box_col"), (new_box, 0, 1))
 
+    def test_a_miniprep_s_concentration_and_purity_are_numbers_on_the_tube(self):
+        pid = self.make_plasmid(self.a, concentration="412", a260_280="1,86")
+        self.assertEqual(plasmid(pid, "concentration, a260_280"), ("412", "1.86"))
+        r = self.a.post(f"/plasmids/{pid}/update", data={"concentration": "lots"}, headers={"X-Autosave": "1"})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("is a number", r.get_json()["error"])
+        self.assertEqual(plasmid(pid, "concentration"), ("412",))
+        self.a.post(f"/plasmids/{pid}/update", data={"concentration": "388.5"}, headers={"X-Autosave": "1"})
+        self.assertEqual(plasmid(pid, "concentration"), ("388.5",))
+
 
 # ================================================================ permissions
 

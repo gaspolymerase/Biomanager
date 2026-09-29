@@ -449,6 +449,11 @@ class PlasmidRecord(Base):
     resistance: Mapped[str] = mapped_column(String(80), default="")
     owner: Mapped[str] = mapped_column(String(120), default="")
     location: Mapped[str] = mapped_column(String(120), default="")
+    # The tube's DNA after a miniprep: ng/µL and A260/280, as typed numbers.
+    # A server default like their revisions' (0008), so an insert that
+    # doesn't name them still works.
+    concentration: Mapped[str] = mapped_column(String(40), default="", server_default="")
+    a260_280: Mapped[str] = mapped_column(String(20), default="", server_default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     # ---- Sequence design (the "working" side of the plasmid record) ------
     # full_sequence: raw nucleotide string (uppercase ACGT/N), no newlines
@@ -1424,7 +1429,7 @@ class InventoryRack(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     # Where the box is kept ("−80 °C", "LN₂"): what goes in takes it as its
     # "Stored at" (inventory_service.follow_box). Empty: not said.
-    stored_at: Mapped[str] = mapped_column(String(40), default="")
+    stored_at: Mapped[str] = mapped_column(String(40), default="", server_default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")   # may resize or delete it (and admins)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

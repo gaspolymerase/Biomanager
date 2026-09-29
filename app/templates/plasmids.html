@@ -42,7 +42,7 @@
   {% for location in boxes | map(attribute='location') | unique %}{% if location %}<option value="{{ location }}"></option>{% endif %}{% endfor %}
 </datalist>
 
-<section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v4" data-noun="plasmid" id="plasmids-section"
+<section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v5" data-noun="plasmid" id="plasmids-section"
          data-autosave-sheet data-export-name="plasmids"
          data-selection-scope data-selection-noun="plasmid" data-selection-noun-plural="plasmids">
   <div class="dt-toolbar">
@@ -109,6 +109,12 @@
             <th class="dt-sortable" data-sort-key="location" style="width: 150px;" title="Where the tube is when it is not in a box: freezer, shelf…">
               <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span>
             </th>
+            <th class="dt-sortable" data-sort-key="concentration" style="width: 92px;" title="DNA concentration of the tube, ng/µL">
+              <span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}ng/µL<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="a260_280" style="width: 80px;" title="Purity: A260/A280 (about 1.8 for clean DNA)">
+              <span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}260/280<span class="dt-sort-indicator"></span></span>
+            </th>
             <th class="dt-sortable" data-sort-key="length" style="width: 116px;" title="Sequence length and topology; edit it on the plasmid's page">
               <span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Sequence<span class="dt-sort-indicator"></span></span>
             </th>
@@ -150,6 +156,10 @@
                          placeholder="{{ '–' if not r.box else 'no cell' }}"
                          data-autosave="1" data-dead-values="" aria-label="Position in the box" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="location" value="{{ p.location }}" title="{{ p.location }}" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
+              <td><input class="sheet-num" form="{{ f }}" name="concentration" value="{{ p.concentration }}" inputmode="decimal"
+                         data-autosave="1" aria-label="Concentration, ng/µL" {% if locked %}disabled{% endif %}></td>
+              <td><input class="sheet-num" form="{{ f }}" name="a260_280" value="{{ p.a260_280 }}" inputmode="decimal"
+                         data-autosave="1" aria-label="260/280" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-num">
                 {% if r.length %}{{ '{:,}'.format(r.length) }}<span class="sheet-unit">bp</span><span class="sheet-unit">{{ 'circ' if p.is_circular else 'lin' }}</span>
                 {% else %}<span class="sheet-empty">–</span>{% endif %}
@@ -319,6 +329,8 @@
         <label>Position <input name="position" class="font-mono" placeholder="blank = next free" autocomplete="off"
                                title="Named the way the box names its cells, e.g. D7"></label>
         <label class="record-wide">Location <input name="location" placeholder="e.g. −80 freezer, shelf 2 (when not in a box)"></label>
+        <label>Concentration (ng/µL) <input name="concentration" inputmode="decimal" autocomplete="off" placeholder="e.g. 412"></label>
+        <label>260/280 <input name="a260_280" inputmode="decimal" autocomplete="off" placeholder="e.g. 1.86"></label>
       </fieldset>
       <fieldset class="record-group" data-new-only>
         <legend>Sequence (optional)</legend>

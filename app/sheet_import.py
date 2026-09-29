@@ -833,6 +833,14 @@ class PlasmidTarget(Target):
                           insert_seq=v.get("insert_seq", "")[:200], resistance=v.get("resistance", "")[:80],
                           owner=_owner(ctx, v.get("owner", ""), warnings, extras),
                           location=v.get("location", "")[:120])
+        for key, label, limit in (("concentration", "Concentration", 40), ("a260_280", "260/280", 20)):
+            value = v.get(key, "").strip().replace(",", ".")
+            try:
+                float(value) if value else None
+            except ValueError:
+                extras.append((label, value))  # not a number: kept in the notes
+            else:
+                setattr(p, key, value[:limit])
         p.notes = _extras_note(v.get("notes", ""), extras)
         session.add(p)
         session.flush()
@@ -869,6 +877,9 @@ def plasmid_target(session) -> Target:
             Field("position", "Position in the box", ("position", "well", "slot", "pos", "box position"),
                   kind="position"),
             Field("location", "Location", ("location", "freezer", "storage", "where", "fridge"), kind="place"),
+            Field("concentration", "Concentration (ng/µL)", ("concentration", "conc", "conc.", "ng/ul", "ng/µl",
+                                                            "yield", "dna concentration")),
+            Field("a260_280", "260/280", ("260/280", "a260/280", "a260/a280", "purity")),
             Field("owner", "Owner", ("owner", "user", "person", "made by", "maker", "researcher", "depositor"),
                   kind="owner", required=True, fill="me"),
             Field("notes", "Notes", ("note", "comment", "remark", "description", "source", "reference")),

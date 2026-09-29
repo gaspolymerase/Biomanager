@@ -915,6 +915,20 @@ class CsvImportTests(InventoryCase):
 
 # ======================================================================= bulk, duplicate
 
+class SampleMeasureTests(InventoryCase):
+    def test_new_samples_have_number_columns_for_what_was_measured(self):
+        key = self.new_module(self.a, "samples")
+        fields = {f["key"]: f["type"] for f in settings_of(key)["fields"]}
+        for k in ("concentration", "a260_280", "a260_230", "volume_ul"):
+            self.assertEqual(fields[k], "number", k)
+        r = self.post(self.m, f"/inventory/{key}/items/save",
+                      data={"id": "", "name": uniq("RNA "), "attr_concentration": "about 200"})
+        self.assertFlash(r, "is a number column", "error")
+        rid = self.make_item(self.m, key, uniq("RNA "), attr_concentration="212.4", attr_conc_unit="ng/µL",
+                             attr_a260_280="2.05")
+        self.assertEqual((attrs_of(rid)["concentration"], attrs_of(rid)["a260_280"]), ("212.4", "2.05"))
+
+
 class BulkTests(InventoryCase):
     """Ticked rows: one batch; rows the user may not change are skipped."""
 

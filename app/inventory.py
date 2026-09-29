@@ -40,6 +40,16 @@ FEATURES = {
 }
 
 STORAGE_TEMPS = ["RT", "4 °C", "−20 °C", "−80 °C", "LN₂"]
+CONC_UNITS = ["ng/µL", "µg/mL", "mg/mL", "nM", "µM", "cells/mL"]
+# What a Nanodrop, Qubit or BCA reading gives, as numbers a sheet can sort
+# and sum (revision 0008 adds them to Samples made before they were here).
+SAMPLE_MEASURES = [
+    {"key": "concentration", "label": "Conc.", "type": "number", "icon": "amount", "width": 92},
+    {"key": "conc_unit", "label": "Conc. unit", "type": "select", "options": CONC_UNITS, "icon": "amount", "width": 100},
+    {"key": "a260_280", "label": "260/280", "type": "number", "icon": "amount", "width": 84},
+    {"key": "a260_230", "label": "260/230", "type": "number", "icon": "amount", "width": 84, "in_table": False},
+    {"key": "volume_ul", "label": "Volume (µL)", "type": "number", "icon": "droplet", "width": 100},
+]
 
 PRESETS: dict[str, dict] = {
     "samples": {
@@ -55,6 +65,7 @@ PRESETS: dict[str, dict] = {
             {"key": "source", "label": "Source", "type": "source", "icon": "signpost", "width": 190},
             {"key": "collected_on", "label": "Collected", "type": "date", "icon": "calendar", "width": 136},
             {"key": "amount", "label": "Amount", "type": "text", "icon": "amount", "width": 100},
+            *SAMPLE_MEASURES,
             {"key": "storage_temp", "label": "Stored at", "type": "select", "options": STORAGE_TEMPS, "icon": "snowflake", "width": 104},
         ],
     },

@@ -2009,8 +2009,10 @@ def export_my_data():
                 select(PlasmidRecord).where(PlasmidRecord.owner == username).order_by(PlasmidRecord.plasmid_id)
             ).all()
             zf.writestr("plasmids.csv", csv_text([
-                ["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location", "notes"],
-                *([p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance, p.owner, p.location, p.notes]
+                ["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location",
+                 "concentration", "a260_280", "notes"],
+                *([p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance, p.owner, p.location,
+                   p.concentration, p.a260_280, p.notes]
                   for p in plasmids)]))
 
             tabs = db_session.scalars(
@@ -5524,6 +5526,8 @@ def csv_import(entity: str):
                         resistance=(row.get("resistance") or "").strip(),
                         owner=(row.get("owner") or g.user.username).strip(),
                         location=(row.get("location") or "").strip(),
+                        concentration=_plasmid_measure(row, "concentration"),
+                        a260_280=_plasmid_measure(row, "a260_280"),
                         notes=(row.get("notes") or "").strip(),
                     )
                     if not dry_run:
@@ -6344,6 +6348,7 @@ def _plasmid_values(p, box) -> dict:
     return {
         "name": p.name, "backbone": p.backbone, "insert_seq": p.insert_seq,
         "resistance": p.resistance, "owner": p.owner, "location": p.location,
+        "concentration": p.concentration, "a260_280": p.a260_280,
         "notes": p.notes, "box_id": str(p.box_id_fk or ""), "storage_box": box.name if box else "",
         "position": pbox.label(p, box),
     }
@@ -6402,6 +6407,22 @@ def _plasmid_back(row_id: int | None = None):
     if row_id:
         return redirect(url_for("plasmid_detail", row_id=row_id))
     return redirect(url_for("plasmids"))
+
+
+PLASMID_MEASURES = (("concentration", "Concentration (ng/µL)", 40), ("a260_280", "260/280", 20))
+
+
+def _plasmid_measure(form, field: str) -> str:
+    """A plasmid's concentration or 260/280 as typed, if it is a number
+    ("412", "1.86"); ValueError with the message to show otherwise."""
+    label, limit = next((lb, lim) for key, lb, lim in PLASMID_MEASURES if key == field)
+    value = (form.get(field) or "").strip().replace(",", ".")[:limit]
+    if value:
+        try:
+            float(value)
+        except ValueError:
+            raise ValueError(f"{label} is a number: “{value}” isn't one.") from None
+    return value
 
 
 def _plasmid_int(raw) -> int | None:
@@ -6580,6 +6601,13 @@ def _make_plasmids(db_session, form, user, count, name, names, requested, parsed
             if not clash:
                 first = requested
         owner = form.get("owner", user).strip()[:120]
+        measures = {}
+        for field, _label, _limit in PLASMID_MEASURES:
+            try:
+                measures[field] = _plasmid_measure(form, field)
+            except ValueError as exc:
+                measures[field] = ""
+                notes.append(f"{exc} It was left empty.")
         made = []
         for i in range(count):
             record = PlasmidRecord(
@@ -6590,6 +6618,7 @@ def _make_plasmids(db_session, form, user, count, name, names, requested, parsed
                 resistance=(form.get("resistance") or "").strip()[:80],
                 owner=owner,
                 location=(form.get("location") or "").strip()[:120],
+                concentration=measures["concentration"], a260_280=measures["a260_280"],
                 notes=(form.get("notes") or "").strip(),
             )
             pbox.put_in(record, box)
@@ -6654,6 +6683,13 @@ def update_plasmid(row_id: int):
                              ("resistance", 80), ("owner", 120), ("location", 120)):
             if field in form:
                 setattr(p, field, (form.get(field) or "").strip()[:limit])
+        for field, _label, _limit in PLASMID_MEASURES:
+            if field in form:
+                try:
+                    setattr(p, field, _plasmid_measure(form, field))
+                except ValueError as exc:
+                    db_session.rollback()
+                    return _plasmid_answer(db_session, p, error=str(exc), status=400)
         if "notes" in form:
             p.notes = (form.get("notes") or "").strip()
 
@@ -6944,6 +6980,7 @@ def plasmid_detail(row_id: int):
             "resistance": p.resistance,
             "owner": p.owner,
             "location": p.location,
+            "concentration": p.concentration, "a260_280": p.a260_280,
             "notes": p.notes,
             "box_id": p.box_id_fk or "",
             "storage_box": box.name if box else "",

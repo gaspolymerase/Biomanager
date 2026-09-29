@@ -123,8 +123,10 @@
       <label>Position <input name="position" value="{{ plasmid.position }}" class="font-mono"
                              placeholder="{{ 'e.g. ' ~ plasmid.box_span if plasmid.box_span else 'pick a box first' }}"
                              title="Named the way the box names its cells{{ ' (' ~ plasmid.box_span ~ ')' if plasmid.box_span }}" {% if locked %}disabled{% endif %}></label>
+      <label>Concentration (ng/µL) <input name="concentration" value="{{ plasmid.concentration }}" inputmode="decimal" placeholder="e.g. 412" {% if locked %}disabled{% endif %}></label>
+      <label>260/280 <input name="a260_280" value="{{ plasmid.a260_280 }}" inputmode="decimal" placeholder="e.g. 1.86" {% if locked %}disabled{% endif %}></label>
       <label class="col-span-full">Notes
-        <textarea name="notes" rows="4" placeholder="Stock concentration, lot, related orders…" {% if locked %}disabled{% endif %}>{{ plasmid.notes }}</textarea>
+        <textarea name="notes" rows="4" placeholder="Lot, related orders, sequencing…" {% if locked %}disabled{% endif %}>{{ plasmid.notes }}</textarea>
       </label>
       {% if not locked %}<button type="submit">Save storage</button>{% endif %}
     </form>
