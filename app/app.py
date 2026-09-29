@@ -70,7 +70,7 @@ from .models import (
     UserAccount,
     UserIdentity,
 )
-from .formutil import like_pattern
+from .formutil import arg_int, like_pattern
 from .services import (
     csv_text,
     add_notification,
@@ -430,6 +430,16 @@ def handle_stale_data(_error):
     flash(message, "error")
     referrer = request.referrer or ""
     return redirect(referrer if referrer.startswith(request.host_url) else url_for("home_dashboard"))
+
+
+@app.errorhandler(OverflowError)
+def handle_overflow(error: OverflowError):
+    """A number in the address too big for the database or a date."""
+    app.logger.warning("overflow on %s: %s", request.path, error)
+    message = "A number or date in that request is out of range."
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 400
+    return render_template("error.html", title="That's out of range", message=message), 400
 
 
 @app.errorhandler(404)
@@ -4985,8 +4995,8 @@ def _serialize_page(page: NotebookPage) -> dict:
 @app.route("/notebook")
 @login_required
 def notebook():
-    selected_tab_id = request.args.get("tab", type=int)
-    selected_page_id = request.args.get("page", type=int)
+    selected_tab_id = arg_int("tab", None)
+    selected_page_id = arg_int("page", None)
     with SessionLocal() as db_session:
         tabs = db_session.scalars(
             _notebook_owner_filter(select(NotebookTab)).order_by(NotebookTab.position, NotebookTab.id)
@@ -6071,7 +6081,7 @@ def notebook_backlinks(entity_type: str, entity_id: int):
 @login_required
 def notebook_search_entity(entity_type: str):
     query = (request.args.get("q") or "").strip()
-    limit = min(int(request.args.get("limit", 8)), 25)
+    limit = max(1, min(arg_int("limit", 8), 25))
     with SessionLocal() as db_session:
         if entity_type == "mouse":
             stmt = select(MouseRecord)

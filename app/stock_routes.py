@@ -270,7 +270,7 @@ def module(key: str):
             units = [u for u in units if u.active or not u.discarded_on or u.discarded_on >= cutoff]
         genotypes = list(session.scalars(select(StockGenotype).where(StockGenotype.module_id_fk == row.id)
                                          .order_by(StockGenotype.genotype)))
-        schedule = svc.schedule(session, mv, today, horizon=_int(request.args.get("horizon"), 14))
+        schedule = svc.schedule(session, mv, today, horizon=max(1, min(_int(request.args.get("horizon"), 14), 366)))
         me = g.user.username
         rows = []
         for u in units:

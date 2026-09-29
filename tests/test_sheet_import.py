@@ -93,6 +93,14 @@ class Tidying(AppTestCase):
         self.assertEqual(si.tidy_dates(["5 Mar 2026", "12-May-26", "May 12, 2026"])[0],
                          ["2026-03-05", "2026-05-12", "2026-05-12"])
 
+    def test_a_title_line_of_a_few_cells_is_not_the_header(self):
+        headers, rows, first = si.split_header([["Colony", "March 2026", ""] + [""] * 5,
+                                                ["Ear tag", "Sex", "DOB", "Strain", "Cage", "Room", "Owner", "Notes"],
+                                                ["1", "F", "2026-01-01", "Cre", "10", "B1", "sam", ""]])
+        self.assertEqual((headers[0], first), ("Ear tag", 3))
+        self.assertEqual(si.tidy_dates(["1.5e-07"])[0], [""])   # (numbers are not dates)
+        self.assertEqual(si._cell(1.5e-07), "1.5e-07")
+
     def test_excel_date_numbers_and_iso(self):
         out, _ = si.tidy_dates(["46095", "2026-03-14 00:00", "not a date"])
         self.assertEqual(out[:2], ["2026-03-14", "2026-03-14"])

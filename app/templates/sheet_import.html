@@ -223,8 +223,12 @@
   {% if results.problems %}
     <section class="card si-card si-problems">
       <header class="card-head"><h2>{{ icon('warning') }} {{ results.problems | length }} row{{ 's' if results.problems | length != 1 }} would be skipped</h2></header>
-      <ul class="si-list">{% for p in results.problems[:50] %}<li>{{ p }}</li>{% endfor %}
-        {% if results.problems | length > 50 %}<li class="si-fine">and {{ results.problems | length - 50 }} more</li>{% endif %}</ul>
+      <ul class="si-list">{% for p in results.problems[:50] %}<li>{{ p }}</li>{% endfor %}</ul>
+      {% if results.problems | length > 50 %}
+        {# Every one can be read before importing: a long sheet's problems are the ones to check. #}
+        <details class="si-more"><summary class="si-fine">Show the other {{ results.problems | length - 50 }}</summary>
+          <ul class="si-list">{% for p in results.problems[50:] %}<li>{{ p }}</li>{% endfor %}</ul></details>
+      {% endif %}
     </section>
   {% endif %}
 
@@ -233,8 +237,11 @@
       <header class="card-head"><h2>{{ icon('info') }} Worth a look</h2></header>
       <ul class="si-list">
         {% for w in (results.tidied + results.warnings)[:40] %}<li>{{ w }}</li>{% endfor %}
-        {% if (results.tidied + results.warnings) | length > 40 %}<li class="si-fine">and {{ (results.tidied + results.warnings) | length - 40 }} more</li>{% endif %}
       </ul>
+      {% if (results.tidied + results.warnings) | length > 40 %}
+        <details class="si-more"><summary class="si-fine">Show the other {{ (results.tidied + results.warnings) | length - 40 }}</summary>
+          <ul class="si-list">{% for w in (results.tidied + results.warnings)[40:] %}<li>{{ w }}</li>{% endfor %}</ul></details>
+      {% endif %}
     </section>
   {% endif %}
 

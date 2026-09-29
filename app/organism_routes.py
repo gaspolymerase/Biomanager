@@ -614,13 +614,13 @@ def module(key: str):
         elif active == "schedule":
             svc.recompute_due(session, row)
             session.commit()
-            due = svc.due_items(session, row, horizon_days=_int(request.args.get("horizon"), 21))
+            due = svc.due_items(session, row, horizon_days=max(1, min(_int(request.args.get("horizon"), 21), 366)))
             for item in due:
                 subject = svc.RULE_SUBJECTS.get(item["subject_kind"])
                 subject_row = session.get(subject, item["subject_id"]) if subject else None
                 item["editable"] = access.can_edit(subject_row) if subject_row is not None else False
             ctx["due"] = due
-            ctx["horizon"] = _int(request.args.get("horizon"), 21)
+            ctx["horizon"] = max(1, min(_int(request.args.get("horizon"), 21), 366))
 
         elif active == "environment":
             ctx["locations"] = svc.location_tree(session, row.id)

@@ -34,6 +34,7 @@ from flask import render_template
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from .formutil import arg_int
 from .db import SessionLocal
 from .models import CageRecord, InventoryItem, OrgHousing, StockUnit, TankRecord
 from . import access, positions
@@ -97,7 +98,7 @@ def qr_svg():
     if not payload:
         abort(400)
     try:
-        scale = max(1, min(12, int(request.args.get("scale", 4))))
+        scale = max(1, min(12, arg_int("scale", 4)))
     except ValueError:
         scale = 4
     svg = _qr_svg(payload, scale)
@@ -412,7 +413,7 @@ def _page(built: dict):
         printer, dpi = _lab_printer(session)
     if request.args.get("format") == "zpl":
         try:
-            dpi = int(request.args.get("dpi") or dpi)
+            dpi = arg_int("dpi", dpi)
         except ValueError:
             pass
         name = built["kind"].replace("/", "-")

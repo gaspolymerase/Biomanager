@@ -26,3 +26,19 @@ def like_pattern(text: str) -> str:
     """ "%text%" for .ilike(…, escape="\\"), with the text's own % and _
     kept literal: a search for "50%" is not a search for everything."""
     return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+MAX_ID = 2**31 - 1
+
+
+def arg_int(name: str, default=0):
+    """A whole number from the address (?page=12), or `default` when it is
+    missing, not a number, or beyond what the database holds, so a mangled
+    link gets the page, not an error."""
+    from flask import request
+    raw = (request.args.get(name) or "").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if -MAX_ID <= value <= MAX_ID else default

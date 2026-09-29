@@ -178,6 +178,13 @@ class PagesRender(AppTestCase):
         self.assertEqual(found(tag.replace(" ", "_", 1)), [])
         self.assertEqual(self.a.get("/search", query_string={"q": "1" * 21}).status_code, 200)
 
+    def test_mangled_numbers_in_an_address_are_not_server_errors(self):
+        huge = "9" * 21
+        for url in (f"/notebook?page={huge}", f"/notebook?tab=x", "/notebook/search/mouse?limit=x",
+                    f"/stocks/drosophila?horizon={huge}", "/calendar/events.json?start=0001-01-01&end=0001-02-01",
+                    "/calendar/events.json?start=9999-12-01&end=9999-12-31"):
+            self.assertLess(self.a.get(url).status_code, 500, url)
+
     def test_a_wrong_address_gets_the_app_s_own_page(self):
         r = self.a.get("/no/such/page")
         self.assertEqual(r.status_code, 404)

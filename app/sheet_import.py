@@ -98,9 +98,12 @@ def _cell(value) -> str:
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, float):
-        if value.is_integer():
+        if value.is_integer() and abs(value) < 1e15:
             return str(int(value))
-        return format(value, "f").rstrip("0").rstrip(".")
+        # Shortest text that is this number: 0.1+0.2 is 0.3, and 1.5e-07
+        # stays 1.5e-07 (format "f" kept 6 decimals and made it 0).
+        text = "%.15g" % value
+        return text if "e" in text else text.rstrip("0").rstrip(".") if "." in text else text
     return str(value).strip()
 
 
@@ -222,13 +225,13 @@ def read_workbook(filename: str, data: bytes) -> dict[str, list[list[str]]]:
 
 def split_header(rows: list[list[str]]) -> tuple[list[str], list[list[str]], int]:
     """(headers, data rows, the sheet's row number of the first). The header
-    is the first row, among the first ten, with two or more filled cells (a
-    title line above it is skipped)."""
-    at = 0
-    for i, row in enumerate(rows[:10]):
-        if sum(1 for c in row if c.strip()) >= min(2, len(row)):
-            at = i
-            break
+    is the first row, among the first ten, filled about as widely as the
+    widest of them: a title line above it ("Colony, March 2026") is
+    skipped, even one of two or three cells."""
+    filled = [sum(1 for c in row if c.strip()) for row in rows[:10]]
+    widest = max(filled, default=0)
+    need = max(min(2, widest), round(widest * 0.6))
+    at = next((i for i, n in enumerate(filled) if n >= need), 0)
     headers, seen = [], {}
     for i, h in enumerate(rows[at] if rows else []):
         h = h.strip() or f"Column {i + 1}"
@@ -277,7 +280,7 @@ _UNITS = {"g", "mg", "ug", "kg", "l", "ml", "ul", "m", "mm", "um", "nm", "cm", "
 # Headers that may mean a place or a position: the values decide.
 _EITHER = {"location", "place", "where", "loc", "storage", "storage location"}
 _POSITION = re.compile(r"^\s*([A-Za-z]{1,2}\s*[-.:/ ]?\s*\d{1,3}|\d{1,3}\s*[-.:/,]\s*\d{1,3}|\d{1,3}\s*[-.:/ ]?\s*[A-Za-z]{1,2})\s*$")
-_DATEISH = re.compile(r"^\s*(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.]\d{1,2}[/.]\d{2,4})(\s.*)?$")
+_DATEISH = re.compile(r"^\s*(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})(\s.*)?$")
 _NUMBER = re.compile(r"^\s*-?\d[\d,]*(\.\d+)?\s*$")
 
 
@@ -490,6 +493,9 @@ class Target:
     columns_note: str = ""
     module: object = None
     mv: object = None
+    # Columns that are worked out from others (the Mice export's Age), left
+    # out by default: in the notes they would go stale.
+    derived: tuple[str, ...] = ()
 
     def prepare(self, session) -> dict:
         return {}
@@ -636,6 +642,8 @@ class MiceTarget(Target):
         # A mouse's genotype is its transgenes; an old sheet's genotype
         # column becomes Transgene 1, as Add many does.
         form["transgene_1"] = v.get("genotype", "").strip()
+        for n in (2, 3, 4):                       # the Mice export's own Transgene_2–4 columns
+            form[f"transgene_{n}"] = v.get(f"transgene_{n}", "").strip()
         mouse = MouseRecord(mouse_id=mouse_id, owner=owner)
         before = len(flask_session.get("_flashes") or [])
         populate_mouse_from_form(session, mouse, ImmutableMultiDict(form), preserve_owner_on_transfer=False)
@@ -667,11 +675,15 @@ def mice_target(session) -> Target:
         key="mice", title=f"Mice in {lab.FEATURES['colony'].label}", noun="mouse", nouns="mice",
         back_url=url_for("colony", view="mice"),
         columns_note="The mouse colony's columns are fixed, so any others go into each mouse's notes.",
+        derived=("active", "age week", "age day", "age"),
         fields=[
             Field("mouse_id", "Mouse ID", ("mouse", "id", "mouse number", "ear tag", "tag", "animal id", "animal"),
                   note="Kept when it's a free number; otherwise the next ID, with yours in the notes"),
             Field("gender", "Sex", ("sex", "gender", "m f", "male female"), kind="sex"),
-            Field("genotype", "Genotype", ("genotype", "strain", "line", "transgene", "allele", "cre", "gt")),
+            Field("genotype", "Genotype", ("genotype", "strain", "line", "transgene", "allele", "cre", "gt",
+                                           "transgene 1")),
+            *(Field(f"transgene_{n}", f"Transgene {n}", (f"transgene {n}", f"allele {n}", f"tg {n}"))
+              for n in (2, 3, 4)),
             Field("date_of_birth", "Date of birth", ("dob", "birth date", "birthdate", "born", "birthday",
                                                      "date born", "d o b", "birth"), kind="date"),
             Field("cage_id", "Cage", ("cage", "cage number", "cage id", "cage card")),
@@ -725,6 +737,8 @@ class FishTarget(Target):
                 session.add(line)
                 session.flush()
                 ctx["lines"][line_name.lower()] = line
+                warnings.append(f"There was no line “{line_name}”, so it's made new. If it's a spelling of "
+                                "one you have, change the name in the sheet (or merge them after).")
         tank = ctx["tanks"].get(code.lower())
         if tank is None:
             tank = TankRecord(tank_id=code[:80], owner=owner, purpose="stock", active=True,
@@ -732,6 +746,7 @@ class FishTarget(Target):
             session.add(tank)
             session.flush()
             ctx["tanks"][code.lower()] = tank
+            warnings.append(f"There was no tank {code}, so it's made new.")
             rack = ctx["racks"].get(v.get("rack", "").strip().lower())
             if v.get("rack", "").strip() and rack is None:
                 warnings.append(f"There's no rack called “{v['rack']}”, so tank {code} isn't placed.")
@@ -1138,6 +1153,9 @@ ATTR_ALIASES = {
     "titer": ("titer", "titre", "gc/ml", "vg/ml", "tu/ml", "ifu/ml", "pfu/ml", "titer (gc/ml)", "titre (vg/ml)"),
     "biosafety": ("biosafety", "bsl", "biosafety level", "containment", "safety level"),
     "made_on": ("made", "date made", "produced", "production date", "prep date", "packaged", "made on"),
+    "price": ("price", "cost", "unit price", "amount paid", "total cost"),
+    "account": ("account", "grant", "fund", "funding", "cost center", "cost centre", "po", "budget"),
+    "url": ("url", "link", "web", "website", "product page"),
 }
 
 
@@ -1147,7 +1165,7 @@ def inventory_target(session, module) -> Target:
     mv = svc.view(module)
     required = set(mv.required)
     fields = [
-        Field("name", mv.name_label, ("name", "item", "item name", "product", "product name", "reagent", "antibody",
+        Field("name", mv.name_label, ("name", "item", "item name", "product", "product name", "reagent", "antibody", "what",
                                "chemical", "sample", "sample name", "title", "compound", "target", "virus", "virus name",
                                "construct"),
               required="name" in required or mv.row.kind == "orders"),
@@ -1457,6 +1475,8 @@ def match(token: str):
         for i, header in enumerate(headers):
             key, strength, why = matched.get(i, ("", 0.0, ""))
             samples = [v for v in columns[i] if v.strip()][:3]
+            if not key and norm(header) in target.derived:
+                key, why = "_skip", "worked out from the other columns"
             if not key:
                 key = "_new" if target.can_add_columns and samples else ("_notes" if samples else "_skip")
             shape = _shape(columns[i])
