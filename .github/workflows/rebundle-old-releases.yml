@@ -3,7 +3,8 @@ name: rebundle-old-releases
 # The server bundles published up to 0.10.0 carried our own server's runbook
 # (now docs/OUR-SERVER.md). This puts the generic deploy/RUNBOOK.md into each
 # published bundle that still names our server or us, and replaces that release's
-# biomanager-server.tar.gz. Nothing else in a bundle changes, and a bundle
+# biomanager-server.tar.gz. Nothing else in a bundle changes but an
+# example that named our institution (.github/rebundle-runbook.py), and a bundle
 # that names no server is left alone, so running it again does nothing.
 # Runs when this file changes, and by hand.
 
@@ -30,7 +31,7 @@ jobs:
             if ! gh release download "$tag" --repo "$PUBLIC_REPO" --pattern biomanager-server.tar.gz --output "$tag.tar.gz" 2>/dev/null; then
               echo "$tag: no server bundle"; continue
             fi
-            if ! tar -xzOf "$tag.tar.gz" | grep -qiE 'tail1234|\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568'; then
+            if ! tar -xzOf "$tag.tar.gz" | grep -qiE 'tail1234|\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568|university'; then
               echo "$tag: names no server, left as it is"; continue
             fi
             mkdir -p "$tag"
@@ -48,7 +49,7 @@ jobs:
           bad=0
           for tag in $(gh release list --repo "$PUBLIC_REPO" --limit 100 --json tagName --jq '.[].tagName'); do
             curl -fsSL -o b.tar.gz "https://github.com/$PUBLIC_REPO/releases/download/$tag/biomanager-server.tar.gz" || { echo "$tag: no server bundle"; continue; }
-            if tar -xzOf b.tar.gz | grep -qiE 'tail1234|\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568'; then
+            if tar -xzOf b.tar.gz | grep -qiE 'tail1234|\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568|university'; then
               echo "::error::$tag: the published bundle still names our server or us"; bad=1
             else
               echo "$tag: clean"

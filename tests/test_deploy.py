@@ -234,7 +234,7 @@ class ServerBundle(unittest.TestCase):
         # deploy/ goes out in the public bundle, and app/, scripts/ and migrations/ in
         # every desktop build and server image: no one's server, name or address.
         # Our own server's runbook is docs/OUR-SERVER.md, which ships in neither.
-        ours = re.compile(r"\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568", re.I)
+        ours = re.compile(r"\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568|university", re.I)
         found = []
         for top in ("deploy", "app", "scripts", "migrations"):
             for path in (Path(ROOT) / top).rglob("*"):
