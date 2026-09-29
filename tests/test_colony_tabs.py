@@ -286,6 +286,18 @@ class OneWeaningListTests(AppTestCase):
         r = self.autosave(self.m, f"/colony/cages/{cage_of(col['mice'][0])}/update", {"notes": "x"})
         self.assertEqual(r.get_json()["row"]["values"]["wean_due"], "")
 
+    def test_weaning_and_distributing_can_be_undone(self):
+        col = self.make_colony(self.m, self.member, n_mice=1, dob=days_ago(21), date_give_birth=days_ago(21))
+        before = cage_of(col["mice"][0])
+        self.post(self.m, f"/colony/cages/{col['cage_id']}/wean-distribute", {
+            "mouse_ids[]": [str(mouse_number(col["mice"][0]))], "gender[]": ["F"], "cage_id[]": [""], "card_id[]": [""]})
+        self.assertNotEqual(cage_of(col["mice"][0]), before)
+        batch = one("select id from batches where description like ? order by id desc", f"wean cage {col['cage']}%")
+        self.post(self.m, f"/batches/{batch}/undo")
+        self.assertEqual(cage_of(col["mice"][0]), before)
+        self.assertEqual(one("select date_give_birth from mouse_cages where id=?", col["cage_id"]), days_ago(21))
+        self.assertIsNone(one("select weaned_on from litters where id=?", col["litter_id"]))
+
     def test_young_pups_are_weaned_only_once_confirmed(self):
         cage = self.make_cage(self.m, date_give_birth=days_ago(12))
         r = self.post(self.m, f"/colony/cages/{cage}/wean", {})

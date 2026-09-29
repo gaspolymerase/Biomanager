@@ -108,6 +108,12 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
         .where(AuditEntry.batch_id_fk == batch.id)
         .order_by(AuditEntry.id.desc())
     ).all()
+    # Newest first, but every record the batch created goes last: first the
+    # records that point at it are put back as they were. In the log order
+    # alone a redo's re-made cage comes after its mice's moves (inserts are
+    # logged after the flush, updates before it), so undoing that redo would
+    # delete the cage while its mice still pointed at it, and lose them.
+    entries = sorted(entries, key=lambda e: e.action == "create")
 
     reverted = skipped = 0
     notes: list[str] = []
@@ -139,6 +145,7 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
                 # database; deleting it before their restored cage is
                 # flushed would let the ORM null that restored value.
                 session.flush()
+                session.expire(row)        # its collections, as the database now has them
                 held = _unlink_references(session, model, row)
                 if held:
                     skipped += 1

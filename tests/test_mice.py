@@ -479,6 +479,13 @@ class MouseBatchEditTests(Case):
         batch = newest_batch(self.member)
         self.assertEqual((batch[1], batch[2]), ("mark as sac", 2))
 
+    def test_batch_sac_keeps_the_day_a_mouse_already_died(self):
+        earlier = date.today() - timedelta(days=3)
+        execute("update mice set status='sac', date_of_death=? where id=?", earlier, self.ids[0])
+        self.m.post("/colony/mice/bulk-sac", data={"selected_ids": self.ids})
+        self.assertEqual(mouse(self.ids[0])["date_of_death"], earlier.isoformat())
+        self.assertEqual(mouse(self.ids[1])["date_of_death"], T)
+
 
 # ---------------------------------------------------------------- lifecycle
 

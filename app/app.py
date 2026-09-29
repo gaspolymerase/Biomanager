@@ -2635,7 +2635,9 @@ def bulk_sac_mice():
         for mouse in mice:
             if can_edit_mouse(mouse):
                 mouse.status = "sac"
-                mouse.date_of_death = date.today()
+                # A mouse that died earlier keeps its day; only the living die today.
+                mouse.date_of_death = mouse.date_of_death or date.today()
+                stamp_updated(mouse)
                 done += 1
         batch_row.record_count = done
         db_session.commit()
@@ -3784,7 +3786,8 @@ def cage_genotyping(cage_row_id: int):
 @app.route("/colony/cages/<int:cage_row_id>/wean", methods=["POST"])
 @login_required
 def cage_wean(cage_row_id: int):
-    with SessionLocal() as db_session:
+    # A batch, so Batch history can undo it like any other change to many records.
+    with SessionLocal() as db_session, audit.batch(db_session, "update", "wean a cage", "mouse_cages") as batch_row:
         cage = db_session.get(CageRecord, cage_row_id)
         blocked = deny(cage, "cages")
         if blocked:
@@ -3795,6 +3798,7 @@ def cage_wean(cage_row_id: int):
                 flash(young, "error")
                 return _back_to_colony("cages")
             mark_weaned(cage)
+            batch_row.description, batch_row.record_count = f"wean cage {cage.cage_id}"[:200], 1
             db_session.commit()
             flash(f"Cage {cage.cage_id} is weaned.", "success")
     return _back_to_colony("cages")
@@ -3848,7 +3852,8 @@ def cage_wean_distribute(cage_row_id: int):
     problems: list[str] = []
     source_cage_label = ""
 
-    with SessionLocal() as db_session:
+    with SessionLocal() as db_session, audit.batch(db_session, "update", "wean and distribute a cage",
+                                                   "mouse_cages") as batch_row:
         source_cage = db_session.get(CageRecord, cage_row_id)
         if source_cage is None:
             flash("Cage not found.", "error")
@@ -3912,6 +3917,8 @@ def cage_wean_distribute(cage_row_id: int):
                 moved_count += 1
 
         source_cage.date_give_birth = None
+        batch_row.description = f"wean cage {source_cage_label} ({moved_count} mice moved)"[:200]
+        batch_row.record_count = moved_count + 1
         db_session.commit()
 
     if moved_count:
