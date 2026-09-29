@@ -258,9 +258,17 @@ Bearer <key>` a computer gets `GET /api/lab-copy/snapshot` (the whole
 database written to a SQLite file with the app's own metadata, encrypted
 columns blanked; SHA-256 and row counts in `X-BioManager-*` headers; one
 per key every 2 minutes), `/api/lab-copy/files` (uploads: path and size)
-and `/api/lab-copy/files/<path>`. Wrong keys are throttled; from the
-internet (guest access) the gate refuses them like any request without a
-session. The desktop app (`LOCAL_SETUP`) stores the address and the key
+and `/api/lab-copy/files/<path>`. The snapshot is read in one transaction
+(REPEATABLE READ on PostgreSQL, a read transaction on SQLite), so it is one
+moment. A non-admin's copy is narrowed by `member_view()`: password hashes
+blanked, `ADMIN_ONLY` tables emptied, `OWN_ROWS` kept for them only,
+notebook pages they can't open (and `PAGE_ROWS` hanging off them) and
+other people's personal databases removed; their files are those the copy
+names (`uploads_named_in`). A test fails when a new table holding someone's
+own rows isn't classified there. Guests, pending and disabled accounts may
+not keep copies. Wrong keys are throttled per address (a right key is never
+throttled); from the internet (guest access) the gate refuses them like any
+request without a session. The desktop app (`LOCAL_SETUP`) stores the address and the key
 (encrypted) in `app_settings`, and `start_background()` (from `desktop.py`)
 fetches a copy when the last good one is over 20 hours old: checksum and
 `PRAGMA integrity_check` first, the newest `lab_copy_keep` kept in
@@ -436,7 +444,24 @@ python scripts/dbtool.py restore <file>
 
 These are for a SQLite database on one machine. A server on PostgreSQL is
 backed up by the backup service in `deploy/` (`deploy/backup/backup.sh`
-runs without Docker too).
+runs without Docker too). `restore` checks the backup is a healthy
+BioManager database and asks that the app be closed first (`--yes` skips
+the question).
+
+**The app won't start on a database it can't trust**: an SQLite file of 0
+bytes (`services.refuse_emptied_database`: it would otherwise start a new
+empty lab over it), or a database whose Alembic revision this version
+doesn't know, i.e. one a newer version made (`upgrade.plan`).
+
+**Failures get the app's own pages.** `OperationalError` (the database
+down, locked, or its disk full) answers 503 with `error_plain.html`, which
+needs nothing from the database; 404, 500, `StaleDataError`, `OverflowError`
+and the integrity and data errors have handlers too, and each answers JSON
+to a background save, a page script (`X-Requested-With: fetch`) or the API
+(`_wants_json`). On SQLite, `lower()` is replaced with Python's, so
+case-insensitive search folds every script as on PostgreSQL; typed search
+text goes through `formutil.like_pattern` with `escape="\\"`, so `%` and
+`_` are literal. `formutil.arg_int` reads numbers from the address.
 
 `relocate` copies, verifies with an integrity check, and only then retires
 the original — then prints the `BIOMANAGER_DATA_DIR` to export. Backups use
@@ -637,8 +662,20 @@ map onto the real columns, unknown columns are ignored, and `mouse_id` should
 be left out entirely so IDs are assigned for you.
 
 The older `/import/<entity>` endpoint still serves plasmid and order imports,
-and also assigns ascending mouse IDs from a single reserved block via
-`services.reserve_mouse_ids()`.
+and numbers mice with one counter that skips every number used in the
+database or earlier in the file, the same in the dry run (so a repeated ID
+is reported per row); a real run is a batch.
+
+**Numbers are handed out once.** `services.reserve_mouse_ids()` counts
+above the highest mouse and above `app_settings.mouse_id_high`, the highest
+ever handed out, so deleting the newest mouse or undoing an Add many never
+gives its number again. Saves that take the next free number (New mouse,
+Add many, New cage, litters, Wean and distribute, the CSV import) are
+wrapped in `next_number_retried`: two people saving at once read the same
+highest number, the database refuses the second, and the save is tried
+again with a fresh one instead of reporting an ID the person never typed.
+One cage per rack place is a unique index (`uq_mouse_cages_place`,
+revision 0006); a swap on the rack grid moves the cages in steps.
 
 > Previously this path was broken: `next_mouse_id()` was called per row, and
 > because the session runs with `autoflush=False` the `max()` query could not
@@ -665,12 +702,28 @@ Undo reverses the recorded changes, newest first:
 It refuses in two cases, loudly rather than silently: a batch already undone,
 and a record **changed again after the batch** — reverting then would discard
 whoever's later edit. That second case offers *Undo anyway*. The undo is
-itself recorded as a batch, so undoing an undo is a redo.
+itself recorded as a batch, so undoing an undo is a redo: the original
+batch is then in force again (its `undone_at` cleared) and can be undone
+again; the batch's own undos and redos don't count as later edits. A batch
+is claimed with a conditional UPDATE before anything is reversed, so two
+people pressing Undo together undo it once. Records the batch created are
+reversed last (after the records that point at them are put back), since
+in log order a redo's re-made cage comes after its mice's moves. Wean and
+Wean and distribute are batches too.
 
 This needed audit entries to carry a machine-readable diff, not just prose:
 `audit_log.changes_json` holds `{"changes": {field: [before, after]}}` for an
 edit and `{"snapshot": {...}}` for a delete. Parsing
 `genotype: ∅ → C57BL/6` back into a value would have been guesswork.
+
+**Stale rows.** A sheet row posts every cell. The mouse row also posts a
+`<name>_was` copy of what each cell showed, and `populate_mouse_from_form`
+writes a field only when `form_changed()` says it differs, so saving one
+cell of a row opened before a colleague's edit keeps that edit.
+`sheet.js` refreshes the copies after each save. A one-line cell can't hold
+a line break (browsers drop them from an `<input>`), so a value sent back
+equal to the stored one without its line breaks counts as unchanged
+(`_keep_lines`).
 
 Two ordering details worth knowing if you touch `app/audit.py`:
 
@@ -902,7 +955,18 @@ private network such as Tailscale.
 - **Passwords are at least 12 characters.** Ten failed sign-ins in 15 minutes
   lock out that username and that address for the rest of the window.
 - **Changing or resetting a password signs out every other session** of
-  that account — the fix for a lost laptop.
+  that account — the fix for a lost laptop. So does disabling it
+  (`security.end_sessions`), and enabling it again doesn't bring them back.
+- **Sign out ends that session for good.** Each session has an id
+  (`session["sid"]`); Sign out records it in `app_settings`
+  (`signed_out:<id>`, forgotten after the session lifetime), so a copy of the
+  cookie no longer works.
+- **Usernames are plain** (letters, digits, `.`, `-`, `_`, compared without
+  case), so no two look alike. Sign-ups are limited to 5 an hour per address,
+  wrong current passwords in Settings to 10 per 15 minutes, CSP reports to
+  30 a minute per address.
+- **API replies never set the session cookie** (`security._SessionInterface`).
+- **The data folder is the running account's only** (mode 700).
 - **Changes from other websites are refused.** Every POST is checked against
   the browser's `Sec-Fetch-Site`/`Origin` headers, so a malicious page cannot
   make a signed-in member's browser edit records. Sign out is a POST too.

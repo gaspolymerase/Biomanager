@@ -471,8 +471,12 @@ it is:
 - **Must-have columns are filled in.** If your sheet has no owner, say who
   every row belongs to (you, by default).
 - **Values are tidied.** Excel dates in any style (day or month first,
-  decided per column, or a date number), `Male`/`m`/`♂` → `M`, your lab's
-  own statuses, people by name.
+  decided per column and otherwise by Lab setup's date style, `12-May-26`,
+  or a date number; a future date of birth is left blank and kept in the
+  notes), `Male`/`m`/`♂` → `M`, your lab's own statuses, people by name.
+  A cell merged down over several rows (a *Cage #* typed once for its
+  mice) counts for each, and cages the import makes belong to their mice's
+  owner.
 - **You see a preview first.** It runs through the same checks as the
   database's own dialogs and lists every row that would be skipped and why,
   by its row number in Excel. A *Total* line under the records is left out,
@@ -878,8 +882,11 @@ copy on the admin's Mac. The desktop app can also keep **a copy of the lab
 server** on any computer (**Settings → Keep a copy of your lab server**):
 the whole database, checked when it arrives, refreshed daily, the newest 14
 kept, and loadable into a new server if the old one is lost. Admins decide
-whether members may. **Settings → Export my data** downloads your own
-records as a zip at any time.
+whether members may (guests never). An admin's copy is the whole lab; a
+member's holds what they can see in the app, without anyone's password,
+other people's private notebook pages or personal databases, or the Audit
+log. **Settings → Export my data** downloads your own mice, cages,
+weights, experiments, plasmids and notebook pages as a zip at any time.
 
 ---
 
