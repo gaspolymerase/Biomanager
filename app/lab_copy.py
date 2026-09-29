@@ -20,10 +20,17 @@ own copy of the whole lab, refreshed every day while it runs:
            mirrored, only new ones downloaded, never deleted.
 
 A snapshot is a complete BioManager database in the desktop app's own
-format, so it is also a restore point: scripts/migrate-to-postgres.py loads
-it into a new server (see the Run it for your lab guide). Stored secrets
-(Google Calendar tokens and the like) are blanked in it: they are encrypted
-with the server's own key and would be useless anywhere else.
+format, read in one transaction so it is one moment of the lab, and so it is
+also a restore point: scripts/migrate-to-postgres.py loads it into a new
+server (see the Run it for your lab guide). Stored secrets (Google Calendar
+tokens and the like) are blanked in it: they are encrypted with the server's
+own key and would be useless anywhere else.
+
+An admin's copy is the whole lab, the restore point. A member's copy holds
+what that member can see in the app (member_view): no one's password,
+tokens or keys, no one else's private notebook pages, personal databases,
+notifications or calendar links, and not the Audit log or feedback; of the
+uploaded files, only those named in what their copy holds.
 """
 from __future__ import annotations
 
@@ -40,12 +47,12 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
 from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request,
                    send_file, send_from_directory, url_for)
-from sqlalchemy import create_engine, select
+from sqlalchemy import String, Text, create_engine, func, select, text
 
 from . import lab, security
 from .db import Base, SessionLocal, engine
@@ -69,7 +76,9 @@ key_throttle = security.LoginThrottle(limit=20, window=15 * 60)
 
 
 def may_keep_copies(session, user) -> bool:
-    return user is not None and (user.role == "admin" or lab.permission(session, PERMISSION))
+    if user is None or user.disabled or user.role == "pending" or user.expires_at is not None:
+        return False          # a guest's account ends; a copy of the lab shouldn't outlive it
+    return user.role == "admin" or lab.permission(session, PERMISSION)
 
 
 def new_key() -> str:
@@ -141,10 +150,12 @@ def revoke_key(key_id: int):
 
 
 def _authorised(s) -> tuple[LabCopyKey, UserAccount]:
-    """The key in the Authorization header, if it may take a copy now."""
-    throttle_keys = (("lab-copy",), ("lab-copy-ip", request.remote_addr or ""))
-    if key_throttle.retry_after(*throttle_keys):
-        abort(429)
+    """The key in the Authorization header, if it may take a copy now.
+
+    Only wrong keys are throttled, per address: a key is 160 random bits,
+    so the throttle is against noise, and a stranger's wrong guesses must
+    not lock out the lab's own computers."""
+    throttle_key = ("lab-copy-ip", request.remote_addr or "")
     header = request.headers.get("Authorization", "")
     raw = header[7:].strip() if header.lower().startswith("bearer ") else ""
     k = s.scalar(select(LabCopyKey).where(LabCopyKey.key_hash == key_hash(raw))) if raw.startswith(KEY_PREFIX) else None
@@ -152,7 +163,9 @@ def _authorised(s) -> tuple[LabCopyKey, UserAccount]:
     now = datetime.utcnow()
     if (user is None or user.disabled or user.role == "pending"
             or (user.expires_at is not None and user.expires_at <= now)):
-        key_throttle.failed(*throttle_keys)
+        if key_throttle.retry_after(throttle_key):
+            abort(429)
+        key_throttle.failed(throttle_key)
         abort(401)
     if not may_keep_copies(s, user):
         abort(403)
@@ -183,33 +196,119 @@ def _too_many(_e):
 # ---------------------------------------------------------------------------
 
 
-def write_snapshot(path: Path) -> dict[str, int]:
+def write_snapshot(path: Path, user: UserAccount | None = None) -> dict[str, int]:
     """The whole database, as a SQLite file at `path`, in the schema the app
     itself makes (so the desktop app and migrate-to-postgres read it).
-    Returns the rows copied per table. Encrypted columns are blanked."""
+    Returns the rows copied per table. Encrypted columns are blanked; for a
+    `user` who is not an admin, only what they can see is kept (member_view).
+
+    Every table is read in one transaction (REPEATABLE READ on PostgreSQL,
+    one read transaction on SQLite), so a copy taken while people work is
+    one moment of the lab: no mouse points at a cage the copy is missing."""
     target = create_engine(f"sqlite:///{path}")
     counts: dict[str, int] = {}
     try:
         Base.metadata.create_all(target)
         with engine.connect() as src, target.begin() as out:
+            if src.dialect.name == "postgresql":
+                src = src.execution_options(isolation_level="REPEATABLE READ")
+            with src.begin():
+                if src.dialect.name == "sqlite":
+                    src.exec_driver_sql("BEGIN")    # pysqlite only begins before a write
+                for table in Base.metadata.sorted_tables:
+                    secret = [c.name for c in table.columns if isinstance(c.type, EncryptedText)]
+                    result = src.execution_options(stream_results=True).execute(select(table))
+                    while True:
+                        batch = result.fetchmany(1000)
+                        if not batch:
+                            break
+                        rows = [dict(r._mapping) for r in batch]
+                        for row in rows:
+                            for column in secret:
+                                row[column] = ""
+                        out.execute(table.insert(), rows)
+            if user is not None and user.role != "admin":
+                member_view(out, user.username)
             for table in Base.metadata.sorted_tables:
-                secret = [c.name for c in table.columns if isinstance(c.type, EncryptedText)]
-                result = src.execution_options(stream_results=True).execute(select(table))
-                n = 0
-                while True:
-                    batch = result.fetchmany(1000)
-                    if not batch:
-                        break
-                    rows = [dict(r._mapping) for r in batch]
-                    for row in rows:
-                        for column in secret:
-                            row[column] = ""
-                    out.execute(table.insert(), rows)
-                    n += len(rows)
-                counts[table.name] = n
+                counts[table.name] = out.execute(select(func.count()).select_from(table)).scalar_one()
     finally:
         target.dispose()
     return counts
+
+
+# What a member's copy leaves out (write_snapshot). Everything else is the
+# lab's shared records, which every member sees in the app anyway.
+# tests/test_lab_copy.py checks that each table holding someone's own rows
+# is named here, or in MEMBER_SEES_WHOLE, so a new one is decided on.
+ADMIN_ONLY = ("api_tokens", "lab_copy_keys", "guest_passes", "user_identities", "feedback", "audit_log")
+OWN_ROWS = {"notifications": "recipient_username", "calendar_subscriptions": "owner",
+            "google_calendar_links": "owner", "calendar_feeds": "owner", "notebook_templates": "owner_username"}
+PAGE_ROWS = ("notebook_comments", "notebook_page_info", "notebook_presence", "notebook_shares",
+             "notebook_sync_updates", "notebook_versions", "record_signatures")
+PERSONAL_DATABASES = ("inventory_modules", "stock_modules", "organism_modules")
+MEMBER_SEES_WHOLE = ("users", "experiments", "notebook_tabs", "notebook_pages")
+
+
+def member_view(out, username: str) -> None:
+    """Narrow a copy just written (`out`, a connection to it) to what this
+    member may see in the app."""
+    run = lambda sql, **kw: out.execute(text(sql), {"me": username, **kw})
+    run("UPDATE users SET password_hash = ''")
+    for table in ADMIN_ONLY:
+        run(f"DELETE FROM {table}")
+    for table, column in OWN_ROWS.items():
+        run(f"DELETE FROM {table} WHERE {column} != :me")
+    # Notebook pages: their own and those shared with them or the lab
+    # (app/lab_notebook.accessible_filter), and the rows that hang off them.
+    run("CREATE TEMP TABLE seen_pages AS SELECT p.id FROM notebook_pages p "
+        "JOIN notebook_tabs t ON t.id = p.tab_id_fk WHERE t.owner_username = :me "
+        "OR p.id IN (SELECT page_id_fk FROM notebook_shares WHERE username IN (:me, :everyone))", everyone="*")
+    for table in PAGE_ROWS:
+        run(f"DELETE FROM {table} WHERE page_id_fk NOT IN (SELECT id FROM seen_pages)")
+    run("DELETE FROM notebook_pages WHERE id NOT IN (SELECT id FROM seen_pages)")
+    run("DELETE FROM notebook_tabs WHERE owner_username != :me "
+        "AND id NOT IN (SELECT tab_id_fk FROM notebook_pages)")
+    run("DROP TABLE seen_pages")
+    # Someone else's personal databases, and everything in them.
+    for modules in PERSONAL_DATABASES:
+        hidden = f"SELECT id FROM {modules} WHERE private_to != '' AND private_to != :me"
+        for table in Base.metadata.sorted_tables:
+            if any(fk.parent.name == "module_id_fk" and fk.column.table.name == modules for fk in table.foreign_keys):
+                run(f"DELETE FROM {table.name} WHERE module_id_fk IN ({hidden})")
+        run(f"DELETE FROM {modules} WHERE id IN ({hidden})")
+
+
+UPLOAD_REF = re.compile(r"uploads/([^\s\"'<>()\[\]\\?#]+)")
+
+
+def uploads_named_in(path: Path) -> set[str]:
+    """The uploaded files a copy's records point at (as uploads/<name>)."""
+    names: set[str] = set()
+    with sqlite3.connect(path) as con:
+        for table in Base.metadata.sorted_tables:
+            for column in table.columns:
+                if isinstance(column.type, (String, Text)) and not isinstance(column.type, EncryptedText):
+                    for (value,) in con.execute(f'SELECT "{column.name}" FROM "{table.name}" '
+                                                f'WHERE "{column.name}" LIKE \'%uploads/%\''):
+                        names.update(unquote(n) for n in UPLOAD_REF.findall(value or ""))
+    return names
+
+
+_member_files: dict[int, tuple[float, set[str]]] = {}
+MEMBER_FILES_FOR = 30 * 60           # seconds a member's list of files is kept
+
+
+def member_files(user: UserAccount, key_id: int) -> set[str]:
+    """The uploaded files a member's copy may hold: those named in it."""
+    cached = _member_files.get(key_id)
+    if cached is not None and time.monotonic() - cached[0] < MEMBER_FILES_FOR:
+        return cached[1]
+    with tempfile.TemporaryDirectory(prefix="biomanager-files-") as tmp:
+        path = Path(tmp) / "view.db"
+        write_snapshot(path, user)
+        names = uploads_named_in(path)
+    _member_files[key_id] = (time.monotonic(), names)
+    return names
 
 
 def _sha256(path: Path) -> str:
@@ -223,7 +322,8 @@ def _sha256(path: Path) -> str:
 @bp.route("/api/lab-copy/snapshot")
 def snapshot():
     with SessionLocal() as s:
-        k, _user = _authorised(s)
+        k, user = _authorised(s)
+        s.expunge(user)
         now = datetime.utcnow()
         if k.last_used_at is not None and (now - k.last_used_at).total_seconds() < MIN_SECONDS_BETWEEN:
             abort(429)
@@ -236,7 +336,7 @@ def snapshot():
     path = Path(name)
     path.unlink()                   # create_engine makes a fresh file
     try:
-        counts = write_snapshot(path)
+        counts = write_snapshot(path, user)
         size, digest = path.stat().st_size, _sha256(path)
     except Exception:
         path.unlink(missing_ok=True)
@@ -269,17 +369,31 @@ def _upload_files() -> list[dict]:
     return sorted(files, key=lambda f: f["path"])
 
 
+def _allowed_files(s) -> set[str] | None:
+    """None: every uploaded file (an admin's key); else the member's."""
+    k, user = _authorised(s)
+    if user.role == "admin":
+        return None
+    s.expunge(user)
+    return member_files(user, k.id)
+
+
 @bp.route("/api/lab-copy/files")
 def files():
     with SessionLocal() as s:
-        _authorised(s)
-    return jsonify({"ok": True, "files": _upload_files()})
+        allowed = _allowed_files(s)
+    listing = _upload_files()
+    if allowed is not None:
+        listing = [f for f in listing if f["path"] in allowed]
+    return jsonify({"ok": True, "files": listing})
 
 
 @bp.route("/api/lab-copy/files/<path:name>")
 def file(name: str):
     with SessionLocal() as s:
-        _authorised(s)
+        allowed = _allowed_files(s)
+    if allowed is not None and name not in allowed:
+        abort(404)
     # send_from_directory refuses anything outside the uploads folder.
     return send_from_directory(uploads_dir(), name, max_age=0)
 
