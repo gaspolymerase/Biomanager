@@ -667,6 +667,9 @@ def page_import():
 
 _FENCE = re.compile(r"^(`{3,})([a-z]+)[ \t]*\n(.*?)\n\1[ \t]*$", re.M | re.S)
 _TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{3,}")
+# Sections whose writing is that run's own: kept as headings only.
+_RESULT_HEADING = re.compile(r"^#{1,6}\s+(results?|observations?|conclusions?|outcomes?|findings|discussion|"
+                             r"interpretation|summary)\b", re.I)
 _UPLOAD_LINE = re.compile(r"^\s*!?\[[^\]]*\]\(/static/uploads/[^)]*\)\s*$")
 
 
@@ -697,8 +700,9 @@ def _empty_block(kind: str, raw: str) -> str:
 def structure_only(body: str) -> str:
     """A page as a template for the next run: its headings, text, steps and
     table headers stay; ticks are cleared, each table row keeps only its
-    first cell, results in data blocks go, and uploaded pictures and files
-    are left out."""
+    first cell, results in data blocks go, the writing under Results,
+    Observations, Conclusion and the like goes, and uploaded pictures and
+    files are left out."""
     blocks: list[str] = []
 
     def keep(match):
@@ -706,11 +710,20 @@ def structure_only(body: str) -> str:
         return f"\x00{len(blocks) - 1}\x00"
 
     text = _FENCE.sub(keep, body or "")
-    out, in_table = [], 0
+    out, in_table, results_level = [], 0, 0
     for line in text.split("\n"):
         stripped = line.strip()
         if _UPLOAD_LINE.match(line):
             continue
+        heading = re.match(r"^(#{1,6})\s", stripped)
+        if heading:
+            level = len(heading.group(1))
+            if results_level and level <= results_level:
+                results_level = 0
+            if _RESULT_HEADING.match(stripped):
+                results_level = level
+        elif results_level and stripped and not stripped.startswith(("|", "\x00")):
+            continue                       # what was seen and concluded that time
         line = re.sub(r"^(\s*[-*+] )\[[xX]\]", r"\1[ ]", line)
         if stripped.startswith("|"):
             in_table += 1

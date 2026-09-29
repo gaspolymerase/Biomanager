@@ -20,7 +20,7 @@
 {# Sortable header cell. #}
 {% macro th(key, label, glyph, width, extra='') %}
   <th class="dt-sortable" data-sort-key="{{ key }}" style="width: {{ width }};" {{ extra }}>
-    <span class="dt-col-head">{{ icon(glyph, 'dt-col-icon') }}{{ label }}<span class="dt-sort-indicator"></span></span>
+    <span class="dt-col-head">{{ icon(glyph, 'dt-col-icon') }}{{ label|head }}<span class="dt-sort-indicator"></span></span>
   </th>
 {% endmacro %}
 

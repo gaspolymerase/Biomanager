@@ -47,7 +47,7 @@ SAMPLE_MEASURES = [
     {"key": "concentration", "label": "Conc.", "type": "number", "icon": "amount", "width": 92},
     {"key": "conc_unit", "label": "Conc. unit", "type": "select", "options": CONC_UNITS, "icon": "amount", "width": 100},
     {"key": "a260_280", "label": "260/280", "type": "number", "icon": "amount", "width": 84},
-    {"key": "a260_230", "label": "260/230", "type": "number", "icon": "amount", "width": 84, "in_table": False},
+    {"key": "a260_230", "label": "260/230", "type": "number", "icon": "amount", "width": 84},
     {"key": "volume_ul", "label": "Volume (µL)", "type": "number", "icon": "droplet", "width": 100},
 ]
 

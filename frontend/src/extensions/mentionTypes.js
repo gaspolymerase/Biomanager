@@ -26,7 +26,7 @@ export const isBuiltin = (type) => Object.prototype.hasOwnProperty.call(BUILTIN,
 
 // The class suffix for chips and tags: built-ins have their own icon and
 // colour; every inventory shares one.
-export const styleOf = (type) => (isBuiltin(type) ? type : 'item');
+export const styleOf = (type) => (isBuiltin(type) || type === 'person' ? type : 'item');
 
 export function mentionRe() {
   return new RegExp(`@(${mentionTypes().alt})\\s+(\\d+)(?!\\d)`, 'g');

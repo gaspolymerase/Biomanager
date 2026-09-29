@@ -18,6 +18,7 @@ Who may do what (see access.py for the general rule):
 from __future__ import annotations
 
 import json
+import re
 import zlib
 from datetime import date, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -260,7 +261,9 @@ def _grid_payload(mv, racks, items) -> dict:
             "search": " ".join(filter(None, [i.name, i.category, i.status, i.owner, i.vendor, i.catalog_number,
                                              *[str(v) for v in i.attrs_dict.values() if isinstance(v, str)]])).lower(),
             "edit": {"data-record-edit": "item-dialog", "data-record-payload": json.dumps(_item_payload(mv, i))},
-        } for i in items],
+        } for i in items
+            # A tube used up or thrown out left its box: not waiting to be placed.
+            if i.rack_id_fk or (i.status or "").lower() not in svc.GONE_FROM_BOX],
         "create": {"attrs": {"data-record-edit": "item-dialog"},
                    "payload": {"owner": g.user.username, "status": mv.statuses[0] if mv.statuses else "",
                                "is_shared": "0"},
@@ -569,6 +572,10 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
             if field["type"] == "date" and value:
                 value = _date(value).isoformat()
             if field["type"] == "number" and value:
+                # "2,01" is a decimal comma (kept as 2.01); "1,000" and
+                # "12,500" are thousands, as before.
+                if re.fullmatch(r"-?\d+,\d+", value) and not re.fullmatch(r"-?\d{1,3}(,\d{3})+", value):
+                    value = value.replace(",", ".")
                 try:
                     float(value.replace(",", ""))
                 except ValueError:

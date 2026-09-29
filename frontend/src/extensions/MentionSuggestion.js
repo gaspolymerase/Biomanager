@@ -177,11 +177,10 @@ export const MentionSuggestion = Extension.create({
                     // already wrote; in unified mode each item carries it.
                     const insertType = ctx.mode === 'typed' ? ctx.type : item.type;
                     if (!insertType) return;
-                    const tr = view.state.tr.insertText(
-                      `@${insertType} ${item.id} `,
-                      ctx.triggerStart,
-                      ctx.triggerEnd,
-                    );
+                    // A person is "@jordan" (action items and mentions); a
+                    // record is "@<type> <number>", which becomes a chip.
+                    const text = insertType === 'person' ? `@${item.id} ` : `@${insertType} ${item.id} `;
+                    const tr = view.state.tr.insertText(text, ctx.triggerStart, ctx.triggerEnd);
                     view.dispatch(tr);
                     closeMenu();
                     view.focus();

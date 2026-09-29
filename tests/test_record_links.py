@@ -37,6 +37,17 @@ class RecordLinks(InventoryCase):
         got = self.m.get(f"/notebook/search/all?q={self.name.split()[-1]}").get_json()
         self.assertIn({"type": self.abs, "id": self.number}, [{"type": i["type"], "id": i["id"]} for i in got["items"]])
 
+    def test_the_at_menu_offers_people_and_finds_numbers_in_catalogue_and_lot(self):
+        who = make_user(uniq("jordana"))
+        got = self.m.get(f"/notebook/search/all?q={who[:6]}").get_json()["items"]
+        self.assertEqual((got[0]["type"], got[0]["id"]), ("person", who))
+        cat = uniq("29").replace("_", "")
+        digits = "".join(ch for ch in cat if ch.isdigit())
+        item = self.make_item(self.m, self.abs, uniq("anti-p21 "), catalog_number=f"{digits}S")
+        number = one("select number from inventory_items where id=?", item)
+        found = self.m.get(f"/notebook/search/{self.abs}?q={digits}").get_json()["items"]
+        self.assertIn(number, [i["id"] for i in found])
+
     def test_the_popover_describes_it_and_the_link_opens_it(self):
         got = self.m.get(f"/notebook/lookup/{self.abs}/{self.number}").get_json()
         self.assertTrue(got["ok"])

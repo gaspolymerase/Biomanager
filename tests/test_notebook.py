@@ -561,6 +561,18 @@ class TemplateTests(Notebook):
 ```plate
 {"format":96,"values":{"A1":"0.5"},"roles":{"A1":"standard"}}
 ```
+
+## Observations
+
+Ponceau even; lane 7 slightly low.
+
+### Conclusion
+
+p21 up about 6x at 10 uM.
+
+## Next time
+
+Use fresh ECL.
 """
 
     def template_from(self, client, page_id, **extra):
@@ -591,6 +603,11 @@ class TemplateTests(Notebook):
         self.assertEqual(sheet["columns"][1]["name"], "OD")
         plate = json.loads(body.split("```plate\n", 1)[1].split("\n```", 1)[0])
         self.assertEqual((plate["values"], plate["roles"]), ({}, {"A1": "standard"}))
+        self.assertIn("## Observations", body)
+        self.assertIn("### Conclusion", body)
+        self.assertNotIn("Ponceau", body)
+        self.assertNotIn("p21 up", body)
+        self.assertIn("Use fresh ECL.", body)                       # a later section is kept
         # Without the tick, everything is kept as it was.
         full = one("select body from notebook_templates where id=?", self.template_from(self.m, page))
         self.assertIn("WT lysate", full)

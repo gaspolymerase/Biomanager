@@ -933,6 +933,8 @@ class SampleMeasureTests(InventoryCase):
         r = self.post(self.m, f"/inventory/{key}/items/save",
                       data={"id": "", "name": uniq("RNA "), "attr_concentration": "about 200"})
         self.assertFlash(r, "is a number column", "error")
+        comma = self.make_item(self.m, key, uniq("RNA "), attr_a260_280="2,01")
+        self.assertEqual(attrs_of(comma)["a260_280"], "2.01")
         rid = self.make_item(self.m, key, uniq("RNA "), attr_concentration="212.4", attr_conc_unit="ng/µL",
                              attr_a260_280="2.05")
         self.assertEqual((attrs_of(rid)["concentration"], attrs_of(rid)["a260_280"]), ("212.4", "2.05"))

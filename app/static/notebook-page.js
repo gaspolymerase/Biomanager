@@ -918,6 +918,14 @@
       if (e.key === 'Enter') { e.preventDefault(); saveTitleNow(); if (nb) nb.editor.commands.focus('start'); }
     });
   }
+  // A new page: the title is where you start, and typing replaces
+  // "Untitled page" rather than adding to it.
+  if (title && canEdit && (!title.value || title.value === 'Untitled page')) {
+    title.addEventListener('focus', function () { if (title.value === 'Untitled page') title.select(); });
+    setTimeout(function () {
+      if (!document.querySelector('dialog[open]') && document.activeElement === document.body) title.focus();
+    }, 150);
+  }
   var dateInput = $('#page-entry-date');
   if (dateInput && canEdit) dateInput.addEventListener('change', function () { saveField('entry_date', dateInput.value); });
   var topic = $('#page-topic-select');

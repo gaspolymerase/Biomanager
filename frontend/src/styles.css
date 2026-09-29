@@ -403,6 +403,11 @@
   color: var(--color-brand-700);
 }
 
+.entity-suggestion-tag-person {
+  background: rgba(100, 116, 139, 0.15);
+  color: #334155;
+}
+
 .entity-suggestion-tag-item {
   background: rgba(13, 148, 136, 0.15);
   color: #0f766e;

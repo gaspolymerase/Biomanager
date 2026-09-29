@@ -315,7 +315,8 @@ stock**, and statuses and categories can be renamed without losing items.
 - **Lab notebook** — pages in topics, written like a document and saved as
   Markdown. A page links to mice, plasmids, orders and any inventory record
   (`@mouse 12`, `@antibodies 5`): type **@** and a name, catalogue number
-  or lot, and the record's popover shows its lot and place. The record's
+  or lot (or a colleague's name, for `@jordan`), and the record's popover
+  shows its lot and place. The record's
   dialog lists the pages that link it (**Used in notebook pages**), so the
   record and the notes point at each other. Type **/** on a new line for
   everything below.
@@ -364,7 +365,8 @@ stock**, and statuses and categories can be renamed without losing items.
   - **Templates**: **Save as template** keeps the page's type (an
     Experiment template makes Experiments). **Structure only** keeps the
     headings, steps and table headers and leaves out the results, ticks,
-    readings and pictures; **Share it with the lab** lets everyone start a
+    readings, pictures and the writing under Results, Observations or
+    Conclusion; **Share it with the lab** lets everyone start a
     page from it.
   - **Timers**: every duration written in a step ("incubate 30 min") gets a
     ⏱ button; timers keep running across pages and ring, vibrate and notify

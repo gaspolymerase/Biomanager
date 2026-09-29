@@ -88,6 +88,8 @@ class Labels(InventoryCase):
         again = self.get_ok(self.a, f"/labels/cards/inventory/samples?ids={item}&stock=33x13")
         self.assertIn('value="position" checked', again)
         self.assertNotIn('value="owner" checked', again)
+        crowded = self.get_ok(self.a, page + "&fields_set=1&f=box&f=position&f=owner&f=printed&wrap=1")
+        self.assertIn("Not on these labels, for lack of room", crowded)
         zpl = self.a.get(page + "&format=zpl").get_data(as_text=True)
         self.assertIn(",2,0,L^FH_^FD#", zpl)                  # the title in a two-line block
 

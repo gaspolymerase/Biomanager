@@ -298,6 +298,9 @@ def _inventory_cards(session, key: str) -> dict:
             "printed": today,
             **{f"attr_{k}": str(v) for k, v in attrs.items() if isinstance(v, (str, int, float)) and str(v).strip()},
         }
+        # A concentration reads with its unit ("812.4 ng/µL"), in one line.
+        if values.get("attr_concentration") and values.get("attr_conc_unit"):
+            values["attr_concentration"] += " " + values.pop("attr_conc_unit")
         cards.append({
             "title": f"#{item.number} {item.name}".strip(),
             "target": _absolute(url_for("inventory.module", key=key) + f"#item-{item.id}"),
@@ -459,11 +462,13 @@ def _page(built: dict):
     cards = built["cards"]
     wrap = _label_wrap(built["kind"])
     layout = fit(size) if stock != "sheet" else None
+    left_out: set[str] = set()      # rows that didn't fit, to say so
     for card in cards:
         card["qr"] = _qr_svg(card["target"], scale=3) if card.get("target") else ""
         if layout:
             # A title on two lines takes the room of one row.
             room = layout["rows"] - (1 if card.get("shared") else 0) - (1 if wrap and layout["rows"] > 1 else 0)
+            left_out.update(key for key, _value in card["rows"][max(1, room):])
             card["rows"] = card["rows"][:max(1, room)]
     ids = ",".join(str(i) for i in _ids())
     # What the page was asked for, for its own links: the ticked rows as one `ids`.
@@ -478,6 +483,7 @@ def _page(built: dict):
         printer=printer, dpi=dpi, can_set_printer=access.is_admin(), here=here,
         ids=ids, base_args=base_args, kind=built["kind"],
         fields=built.get("fields"), chosen=built.get("chosen") or [], wrap=wrap,
+        left_out=sorted(left_out),
     )
 
 

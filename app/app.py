@@ -935,6 +935,17 @@ def fmt_day(value, with_time: bool = False) -> str:
 
 
 app.jinja_env.filters["day"] = fmt_day
+
+
+@app.template_filter("head")
+def column_head(label) -> Markup:
+    """A column heading, which the sheet writes in capitals: a micro sign
+    kept small (capitalised, "µL" reads "ΜL", as if it were mL)."""
+    text = str(escape(label or ""))
+    if "µ" not in text:
+        return Markup(text)
+    # One span, so a flex heading keeps it as one piece of text.
+    return Markup("<span>" + text.replace("µ", '<span class="normal-case">µ</span>') + "</span>")
 app.jinja_env.filters["day_time"] = lambda value: fmt_day(value, with_time=True)
 
 
@@ -6047,13 +6058,18 @@ def _mention_modules(db_session) -> dict[str, InventoryModule]:
 
 
 def _mention_items(db_session, module: InventoryModule, query: str, limit: int) -> list[InventoryItem]:
+    """Records whose name, catalogue number, lot or vendor holds what was
+    typed; digits also find the record of that number (first)."""
     stmt = select(InventoryItem).where(InventoryItem.module_id_fk == module.id)
-    if query.isdigit():
-        stmt = stmt.where(InventoryItem.number == int(query))
-    elif query:
+    if query:
         like = like_pattern(query)
-        stmt = stmt.where(InventoryItem.name.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
-                          | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\"))
+        found = (InventoryItem.name.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
+                 | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\"))
+        if query.isdigit():
+            found = found | (InventoryItem.number == int(query))
+            stmt = stmt.where(found).order_by((InventoryItem.number != int(query)))
+        else:
+            stmt = stmt.where(found)
     return list(db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)))
 
 
@@ -6256,6 +6272,16 @@ def notebook_search_entity(entity_type: str):
             # `type` so the editor can build the right `@<type> <id>` chip.
             per_type_limit = max(2, limit // 3)
             items: list[dict] = []
+            # People first, for "@jordan" and action items ("- [ ] @jordan …"):
+            # a name that starts with what was typed.
+            if query and not query.isdigit():
+                q = query.lower()
+                for person in lab_notebook.people(db_session):
+                    names = [person["username"].lower(), *person["name"].lower().split()]
+                    if not person["guest"] and any(n.startswith(q) for n in names):
+                        items.append({"type": "person", "type_label": "Person", "id": person["username"],
+                                      "label": f"{person['name']} · @{person['username']}"})
+                items = items[:3]
 
             mouse_stmt = select(MouseRecord)
             if query.isdigit():

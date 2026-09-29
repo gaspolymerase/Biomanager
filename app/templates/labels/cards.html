@@ -158,6 +158,12 @@
       (the printer's own name for this label), margins <b>None</b> and scale 100%.
     {% endif %}
   </p>
+  {% if left_out %}
+    <p class="no-print mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
+      Not on these labels, for lack of room: <b>{{ left_out | join(', ') }}</b>. Tick fewer fields, turn off
+      <b>Two lines for long text</b>, or print on a bigger label.
+    </p>
+  {% endif %}
   {% if can_set_printer %}
     <details class="no-print mb-4 text-[12.5px]">
       <summary class="cursor-pointer text-muted">{{ 'Zebra on the network: ' ~ printer ~ ' (' ~ dpi ~ ' dpi)' if printer else 'Send labels straight to a Zebra on the network' }}</summary>

@@ -184,7 +184,7 @@
               {% endif %}
               {% for f in m.table_fields %}
                 <th class="dt-sortable" data-sort-key="attr_{{ f.key }}" style="width: {{ f.width }}px;">
-                  <span class="dt-col-head">{{ icon(f.icon or 'type', 'dt-col-icon') }}{{ f.label }}<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon(f.icon or 'type', 'dt-col-icon') }}{{ f.label|head }}<span class="dt-sort-indicator"></span></span>
                 </th>
               {% endfor %}
               {% if m.has('sharing') %}

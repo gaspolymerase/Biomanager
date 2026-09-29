@@ -39,7 +39,7 @@ import { debounce, personColor } from './util.js';
 import './styles.css';
 import './blocks.css';
 
-const PLACEHOLDER = 'Write here… type / for sheets, recipes, calculators, diagrams and timers; @mouse 12, @plasmid 4 or @order 7 to link a record.';
+const PLACEHOLDER = 'Write here… type / for sheets, recipes, calculators, diagrams and timers; @ and a name to link a record (a mouse, plasmid, antibody, sample…) or a person.';
 
 const Shortcuts = Extension.create({
   name: 'nbShortcuts',
