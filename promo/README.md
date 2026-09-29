@@ -19,7 +19,8 @@ count who actually uses it.
 
 - [x] **One public repository**: `gaspolymerase/biomanager` holds the
   code, the releases, the issues and the website (`site/`, at
-  gaspolymerase.github.io/biomanager). The old biomanager-app redirects.
+  gaspolymerase.github.io/biomanager). The old biomanager-app is archived:
+  it redirects, and holds only 0.10.1 for desktop apps from before the move.
 - [ ] **A PostHog project** (free tier, US region): create it, turn on
   *Discard client IP data*, and put its public `phc_…` key in
   `PROJECT_KEY` in `app/telemetry.py`. Then release (0.11) so the

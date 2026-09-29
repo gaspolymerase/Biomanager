@@ -6,13 +6,6 @@ name: release
 # the files as a release of this repository. The website's download
 # buttons link to .../releases/latest/download/<file>, so the file names
 # must not change.
-#
-# Desktop apps from before the website moved here (0.10 and earlier) look
-# for updates on gaspolymerase/biomanager-app, so each release is copied
-# there too while a PUBLIC_RELEASE_TOKEN secret exists: a fine-grained
-# personal access token with "Contents: read and write" on biomanager-app
-# only. Their next update is a build that looks here; remove the secret
-# once nobody runs those versions.
 
 on:
   push:
@@ -24,7 +17,6 @@ on:
         required: true
 
 env:
-  OLD_REPO: gaspolymerase/biomanager-app
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
@@ -261,8 +253,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      HAS_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN != '' }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -303,17 +293,3 @@ jobs:
             fi
           }
           publish "$GITHUB_REPOSITORY"
-      - name: Copy to ${{ env.OLD_REPO }}, for apps from before the move
-        if: env.HAS_TOKEN == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
-        run: |
-          if gh release view "$TAG" --repo "$OLD_REPO" > /dev/null 2>&1; then
-            gh release upload "$TAG" assets/* --repo "$OLD_REPO" --clobber
-            gh release edit "$TAG" --repo "$OLD_REPO" --notes-file notes.md
-          else
-            gh release create "$TAG" assets/* --repo "$OLD_REPO" --title "BioManager ${TAG#v}" --notes-file notes.md
-          fi
-      - name: Not copied
-        if: env.HAS_TOKEN != 'true'
-        run: echo "::notice::No PUBLIC_RELEASE_TOKEN secret, so the release was not copied to ${{ env.OLD_REPO }}."
