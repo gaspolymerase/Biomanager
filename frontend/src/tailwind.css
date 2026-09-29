@@ -1256,6 +1256,8 @@
   }
   .record-fill-hint.is-warning { @apply border-amber-200 bg-amber-50 text-amber-900; }
   .record-dialog-body label > .is-filled { @apply border-brand-200 bg-brand-50/60; }
+  /* A sheet cell the server works out (a primer's length, GC, Tm). */
+  .sheet-derived { @apply cursor-default text-muted; }
   /* "Used in notebook pages" (static/used-in.js). */
   .used-in h4 { @apply mb-1 text-[12.5px] font-semibold text-ink; }
   .used-in-hint { @apply mb-1.5 text-[12px] text-muted; }

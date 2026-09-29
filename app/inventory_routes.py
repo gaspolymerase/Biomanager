@@ -227,6 +227,12 @@ def _row_json(mv, item: InventoryItem) -> dict:
     the cells above, and a fresh payload for the Open dialog."""
     payload = _item_payload(mv, item)
     row = {"values": {k: payload[k] for k in ROW_VALUES}}
+    # Columns the server works out: a primer's length, GC and Tm, and the
+    # Stored at a box gives.
+    stored = svc.stored_at_field(mv)
+    for key in (*svc.PRIMER_DERIVED, *([stored["key"]] if stored else [])):
+        if f"attr_{key}" in payload:
+            row["values"][f"attr_{key}"] = payload[f"attr_{key}"]
     active = svc.is_available(mv, item.status)
     if active is not None:
         row["active"] = active
@@ -379,6 +385,7 @@ def module(key: str):
             "can_configure": _can_configure(row), "is_admin": access.is_admin(),
             "bulk_fields": bulk_fields(mv),
             "stored_at_field": svc.stored_at_field(mv),
+            "derived_fields": svc.PRIMER_DERIVED if row.kind == "primers" else (),
             "terminal_statuses": sorted(svc.TERMINAL_STATUSES),
             "counts": {
                 "all": len(items),
@@ -671,6 +678,51 @@ MAX_AT_ONCE = 50
 
 # Fields a batch of new items does not copy from the dialog as they are.
 MANY_ONLY = ("id", "count", "names", "rack_id", "position")
+
+
+@bp.route("/<key>/items/pair", methods=["POST"])
+def add_primer_pair(key: str):
+    """A primer pair in one go: "<name>-F" and "<name>-R", each with its own
+    sequence and the other as its Pair, sharing everything else the dialog
+    gave (use, target, box, owner). One batch; nothing is made if either
+    is refused."""
+    form = request.form
+    with SessionLocal() as session:
+        row = _module_or_404(session, key)
+        mv = svc.view(row)
+        if row.kind != "primers":
+            abort(404)
+        base = (form.get("name") or "").strip()[:190]
+        seqs = {"F": svc.clean_sequence(form.get("forward")), "R": svc.clean_sequence(form.get("reverse"))}
+        if not base:
+            return _done(key, error="Give the pair a name, e.g. GAPDH qPCR.")
+        if not seqs["F"] or not seqs["R"]:
+            return _done(key, error="Paste both sequences, forward and reverse.")
+        names = {end: f"{base}-{end}" for end in seqs}
+        made = []
+        try:
+            with audit.batch(session, "create", f"add primer pair {base}"[:200], "inventory_items"):
+                for end, mate in (("F", "R"), ("R", "F")):
+                    fields = form.to_dict()
+                    for gone in ("forward", "reverse", "names", "count"):
+                        fields.pop(gone, None)
+                    fields.update({"name": names[end], "attr_sequence": seqs[end],
+                                   "attr_direction": "forward" if end == "F" else "reverse",
+                                   "attr_pair": names[mate]})
+                    item = InventoryItem(module_id_fk=row.id, number=svc.next_number(session, row.id),
+                                         owner=g.user.username, status=mv.statuses[0] if mv.statuses else "")
+                    session.add(item)
+                    error, _notes = _item_from_form(session, mv, item, ImmutableMultiDict(fields), creating=True)
+                    if error:
+                        raise Refused(error)
+                    item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
+                    session.flush()                     # so the reverse takes the next free cell
+                    made.append(item)
+        except Refused as refused:
+            session.rollback()
+            return _done(key, error=f"Not saved: {refused}")
+        session.commit()
+        return _done(key, message=f"Added {names['F']} (#{made[0].number}) and {names['R']} (#{made[1].number}).")
 
 
 def _create_many(session, row: InventoryModule, mv, form):
@@ -1055,8 +1107,9 @@ def bulk_fields(mv) -> list[dict]:
     for name, label in labels.items():
         if mv.has(BULK_FIELD_NEEDS[name]):
             out.append({"name": name, "label": label, "type": "date" if name.endswith("_on") else "text", "options": []})
+    derived = svc.PRIMER_DERIVED if mv.row.kind == "primers" else ()
     for field in mv.fields:
-        if field["type"] != "source":
+        if field["type"] != "source" and field["key"] not in derived:
             out.append({"name": f"attr_{field['key']}", "label": field["label"],
                         "type": field["type"], "options": field.get("options") or []})
     out.append({"name": "notes", "label": "Notes", "type": "text", "options": []})

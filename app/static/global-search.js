@@ -18,7 +18,7 @@
   const TYPE_LABEL = {
     mouse: 'Mouse', cage: 'Cage', litter: 'Litter', experiment: 'Experiment', strain: 'Strain',
     vial: 'Fly / worm', tank: 'Tank', 'fish-line': 'Fish line', clutch: 'Clutch', organism: 'Animal database',
-    plasmid: 'Plasmid', order: 'Order', sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', virus: 'Virus', item: 'Item',
+    plasmid: 'Plasmid', order: 'Order', sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', virus: 'Virus', primer: 'Primer', 'cell-line': 'Cell line', item: 'Item',
     page: 'Notebook',
   };
 

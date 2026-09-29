@@ -4,6 +4,7 @@ their routes and the rest of the app share. Presets live in inventory.py."""
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -55,7 +56,8 @@ class ModuleView:
 
     @property
     def name_label(self) -> str:
-        return {"samples": "Sample ID", "orders": "Item", "antibodies": "Target", "viruses": "Virus"}.get(self.row.kind, "Name")
+        return {"samples": "Sample ID", "orders": "Item", "antibodies": "Target", "viruses": "Virus",
+                "cell_lines": "Cell line"}.get(self.row.kind, "Name")
 
     @property
     def requirable(self) -> list[tuple[str, str]]:
@@ -231,6 +233,8 @@ AVAILABLE_BY_KIND = {
     "reagents": {"in stock", "low"},
     "antibodies": {"in stock", "low"},
     "viruses": {"in stock", "low"},
+    "primers": {"in stock", "low"},
+    "cell_lines": {"in stock"},
     "orders": {"requested", "ordered"},
 }
 
@@ -461,15 +465,95 @@ def follow_box(session, item: InventoryItem) -> None:
         item.attrs = json.dumps(attrs)
 
 
+# ---------------------------------------------------------------------------
+# Primers: length, GC and Tm worked out from the sequence
+# ---------------------------------------------------------------------------
+
+# Nearest-neighbour stacks (SantaLucia 1998): ΔH kcal/mol, ΔS cal/(K·mol).
+_NN = {"AA": (-7.9, -22.2), "AT": (-7.2, -20.4), "TA": (-7.2, -21.3), "CA": (-8.5, -22.7),
+       "GT": (-8.4, -22.4), "CT": (-7.8, -21.0), "GA": (-8.2, -22.2), "CG": (-10.6, -27.2),
+       "GC": (-9.8, -24.4), "GG": (-8.0, -19.9)}
+_PAIR = str.maketrans("ACGT", "TGCA")
+PRIMER_SALT_M, PRIMER_CONC_M = 0.05, 250e-9   # 50 mM Na⁺, 250 nM oligo (as most calculators)
+PRIMER_DERIVED = ("length", "gc", "tm")
+
+
+def clean_sequence(raw) -> str:
+    """"5'-ACG tgc-3'" → "ACGTGC": bases only, upper case."""
+    text = str(raw or "").upper().replace("5'", "").replace("3'", "")
+    return "".join(ch for ch in text if ch.isalpha())
+
+
+def primer_tm(seq: str) -> float | None:
+    """Melting temperature in °C by nearest neighbours, or None for a
+    sequence with other than A, C, G, T or shorter than 8 bases."""
+    if len(seq) < 8 or set(seq) - set("ACGT"):
+        return None
+    dh = ds = 0.0
+    for end in (seq[0], seq[-1]):                       # initiation, by terminal pair
+        h, e = (0.1, -2.8) if end in "GC" else (2.3, 4.1)
+        dh, ds = dh + h, ds + e
+    for i in range(len(seq) - 1):
+        step = seq[i:i + 2]
+        h, e = _NN.get(step) or _NN[step.translate(_PAIR)[::-1]]
+        dh, ds = dh + h, ds + e
+    self_comp = seq == seq.translate(_PAIR)[::-1]
+    if self_comp:
+        ds += -1.4
+    ds += 0.368 * (len(seq) - 1) * math.log(PRIMER_SALT_M)
+    # The primer is in excess over its template in a PCR, so its own
+    # concentration counts (as Biopython's Tm_NN with no second strand).
+    ct = PRIMER_CONC_M
+    return dh * 1000 / (ds + 1.987 * math.log(ct)) - 273.15
+
+
+def primer_numbers(raw) -> dict[str, str]:
+    """{"length": "20", "gc": "55.0", "tm": "58.4"} for a primer sequence
+    (Tm left out when it can't be worked out); {} with no sequence."""
+    seq = clean_sequence(raw)
+    if not seq:
+        return {}
+    gc = sum(seq.count(b) for b in "GCS") / len(seq) * 100
+    out = {"length": str(len(seq)), "gc": f"{gc:.1f}"}
+    tm = primer_tm(seq)
+    if tm is not None:
+        out["tm"] = f"{tm:.1f}"
+    return out
+
+
+def derive_primer(session, item: InventoryItem) -> None:
+    """A primer's Length, GC % and Tm follow its sequence."""
+    module = session.get(InventoryModule, item.module_id_fk)
+    if module is None or module.kind != "primers":
+        return
+    keys = {f["key"] for f in view(module).fields}
+    if "sequence" not in keys:
+        return
+    attrs = item.attrs_dict
+    numbers = primer_numbers(attrs.get("sequence"))
+    changed = False
+    for key in PRIMER_DERIVED:
+        if key in keys and attrs.get(key, "") != numbers.get(key, "") and (numbers or attrs.get("sequence") == ""):
+            attrs[key] = numbers.get(key, "")
+            changed = True
+    if changed:
+        item.attrs = json.dumps(attrs)
+
+
 @event.listens_for(Session, "before_flush", insert=True)
 def _items_follow_their_box(session, _context, _instances) -> None:
     """Whichever way an item changed box (dialog, sheet, grid drag, Move,
-    Add many, import), its "Stored at" follows. Runs before the audit
-    listener, so undoing the move puts the old value back too."""
+    Add many, import), its "Stored at" follows; whichever way a primer's
+    sequence changed, so do its length, GC and Tm. Runs before the audit
+    listener, so undoing the change puts the old values back too."""
     for obj in list(session.new) + list(session.dirty):
-        if isinstance(obj, InventoryItem) and obj.rack_id_fk and (
-                obj in session.new or get_history(obj, "rack_id_fk").has_changes()):
+        if not isinstance(obj, InventoryItem):
+            continue
+        new = obj in session.new
+        if obj.rack_id_fk and (new or get_history(obj, "rack_id_fk").has_changes()):
             follow_box(session, obj)
+        if new or get_history(obj, "attrs").has_changes():
+            derive_primer(session, obj)
 
 
 def apply_position(session, item: InventoryItem, rack_raw, position_raw) -> str | None:

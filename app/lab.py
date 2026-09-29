@@ -71,6 +71,8 @@ INVENTORY_CHOICES = {
     "reagents": ("Reagents", "Chemicals and kits, with lots, expiry and low-stock warnings.", "flask"),
     "antibodies": ("Antibodies", "Antibodies with host, target and dilution.", "antibody"),
     "viruses": ("Viruses", "AAV, lentivirus and other vectors: titer, serotype, the plasmid each came from.", "virus"),
+    "primers": ("Primers & oligos", "Primers and probes by sequence, with length, GC and Tm worked out.", "dna"),
+    "cell_lines": ("Cell lines", "Frozen vials of each line: passage, mycoplasma tests, LN₂ boxes.", "petri"),
 }
 
 # Member permissions (app_settings), with their defaults.

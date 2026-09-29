@@ -5290,7 +5290,7 @@ def global_search():
 
         # Every lab inventory: samples, orders, reagents, antibodies, custom.
         kind_type = {"orders": "order", "samples": "sample", "reagents": "reagent", "antibodies": "antibody",
-                     "viruses": "virus"}
+                     "viruses": "virus", "primers": "primer", "cell_lines": "cell-line"}
         # Only databases this person sees: the lab's and their own (app/lab.py).
         from . import inventory_service as inventories
         modules = {m.id: m for m in inventories.list_modules(db_session)}

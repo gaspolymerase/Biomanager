@@ -48,8 +48,13 @@
     </span>
   {% elif field.type == 'url' and value %}
     <a class="sheet-link font-normal" href="{{ value }}" target="_blank" rel="noopener">{{ value|replace('https://', '')|truncate(28) }}</a>
+  {% elif field.key in derived_fields %}
+    {# Worked out from another column (a primer's sequence); the server fills it in. #}
+    <input name="{{ name }}" form="{{ form_id }}" value="{{ value }}" readonly tabindex="-1" class="sheet-derived"
+           title="Worked out from the sequence" aria-label="{{ field.label }}">
   {% else %}
     <input name="{{ name }}" form="{{ form_id }}" value="{{ value }}" {% if field.type == 'number' %}inputmode="decimal"{% endif %}
+           {% if field.key == 'sequence' %}class="font-mono" spellcheck="false"{% endif %}
            {% if field.type == 'user' %}list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}
            data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
   {% endif %}
@@ -145,6 +150,10 @@
         <a class="dt-toolbar-btn" href="{{ sheet_import_url('inventory:' ~ key) }}" title="Bring in the Excel or CSV sheet you kept your {{ m.item_noun_plural }} in">{{ icon('import') }} Import from Excel</a>
         <button type="button" class="dt-toolbar-btn" data-record-edit="item-dialog" data-record-payload='{{ dict(new_payload, count=10) | tojson }}'
                 title="Several {{ m.item_noun_plural }} at once: identical copies, or one per pasted name">{{ icon('plus') }} Add many</button>
+        {% if m.kind == 'primers' %}
+          <button type="button" class="dt-toolbar-btn" data-on-click="open-dialog" data-arg="primer-pair-dialog"
+                  title="A forward and a reverse primer at once, each named after the pair and linked to the other">{{ icon('dna') }} Add primer pair</button>
+        {% endif %}
         <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                 data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
           {{ icon('plus') }} New {{ m.item_noun }}
@@ -552,7 +561,11 @@
             {% elif fd.type == 'textarea' %}
               <label class="col-span-full"><span>{{ fd.label }}{{ star(name) }}</span> <textarea name="{{ name }}" rows="2"{{ req(name) }}></textarea></label>
             {% else %}
-              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}" {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% elif fd.type == 'number' %}type="number" step="any"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
+              {% if fd.key in derived_fields %}
+                <label><span>{{ fd.label }}</span> <input name="{{ name }}" readonly tabindex="-1" title="Worked out from the sequence when you save"></label>
+              {% else %}
+              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}"{% if fd.key == 'sequence' %} class="font-mono" spellcheck="false" autocomplete="off"{% endif %} {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% elif fd.type == 'number' %}type="number" step="any"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
+              {% endif %}
             {% endif %}
           {% endfor %}
         </fieldset>
@@ -582,6 +595,44 @@
     </footer>
   </form>
 </dialog>
+
+{% if m.kind == 'primers' %}
+<dialog id="primer-pair-dialog" class="record-dialog" aria-labelledby="primer-pair-title">
+  <form method="post" action="{{ url_for('inventory.add_primer_pair', key=key) }}">
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="primer-pair-title">Add primer pair</h3>
+        <p class="record-dialog-sub">Two {{ m.item_noun_plural }}, <i>name</i>-F and <i>name</i>-R, each with the other as its Pair.
+          Length, GC and Tm are worked out from each sequence.</p>
+      </div>
+      <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <label class="record-wide">Name of the pair <input name="name" required autocomplete="off" placeholder="e.g. GAPDH qPCR"></label>
+      <label class="record-wide">Forward (5′→3′) <input name="forward" required class="font-mono" spellcheck="false" autocomplete="off"></label>
+      <label class="record-wide">Reverse (5′→3′) <input name="reverse" required class="font-mono" spellcheck="false" autocomplete="off"></label>
+      <label>{{ m.category_label }}
+        {% if m.categories %}<select name="category"><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
+        {% else %}<input name="category">{% endif %}
+      </label>
+      {% if 'target' in m.fields|map(attribute='key')|list %}<label>Target <input name="attr_target" autocomplete="off" placeholder="gene or amplicon"></label>{% endif %}
+      {% if m.statuses %}<label>Status <select name="status">{% for st in m.statuses %}<option value="{{ st }}">{{ st|capitalize }}</option>{% endfor %}</select></label>{% endif %}
+      {% if m.has('supplier') %}<label>Vendor <input name="vendor" autocomplete="off"></label>{% endif %}
+      {% if m.has('sharing') %}
+        <label>Belongs to <select name="is_shared"><option value="0">Personal</option><option value="1">Lab common</option></select></label>
+      {% endif %}
+      {% if m.has('storage') %}
+        <label>Box <select name="rack_id"><option value="">Not in a box</option>{% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select></label>
+        <p class="record-wide text-[12px] text-muted">In a box, the pair takes the next two free positions.</p>
+      {% endif %}
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
+      <button type="submit" class="btn btn-primary">Add the pair</button>
+    </footer>
+  </form>
+</dialog>
+{% endif %}
 
 {% if reorder %}
   {# "Order again" from a reagent or antibody: the new-order dialog opens with it on load. #}
