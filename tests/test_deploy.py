@@ -230,12 +230,20 @@ class ServerBundle(unittest.TestCase):
             self.assertFalse([n for n in names if n != "Biomanager" and not n.startswith("Biomanager/deploy")], names)
             self.assertFalse([n for n in names if "/._" in n or n.startswith("._")], names)
 
-    def test_it_names_no_lab_s_own_server(self):
-        # Every lab gets deploy/ in the bundle; our own server's runbook is docs/OUR-SERVER.md.
+    def test_what_ships_names_no_one(self):
+        # deploy/ goes out in the public bundle, and app/, scripts/ and migrations/ in
+        # every desktop build and server image: no one's server, name or address.
+        # Our own server's runbook is docs/OUR-SERVER.md, which ships in neither.
+        ours = re.compile(r"\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568", re.I)
         found = []
-        for path in (Path(ROOT) / "deploy").rglob("*"):
-            if path.is_file() and "/backups/" not in str(path) and path.name != ".env":
+        for top in ("deploy", "app", "scripts", "migrations"):
+            for path in (Path(ROOT) / top).rglob("*"):
+                if not path.is_file() or "/backups/" in str(path) or "/uploads/" in str(path) or path.name == ".env":
+                    continue
+                if path.suffix in (".pyc", ".png", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".icns"):
+                    continue
                 text = path.read_text(errors="ignore")
-                found += [f"{path.name}: {m}" for m in re.findall(r"([a-z0-9-]+)\.ts\.net", text) if m != "tail1234"]
-                found += [f"{path.name}: biomanager-vm" for _ in re.findall(r"\bbiomanager-vm\b", text)]
+                rel = path.relative_to(ROOT)
+                found += [f"{rel}: {m}" for m in re.findall(r"([a-z0-9-]+)\.ts\.net", text) if m != "tail1234"]
+                found += [f"{rel}: {m}" for m in ours.findall(text)]
         self.assertEqual(found, [])
