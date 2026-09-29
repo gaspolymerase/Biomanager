@@ -4,16 +4,19 @@
   an idea or a question. It is kept in the lab's own database, where the
   lab's admins read it and mark it done. Nothing leaves the lab unless
   someone presses **Open as a GitHub issue**, which opens a new issue on
-  the BioManager site's repository with the text filled in (the page's
+  BioManager's repository with the text filled in (the page's
   path, the version and the browser, never the server's address or who
   sent it) for them to check and submit themselves.
 - **Usage report** (admins): the last eight weeks in counts only — how
   many people changed something, how many changes in each area, notebook
   pages and calendar events added — and what is in the lab now. No names,
-  no record text: an admin can copy it to whoever runs the pilot.
+  no record text: an admin can copy it to whoever runs the pilot. The page
+  also shows, and switches, the anonymous counts sent once a day to
+  BioManager's makers (app/telemetry.py).
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
@@ -27,7 +30,7 @@ from .models import AuditEntry, Feedback
 
 bp = Blueprint("feedback", __name__, url_prefix="/feedback")
 
-ISSUES_URL = "https://github.com/gaspolymerase/biomanager-app/issues/new"
+ISSUES_URL = "https://github.com/gaspolymerase/biomanager/issues/new"
 KINDS = {
     "problem": "Something went wrong",
     "idea": "An idea",
@@ -244,6 +247,26 @@ def usage_text(report: dict) -> str:
 def usage_report():
     if not access.is_admin():
         abort(403)
+    from . import telemetry
     with SessionLocal() as s:
         report = usage(s)
-    return render_template("feedback_usage.html", report=report, text=usage_text(report), weeks=WEEKS)
+        heartbeat = telemetry.status(s)
+        body = telemetry.payload(s)
+    body["api_key"] = body["api_key"] or "(none in this build)"
+    return render_template("feedback_usage.html", report=report, text=usage_text(report), weeks=WEEKS,
+                           heartbeat=heartbeat, heartbeat_json=json.dumps(body, indent=2))
+
+
+@bp.post("/usage/heartbeat")
+def set_heartbeat():
+    """The lab-wide switch for the anonymous daily counts (app/telemetry.py)."""
+    if not access.is_admin():
+        abort(403)
+    from . import telemetry
+    on = request.form.get("enabled") == "1"
+    with SessionLocal() as s:
+        telemetry.set_lab_on(s, on)
+        s.commit()
+    flash("Anonymous counts switched on: sent once a day." if on
+          else "Anonymous counts switched off: nothing is sent.", "success")
+    return redirect(url_for("feedback.usage_report") + "#heartbeat")

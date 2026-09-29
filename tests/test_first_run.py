@@ -183,5 +183,5 @@ class GettingStarted(LabSettingsCase):
 
     def test_the_guide_link_goes_to_the_website(self):
         r = self.m.get("/guide?section=mice")
-        self.assertEqual(r.headers["Location"], "https://gaspolymerase.github.io/biomanager-app/guide.html#mice")
+        self.assertEqual(r.headers["Location"], "https://gaspolymerase.github.io/biomanager/guide.html#mice")
         self.assertIn("guide.html", self.get_ok(self.m, "/home"))  # Help in the sidebar

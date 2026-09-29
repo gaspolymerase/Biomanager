@@ -553,7 +553,7 @@ def everyone_but(session, username: str) -> list[str]:
 
 # ---------------------------------------------------------------- getting started
 
-GUIDE_URL = "https://gaspolymerase.github.io/biomanager-app/guide.html"
+GUIDE_URL = "https://gaspolymerase.github.io/biomanager/guide.html"
 
 
 def did(session, user, milestone: str) -> bool:

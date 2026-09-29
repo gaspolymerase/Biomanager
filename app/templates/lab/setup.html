@@ -198,6 +198,23 @@
       <p class="setup-note">Admins can always add databases for the whole lab. Everyone sees every lab database's records; each person edits what they own, and shared cages are everyone's.</p>
     </section>
 
+    {% if first_run %}
+      <section class="setup-step" id="heartbeat">
+        {% if heartbeat_off_by_server %}
+          <p class="setup-note">Anonymous counts for BioManager's makers are switched off where BioManager runs, so nothing is sent.</p>
+        {% else %}
+          <label class="flex items-start gap-2 text-[13px] text-ink">
+            <input type="checkbox" name="heartbeat" value="1" checked class="accent-brand-600">
+            <span class="flex flex-col gap-1">
+              <span class="font-medium">Send BioManager's makers anonymous counts once a day</span>
+              <span class="setup-note">So they know how many labs use it: the version, how many members (as a range) and which databases are on. Never names or anything anyone wrote.
+                <a href="{{ url_for('feedback.usage_report') }}#heartbeat" target="_blank" rel="noopener">See exactly what is sent</a>; switch it off any time on the Usage report.</span>
+            </span>
+          </label>
+        {% endif %}
+      </section>
+    {% endif %}
+
     <div class="setup-submit">
       <button type="submit" class="btn btn-primary btn-lg">{{ icon('check') }} {{ 'Set up the lab' if first_run else 'Save lab setup' }}</button>
       {% if first_run %}<span class="text-[12.5px] text-muted">You can change every answer later.</span>{% endif %}

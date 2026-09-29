@@ -330,6 +330,9 @@ app.register_blueprint(public_api.pages)
 # Send feedback and the usage report, for a pilot (app/feedback.py).
 from . import feedback as lab_feedback  # noqa: E402
 app.register_blueprint(lab_feedback.bp)
+# Anonymous counts for BioManager's makers, once a day (app/telemetry.py).
+from . import telemetry  # noqa: E402
+telemetry.init_app(app)
 # Import from Excel into any database (app/sheet_import.py).
 from . import sheet_import  # noqa: E402
 app.register_blueprint(sheet_import.bp)

@@ -24,7 +24,7 @@ else
     aarch64 | arm64) arch=arm64 ;;
     *) echo "No BioManager image for $(uname -m); it runs on x86-64 and ARM64."; exit 1 ;;
   esac
-  url="https://github.com/gaspolymerase/biomanager-app/releases/download/v$version/biomanager-image-$arch.tar.gz"
+  url="https://github.com/gaspolymerase/biomanager/releases/download/v$version/biomanager-image-$arch.tar.gz"
   file=$(mktemp "${TMPDIR:-/tmp}/biomanager-image.XXXXXX")
   trap 'rm -f "$file"' EXIT
   echo "Downloading BioManager $version for $arch…"

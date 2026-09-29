@@ -28,3 +28,6 @@ deploy/.env
 deploy/backups/
 deploy/certs/*
 !deploy/certs/.gitkeep
+
+# Launch clips, post packs and numbers (promo/README.md)
+promo/out/

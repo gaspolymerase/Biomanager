@@ -33,7 +33,7 @@ and RUNBOOK assume that place):
   ```bash
   sudo mkdir -p /opt/biomanager && sudo chown "$USER" /opt/biomanager
   curl -fsSL -o /tmp/biomanager-server.tar.gz \
-    https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
+    https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz
   tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
   /opt/biomanager/Biomanager/deploy/host/load-image.sh
   ```

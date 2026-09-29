@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Generate the Xcode project
         run: |
@@ -30,7 +30,7 @@ jobs:
           test -d build/Build/Products/Debug-iphonesimulator/BioManager.app
 
       # ---- smoke test: the app against a demo server, in the simulator
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -64,7 +64,7 @@ jobs:
           grep -q "GET /login" "$RUNNER_TEMP/server.log" || grep -q "GET / " "$RUNNER_TEMP/server.log" \
             || { echo "::error::The app never opened the server."; tail -40 "$RUNNER_TEMP/server.log"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-smoke-screenshots

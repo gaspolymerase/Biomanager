@@ -5,7 +5,7 @@ A build knows its version from the VERSION file PyInstaller puts beside it
 workflow sets from the tag). Run from source, it asks git.
 
 "Check for Updates…" (and, at most once a day, the app when it opens)
-asks GitHub for the latest release on gaspolymerase/biomanager-app. That
+asks GitHub for the latest release on gaspolymerase/biomanager. That
 request carries only the app's version in its User-Agent; turn the daily
 check off with "Check for Updates Automatically". A newer release is
 offered with its notes. "Install and Restart" downloads the file for this
@@ -31,10 +31,10 @@ import time
 import urllib.request
 from pathlib import Path
 
-REPO = "gaspolymerase/biomanager-app"
+REPO = "gaspolymerase/biomanager"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases/latest"
-GUIDE_URL = "https://gaspolymerase.github.io/biomanager-app/guide.html"
+GUIDE_URL = "https://gaspolymerase.github.io/biomanager/guide.html"
 ISSUES_URL = f"https://github.com/{REPO}/issues/new"
 CHECK_EVERY = 24 * 3600
 DEFAULT_PREFS = {"check_updates": True, "last_check": 0, "skip_version": "", "appearance": "system", "zoom": 1.0}

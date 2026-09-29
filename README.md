@@ -445,6 +445,8 @@ stock**, and statuses and categories can be renamed without losing items.
       Admins find a <b>Usage report</b> on the Feedback page: for each of
       the last eight weeks, how many people changed something and how many
       changes in each area — counts only, no names — to copy into an email.
+      It also shows, word for word, the anonymous counts BioManager sends
+      its makers once a day, with <b>Switch off</b>.
     </td>
   </tr>
 </table>
@@ -562,7 +564,7 @@ flowchart TB
 ### 💻 Desktop app
 
 1. Download BioManager for your system from the
-   [**BioManager website**](https://gaspolymerase.github.io/biomanager-app/#download),
+   [**BioManager website**](https://gaspolymerase.github.io/biomanager/#download),
    or build it yourself (below).
 2. **macOS:** open the download and drag BioManager into Applications.
    The first time, **right-click the app and choose Open** — macOS asks
@@ -830,8 +832,20 @@ track.
 - Passwords are at least 12 characters, repeated failed sign-ins are
   locked out, and changing a password signs out every other session.
 - **Your data stays with you** — on your computer or your lab's server.
-  Nothing is sent anywhere unless you connect Google Calendar, Google or
+  None of it is sent anywhere unless you connect Google Calendar, Google or
   Microsoft sign-in, or reminder emails, or a tool you gave a token asks.
+- **Anonymous counts, once a day.** So BioManager's makers know how many
+  labs use it, each installation sends one short message a day: the
+  version, desktop app or server, the operating system and database, how
+  many members and how many were active this week (as ranges: 1, 2–5,
+  6–15, 16–50, 51+), which built-in functions are on and how many databases
+  of each kind, and a random id for the installation. Never names, email
+  addresses, anything anyone wrote, what your databases are called, or the
+  computer's name or address. It goes to PostHog, which is asked not to
+  work out where it came from. The admin chooses in the setup survey, and
+  the **Usage report** (Feedback → Usage report) shows exactly what is sent
+  and has **Switch off**. On a server, `BIOMANAGER_TELEMETRY=0` or
+  `DO_NOT_TRACK=1` turns it off for good.
 
 ## 💾 Your data and backups
 
@@ -872,7 +886,7 @@ records as a zip at any time.
 
 | Document | For |
 | --- | --- |
-| [**User guide**](https://gaspolymerase.github.io/biomanager-app/guide.html) | Using BioManager, step by step: setting up a lab, every module, phones, backups. Also under **Help** in the app's sidebar |
+| [**User guide**](https://gaspolymerase.github.io/biomanager/guide.html) | Using BioManager, step by step: setting up a lab, every module, phones, backups. Also under **Help** in the app's sidebar |
 | [`deploy/README.md`](deploy/README.md) | Setting up a lab server: HTTPS, Tailscale, Google/Microsoft sign-in, backups, updates |
 | [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) | Running a lab server: alerts, outages, restores, people joining and leaving |
 | [`docs/GOOGLE_CALENDAR_SETUP.md`](docs/GOOGLE_CALENDAR_SETUP.md) | Connecting Google Calendar |

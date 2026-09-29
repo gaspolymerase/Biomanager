@@ -48,7 +48,7 @@ from .paths import data_dir
 
 bp = Blueprint("server_setup", __name__, url_prefix="/server-setup")
 
-BUNDLE_URL = "https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz"
+BUNDLE_URL = "https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz"
 REMOTE_BASE = "/opt/biomanager"
 LOCAL_BASE = "~/BioManagerServer"
 

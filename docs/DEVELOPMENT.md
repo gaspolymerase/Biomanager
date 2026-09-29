@@ -73,8 +73,8 @@ heading to 512px on a desktop, so the two `feDropShadow` filters there are
 kept tight: a wide blur reads as depth at the large end and as haze at the
 small one, which is what makes an icon look blurred rather than small.
 `scripts/build-app-icon.py` re-renders the SVG and every PNG, `.icns`, `.ico`
-and Android layer after a change; the copies in the website repo
-(`assets/icon.svg`, `icon-192.png`, `apple-touch-icon.png`) are updated by
+and Android layer after a change; the website's copies
+(`site/assets/icon.svg`, `icon-192.png`, `apple-touch-icon.png`) are updated by
 hand from `app/static/`.
 
 ## Interface
@@ -522,7 +522,7 @@ in the rail opens `/feedback?from=<the page>`; a note is a `feedback` row
 (kind, text, the page's path, `app_version()`, a short platform string)
 and each admin gets a notification. Admins see every note and mark it done;
 members see their own. `issue_url()` builds a GitHub "new issue" link on
-gaspolymerase/biomanager-app with the text, path, version and platform —
+gaspolymerase/biomanager with the text, path, version and platform —
 never the server's host or the person — which the person submits
 themselves: nothing is sent by the server.
 
@@ -531,6 +531,40 @@ themselves: nothing is sent by the server.
 its rows per area (`AREAS`, by table-name prefix), notebook pages and
 calendar events created; and totals now. `usage_text()` is the same as
 plain text to paste into an email.
+
+## Anonymous daily counts
+
+`app/telemetry.py` (its docstring is the full account). Once a day an
+installation posts one PostHog event to `HOST/i/v0/e/`:
+`{"api_key", "event": "heartbeat", "distinct_id", "properties"}`. The
+properties are `version`, `kind` (`desktop` under `LOCAL_SETUP`, else
+`server`), `os` (`platform.system()`), `database` (the dialect),
+`members` and `active_7_days` as ranges (`bucket()`: 0, 1, 2-5, 6-15,
+16-50, 51+; active accounts, and lab accounts in the change history in the
+last 7 days), `functions_on` (keys of `lab.FEATURES` that are on),
+`databases_on` (enabled organism databases; stock databases by `kind`;
+inventories by preset `kind`, anything else as `custom`), and
+`$geoip_disable: true`, `$process_person_profile: false`. Nothing else:
+never a name, a label, a key, a host or free text. A new property must keep
+to that, and `tests/test_telemetry.py` checks names don't leak.
+
+- **When**: `after_request` checks at most once an hour per process
+  (`CHECK_EVERY`), then a daemon thread with the app context calls
+  `send_if_due()`, which needs a key, no env switch, the lab switch on and
+  the setup survey answered, and claims `telemetry:last_sent` with a
+  conditional UPDATE so two gunicorn workers never both send. A failed
+  post (5 s timeout, `urllib`) puts the old stamp back, logs at debug and
+  is retried the next hour. Never under `TESTING` (the hook checks).
+- **app_settings**: `telemetry:enabled` (`on`/`off`, default on; the first
+  survey's checkbox, and **Switch on/off** on the Usage report,
+  `POST /feedback/usage/heartbeat`), `telemetry:install_id` (a `uuid4`,
+  made on first use; the Usage report's preview makes it too, so the JSON
+  shown is exact), `telemetry:last_sent` (UTC ISO).
+- **Environment**: `BIOMANAGER_TELEMETRY_KEY` (the project's public
+  `phc_…` key; overrides `PROJECT_KEY`, which is empty in the source: no
+  key, nothing is ever sent), `BIOMANAGER_TELEMETRY=0` or `DO_NOT_TRACK=1`
+  (off, whatever the admin chose; the page says "Off (set by the server)").
+  The Docker stack passes both switches from `deploy/.env`.
 
 ## Reminder emails
 
@@ -757,7 +791,7 @@ sidebar links to `DesktopApi.set_nav` over pywebview's JavaScript bridge,
 which keeps only same-origin paths. `desktop_updates.py` is the version
 (the `VERSION` file `Biomanager.spec` bundles from `BIOMANAGER_VERSION`;
 from source, the latest tag + "+dev"), the update check against
-`api.github.com/repos/gaspolymerase/biomanager-app/releases/latest`, and
+`api.github.com/repos/gaspolymerase/biomanager/releases/latest`, and
 this computer's `desktop-prefs.json` (automatic check, skipped version,
 appearance, zoom) in the data folder. Set `BIOMANAGER_MENU_DUMP=<file>` to
 have a running app write its menu bar there, for checking a build.
@@ -846,6 +880,7 @@ Settings (environment variables, all optional):
 | `BIOMANAGER_SESSION_DAYS` | `7` | idle days before a sign-in expires |
 | `BIOMANAGER_MAX_UPLOAD_MB` | `64` | largest upload accepted |
 | `BIOMANAGER_UPLOADS_DIR` | `app/static/uploads` | where uploads are kept; put it next to the database |
+| `BIOMANAGER_TELEMETRY` | on | `0`: never send the anonymous daily counts (so does `DO_NOT_TRACK=1`) |
 | `WEB_CONCURRENCY` | 1 on SQLite, 3 on Postgres | gunicorn worker processes |
 
 `gunicorn.conf.py` loads the app once before forking (`preload_app`), so the

@@ -41,7 +41,9 @@ For each lab, with its champion (an hour or two):
   (`python scripts/dbtool.py backup`) and note where it went.
 - [ ] **The agreement.** Tell them plainly: their data stays on their
   computer or server; the usage report has counts only and is sent only if
-  they send it; they can leave at any time: every sheet exports to Excel
+  they send it; BioManager itself sends its makers anonymous counts once a
+  day (no names; the Usage report shows exactly what, and **Switch off**
+  stops it); they can leave at any time: every sheet exports to Excel
   or CSV, and the database file is theirs.
 
 ## The eight weeks
