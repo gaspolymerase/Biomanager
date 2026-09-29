@@ -2962,8 +2962,11 @@ def _normalise_csv_dates(rows: list[dict]) -> list[str]:
         day_first = day_first or a > 12
         month_first = month_first or b > 12
     guessed = False
+    with SessionLocal() as s:
+        lab_day_first = lab.date_style(s) == "day"      # Lab setup's "26 Sep 2026" decides a 03/04 file
+    read_day_first = (day_first and not month_first) or (lab_day_first and not day_first and not month_first)
     for index, (a, b, year) in parsed.items():
-        month, day = (b, a) if day_first and not month_first else (a, b)
+        month, day = (b, a) if read_day_first else (a, b)
         guessed = guessed or (not day_first and not month_first and a != b)
         try:
             rows[index]["date_of_birth"] = date(year, month, day).isoformat()
@@ -2975,6 +2978,9 @@ def _normalise_csv_dates(rows: list[dict]) -> list[str]:
         rows[index]["date_of_birth"] = ""
     if day_first and month_first:
         warnings.append("The dates of birth mix day-first and month-first; check them.")
+    elif guessed and read_day_first:
+        warnings.append("Dates of birth were read day first (03/04/2026 as 3 April), as Lab setup's date "
+                        "style says. If the file is month first, correct them here.")
     elif guessed:
         warnings.append("Dates of birth were read month first (03/04/2026 as 4 March). If the "
                         "file is day first, correct them here, or save it with YYYY-MM-DD dates.")
