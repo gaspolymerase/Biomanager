@@ -35,7 +35,8 @@ jobs:
             fi
             mkdir -p "$tag"
             python3 ../.github/rebundle-runbook.py "$tag.tar.gz" "$tag/biomanager-server.tar.gz"
-            [ "$(tar -xzOf "$tag/biomanager-server.tar.gz" Biomanager/deploy/VERSION)" = "${tag#v}" ]
+            # The same VERSION as before (the oldest bundles have none).
+            [ "$(tar -xzOf "$tag/biomanager-server.tar.gz" Biomanager/deploy/VERSION 2>/dev/null)" = "$(tar -xzOf "$tag.tar.gz" Biomanager/deploy/VERSION 2>/dev/null)" ]
             gh release upload "$tag" "$tag/biomanager-server.tar.gz" --repo "$PUBLIC_REPO" --clobber
             echo "$tag: replaced"
           done
