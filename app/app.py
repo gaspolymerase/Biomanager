@@ -312,7 +312,8 @@ def load_current_user():
         # So does the end of a temporary account (a guest pass, app/guests.py).
         if (user is None or getattr(user, "disabled", False)
                 or (user.expires_at is not None and user.expires_at <= datetime.utcnow())
-                or not security.session_matches(session.get("auth"), user)):
+                or not security.session_matches(session.get("auth"), user, db_session)
+                or security.signed_out(db_session)):
             session.clear()
             g.user = None
             return
@@ -2108,6 +2109,8 @@ def admin_toggle_disabled(user_id: int):
             flash(f"{target.username} approved. They can sign in now.", "success")
             return redirect(url_for("admin_users"))
         target.disabled = not target.disabled
+        if target.disabled:
+            security.end_sessions(db_session, target)   # enabling it again won't bring them back
         db_session.commit()
         flash(f"{target.username} {'disabled' if target.disabled else 'enabled'}.", "success")
     return redirect(url_for("admin_users"))
@@ -2190,7 +2193,8 @@ def register():
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    session.clear()
+    with SessionLocal() as db_session:
+        security.sign_out(db_session)
     flash("You have been signed out.", "success")
     return redirect(url_for("login"))
 

@@ -49,7 +49,7 @@ import os
 import secrets
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from urllib.parse import urlparse
@@ -167,14 +167,71 @@ def decrypt_text(value: str | None) -> str | None:
         return ""
 
 
-def session_stamp(user) -> str:
+GENERATION = "session_generation:{}"     # app_settings: bumped to end every session of an account
+SIGNED_OUT = "signed_out:"               # app_settings: a session ended by Sign out, and when
+
+
+def _generation(user, db=None) -> str:
+    from .inventory_service import get_setting
+    if db is not None:
+        return get_setting(db, GENERATION.format(user.id), "")
+    from .db import SessionLocal
+    with SessionLocal() as s:
+        return get_setting(s, GENERATION.format(user.id), "")
+
+
+def session_stamp(user, db=None) -> str:
     """Ties a session to the password it was signed in with: the stored hash
-    changes with every password change, so older sessions stop matching."""
-    return hmac.new(current_app.secret_key.encode(), user.password_hash.encode(), sha256).hexdigest()[:24]
+    changes with every password change, so older sessions stop matching.
+    Disabling an account moves its generation on (end_sessions), so
+    enabling it again doesn't bring its old sessions back."""
+    generation = _generation(user, db)
+    material = user.password_hash + (f":{generation}" if generation else "")
+    return hmac.new(current_app.secret_key.encode(), material.encode(), sha256).hexdigest()[:24]
 
 
-def session_matches(stored: str | None, user) -> bool:
-    return bool(stored) and hmac.compare_digest(stored, session_stamp(user))
+def session_matches(stored: str | None, user, db=None) -> bool:
+    return bool(stored) and hmac.compare_digest(stored, session_stamp(user, db))
+
+
+def end_sessions(db, user) -> None:
+    """Every session this account has, on every browser, stops working."""
+    from .inventory_service import get_setting, set_setting
+    key = GENERATION.format(user.id)
+    current = get_setting(db, key, "0")
+    set_setting(db, key, str(int(current) + 1 if current.isdigit() else 1))
+
+
+def sign_out(db) -> None:
+    """End this browser's session for good: a copy of its cookie (a shared
+    computer, a stolen laptop) no longer signs anyone in. Kept as long as a
+    session could last, then forgotten."""
+    from flask import session
+    from sqlalchemy import delete
+
+    from .inventory_service import set_setting
+    from .models import AppSetting
+    sid = session.get("sid")
+    now = datetime.utcnow()
+    if sid:
+        set_setting(db, SIGNED_OUT + sid, now.isoformat(timespec="seconds"))
+    forget = (now - current_app.permanent_session_lifetime - timedelta(days=1)).isoformat(timespec="seconds")
+    db.execute(delete(AppSetting).where(AppSetting.key.like(SIGNED_OUT + "%"), AppSetting.value < forget))
+    db.commit()
+    session.clear()
+
+
+def signed_out(db) -> bool:
+    """Was this session ended by Sign out? A session from before sessions
+    had an id gets one now, so it can be."""
+    from flask import session
+
+    from .models import AppSetting
+    sid = session.get("sid")
+    if not sid:
+        session["sid"] = secrets.token_urlsafe(18)
+        return False
+    return db.get(AppSetting, SIGNED_OUT + sid) is not None
 
 
 # ---------------------------------------------------------------- set-up
@@ -404,6 +461,7 @@ def start_session(user) -> None:
     session.permanent = True
     session["user_id"] = user.id
     session["auth"] = session_stamp(user)
+    session["sid"] = secrets.token_urlsafe(18)
 
 
 class LoginThrottle:

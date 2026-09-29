@@ -178,6 +178,25 @@ class SessionsFollowThePassword(AppTestCase):
                   data={"new_password": "reset by the admin"})
         self.assertEqual(theirs.get("/settings").status_code, 302)
 
+    def test_sign_out_ends_the_session_even_for_a_copy_of_its_cookie(self):
+        c, _ = sign_in(make_user_with_password())
+        with c.session_transaction() as sess:
+            copied = dict(sess)
+        c.post("/logout")
+        thief = app.test_client()
+        with thief.session_transaction() as sess:
+            sess.update(copied)
+        self.assertEqual(thief.get("/settings").status_code, 302)
+
+    def test_disabling_then_enabling_does_not_bring_old_sessions_back(self):
+        username = make_user_with_password()
+        theirs, _ = sign_in(username)
+        self.post(self.a, f"/admin/users/{user_id(username)}/disable")
+        self.post(self.a, f"/admin/users/{user_id(username)}/disable")
+        self.assertEqual(theirs.get("/settings").status_code, 302)
+        again, _ = sign_in(username)
+        self.assertEqual(again.get("/settings").status_code, 200)
+
     def test_a_session_without_the_stamp_is_not_accepted(self):
         c = app.test_client()
         with c.session_transaction() as sess:
