@@ -33,6 +33,18 @@ class EachDatabaseBatchCanBeUndone(AppTestCase):
             self.undo(last_batch()[0])
             self.assertEqual(cage(), expected)
 
+    def test_undoing_an_undo_puts_the_batch_back_in_force(self):
+        colony = self.make_colony(self.a, self.admin, n_mice=1)
+        self.a.post("/colony/mice/bulk-update", data={"field": "status", "value": "breeder",
+                                                      "selected_ids": colony["mice"]})
+        original = last_batch()[0]
+        self.undo(original)
+        self.assertIsNotNone(one("select undone_at from batches where id=?", original))
+        self.undo(last_batch()[0])                       # the redo
+        self.assertIsNone(one("select undone_at from batches where id=?", original))
+        self.undo(original)                              # and it can be undone again
+        self.assertEqual(one("select status from mice where id=?", colony["mice"][0]), "experiment")
+
     def test_cages_bulk_purpose(self):
         cages = [self.make_cage(self.a, purpose="Holding") for _ in range(2)]
         self.a.post("/colony/cages/bulk", data={"action": "purpose", "value": "Breeding", "selected_ids": cages})

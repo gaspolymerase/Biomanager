@@ -81,11 +81,24 @@ class Plan:
         return not self.fresh and (bool(self.legacy) or self.current != self.head)
 
 
+def known_revisions() -> set[str]:
+    from alembic.script import ScriptDirectory
+    return {r.revision for r in ScriptDirectory.from_config(alembic_config()).walk_revisions()}
+
+
 def plan(engine) -> Plan:
     from .services import ensure_schema_updates
     fresh = not inspect(engine).has_table("users")
+    current = None if fresh else current_revision(engine)
+    if current is not None and current not in known_revisions():
+        # A newer BioManager made this database. Running on it anyway would
+        # write records without the columns and rules it expects.
+        raise SystemExit(
+            f"BioManager won't start: this database was set up by a newer version (its schema is {current}; "
+            f"this version knows up to {head_revision()}). Install that version or newer, or put back the "
+            "backup made before it upgraded the database (deploy/RUNBOOK.md: Updating went wrong).")
     legacy = [] if fresh else ensure_schema_updates(apply=False)
-    return Plan(fresh=fresh, current=None if fresh else current_revision(engine), head=head_revision(), legacy=legacy)
+    return Plan(fresh=fresh, current=current, head=head_revision(), legacy=legacy)
 
 
 def backup_before(engine, the_plan: Plan) -> Path | None:

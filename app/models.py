@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -257,6 +257,9 @@ class MouseRack(Base):
 
 class CageRecord(Base):
     __tablename__ = "mouse_cages"
+    # One cage per place in a rack, even when two people drop cages on the
+    # same place at once (migrations/versions/0006_one_cage_per_place.py).
+    __table_args__ = (Index("uq_mouse_cages_place", "rack_id_fk", "rack_row", "rack_col", unique=True),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     cage_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)

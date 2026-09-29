@@ -43,3 +43,12 @@ def add_column(table: str, column: sa.Column) -> None:
     if has_table(table) and not has_column(table, column.name):
         with op.batch_alter_table(table) as batch:
             batch.add_column(column)
+
+
+def has_index(table: str, name: str) -> bool:
+    return has_table(table) and name in {i["name"] for i in _inspector().get_indexes(table)}
+
+
+def create_index(table: str, name: str, columns: list[str], unique: bool = False) -> None:
+    if has_table(table) and not has_index(table, name):
+        op.create_index(name, table, columns, unique=unique)

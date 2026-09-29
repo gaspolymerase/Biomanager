@@ -65,3 +65,41 @@ class PackagedApp(unittest.TestCase):
                     if name.split(".")[0] in bundled_whole:
                         continue
                     self.assertIn(f'"{name}"', spec, f"{path.name} imports {name}: add it to hiddenimports in Biomanager.spec")
+
+
+class EmptiedDatabase(unittest.TestCase):
+    def test_a_zero_byte_database_file_is_not_started_as_a_new_lab(self):
+        import os
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "biomanager.db"
+            db.touch()
+            env = {**os.environ, "BIOMANAGER_DATA_DIR": tmp, "DATABASE_URL": f"sqlite:///{db}"}
+            env.pop("BIOMANAGER_SEED_DEFAULTS", None)
+            r = subprocess.run([sys.executable, "-c", "import app.app"], cwd=Path(__file__).parent.parent,
+                               env=env, capture_output=True, text=True, timeout=120)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("is an empty file", r.stderr)
+            self.assertEqual(db.stat().st_size, 0)
+            self.assertFalse((Path(tmp) / "setup-code").exists())
+
+    def test_a_database_from_a_newer_version_is_refused(self):
+        import os
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "biomanager.db"
+            with sqlite3.connect(db) as con:
+                con.execute("create table users (id integer primary key)")
+                con.execute("create table alembic_version (version_num varchar(32))")
+                con.execute("insert into alembic_version values ('9999_from_the_future')")
+            env = {**os.environ, "BIOMANAGER_DATA_DIR": tmp, "DATABASE_URL": f"sqlite:///{db}"}
+            r = subprocess.run([sys.executable, "-c", "import app.app"], cwd=Path(__file__).parent.parent,
+                               env=env, capture_output=True, text=True, timeout=120)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("set up by a newer version", r.stderr)

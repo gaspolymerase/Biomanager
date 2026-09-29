@@ -544,15 +544,25 @@ class MiceTarget(Target):
     def prepare(self, session):
         from .models import MouseRecord
         from .models import CageRecord
+        from .inventory_service import get_setting
+        from .services import MOUSE_ID_HIGH
         taken = set(session.scalars(select(MouseRecord.mouse_id)))
-        return {"people": _people(session), "taken": taken, "next": max(taken, default=0) + 1, "place_cages": {},
+        high = get_setting(session, MOUSE_ID_HIGH, "")
+        first = max(max(taken, default=0), int(high) if high.isdigit() else 0) + 1
+        return {"people": _people(session), "taken": taken, "next": first, "place_cages": {},
                 "cages_before": set(session.scalars(select(CageRecord.cage_id))), "litter_dates": {}}
 
     def finish(self, session, ctx):
         """A cage the import made belongs to its first mouse's owner, not
         to whoever ran the import: they wean, breed and move it. Set last,
         so the rest of its mice could still be put in it."""
+        from .inventory_service import get_setting, set_setting
         from .models import CageRecord
+        from .services import MOUSE_ID_HIGH
+        high = get_setting(session, MOUSE_ID_HIGH, "")
+        top = max(ctx["taken"], default=0)
+        if top > (int(high) if high.isdigit() else 0):
+            set_setting(session, MOUSE_ID_HIGH, str(top))     # never handed out again
         for code, owner in ctx["carry"].get("cage_owner", {}).items():
             cage = session.scalar(select(CageRecord).where(CageRecord.cage_id == code))
             if cage is not None and owner:

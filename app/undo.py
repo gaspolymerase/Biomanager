@@ -17,6 +17,8 @@ The undo is itself audited, as its own batch, so the history stays honest.
 """
 from __future__ import annotations
 
+import re
+
 import json
 from datetime import datetime
 
@@ -72,6 +74,14 @@ def blockers(session, batch: BatchRecord) -> list[str]:
         problems.append("No recorded changes to reverse.")
         return problems
 
+    # Its own undos and redos ("undo of batch #N", and undos of those) are
+    # not someone's later edit: a redone batch can be undone again.
+    chain, frontier = {batch.id}, {batch.id}
+    while frontier:
+        found = set(session.scalars(select(BatchRecord.id).where(
+            BatchRecord.description.in_([f"undo of batch #{n}" for n in frontier])))) - chain
+        chain |= found
+        frontier = found
     touched_since = 0
     for entry in entries:
         if entry.table_name not in UNDOABLE_TABLES:
@@ -83,7 +93,7 @@ def blockers(session, batch: BatchRecord) -> list[str]:
                 AuditEntry.record_id == entry.record_id,
                 AuditEntry.id > entry.id,
                 or_(AuditEntry.batch_id_fk.is_(None),
-                    AuditEntry.batch_id_fk != batch.id),
+                    AuditEntry.batch_id_fk.not_in(chain)),
             ).limit(1)
         )
         if later is not None:
@@ -102,6 +112,14 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
         return {"ok": False, "problems": problems, "reverted": 0}
     if batch.is_undone:
         return {"ok": False, "problems": ["Already undone."], "reverted": 0}
+    # Claim the batch first, in the database: of two people pressing Undo at
+    # the same moment, only one gets it (the other's UPDATE finds it taken).
+    from sqlalchemy import update
+    claimed = session.execute(update(BatchRecord).where(BatchRecord.id == batch.id, BatchRecord.undone_at.is_(None))
+                              .values(undone_at=datetime.utcnow(), undone_by=actor)).rowcount
+    if not claimed:
+        return {"ok": False, "problems": ["Already undone."], "reverted": 0}
+    session.refresh(batch)
 
     entries = session.scalars(
         select(AuditEntry)
@@ -203,6 +221,13 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
         batch.undone_at = datetime.utcnow()
         batch.undone_by = actor
         undo_row.record_count = reverted
+        # Undoing an undo is a redo: the batch it undid is in force again,
+        # and Batch history says so (and offers its Undo again).
+        redone = re.match(r"undo of batch #(\d+)$", batch.description or "")
+        if redone:
+            original = session.get(BatchRecord, int(redone.group(1)))
+            if original is not None:
+                original.undone_at, original.undone_by = None, ""
 
     return {"ok": True, "reverted": reverted, "skipped": skipped,
             "problems": problems if force else [], "notes": notes}

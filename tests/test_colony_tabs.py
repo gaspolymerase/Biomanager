@@ -378,6 +378,21 @@ class WhereThingsAreTests(AppTestCase):
         self.make_mouse(self.a, self.admin, cage=code, gender="M")
         return rack, code
 
+    def test_one_cage_per_place_even_when_two_arrive_at_once(self):
+        rack, code = self.placed_cage()
+        rack_id = one("select id from mouse_racks where name=?", rack)
+        other = self.make_cage(self.a, uniq("C"))
+        # What a second drop at the same moment would write: refused by the database.
+        with self.assertRaises(Exception):
+            execute("update mouse_cages set rack_id_fk=?, rack_row=2, rack_col=3 where id=?", rack_id, other)
+        # A drop onto the taken place is a swap, in steps the rule allows.
+        placed = one("select id from mouse_cages where cage_id=?", code)
+        execute("update mouse_cages set rack_id_fk=?, rack_row=1, rack_col=1 where id=?", rack_id, other)
+        r = self.a.post(f"/colony/cages/{other}/place", data={"rack_id": rack_id, "row": 2, "col": 3})
+        self.assertTrue(r.get_json()["ok"])
+        self.assertEqual(row("select rack_row, rack_col from mouse_cages where id=?", placed), (1, 1))
+        self.assertEqual(row("select rack_row, rack_col from mouse_cages where id=?", other), (2, 3))
+
     def test_a_cage_card_says_where_it_goes_and_the_sexes(self):
         rack, code = self.placed_cage()
         html = self.get_ok(self.a, f"/labels/cards/cages?scope=all&ids={one('select id from mouse_cages where cage_id=?', code)}")

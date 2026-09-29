@@ -155,6 +155,23 @@ class PagesRender(AppTestCase):
                 "/inventory/no-such-db"]
         self.assertAllRender(self.a, urls, ok=lambda code: code < 500)
 
+    def test_a_database_that_does_not_answer_gets_a_page_not_a_bare_500(self):
+        from unittest import mock
+        from sqlalchemy.exc import OperationalError
+        import app.app as app_module
+        boom = OperationalError("SELECT 1", {}, Exception("database is locked"))
+        with mock.patch.object(app_module, "colony_context", side_effect=boom):
+            r = self.a.get("/colony?view=mice")
+            self.assertEqual(r.status_code, 503)
+            self.assertIn("The database is not answering", r.get_data(as_text=True))
+            r = self.a.get("/colony?view=mice", headers={"X-Autosave": "1"})
+            self.assertEqual((r.status_code, r.get_json()["ok"]), (503, False))
+
+    def test_a_wrong_address_gets_the_app_s_own_page(self):
+        r = self.a.get("/no/such/page")
+        self.assertEqual(r.status_code, 404)
+        self.assertIn("There&#39;s nothing here", r.get_data(as_text=True))
+
     def test_exports_download_as_files(self):
         r = self.a.get("/colony/mice/export")
         self.assertEqual(r.status_code, 200)

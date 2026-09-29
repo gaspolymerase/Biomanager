@@ -10,8 +10,9 @@ from flask import Flask, Response, abort, flash, g, get_flashed_messages, has_re
 from markupsafe import Markup, escape
 from werkzeug.datastructures import ImmutableMultiDict
 from sqlalchemy import func, select
-from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import SessionLocal
@@ -395,6 +396,58 @@ def handle_forbidden(_error):
     return render_template("error.html", title="You don't have access to that", message=message), 403
 
 
+def _wants_json() -> bool:
+    """A background save, the API, or a page script's fetch: answer JSON,
+    never a redirect to a page (which a script reads as a broken reply)."""
+    return (request.headers.get("X-Autosave") == "1" or request.path.startswith("/api/")
+            or request.accept_mimetypes.best == "application/json"
+            or request.headers.get("X-Requested-With") == "fetch")
+
+
+@app.errorhandler(OperationalError)
+def handle_database_unavailable(error: OperationalError):
+    """The database is down, locked by another program for too long, or its
+    disk is full. Nothing was saved; say so and that it's worth retrying,
+    rather than a bare "Internal Server Error"."""
+    detail = str(getattr(error, "orig", error))
+    app.logger.error("database unavailable on %s: %s", request.path, detail)
+    full = "full" in detail.lower()
+    message = ("The server's disk is full, so nothing was saved. Tell whoever runs the server."
+               if full else "The database didn't answer in time, so nothing was saved. Try again in a moment; "
+               "if it keeps happening, tell whoever runs the server.")
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 503
+    return render_template("error_plain.html", title="The database is not answering", message=message), 503
+
+
+@app.errorhandler(StaleDataError)
+def handle_stale_data(_error):
+    """The record was removed (an Undo, a colleague) while this save ran."""
+    message = "That record was changed or removed by someone else just now, so nothing was saved. Reload the page."
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 409
+    flash(message, "error")
+    referrer = request.referrer or ""
+    return redirect(referrer if referrer.startswith(request.host_url) else url_for("home_dashboard"))
+
+
+@app.errorhandler(404)
+def handle_not_found(_error):
+    if _wants_json():
+        return jsonify({"ok": False, "error": "Not found."}), 404
+    return render_template("error.html", title="There's nothing here",
+                           message="That page doesn't exist, or what it showed was deleted."), 404
+
+
+@app.errorhandler(500)
+def handle_server_error(_error):
+    message = "Something went wrong on the server, so that wasn't done. Try again; if it keeps happening, " \
+              "use Send feedback to say what you were doing."
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 500
+    return render_template("error_plain.html", title="Something went wrong", message=message), 500
+
+
 @app.errorhandler(IntegrityError)
 def handle_integrity_error(error: IntegrityError):
     """A duplicate ID (or similar) is a message for the person, not a 500.
@@ -411,11 +464,13 @@ def handle_integrity_error(error: IntegrityError):
     if match:
         column = match.group(1).split(",")[-1].strip().strip('"').split(".")[-1]
         field = column.replace("_id", " ID").replace("_", " ")
-        message = f"That {field} is already used. Choose another."
+        message = (f"That place in the rack has a cage already (someone may have just put one there), "
+                   f"so nothing was saved." if column in ("rack_col", "rack_row")
+                   else f"That {field} is already used. Choose another.")
     else:
         message = "That change conflicts with an existing record, so it was not saved."
-    app.logger.info("integrity error on %s: %s", request.path, detail)
-    if request.headers.get("X-Autosave") == "1":
+    app.logger.warning("integrity error on %s: %s", request.path, detail)
+    if _wants_json():
         return jsonify({"ok": False, "error": message}), 409
     flash(message, "error")
     referrer = request.referrer or ""
@@ -430,8 +485,8 @@ def handle_data_error(error: DataError):
     size = re.search(r"character varying\((\d+)\)", detail)
     message = (f"One of the values is longer than its field allows ({size.group(1)} characters), so nothing was saved."
                if size else "One of the values is not valid for its field, so nothing was saved.")
-    app.logger.info("data error on %s: %s", request.path, detail)
-    if request.headers.get("X-Autosave") == "1":
+    app.logger.warning("data error on %s: %s", request.path, detail)
+    if _wants_json():
         return jsonify({"ok": False, "error": message}), 409
     flash(message, "error")
     referrer = request.referrer or ""
@@ -3553,7 +3608,13 @@ def place_cage(cage_row_id: int):
         if holder is not None:
             if not can_edit_cage(holder):
                 return jsonify({"ok": False, "error": f"That position holds cage {holder.cage_id}, which you may not move."}), 403
-            holder.rack_id_fk, holder.rack_row, holder.rack_col = cage.rack_id_fk, cage.rack_row, cage.rack_col
+            # A swap, in steps: one cage per place holds at every moment
+            # (the unique index on the place), so the dropped cage leaves first.
+            old = (cage.rack_id_fk, cage.rack_row, cage.rack_col)
+            cage.rack_id_fk = cage.rack_row = cage.rack_col = None
+            db_session.flush()
+            holder.rack_id_fk, holder.rack_row, holder.rack_col = old
+            db_session.flush()
         cage.rack_id_fk, cage.rack_row, cage.rack_col = rack.id, row, col
         db_session.commit()
     return jsonify({"ok": True})
@@ -5337,22 +5398,35 @@ def csv_import(entity: str):
     preview: list[dict] = []
     with SessionLocal() as db_session:
         if entity == "mouse":
-            # Reserve one contiguous block up front. Calling next_mouse_id()
-            # per row used to hand every row the same number, so any CSV
-            # without explicit IDs died on the unique index.
-            blank_ids = sum(1 for r in rows if not (r.get("mouse_id") or "").strip())
-            reserved = reserve_mouse_ids(db_session, blank_ids)
-            reserved_iter = iter(reserved)
-
+            # Numbers come from one counter that skips every number already
+            # used, in the database or earlier in this file, and the check
+            # is the same in the dry run: a file whose ID repeats, or takes
+            # a number a blank row was about to get, is caught row by row
+            # instead of failing whole at the end.
+            from .inventory_service import get_setting, set_setting
+            from .services import MOUSE_ID_HIGH
+            taken = set(db_session.scalars(select(MouseRecord.mouse_id)))
+            high = get_setting(db_session, MOUSE_ID_HIGH, "")
+            next_free = max(max(taken, default=0), int(high) if high.isdigit() else 0) + 1
+            typed = {int(v) for r in rows if (v := (r.get("mouse_id") or "").strip()).isdigit()}
+            if not dry_run:
+                batch_ctx = audit.batch(db_session, "create", f"import mice from {upload.filename}"[:200], "mice")
+                batch_ctx.__enter__()
             for idx, row in enumerate(rows, start=2):
                 try:
                     mouse_id_raw = (row.get("mouse_id") or "").strip()
-                    mouse_id_value = (int(mouse_id_raw) if mouse_id_raw
-                                      else next(reserved_iter))
-                    existing = db_session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == mouse_id_value))
-                    if existing is not None:
+                    if mouse_id_raw:
+                        if not mouse_id_raw.isdigit() or int(mouse_id_raw) < 1:
+                            raise ValueError(f"mouse_id “{mouse_id_raw}” is not a whole number above zero")
+                        mouse_id_value = int(mouse_id_raw)
+                    else:
+                        while next_free in taken or next_free in typed:
+                            next_free += 1
+                        mouse_id_value = next_free
+                    if mouse_id_value in taken:
                         errors.append(f"row {idx}: mouse_id {mouse_id_value} already exists")
                         continue
+                    taken.add(mouse_id_value)
                     mouse = MouseRecord(
                         mouse_id=mouse_id_value,
                         gender=(row.get("gender") or "").strip(),
@@ -5367,6 +5441,11 @@ def csv_import(entity: str):
                     created += 1
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"row {idx}: {exc}")
+            if not dry_run:
+                if taken:
+                    set_setting(db_session, MOUSE_ID_HIGH, str(max(taken)))
+                db_session.flush()
+                batch_ctx.__exit__(None, None, None)
         elif entity == "plasmid":
             # Numbers for rows without one come from a counter that skips
             # numbers already used (in the database or earlier in the file);

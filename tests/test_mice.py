@@ -7,7 +7,7 @@ import json
 import unittest
 
 from tests.base import *  # noqa: F401,F403
-from tests.base import AppTestCase, T, count, days_ago, one, row, rows, uniq
+from tests.base import AppTestCase, T, count, days_ago, last_batch, one, row, rows, uniq
 
 
 # ---------------------------------------------------------------- helpers
@@ -478,6 +478,37 @@ class MouseBatchEditTests(Case):
         self.assertEqual({(mouse(i)["status"], mouse(i)["date_of_death"]) for i in self.ids}, {("sac", T)})
         batch = newest_batch(self.member)
         self.assertEqual((batch[1], batch[2]), ("mark as sac", 2))
+
+    def csv_import(self, text, dry_run):
+        import io
+        return self.a.post("/import/mouse", data={"file": (io.BytesIO(text.encode()), "mice.csv"),
+                                                  "dry_run": "1" if dry_run else "0"},
+                           content_type="multipart/form-data").get_json()
+
+    def test_a_csv_with_a_repeated_mouse_id_is_caught_in_the_dry_run(self):
+        top = one("select max(mouse_id) from mice")
+        tag = uniq("CSV")
+        text = (f"mouse_id,genotype\n{top + 50},{tag}\n{top + 50},{tag}\n,{tag}\n{top + 51},{tag}\n")
+        dry = self.csv_import(text, True)
+        self.assertEqual(dry["count"], 3)
+        self.assertTrue(any(f"mouse_id {top + 50} already exists" in e for e in dry["errors"]))
+        done = self.csv_import(text, False)
+        self.assertEqual(done["count"], 3)
+        self.assertEqual(count("mice", "genotype=?", tag), 3)
+        self.assertEqual(last_batch()[1], "import mice from mice.csv")   # Batch history can undo it
+
+    def test_new_mouse_numbers_are_never_handed_out_twice(self):
+        top = one("select max(mouse_id) from mice")
+        self.m.post("/colony/mice/new-record")                      # a higher number than the one below
+        top = one("select max(mouse_id) from mice")
+        execute("update mice set created_at=? where id=?",          # a low number, entered last
+                datetime.utcnow() + timedelta(days=1), self.ids[0])
+        self.m.post("/colony/mice/new-record")
+        made = one("select max(mouse_id) from mice")
+        self.assertEqual(made, top + 1)
+        execute("delete from mice where mouse_id=?", made)          # the newest mouse deleted
+        self.m.post("/colony/mice/new-record")
+        self.assertEqual(one("select max(mouse_id) from mice"), top + 2)
 
     def test_new_mouse_saved_at_the_same_moment_as_another_gets_the_next_number(self):
         from unittest import mock

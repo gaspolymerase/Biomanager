@@ -83,6 +83,21 @@ def parse_date(raw_value: str | None) -> date | None:
     return None
 
 
+def refuse_emptied_database() -> None:
+    """A lab's SQLite file that exists but holds nothing (0 bytes: a failed
+    copy, a sync tool, a full disk) is not a new lab. Starting on it would
+    make a new empty lab with a new setup code, and the next save would
+    bury the chance of getting the old one back. Stop and say so."""
+    if engine.dialect.name != "sqlite" or not engine.url.database or engine.url.database == ":memory:":
+        return
+    path = Path(engine.url.database)
+    if path.exists() and path.stat().st_size == 0:
+        raise SystemExit(
+            f"BioManager won't start: the lab's database {path} is an empty file (0 bytes), so its records "
+            "are not in it. Put back a backup (deploy/RUNBOOK.md, or scripts/dbtool.py restore), or delete "
+            "the empty file to start a new lab.")
+
+
 def init_database() -> None:
     # A new installation starts empty: the first admin's setup survey decides
     # which databases exist (app/lab.py). BIOMANAGER_SEED_DEFAULTS=1 keeps
@@ -91,6 +106,7 @@ def init_database() -> None:
     # Opening a database an older version made changes it: copy it first
     # (app/upgrade.py), then the frozen start-up steps, then Alembic.
     from . import upgrade
+    refuse_emptied_database()
     the_plan = upgrade.plan(engine)
     if the_plan.changes:
         upgrade.backup_before(engine, the_plan)
@@ -691,37 +707,36 @@ def latest_mouse_record(session) -> MouseRecord | None:
 
 
 def next_mouse_id(session) -> int:
-    """The next free mouse ID.
+    """The next free mouse ID (see reserve_mouse_ids).
 
     Flushes first because the session is created with autoflush=False: a
     caller in a loop (CSV import, batch create) has rows pending that the
-    max() below would otherwise not see, and every row would be handed the
-    same ID. Use reserve_mouse_ids() when creating several at once — this
-    is correct in a loop but costs a round trip per call.
+    max() would otherwise not see, and every row would be handed the same
+    ID. Use reserve_mouse_ids() when creating several at once.
     """
-    session.flush()
-    latest = latest_mouse_record(session)
-    if latest is not None and latest.mouse_id is not None:
-        return latest.mouse_id + 1
-    current_max = session.scalar(select(func.max(MouseRecord.mouse_id)))
-    return (current_max or 0) + 1
+    return reserve_mouse_ids(session, 1)[0]
+
+
+MOUSE_ID_HIGH = "mouse_id_high"      # app_settings: the highest mouse ID ever handed out
 
 
 def reserve_mouse_ids(session, count: int) -> list[int]:
-    """Allocate `count` consecutive mouse IDs in one go.
-
-    Batch creation must not call next_mouse_id() per row: that is a query
-    each time, and without a flush between rows every row collides on the
-    unique index. One high-water read, one contiguous block.
-    """
+    """Allocate `count` consecutive mouse IDs in one go, above the highest
+    mouse there is and above any ever handed out: a number is never given
+    twice, even after its mouse was deleted or an Add many undone. (Before,
+    the newest mouse by date decided, so importing an old #5 made every
+    New mouse ask for #6 again, and be refused.)"""
     if count <= 0:
         return []
+    from .inventory_service import get_setting, set_setting
     session.flush()
     highest = session.scalar(select(func.max(MouseRecord.mouse_id))) or 0
-    latest = latest_mouse_record(session)
-    if latest is not None and latest.mouse_id is not None:
-        highest = max(highest, latest.mouse_id)
-    return [highest + offset for offset in range(1, count + 1)]
+    stored = get_setting(session, MOUSE_ID_HIGH, "")
+    if stored.isdigit():
+        highest = max(highest, int(stored))
+    ids = [highest + offset for offset in range(1, count + 1)]
+    set_setting(session, MOUSE_ID_HIGH, str(ids[-1]))
+    return ids
 
 
 def _cage_number(code: str | None) -> int:

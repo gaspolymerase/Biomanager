@@ -9,7 +9,7 @@ is an unreadable file.
 
     python scripts/dbtool.py check      # where is it, is it healthy, is it at risk
     python scripts/dbtool.py backup     # timestamped consistent copy
-    python scripts/dbtool.py restore <file>
+    python scripts/dbtool.py restore <file>      (quit the app first; --yes skips the question)
     python scripts/dbtool.py relocate ~/BioManagerData   # move it off the sync folder
 
 Uses SQLite's own backup API, so a backup taken while the app is running is
@@ -71,6 +71,9 @@ def cmd_check(_args) -> int:
     size_mb = path.stat().st_size / 1_048_576
     print(f"size     : {size_mb:.2f} MB")
 
+    if path.stat().st_size == 0:
+        print("status   : EMPTY — the file is 0 bytes; put back a backup (dbtool.py restore <file>)")
+        return 1
     conn = sqlite3.connect(path)
     try:
         result = conn.execute("pragma integrity_check").fetchone()[0]
@@ -80,6 +83,10 @@ def cmd_check(_args) -> int:
         tables = conn.execute(
             "select count(*) from sqlite_master where type='table'").fetchone()[0]
         print(f"tables   : {tables}")
+    except sqlite3.DatabaseError as exc:
+        print(f"status   : DAMAGED — SQLite can't read it ({exc}).")
+        print("           Put back the newest backup: python scripts/dbtool.py restore <file>")
+        return 1
     finally:
         conn.close()
 
@@ -132,10 +139,34 @@ def cmd_restore(args) -> int:
     source = Path(args.file).expanduser()
     if not source.exists():
         sys.exit(f"No such backup: {source}")
+    try:
+        with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as check:
+            healthy = check.execute("pragma integrity_check").fetchone()[0] == "ok" and check.execute(
+                "select count(*) from sqlite_master where name='users'").fetchone()[0] == 1
+    except sqlite3.DatabaseError:
+        healthy = False
+    if not healthy:
+        sys.exit(f"{source} is not a healthy BioManager database; nothing was changed.")
+    # Replacing the file under a running app mixes the two: the app keeps
+    # writing into the restored file from what it had open.
+    if not args.yes:
+        answer = input("Is BioManager closed (the app quit, or the server stopped)? [y/N] ").strip().lower()
+        if answer not in ("y", "yes"):
+            sys.exit("Nothing was changed. Quit the app or stop the server, then run this again.")
     target = database_path()
-    if target.exists():
+    if target.exists() and target.stat().st_size:
         safety = target.with_suffix(f".before-restore-{datetime.now():%Y%m%d-%H%M%S}.db")
-        shutil.copy2(target, safety)
+        src = sqlite3.connect(f"file:{target}?mode=ro", uri=True)
+        dst = sqlite3.connect(safety)
+        try:
+            with dst:
+                src.backup(dst)            # a consistent copy, even of a damaged-looking live file
+        except sqlite3.DatabaseError:
+            dst.close()
+            shutil.copy2(target, safety)
+        finally:
+            src.close()
+            dst.close()
         print(f"current database copied aside to {safety}")
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
@@ -197,6 +228,7 @@ def main() -> int:
 
     restore = sub.add_parser("restore", help="replace the live database with a backup")
     restore.add_argument("file")
+    restore.add_argument("--yes", action="store_true", help="the app is closed; don't ask")
 
     relocate = sub.add_parser("relocate", help="move the database off a synced folder")
     relocate.add_argument("destination")
