@@ -170,6 +170,8 @@
           the whole lab, whether they may keep a copy of the lab on their computers, and whether they may make
           <a href="#api">API tokens</a>.</li>
       </ol>
+      <p>Below the questions, <b>Send BioManager's makers anonymous counts once a day</b> is ticked; untick it if you'd rather
+        not (<a href="#counts">what is sent</a>).</p>
       <p>BioManager then makes those databases, the racks and incubators too, and takes you Home. Everyone who joins later gets a
         one-page welcome tour of the lab's databases on first sign-in (<b>Settings → See the welcome tour again</b> brings it back).</p>
     </section>
@@ -756,6 +758,19 @@
       <h3>Everyone</h3>
       <p><b>Export</b> on any sheet downloads what it shows as CSV, which opens in Excel. <b>Export my data</b> (in the account menu, and
         in Settings) downloads your own mice and plasmids as CSV, your notebook pages and your profile, in one zip.</p>
+      <h3 id="counts">What BioManager sends its makers</h3>
+      <p>Your records never leave your computer or your lab's server. So that BioManager's makers know how many labs use it, each
+        installation sends one short message a day, with counts only:</p>
+      <ul>
+        <li>the version, whether it is the desktop app or a server, the operating system and the kind of database;</li>
+        <li>how many members, and how many changed something this week, as ranges (1, 2–5, 6–15, 16–50, 51+);</li>
+        <li>which built-in functions are on, and how many databases of each kind;</li>
+        <li>a random id for the installation, so a lab counts once.</li>
+      </ul>
+      <p>Never names, email addresses, anything anyone wrote, what your databases are called, or the computer's name or address.
+        It goes to PostHog, which is asked not to work out where it came from. Admins see exactly what is sent on the
+        <b>Usage report</b> (<b>Feedback → Usage report</b>) and can <b>Switch off</b> there; the setup survey asks first. On a
+        server, <code>BIOMANAGER_TELEMETRY=0</code> (or <code>DO_NOT_TRACK=1</code>) in <code>.env</code> turns it off for good.</p>
     </section>
 
     <section id="api">
@@ -827,7 +842,7 @@
           they and admins see, or an admin may have switched it off.</dd>
         <dt>A database disappeared from the sidebar</dt><dd>An admin may have switched it off in <b>Setup</b>; its data is kept, and it
           comes back when it is switched on.</dd>
-        <dt>Something else</dt><dd><b>Feedback</b> in the sidebar (see below), or <a href="https://github.com/gaspolymerase/biomanager-app/issues">open an issue</a> —
+        <dt>Something else</dt><dd><b>Feedback</b> in the sidebar (see below), or <a href="https://github.com/gaspolymerase/biomanager/issues">open an issue</a> —
           say which system you use and what you expected to happen.</dd>
       </dl>
     </section>
@@ -839,8 +854,10 @@
         <b>Open as a GitHub issue</b>: a new issue opens with your text, the page, the version and the browser filled in (not your server's
         address, nor your name), for you to check and submit. You need a GitHub account.</p>
       <p>Admins also find a <b>Usage report</b> there: for each of the last eight weeks, how many people changed something and how many
-        changes in each area, and what the lab holds now. Counts only — no names, nothing anyone wrote — and nothing is sent anywhere: copy
-        the text at the bottom into an email, for instance to whoever runs a pilot with your lab.</p>
+        changes in each area, and what the lab holds now. Counts only — no names, nothing anyone wrote — and the report is not sent
+        anywhere: copy the text at the bottom into an email, for instance to whoever runs a pilot with your lab. Below it,
+        <b>Anonymous counts for BioManager's makers</b> shows the daily message word for word, with <b>Switch off</b>
+        (<a href="#counts">more</a>).</p>
     </section>
   </main>
 </div>
@@ -849,7 +866,7 @@
   <div class="wrap footer-inner">
     <div class="brand"><img src="assets/icon.svg" alt="" width="22" height="22">BioManager</div>
     <p>Released under the <a href="LICENSE">MIT licence</a>. <a href="./">Home</a> · <a href="server.html">Run it for your lab</a> ·
-      <a href="./#download">Download</a> · <a href="https://github.com/gaspolymerase/biomanager-app/issues">Report a problem</a></p>
+      <a href="./#download">Download</a> · <a href="https://github.com/gaspolymerase/biomanager/issues">Report a problem</a></p>
   </div>
 </footer>
 

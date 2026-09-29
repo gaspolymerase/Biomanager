@@ -4,7 +4,7 @@ You are helping someone set up **BioManager**, a lab database for animal
 colonies, stocks and inventories, as a server for their lab. This file is
 written for you: follow it in order, run the checks, and stop where it says
 to ask. The human-readable version is
-https://gaspolymerase.github.io/biomanager-app/server.html.
+https://gaspolymerase.github.io/biomanager/server.html.
 
 ## Rules
 
@@ -45,7 +45,7 @@ Ask these, then recommend an option (the table after them) and wait for a yes.
 
 | Situation | Option |
 | --- | --- |
-| One person | **A**: the desktop app. No server. Send them to https://gaspolymerase.github.io/biomanager-app/#download and stop here. |
+| One person | **A**: the desktop app. No server. Send them to https://gaspolymerase.github.io/biomanager/#download and stop here. |
 | One building, a computer that stays on | **B**: a lab computer, `TLS=internal` (or `TLS=files` with IT's certificate) |
 | University offers VMs | **C**: ask IT for a VM with Docker, a DNS name and a certificate; then as B with `TLS=files` |
 | People anywhere, most labs | **D**: Ubuntu 24.04 cloud VM + Tailscale, `TLS=tailscale` (recommended; free on Oracle Cloud Always Free) |
@@ -59,7 +59,7 @@ Ask these, then recommend an option (the table after them) and wait for a yes.
   (nightly `pg_dump` + uploads tarball, weekly restore test, optional
   restic off-site).
 - **The bundle:**
-  `https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz`.
+  `https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz`.
   It unpacks to `Biomanager/deploy/`; always unpack it into
   `/opt/biomanager`, so the deploy folder is
   `/opt/biomanager/Biomanager/deploy` (scripts and systemd units assume it).
@@ -79,7 +79,9 @@ Ask these, then recommend an option (the table after them) and wait for a yes.
   set by `host/offsite-setup.sh`), `HEALTHCHECK_PING_URL`,
   `BIOMANAGER_GOOGLE_*`/`BIOMANAGER_MICROSOFT_*` (sign-in), `BIOMANAGER_OIDC_*` (the
   institution's own sign-in, OpenID Connect) or `BIOMANAGER_CILOGON_*` (a SAML-only
-  university, through CILogon), SMTP.
+  university, through CILogon), SMTP, `BIOMANAGER_TELEMETRY=0` (never send
+  BioManager's makers the anonymous daily counts; ask the admin, who can
+  also switch them off on the Usage report).
 - **First account:** the app prints a one-time setup code in its log; the
   first account created at `https://DOMAIN/register` with it is the admin.
   Later sign-ups wait for an admin's approval.
@@ -127,7 +129,7 @@ Check: `tailscale status` lists the machine; from their computer
 
 ```bash
 curl -fsSL -o /tmp/biomanager-server.tar.gz \
-  https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
+  https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
 cd /opt/biomanager/Biomanager/deploy
 host/load-image.sh
@@ -225,7 +227,7 @@ Check: the person signs in with their existing account and sees their data.
 ```bash
 cd /opt/biomanager/Biomanager/deploy
 docker compose exec backup backup.sh
-curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
+curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/b.tar.gz -C /opt/biomanager      # .env and backups are not in the bundle
 host/load-image.sh && docker compose up -d --build
 ```
@@ -253,4 +255,4 @@ Tell the person, in plain words: the address; that the first account is the
 admin; where backups are (`/opt/biomanager/backups`, nightly, restore-tested
 weekly) and whether off-site is on; the ntfy topic for alerts; how to update
 (above); and that `deploy/RUNBOOK.md` in the bundle says what to do when an
-alert arrives. The user guide is https://gaspolymerase.github.io/biomanager-app/guide.html.
+alert arrives. The user guide is https://gaspolymerase.github.io/biomanager/guide.html.

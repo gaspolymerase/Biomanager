@@ -22,7 +22,7 @@ class Feedback(AppTestCase):
         page = self.get_ok(self.m, location(r))
         self.assertIn("Open as a GitHub issue", page)
         link = next(part.split('"')[0] for part in page.split('href="')
-                    if part.startswith("https://github.com/gaspolymerase/biomanager-app/issues/new"))
+                    if part.startswith("https://github.com/gaspolymerase/biomanager/issues/new"))
         query = parse_qs(urlparse(link.replace("&amp;", "&")).query)
         self.assertTrue(query["title"][0].startswith("An idea: It would help"))
         self.assertIn("/inventory/samples?view=grid", query["body"][0])

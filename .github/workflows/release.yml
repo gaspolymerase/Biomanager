@@ -3,13 +3,16 @@ name: release
 # Push a version tag (git tag v0.2.0 && git push origin v0.2.0) and this
 # builds BioManager for macOS (Apple silicon and Intel), Windows, Linux and
 # Android, checks that each desktop build starts and answers, then publishes
-# the files as a release of the public repository that hosts the website,
-# gaspolymerase/biomanager-app. The website's download buttons link to
-# .../releases/latest/download/<file>, so the file names must not change.
+# the files as a release of this repository. The website's download
+# buttons link to .../releases/latest/download/<file>, so the file names
+# must not change.
 #
-# Publishing needs a PUBLIC_RELEASE_TOKEN secret: a fine-grained personal
-# access token with "Contents: read and write" on biomanager-app only.
-# Without it everything is built and kept as workflow artifacts.
+# Desktop apps from before the website moved here (0.10 and earlier) look
+# for updates on gaspolymerase/biomanager-app, so each release is copied
+# there too while a PUBLIC_RELEASE_TOKEN secret exists: a fine-grained
+# personal access token with "Contents: read and write" on biomanager-app
+# only. Their next update is a build that looks here; remove the secret
+# once nobody runs those versions.
 
 on:
   push:
@@ -21,7 +24,7 @@ on:
         required: true
 
 env:
-  PUBLIC_REPO: gaspolymerase/biomanager-app
+  OLD_REPO: gaspolymerase/biomanager-app
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
@@ -202,7 +205,7 @@ jobs:
             org.opencontainers.image.description=BioManager lab server (see biomanager-server.tar.gz in the release)
             org.opencontainers.image.version=${{ env.VERSION }}
             org.opencontainers.image.licenses=MIT
-            org.opencontainers.image.url=https://gaspolymerase.github.io/biomanager-app/server.html
+            org.opencontainers.image.url=https://gaspolymerase.github.io/biomanager/server.html
 
       # The same image as files for the release; the layers come from the build's cache.
       - name: Image files
@@ -256,6 +259,8 @@ jobs:
   publish:
     needs: [desktop, android, server]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       HAS_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN != '' }}
     steps:
@@ -265,13 +270,12 @@ jobs:
           pattern: "{desktop-*,BioManager-Android.apk,server-bundle}"
           merge-multiple: true
       - run: ls -la assets
-      - name: Publish to ${{ env.PUBLIC_REPO }}
-        if: env.HAS_TOKEN == 'true'
+      - name: Publish
         env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'EOF'
-          **Download** the file for your device below, or from the [website](https://gaspolymerase.github.io/biomanager-app/#download).
+          **Download** the file for your device below, or from the [website](https://gaspolymerase.github.io/biomanager/#download).
 
           | File | For |
           | --- | --- |
@@ -281,7 +285,7 @@ jobs:
           | `BioManager-Linux.AppImage` | Linux, x86-64: mark it executable and open it |
           | `BioManager-Linux.tar.gz` | Linux, the same app as a folder |
           | `BioManager-Android.apk` | Android 7 and later: connects to your lab's BioManager server |
-          | `biomanager-server.tar.gz` | A lab server: the deploy files. [How to set one up](https://gaspolymerase.github.io/biomanager-app/server.html) |
+          | `biomanager-server.tar.gz` | A lab server: the deploy files. [How to set one up](https://gaspolymerase.github.io/biomanager/server.html) |
           | `biomanager-image-amd64.tar.gz` | The lab server's app for Intel/AMD machines, loaded by the bundle's `host/load-image.sh` |
           | `biomanager-image-arm64.tar.gz` | The same for ARM machines, such as Oracle Cloud's free Ampere VMs |
 
@@ -289,13 +293,27 @@ jobs:
 
           Your data is kept outside the app, so updating never touches it.
           EOF
-          # A release made by hand first (or a re-run) gets its files replaced.
-          if gh release view "$TAG" --repo "$PUBLIC_REPO" > /dev/null 2>&1; then
-            gh release upload "$TAG" assets/* --repo "$PUBLIC_REPO" --clobber
-            gh release edit "$TAG" --repo "$PUBLIC_REPO" --notes-file notes.md
+          publish() {
+            # A release made by hand first (or a re-run) gets its files replaced.
+            if gh release view "$TAG" --repo "$1" > /dev/null 2>&1; then
+              gh release upload "$TAG" assets/* --repo "$1" --clobber
+              gh release edit "$TAG" --repo "$1" --notes-file notes.md
+            else
+              gh release create "$TAG" assets/* --repo "$1" --title "BioManager ${TAG#v}" --notes-file notes.md
+            fi
+          }
+          publish "$GITHUB_REPOSITORY"
+      - name: Copy to ${{ env.OLD_REPO }}, for apps from before the move
+        if: env.HAS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+        run: |
+          if gh release view "$TAG" --repo "$OLD_REPO" > /dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --repo "$OLD_REPO" --clobber
+            gh release edit "$TAG" --repo "$OLD_REPO" --notes-file notes.md
           else
-            gh release create "$TAG" assets/* --repo "$PUBLIC_REPO" --title "BioManager ${TAG#v}" --notes-file notes.md
+            gh release create "$TAG" assets/* --repo "$OLD_REPO" --title "BioManager ${TAG#v}" --notes-file notes.md
           fi
-      - name: Not published
+      - name: Not copied
         if: env.HAS_TOKEN != 'true'
-        run: echo "::notice::No PUBLIC_RELEASE_TOKEN secret, so nothing was published. The files are this run's artifacts."
+        run: echo "::notice::No PUBLIC_RELEASE_TOKEN secret, so the release was not copied to ${{ env.OLD_REPO }}."

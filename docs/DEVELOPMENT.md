@@ -73,8 +73,8 @@ heading to 512px on a desktop, so the two `feDropShadow` filters there are
 kept tight: a wide blur reads as depth at the large end and as haze at the
 small one, which is what makes an icon look blurred rather than small.
 `scripts/build-app-icon.py` re-renders the SVG and every PNG, `.icns`, `.ico`
-and Android layer after a change; the copies in the website repo
-(`assets/icon.svg`, `icon-192.png`, `apple-touch-icon.png`) are updated by
+and Android layer after a change; the website's copies
+(`site/assets/icon.svg`, `icon-192.png`, `apple-touch-icon.png`) are updated by
 hand from `app/static/`.
 
 ## Interface
@@ -518,7 +518,7 @@ in the rail opens `/feedback?from=<the page>`; a note is a `feedback` row
 (kind, text, the page's path, `app_version()`, a short platform string)
 and each admin gets a notification. Admins see every note and mark it done;
 members see their own. `issue_url()` builds a GitHub "new issue" link on
-gaspolymerase/biomanager-app with the text, path, version and platform —
+gaspolymerase/biomanager with the text, path, version and platform —
 never the server's host or the person — which the person submits
 themselves: nothing is sent by the server.
 
@@ -787,7 +787,7 @@ sidebar links to `DesktopApi.set_nav` over pywebview's JavaScript bridge,
 which keeps only same-origin paths. `desktop_updates.py` is the version
 (the `VERSION` file `Biomanager.spec` bundles from `BIOMANAGER_VERSION`;
 from source, the latest tag + "+dev"), the update check against
-`api.github.com/repos/gaspolymerase/biomanager-app/releases/latest`, and
+`api.github.com/repos/gaspolymerase/biomanager/releases/latest`, and
 this computer's `desktop-prefs.json` (automatic check, skipped version,
 appearance, zoom) in the data folder. Set `BIOMANAGER_MENU_DUMP=<file>` to
 have a running app write its menu bar there, for checking a build.

@@ -20,15 +20,17 @@ it say so. In the same piece of work, update:
 | Where | What it covers |
 | --- | --- |
 | `README.md` (this repo) | What each database and function does, features across the app, accounts, data and backups |
-| `index.html` in [gaspolymerase/biomanager-app](https://github.com/gaspolymerase/biomanager-app) | The website's front page: the tour of each database, the feature cards, downloads |
-| `guide.html` in the same repo | The user guide: one section per area (a sheet, finding things, each database, calendar, notebook, working as a lab, phones, data) |
-| `server.html`, `deploy-with-ai.md`, `llms.txt` there | Only when running a server, deploying or the downloads change |
+| `site/index.html` | The website's front page: the tour of each database, the feature cards, downloads |
+| `site/guide.html` | The user guide: one section per area (a sheet, finding things, each database, calendar, notebook, working as a lab, phones, data) |
+| `site/server.html`, `deploy-with-ai.md`, `llms.txt` | Only when running a server, deploying or the downloads change |
 | `docs/DEVELOPMENT.md` | Internals: tables, modules, how things fit together |
 
-The website is its own repo, served by GitHub Pages: clone it into the
-scratchpad (`gh repo clone gaspolymerase/biomanager-app`), edit, and publish
-it when the app change is pushed, so the site never describes what users
-can't get yet. Pushing it publishes it within a minute.
+The website is `site/`, served by GitHub Pages at
+gaspolymerase.github.io/biomanager: pushing a change under `site/` to master
+publishes it within a minute (`.github/workflows/pages.yml`), so push the
+site with the app change it describes, never ahead of it. The old
+gaspolymerase/biomanager-app repository only redirects there, and keeps a
+copy of each release for desktop apps from before the move.
 
 - Write for the people in the lab: what it does for them and where to find it,
   in plain words, as the surrounding text does. Name buttons as the app does.
@@ -38,6 +40,6 @@ can't get yet. Pushing it publishes it within a minute.
   list and section closed).
 - When a change alters a page that has a screenshot, retake the screenshots
   from a fresh demo lab (`scripts/demo-data.py`, then `scripts/screenshots.py`)
-  and copy them to `docs/screenshots/` and the website's `assets/screenshots/`.
+  and copy them to `docs/screenshots/` and `site/assets/screenshots/`.
 - Internal changes with nothing to see (a refactor, a test, a fix that restores
   documented behaviour) need no docs.

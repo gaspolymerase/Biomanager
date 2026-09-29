@@ -562,7 +562,7 @@ flowchart TB
 ### 💻 Desktop app
 
 1. Download BioManager for your system from the
-   [**BioManager website**](https://gaspolymerase.github.io/biomanager-app/#download),
+   [**BioManager website**](https://gaspolymerase.github.io/biomanager/#download),
    or build it yourself (below).
 2. **macOS:** open the download and drag BioManager into Applications.
    The first time, **right-click the app and choose Open** — macOS asks
@@ -884,7 +884,7 @@ records as a zip at any time.
 
 | Document | For |
 | --- | --- |
-| [**User guide**](https://gaspolymerase.github.io/biomanager-app/guide.html) | Using BioManager, step by step: setting up a lab, every module, phones, backups. Also under **Help** in the app's sidebar |
+| [**User guide**](https://gaspolymerase.github.io/biomanager/guide.html) | Using BioManager, step by step: setting up a lab, every module, phones, backups. Also under **Help** in the app's sidebar |
 | [`deploy/README.md`](deploy/README.md) | Setting up a lab server: HTTPS, Tailscale, Google/Microsoft sign-in, backups, updates |
 | [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) | Running a lab server: alerts, outages, restores, people joining and leaving |
 | [`docs/GOOGLE_CALENDAR_SETUP.md`](docs/GOOGLE_CALENDAR_SETUP.md) | Connecting Google Calendar |

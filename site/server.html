@@ -129,7 +129,7 @@
       <div class="note"><b>What every server needs.</b> A machine with 2 CPU cores, 2 GB of memory and 20 GB of disk
         or more (a small lab uses far less), running Linux or macOS with <b>Docker</b>. BioManager runs as four
         small containers: the app, a PostgreSQL database, Caddy for HTTPS, and a backup service. You get them from the
-        <a href="https://github.com/gaspolymerase/biomanager-app/releases/latest">latest release</a>: the <b>server
+        <a href="https://github.com/gaspolymerase/biomanager/releases/latest">latest release</a>: the <b>server
         bundle</b>, a small download with everything that runs it, and the app itself as a file for Intel or ARM
         machines, which the bundle's <code>host/load-image.sh</code> fetches for you. No accounts or registries.</div>
     </section>
@@ -172,7 +172,7 @@
         <li><b>Get the server bundle</b> into <code>/opt/biomanager</code>:
 <pre><code>sudo mkdir -p /opt/biomanager &amp;&amp; sudo chown "$USER" /opt/biomanager
 curl -fsSL -o /tmp/biomanager-server.tar.gz \
-  https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
+  https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
 cd /opt/biomanager/Biomanager/deploy
 host/load-image.sh                  # downloads the app for this machine (Intel or ARM)
@@ -242,7 +242,7 @@ docker compose logs app | grep "setup code"</code></pre></li>
           verify you; Always Free resources are never charged). Pick a home region near you: it can't be changed.</li>
         <li>Create a free <a href="https://login.tailscale.com/start">Tailscale</a> account, with a lab or personal Google,
           Microsoft or GitHub account.</li>
-        <li>On your own computer, download the <a href="https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz">server
+        <li>On your own computer, download the <a href="https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz">server
           bundle</a>, unpack it, and open <code>Biomanager/deploy/cloud-init.yaml</code> in a text editor. You'll paste it in the next step.</li>
       </ol>
 
@@ -272,7 +272,7 @@ sudo tailscale up --ssh --hostname=biomanager</code></pre>
 
       <h3>4. Start BioManager</h3>
 <pre><code>curl -fsSL -o /tmp/biomanager-server.tar.gz \
-  https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz
+  https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz
 tar -xzf /tmp/biomanager-server.tar.gz -C /opt/biomanager
 cd /opt/biomanager/Biomanager/deploy
 host/load-image.sh                     # downloads the app for this machine (Intel or ARM)
@@ -385,7 +385,7 @@ ACME_EMAIL=you@yourlab.org       # Let's Encrypt writes here before a certificat
           version is three commands:
 <pre><code>cd /opt/biomanager/Biomanager/deploy
 docker compose exec backup backup.sh      # a fresh backup first
-curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager-app/releases/latest/download/biomanager-server.tar.gz \
+curl -fsSL -o /tmp/b.tar.gz https://github.com/gaspolymerase/biomanager/releases/latest/download/biomanager-server.tar.gz \
   &amp;&amp; tar -xzf /tmp/b.tar.gz -C /opt/biomanager &amp;&amp; host/load-image.sh &amp;&amp; docker compose up -d --build</code></pre>
           Your <code>.env</code> and backups are never in the bundle, so unpacking over it keeps them. The new version
           brings the database up to date as it starts; every release is tested upgrading a lab made by each earlier one.</dd>
@@ -447,7 +447,7 @@ docker compose cp /tmp/lab/uploads/. app:/data/uploads/</code></pre></li>
       <p>An AI coding assistant with a terminal (Claude Code, Cursor, Codex and the like) can do most of D or E for you. We
         keep a guide written for it — the facts, the exact commands, what to check after each step, and the safety rules — at
         <a href="deploy-with-ai.md"><code>deploy-with-ai.md</code></a>. Paste this to your assistant:</p>
-      <div class="prompt" id="ai-prompt">Read https://gaspolymerase.github.io/biomanager-app/deploy-with-ai.md and follow it to set up a BioManager server for my lab. Start by asking me the questions it lists, recommend an option, and wait for my go-ahead before creating anything that costs money or opens the server to the internet. Never ask me to paste passwords or keys into this chat: tell me where to type them myself.</div>
+      <div class="prompt" id="ai-prompt">Read https://gaspolymerase.github.io/biomanager/deploy-with-ai.md and follow it to set up a BioManager server for my lab. Start by asking me the questions it lists, recommend an option, and wait for my go-ahead before creating anything that costs money or opens the server to the internet. Never ask me to paste passwords or keys into this chat: tell me where to type them myself.</div>
       <button type="button" class="btn btn-small copy-btn" data-copy="ai-prompt">Copy the prompt</button>
       <p>You stay in charge of the parts only you can do: creating the cloud and Tailscale accounts, approving sign-ins, and
         typing secrets. The guide tells the assistant to stop and ask at each of those.</p>
@@ -470,7 +470,7 @@ docker compose cp /tmp/lab/uploads/. app:/data/uploads/</code></pre></li>
         <dd>Run one BioManager per lab (each its own folder and domain), or one for a whole facility, where each lab keeps its
           own databases.</dd>
         <dt>Who can help?</dt>
-        <dd><a href="https://github.com/gaspolymerase/biomanager-app/issues/new?title=Lab%20server%20set-up">Open an issue</a>
+        <dd><a href="https://github.com/gaspolymerase/biomanager/issues/new?title=Lab%20server%20set-up">Open an issue</a>
           with what you're trying and where it stopped.</dd>
       </dl>
     </section>
@@ -481,7 +481,7 @@ docker compose cp /tmp/lab/uploads/. app:/data/uploads/</code></pre></li>
   <div class="wrap footer-inner">
     <div class="brand"><img src="assets/icon.svg" alt="" width="22" height="22">BioManager</div>
     <p>Released under the <a href="LICENSE">MIT licence</a>. <a href="./">Home</a> · <a href="guide.html">User guide</a> ·
-      <a href="./#download">Download</a> · <a href="https://github.com/gaspolymerase/biomanager-app/issues">Report a problem</a></p>
+      <a href="./#download">Download</a> · <a href="https://github.com/gaspolymerase/biomanager/issues">Report a problem</a></p>
   </div>
 </footer>
 

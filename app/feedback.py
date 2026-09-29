@@ -4,7 +4,7 @@
   an idea or a question. It is kept in the lab's own database, where the
   lab's admins read it and mark it done. Nothing leaves the lab unless
   someone presses **Open as a GitHub issue**, which opens a new issue on
-  the BioManager site's repository with the text filled in (the page's
+  BioManager's repository with the text filled in (the page's
   path, the version and the browser, never the server's address or who
   sent it) for them to check and submit themselves.
 - **Usage report** (admins): the last eight weeks in counts only — how
@@ -30,7 +30,7 @@ from .models import AuditEntry, Feedback
 
 bp = Blueprint("feedback", __name__, url_prefix="/feedback")
 
-ISSUES_URL = "https://github.com/gaspolymerase/biomanager-app/issues/new"
+ISSUES_URL = "https://github.com/gaspolymerase/biomanager/issues/new"
 KINDS = {
     "problem": "Something went wrong",
     "idea": "An idea",
