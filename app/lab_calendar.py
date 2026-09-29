@@ -479,8 +479,44 @@ def retire_equipment(equipment_id: int):
     return jsonify({"ok": True})
 
 
+BOOKING_REPEATS = ("daily", "weekdays", "weekly")
+MAX_REPEATED_BOOKINGS = 60
+
+
+def _repeated_slots(start: datetime, end: datetime, repeat) -> list[tuple[datetime, datetime]] | str:
+    """The slots a new booking takes: itself, and with a repeat
+    ({freq: daily | weekdays | weekly, until: a date}) the same time on each
+    later day up to and including `until`. A message when it can't be done."""
+    if not isinstance(repeat, dict) or repeat.get("freq") not in BOOKING_REPEATS:
+        return [(start, end)]
+    until = _date(repeat.get("until"))
+    if until is None or until < start.date():
+        return "Choose the last day the booking repeats until."
+    step = timedelta(days=7 if repeat["freq"] == "weekly" else 1)
+    if end - start > step:
+        return "A booking that long can't repeat that often: each one would run into the next."
+    slots, at = [], start
+    while at.date() <= until:
+        if repeat["freq"] != "weekdays" or at.weekday() < 5:
+            slots.append((at, at + (end - start)))
+        at += step
+        if len(slots) > MAX_REPEATED_BOOKINGS:
+            return f"That makes more than {MAX_REPEATED_BOOKINGS} bookings. Choose an earlier last day."
+    return slots or "There is no weekday in those dates."
+
+
+def _clash_text(s, eq: Equipment, clash: EquipmentBooking) -> str:
+    who = display_names(s).get(clash.owner, clash.owner)
+    when = f"{clash.start_at:%a %d %b %H:%M}–" + (f"{clash.end_at:%H:%M}" if clash.end_at.date() == clash.start_at.date()
+                                                 else f"{clash.end_at:%a %d %b %H:%M}")
+    return f"{eq.name} is already booked by {who}, {when}."
+
+
 @bp.route("/bookings", methods=["POST"])
 def save_booking():
+    """Make or change a booking. A new one can repeat (every day, weekday or
+    week until a date): each repeat is a booking of its own, changed or
+    cancelled on its own, and if any of them clashes none is made."""
     data = request.get_json(silent=True) or {}
     start, end = _dt(data.get("start")), _dt(data.get("end"))
     if start is None or end is None:
@@ -489,6 +525,9 @@ def save_booking():
         return _refuse("The booking has to end after it starts.")
     if end - start > timedelta(days=14):
         return _refuse("A booking can be at most two weeks long.")
+    slots = [(start, end)] if data.get("id") else _repeated_slots(start, end, data.get("repeat"))
+    if isinstance(slots, str):
+        return _refuse(slots)
     with SessionLocal() as s:
         if data.get("id"):
             booking = s.get(EquipmentBooking, _int(data["id"]))
@@ -501,20 +540,22 @@ def save_booking():
         eq = s.get(Equipment, _int(data.get("equipment_id"), booking.equipment_id_fk or 0))
         if eq is None or not eq.active:
             return _refuse("Choose an instrument to book.")
-        clash = s.scalar(select(EquipmentBooking).where(
-            EquipmentBooking.equipment_id_fk == eq.id, EquipmentBooking.id != (booking.id or 0),
-            EquipmentBooking.start_at < end, EquipmentBooking.end_at > start))
-        if clash is not None:
-            who = display_names(s).get(clash.owner, clash.owner)
-            when = f"{clash.start_at:%a %d %b %H:%M}–" + (f"{clash.end_at:%H:%M}" if clash.end_at.date() == clash.start_at.date()
-                                                         else f"{clash.end_at:%a %d %b %H:%M}")
-            return _refuse(f"{eq.name} is already booked by {who}, {when}.", 409)
+        for slot_start, slot_end in slots:
+            clash = s.scalar(select(EquipmentBooking).where(
+                EquipmentBooking.equipment_id_fk == eq.id, EquipmentBooking.id != (booking.id or 0),
+                EquipmentBooking.start_at < slot_end, EquipmentBooking.end_at > slot_start))
+            if clash is not None:
+                return _refuse(_clash_text(s, eq, clash) + (" Nothing was booked." if len(slots) > 1 else ""), 409)
+        purpose = str(data.get("purpose", "")).strip()[:200]
         booking.equipment_id_fk, booking.start_at, booking.end_at = eq.id, start, end
-        booking.purpose = str(data.get("purpose", "")).strip()[:200]
+        booking.purpose = purpose
         if booking.id is None:
             s.add(booking)
+        for slot_start, slot_end in slots[1:]:
+            s.add(EquipmentBooking(owner=booking.owner, equipment_id_fk=eq.id, start_at=slot_start,
+                                   end_at=slot_end, purpose=purpose))
         s.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "count": len(slots)})
 
 
 @bp.route("/bookings/<int:booking_id>/delete", methods=["POST"])

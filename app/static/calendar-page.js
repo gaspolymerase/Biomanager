@@ -700,6 +700,7 @@
   const formError = $('#cal-form-error');
   const delBtn = $('#biocal-delete');
   const delOneBtn = $('#cal-delete-one');
+  const dupBtn = $('#cal-duplicate');
   const repeatFreq = $('#cal-repeat-freq');
   const dueCustom = $('#biocal-due-custom');
   const duePresets = $$('.biocal-due-btn', form);
@@ -787,10 +788,35 @@
     delBtn.hidden = !editing;
     delBtn.innerHTML = `${svgIcon('trash')} ${rep ? 'Delete all' : kind === 'booking' ? 'Cancel booking' : 'Delete'}`;
     delOneBtn.hidden = !(editing && rep && item.occurrence);
+    dupBtn.hidden = !(editing && kind === 'booking');
+    $('#cal-booking-repeat').hidden = editing;
+    syncBookingRepeat();
     setKind(kind, editing);
     modal.showModal();
     setTimeout(() => { const t = form.elements.title; if (!t.closest('[hidden]')) t.focus(); }, 30);
   }
+
+  function syncBookingRepeat() {
+    const f = form.elements;
+    $('#cal-booking-until').hidden = !f.booking_repeat.value;
+    if (f.booking_repeat.value && !f.booking_until.value && f.booking_start.value) {
+      const d = new Date(`${f.booking_start.value.slice(0, 10)}T12:00`);
+      d.setDate(d.getDate() + (f.booking_repeat.value === 'weekly' ? 28 : 4));
+      f.booking_until.value = ymd(d);
+    }
+  }
+  form.elements.booking_repeat.addEventListener('change', syncBookingRepeat);
+
+  /* Duplicate: the same instrument, times and purpose as a new booking, to
+     move to another day (or repeat) before saving. */
+  dupBtn.addEventListener('click', () => {
+    form.elements.id.value = '';
+    dupBtn.hidden = true;
+    delBtn.hidden = true;
+    $('#cal-booking-repeat').hidden = false;
+    setKind('booking', false);
+    form.elements.booking_start.focus();
+  });
 
   function syncRepeat() {
     const freq = repeatFreq.value;
@@ -850,7 +876,8 @@
     let request;
     if (kind === 'booking') {
       request = postJson('/calendar/bookings', { id: id || null, equipment_id: f.equipment_id.value,
-        start: f.booking_start.value, end: f.booking_end.value, purpose: f.purpose.value });
+        start: f.booking_start.value, end: f.booking_end.value, purpose: f.purpose.value,
+        repeat: !id && f.booking_repeat.value ? { freq: f.booking_repeat.value, until: f.booking_until.value } : null });
     } else if (kind === 'away') {
       request = postJson('/calendar/away', { id: id || null, owner: f.away_owner.value, start: f.away_start.value,
         end: f.away_end.value || f.away_start.value, kind: f.away_kind.value, note: f.away_note.value, cover: f.away_cover.value });

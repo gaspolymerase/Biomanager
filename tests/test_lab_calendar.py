@@ -184,6 +184,41 @@ class BookingTests(Calendar):
         self.assertEqual(self.post_json(self.o, f"/calendar/bookings/{bid}/delete").status_code, 403)
         self.assertTrue(self.post_json(self.m, f"/calendar/bookings/{bid}/delete").get_json()["ok"])
 
+    def test_a_repeating_booking_makes_one_booking_per_day_each_its_own(self):
+        eq = self.instrument()
+        first = TODAY + timedelta(days=(7 - TODAY.weekday()) % 7 or 7)  # next Monday
+        r = self.book(self.m, eq, f"{iso(first)}T09:00", f"{iso(first)}T10:00", purpose="His prep",
+                      repeat={"freq": "weekdays", "until": iso(first + timedelta(days=13))})
+        self.assertEqual(r.get_json()["count"], 10)
+        count = lambda: one("select count(*) from equipment_bookings where equipment_id_fk=?", eq["id"])  # noqa: E731
+        self.assertEqual(count(), 10)
+        self.assertEqual(one("select count(*) from equipment_bookings where equipment_id_fk=? and purpose='His prep'",
+                             eq["id"]), 10)
+        weekly = self.book(self.m, eq, f"{iso(first)}T14:00", f"{iso(first)}T15:00",
+                           repeat={"freq": "weekly", "until": iso(first + timedelta(days=21))})
+        self.assertEqual(weekly.get_json()["count"], 4)
+
+    def test_a_repeat_that_clashes_once_books_nothing_and_says_when(self):
+        eq = self.instrument()
+        day = TODAY + timedelta(days=20)
+        self.book(self.o, eq, f"{iso(day + timedelta(days=2))}T09:30", f"{iso(day + timedelta(days=2))}T10:30")
+        before = one("select count(*) from equipment_bookings where equipment_id_fk=?", eq["id"])
+        r = self.book(self.m, eq, f"{iso(day)}T09:00", f"{iso(day)}T10:00",
+                      repeat={"freq": "daily", "until": iso(day + timedelta(days=4))})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("Nothing was booked", r.get_json()["error"])
+        self.assertEqual(one("select count(*) from equipment_bookings where equipment_id_fk=?", eq["id"]), before)
+
+    def test_a_repeat_needs_a_last_day_and_has_a_limit(self):
+        eq = self.instrument()
+        day = days_ahead(6)
+        self.assertIn("last day", self.book(self.m, eq, f"{day}T09:00", f"{day}T10:00",
+                                            repeat={"freq": "daily"}).get_json()["error"])
+        r = self.book(self.m, eq, f"{day}T09:00", f"{day}T10:00", repeat={"freq": "daily", "until": days_ahead(200)})
+        self.assertIn("more than", r.get_json()["error"])
+        r = self.book(self.m, eq, f"{day}T09:00", f"{days_ahead(8)}T10:00", repeat={"freq": "daily", "until": days_ahead(12)})
+        self.assertIn("run into the next", r.get_json()["error"])
+
 
 class AwayTests(Calendar):
     def test_work_due_while_away_is_listed_and_the_cover_is_told(self):
