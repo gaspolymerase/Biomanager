@@ -36,9 +36,10 @@ it say so. In the same piece of work, update:
 The website is `site/`, served by GitHub Pages at
 gaspolymerase.github.io/biomanager: pushing a change under `site/` to master
 publishes it within a minute (`.github/workflows/pages.yml`), so push the
-site with the app change it describes, never ahead of it. The old
-gaspolymerase/biomanager-app repository only redirects there, and keeps a
-copy of each release for desktop apps from before the move.
+site with the app change it describes, never ahead of it. Releases are
+published here only. The old gaspolymerase/biomanager-app repository is
+archived: it redirects to the website and holds 0.10.1, which desktop apps
+from before the move update to, and which looks here for every update after.
 
 - Write for the people in the lab: what it does for them and where to find it,
   in plain words, as the surrounding text does. Name buttons as the app does.

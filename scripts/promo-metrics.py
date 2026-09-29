@@ -6,7 +6,7 @@
 
 From GitHub (through `gh`, signed in as the repository's owner): stars,
 forks and watchers, downloads of every release asset (on this repository
-and on biomanager-app, where releases from before the move are),
+and on biomanager-app, where desktop apps from before the move get 0.10.1),
 and the last 14 days' visits to the repository's GitHub pages, clones and
 referring sites (traffic needs push access; the website on GitHub Pages
 isn't counted by GitHub). From PostHog, if POSTHOG_PERSONAL_API_KEY and
@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CSV = ROOT / "promo/out/metrics.csv"
-REPO, OLD = "gaspolymerase/biomanager", "gaspolymerase/biomanager-app"   # OLD: releases from before the move
+REPO, OLD = "gaspolymerase/biomanager", "gaspolymerase/biomanager-app"   # OLD: 0.10.1, for apps from before the move
 POSTHOG = os.environ.get("POSTHOG_HOST", "https://us.posthog.com")
 
 # The week-1 bar. Below it on most lines: change something before carrying on.
