@@ -1,8 +1,8 @@
 // Bench calculators, one block each, kept in the page with the numbers
 // used: dilution (C1V1 = C2V2), molarity, master mix, serial dilution,
-// ligation insert amount, cell counting and seeding, agarose gel, and
-// nucleic acid concentration and copy number. Leave one field of a
-// dilution or molarity blank and it is worked out.
+// ligation insert amount, cell counting and seeding, agarose gel, nucleic
+// acid concentration and copy number, and protein concentration from A280.
+// Leave one field of a dilution or molarity blank and it is worked out.
 
 import { debounce, el, escapeHtml, fmt, toNumber } from '../util.js';
 import { concOptions, family, fromBase, litres, showMass, showVolume, toBase, unitOptions, MASS_UNITS, VOLUME_UNITS } from './units.js';
@@ -16,6 +16,7 @@ export const CALC_TYPES = {
   cells: 'Cell count & seeding',
   gel: 'Agarose gel',
   nucleic: 'DNA / RNA',
+  protein: 'Protein (A₂₈₀)',
 };
 
 const DEFAULTS = {
@@ -27,7 +28,32 @@ const DEFAULTS = {
   cells: { counted: '', squares: 4, dilution: 2, target: 100000, wells: 6, perWell: 2, perWellUnit: 'mL', overage: 10 },
   gel: { percent: 1, volume: 50 },
   nucleic: { a260: '', kind: 'dsDNA', dilution: 1, ng: '', bp: '' },
+  protein: { sequence: '', epsilon: '', mw: '', a280: '', path: 1, dilution: 1 },
 };
+
+// Average residue masses (g/mol, as in a peptide chain) and water.
+const RESIDUE_MASS = { A: 71.0788, R: 156.1875, N: 114.1038, D: 115.0886, C: 103.1388, E: 129.1155, Q: 128.1307,
+  G: 57.0519, H: 137.1411, I: 113.1594, L: 113.1594, K: 128.1741, M: 131.1926, F: 147.1766, P: 97.1167,
+  S: 87.0782, T: 101.1051, W: 186.2132, Y: 163.176, V: 99.1326 };
+
+/* A protein's molecular weight and extinction coefficient at 280 nm from
+   its sequence (Pace et al. 1995: Trp 5500, Tyr 1490, cystine 125, as
+   ProtParam): { length, mw, epsilon (every Cys paired), epsilonReduced },
+   or null when the text holds letters that are not amino acids. */
+export function proteinParams(raw) {
+  const seq = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (!seq || /[^ACDEFGHIKLMNPQRSTVWY]/.test(seq)) return null;
+  const count = (aa) => seq.split(aa).length - 1;
+  const mw = [...seq].reduce((sum, aa) => sum + RESIDUE_MASS[aa], 18.01524);
+  const reduced = count('W') * 5500 + count('Y') * 1490;
+  return { length: seq.length, mw, epsilon: reduced + Math.floor(count('C') / 2) * 125, epsilonReduced: reduced };
+}
+
+/* Concentration from an A280 reading: molar (µM) and mg/mL. */
+export function proteinConc({ a280, epsilon, mw, path = 1, dilution = 1 }) {
+  const molar = a280 / (epsilon * (path || 1)) * (dilution || 1);
+  return { uM: molar * 1e6, mgPerMl: molar * mw };
+}
 
 export function defaultCalc(type = 'dilution') {
   return { type, ...JSON.parse(JSON.stringify(DEFAULTS[type] || DEFAULTS.dilution)) };
@@ -152,6 +178,17 @@ export function mountCalc(host, ctx) {
         ${ok(copies) ? `<p><b>${fmt(copies, 3)}</b> copies in ${fmt(n(d.ng))} ng of ${fmt(n(d.bp))} ${d.kind === 'dsDNA' ? 'bp' : 'nt'}</p>` : ''}
         ${!ok(conc) && !ok(copies) ? '<p class="nb-muted">An A₂₆₀ reading for concentration; mass and length for copy number.</p>' : ''}`;
     }
+    if (d.type === 'protein') {
+      const p = proteinParams(d.sequence);
+      if (String(d.sequence || '').trim() && !p) return '<p class="nb-warn">The sequence has letters that are not amino acids.</p>';
+      const eps = ok(n(d.epsilon)) ? n(d.epsilon) : p ? p.epsilon : NaN;
+      const mw = ok(n(d.mw)) ? n(d.mw) : p ? p.mw : NaN;
+      const about = p ? `<p class="nb-muted">From the sequence: ${p.length} aa, ${fmt(p.mw / 1000, 4)} kDa, ε₂₈₀ ${fmt(p.epsilon, 5)} M⁻¹cm⁻¹ with every Cys paired (${fmt(p.epsilonReduced, 5)} reduced)${ok(eps) && ok(mw) ? `; A₂₈₀ of 1 mg/mL: ${fmt(eps / mw, 3)}` : ''}.</p>` : '';
+      if (!ok(eps) || !ok(n(d.a280))) return `${about}<p class="nb-muted">Paste the sequence (or give ε and MW) and the A₂₈₀ reading.</p>`;
+      const c = proteinConc({ a280: n(d.a280), epsilon: eps, mw, path: n(d.path) || 1, dilution: n(d.dilution) || 1 });
+      return `<p class="nb-calc-answer"><b>${fmt(c.uM, 4)} µM</b>${ok(mw) ? ` = <b>${fmt(c.mgPerMl, 4)} mg/mL</b>` : ''}</p>${about}
+        ${!ok(mw) ? '<p class="nb-muted">Give the molecular weight (or the sequence) for mg/mL.</p>' : ''}`;
+    }
     return '';
   }
 
@@ -192,6 +229,11 @@ export function mountCalc(host, ctx) {
       fields = `<label class="nb-calc-field"><span>Kind</span><span class="nb-calc-input"><select data-k="kind"${dis}>${['dsDNA', 'ssDNA', 'RNA', 'oligo'].map((k) => `<option${d.kind === k ? ' selected' : ''}>${k}</option>`).join('')}</select></span></label>`
         + field('a260', d.a260, 'A₂₆₀', { dis }) + field('dilution', d.dilution, 'Dilution', { dis })
         + field('ng', d.ng, 'Mass (ng)', { dis }) + field('bp', d.bp, 'Length (bp or nt)', { dis });
+    } else if (d.type === 'protein') {
+      fields = field('sequence', d.sequence, 'Sequence (one letter)', { wide: true, placeholder: 'MKV… (or give ε and MW)', dis })
+        + field('epsilon', d.epsilon, 'ε₂₈₀ (M⁻¹cm⁻¹)', { placeholder: 'from the sequence', dis })
+        + field('mw', d.mw, 'MW (g/mol)', { placeholder: 'from the sequence', dis })
+        + field('a280', d.a280, 'A₂₈₀', { dis }) + field('path', d.path, 'Path (cm)', { dis }) + field('dilution', d.dilution, 'Dilution', { dis });
     }
     root.innerHTML = `<div class="nb-calc-head">${typeSel}</div><div class="nb-calc-fields">${fields}</div><div class="nb-calc-results">${results()}</div>`;
   }

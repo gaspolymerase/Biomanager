@@ -19,6 +19,9 @@ class Blocks(unittest.TestCase):
     def test_qpcr_leaves_control_wells_out_and_flags_one_that_amplified(self):
         self.check("qpcr.check.mjs")
 
+    def test_protein_concentration_from_a280_and_the_sequence(self):
+        self.check("protein.check.mjs")
+
 
 if __name__ == "__main__":
     unittest.main()
