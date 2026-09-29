@@ -4502,7 +4502,7 @@ def calendar_items(db_session, start: date | None, end: date | None, owner: str 
         if repeat is None:
             items.append(item)
             continue
-        item["raw"]["repeat"] = lab_calendar.repeat_summary(repeat)
+        item["raw"]["repeat"] = lab_calendar.repeat_summary(repeat, e.event_date)
         for day in lab_calendar.occurrences(e.event_date, repeat, start, end):
             shift = timedelta(days=(day - e.event_date).days)
             copy = dict(item, id=f"{item['id']}@{day.isoformat()}",
@@ -4866,9 +4866,24 @@ def calendar_item_create():
                 description=payload.get("body", "") or payload.get("description", ""),
                 owner=owner,
             )
+        # "Change this one only": one date of a repeating event becomes an
+        # event of its own (this one), and the series skips that date.
+        split = payload.get("split_from") if kind != "task" else None
+        if isinstance(split, dict):
+            series = db_session.get(CalendarEvent, lab_calendar._int(split.get("event_id")))
+            day = lab_calendar._date(split.get("date"))
+            repeat = series and db_session.scalar(
+                select(CalendarRepeat).where(CalendarRepeat.event_id_fk == series.id))
+            if repeat is None or day is None:
+                return jsonify({"ok": False, "error": "That event does not repeat."}), 404
+            if not lab_calendar._can_edit(series.owner):
+                return jsonify({"ok": False, "error": "Only the person who added this event can change it."}), 403
+            row.event_type, row.animal_id_fk = series.event_type, series.animal_id_fk
+            skip = {d for d in (repeat.skip or "").split(",") if d} | {day.isoformat()}
+            repeat.skip = ",".join(sorted(skip))
         db_session.add(row)
         db_session.flush()
-        if kind != "task":
+        if kind != "task" and not isinstance(split, dict):
             lab_calendar.save_repeat(db_session, row, payload.get("repeat"))
         db_session.commit()
         if kind == "task":

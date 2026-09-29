@@ -36,7 +36,10 @@ from .models import (Absence, CalendarEvent, CalendarFeed, CalendarRepeat, Equip
 
 bp = Blueprint("labcal", __name__, url_prefix="/calendar")
 
-FREQS = {"daily": "day", "weekly": "week", "monthly": "month"}
+# nthweekday: every month on the same weekday of the month as the first
+# date ("the first Monday", or "the last Friday" when it is the fifth).
+FREQS = {"daily": "day", "weekly": "week", "monthly": "month", "nthweekday": "month"}
+ORDINALS = ("first", "second", "third", "fourth", "last")
 ABSENCE_KINDS = {"leave": "away", "conference": "at a conference", "other": "away"}
 # Colours of the calendar's layers; items may carry their own.
 COLORS = {"stocks": "#af52de", "supplies": "#ff2d55", "protocols": "#5856d6",
@@ -128,13 +131,26 @@ def _allday(item_id, calendar_id, kind, title, first: date, last: date, color, b
 
 # ---------------------------------------------------------------- repeats
 
+def weekday_of_month(day: date) -> int:
+    """0–3 for the first to fourth such weekday of its month, 4 for a fifth
+    (read as "the last")."""
+    return (day.day - 1) // 7
+
+
 def _nth(first: date, freq: str, k: int) -> date:
     if freq == "daily":
         return first + timedelta(days=k)
-    if freq == "monthly":
+    if freq in ("monthly", "nthweekday"):
         m = first.month - 1 + k
         y, m = first.year + m // 12, m % 12 + 1
-        return date(y, m, min(first.day, monthrange(y, m)[1]))
+        if freq == "monthly":
+            return date(y, m, min(first.day, monthrange(y, m)[1]))
+        n, length = weekday_of_month(first), monthrange(y, m)[1]
+        if n == 4:                                     # the last such weekday
+            last = date(y, m, length)
+            return last - timedelta(days=(last.weekday() - first.weekday()) % 7)
+        day1 = date(y, m, 1)
+        return day1 + timedelta(days=(first.weekday() - day1.weekday()) % 7 + 7 * n)
     return first + timedelta(weeks=k)
 
 
@@ -142,7 +158,7 @@ def occurrences(first: date, repeat: CalendarRepeat, start: date, end: date) -> 
     """The dates of a repeating event between start and end, inclusive."""
     step = max(1, repeat.interval or 1)
     skip = {s for s in (repeat.skip or "").split(",") if s}
-    if repeat.freq == "monthly":
+    if repeat.freq in ("monthly", "nthweekday"):
         months = (start.year - first.year) * 12 + start.month - first.month
         n = max(0, months // step - 1)
     else:
@@ -166,11 +182,13 @@ def repeats_by_event(session, event_ids) -> dict[int, CalendarRepeat]:
         select(CalendarRepeat).where(CalendarRepeat.event_id_fk.in_(list(event_ids))))}
 
 
-def repeat_summary(repeat: CalendarRepeat | None) -> dict | None:
+def repeat_summary(repeat: CalendarRepeat | None, first: date | None = None) -> dict | None:
     if repeat is None:
         return None
     unit = FREQS.get(repeat.freq, "week")
     every = f"Every {unit}" if repeat.interval <= 1 else f"Every {repeat.interval} {unit}s"
+    if repeat.freq == "nthweekday" and first is not None:
+        every += f" on the {ORDINALS[weekday_of_month(first)]} {first:%A}"
     return {"freq": repeat.freq, "interval": repeat.interval,
             "until": repeat.until.isoformat() if repeat.until else "",
             "text": every + (f" until {repeat.until:%d %b %Y}" if repeat.until else "")}

@@ -51,6 +51,35 @@ class RepeatTests(Calendar):
         got = occurrences(date(2026, 1, 31), rep, date(2026, 1, 1), date(2026, 4, 30))
         self.assertEqual(got, [date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31), date(2026, 4, 30)])
 
+    def test_the_first_monday_of_every_month_and_the_last_friday(self):
+        rep = SimpleNamespace(freq="nthweekday", interval=1, until=None, skip="")
+        got = occurrences(date(2026, 1, 5), rep, date(2026, 1, 1), date(2026, 5, 31))    # a first Monday
+        self.assertEqual(got, [date(2026, 1, 5), date(2026, 2, 2), date(2026, 3, 2), date(2026, 4, 6), date(2026, 5, 4)])
+        got = occurrences(date(2026, 1, 30), rep, date(2026, 1, 1), date(2026, 4, 30))   # a fifth, so the last Friday
+        self.assertEqual(got, [date(2026, 1, 30), date(2026, 2, 27), date(2026, 3, 27), date(2026, 4, 24)])
+        from app.lab_calendar import repeat_summary
+        self.assertEqual(repeat_summary(rep, date(2026, 1, 5))["text"], "Every month on the first Monday")
+
+    def test_change_this_one_only_moves_one_date_and_leaves_the_series(self):
+        title = uniq("Group meeting")
+        row = self.new_event(self.m, title, TODAY, {"freq": "weekly", "interval": 1, "until": ""})
+        moved_from = TODAY + timedelta(weeks=1)
+        moved_to = moved_from + timedelta(days=1)
+        r = self.post_json(self.m, "/calendar/items", {
+            "kind": "event", "title": title + " (moved)", "start": f"{iso(moved_to)}T14:00:00",
+            "end": f"{iso(moved_to)}T15:00:00", "isAllday": False,
+            "split_from": {"event_id": row, "date": iso(moved_from)}})
+        self.assertTrue(r.get_json()["ok"], r.get_data(as_text=True))
+        days = [i["start"][:10] for i in self.titled(self.m, title, start=TODAY, end=TODAY + timedelta(days=20))]
+        self.assertNotIn(iso(moved_from), days)
+        self.assertEqual(len(days), 2)
+        moved = self.titled(self.m, title + " (moved)", start=TODAY, end=TODAY + timedelta(days=20))
+        self.assertEqual([(i["start"][:16], i["raw"].get("repeat")) for i in moved], [(f"{iso(moved_to)}T14:00", None)])
+        # Someone else can't split your series.
+        r = self.post_json(self.o, "/calendar/items", {"kind": "event", "title": "x", "start": f"{iso(TODAY)}T09:00:00",
+                                                        "split_from": {"event_id": row, "date": iso(TODAY)}})
+        self.assertEqual(r.status_code, 403)
+
     def test_a_long_running_daily_repeat_still_reaches_the_window(self):
         rep = SimpleNamespace(freq="daily", interval=1, until=None, skip="")
         got = occurrences(date(2020, 1, 1), rep, date(2026, 6, 1), date(2026, 6, 3))

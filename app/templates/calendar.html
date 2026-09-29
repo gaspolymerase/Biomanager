@@ -157,6 +157,7 @@
             <option value="daily">Every day</option>
             <option value="weekly">Every week</option>
             <option value="monthly">Every month</option>
+            <option value="nthweekday" id="cal-repeat-nth">Every month on the same weekday</option>
           </select>
           <span class="cal-repeat-more" id="cal-repeat-more" hidden>
             <span>every</span>
@@ -166,7 +167,7 @@
             <input type="date" name="repeat_until" aria-label="Until">
           </span>
         </div>
-        <p class="cal-hint" id="cal-repeat-hint" hidden>Changes apply to every repeat. To take out one date, use Delete this one.</p>
+        <p class="cal-hint" id="cal-repeat-hint" hidden>Save changes every repeat. To change only this date, use Change this one only; to take it out, Delete this one.</p>
       </fieldset>
 
       {# To-do: a due day from presets or a date. #}
@@ -240,6 +241,7 @@
     <footer class="record-dialog-foot">
       <button type="button" class="btn btn-danger" id="biocal-delete" hidden>{{ icon('trash') }} Delete</button>
       <button type="button" class="btn" id="cal-delete-one" hidden>Delete this one</button>
+      <button type="button" class="btn" id="cal-change-one" hidden title="Save what the dialog says for this date only; the other repeats stay as they are">Change this one only</button>
       <button type="button" class="btn" id="cal-duplicate" hidden title="A new booking like this one: change the day or time, then Save">{{ icon('copy') }} Duplicate</button>
       <span class="mr-auto"></span>
       <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="biocal-modal">Cancel</button>

@@ -701,6 +701,8 @@
   const delBtn = $('#biocal-delete');
   const delOneBtn = $('#cal-delete-one');
   const dupBtn = $('#cal-duplicate');
+  const changeOneBtn = $('#cal-change-one');
+  const ORDINALS = ['first', 'second', 'third', 'fourth', 'last'];
   const repeatFreq = $('#cal-repeat-freq');
   const dueCustom = $('#biocal-due-custom');
   const duePresets = $$('.biocal-due-btn', form);
@@ -788,6 +790,7 @@
     delBtn.hidden = !editing;
     delBtn.innerHTML = `${svgIcon('trash')} ${rep ? 'Delete all' : kind === 'booking' ? 'Cancel booking' : 'Delete'}`;
     delOneBtn.hidden = !(editing && rep && item.occurrence);
+    changeOneBtn.hidden = !(editing && rep && item.occurrence && kind === 'event');
     dupBtn.hidden = !(editing && kind === 'booking');
     $('#cal-booking-repeat').hidden = editing;
     syncBookingRepeat();
@@ -806,6 +809,7 @@
     }
   }
   form.elements.booking_repeat.addEventListener('change', syncBookingRepeat);
+  form.elements.start.addEventListener('change', syncRepeat);
 
   /* Duplicate: the same instrument, times and purpose as a new booking, to
      move to another day (or repeat) before saving. */
@@ -822,7 +826,12 @@
     const freq = repeatFreq.value;
     $('#cal-repeat-more').hidden = !freq;
     const n = Number(form.elements.repeat_interval.value) || 1;
-    const unit = { daily: 'day', weekly: 'week', monthly: 'month' }[freq] || 'week';
+    const unit = { daily: 'day', weekly: 'week', monthly: 'month', nthweekday: 'month' }[freq] || 'week';
+    // "Every month on the same weekday" says which: "the first Monday".
+    const first = form.elements.start.value ? new Date(`${form.elements.start.value.slice(0, 10)}T12:00`) : null;
+    $('#cal-repeat-nth').textContent = first
+      ? `Every month on the ${ORDINALS[Math.min(4, Math.floor((first.getDate() - 1) / 7))]} ${first.toLocaleDateString(undefined, { weekday: 'long' })}`
+      : 'Every month on the same weekday';
     $('#cal-repeat-unit').textContent = n === 1 ? unit : unit + 's';
   }
   repeatFreq.addEventListener('change', syncRepeat);
@@ -932,6 +941,26 @@
       f.end.value = f.end.type === 'date' ? date : `${date}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
     });
   })();
+
+  /* Change this one only: this date becomes an event of its own with what
+     the dialog now says, and the series leaves the date out. */
+  changeOneBtn.addEventListener('click', () => {
+    const f = form.elements;
+    if (!f.title.value.trim()) return showError(formError, 'Give it a title.');
+    if (!f.start.value) return showError(formError, 'Choose when it starts.');
+    const start = f.start.value.length === 16 ? f.start.value + ':00' : f.start.value;
+    const end = f.end.value ? (f.end.value.length === 16 ? f.end.value + ':00' : f.end.value) : start;
+    postJson('/calendar/items', {
+      kind: 'event', title: f.title.value, start, end, isAllday: f.isAllday.checked,
+      backgroundColor: f.color.value, body: f.body.value,
+      split_from: { event_id: Number(String(f.id.value).split('-')[1]), date: f.occurrence.value },
+    }).then((j) => {
+      if (!j.ok) return showError(formError, j.error || "Couldn't save that.");
+      modal.close();
+      fetchAndRender();
+      return undefined;
+    });
+  });
 
   delBtn.addEventListener('click', async () => {
     const f = form.elements;
