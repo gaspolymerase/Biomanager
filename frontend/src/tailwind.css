@@ -1255,6 +1255,14 @@
     @apply -mt-2 rounded-lg border border-brand-100 bg-brand-50 px-2.5 py-1.5 text-[12px] leading-snug text-brand-800;
   }
   .record-dialog-body label > .is-filled { @apply border-brand-200 bg-brand-50/60; }
+  /* "Used in notebook pages" (static/used-in.js). */
+  .used-in h4 { @apply mb-1 text-[12.5px] font-semibold text-ink; }
+  .used-in-hint { @apply mb-1.5 text-[12px] text-muted; }
+  .used-in-hint code { @apply rounded bg-sand-100 px-1 font-mono text-[11.5px] text-ink; }
+  .used-in [data-used-in-list] { @apply flex flex-col text-[12.5px] text-muted; }
+  .used-in-row { @apply flex items-baseline gap-2 rounded-md px-1.5 py-1 no-underline hover:bg-sand-50; }
+  .used-in-title { @apply min-w-0 flex-1 truncate font-medium text-ink; }
+  .used-in-when { @apply shrink-0 text-[12px] text-muted; }
 }
 
 /* ===========================================================================

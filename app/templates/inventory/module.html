@@ -564,6 +564,13 @@
         {% if m.has('expiry') %}<label><span>Expires{{ star('expires_on') }}</span> <input type="date" name="expires_on"{{ req('expires_on') }}></label>{% endif %}
       </fieldset>
       <label class="record-wide">Notes <textarea name="notes" rows="3"></textarea></label>
+      {% if m.kind != 'orders' %}
+        <section class="record-wide used-in" data-used-in="{{ key }}" hidden>
+          <h4>Used in notebook pages</h4>
+          <p class="used-in-hint">Link it from a page by typing <code data-used-in-code></code>.</p>
+          <div data-used-in-list></div>
+        </section>
+      {% endif %}
     </div>
     <footer class="record-dialog-foot">
       <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
@@ -624,6 +631,7 @@
 {% endblock %}
 
 {% block body_end %}
+<script src="{{ url_for('static', filename='used-in.js') }}?v={{ asset_version('used-in.js') }}" defer></script>
 <script type="application/json" id="inv-page-data">{{ {"isAdmin": is_admin, "me": current_user.username,
                                                         "openStatuses": m.open_statuses | map('lower') | list} | tojson }}</script>
 <script type="application/json" id="inv-fill-data">{{ remembered.fill | tojson }}</script>

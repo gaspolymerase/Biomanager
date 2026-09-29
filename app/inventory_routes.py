@@ -194,7 +194,7 @@ def new_module():
 def _item_payload(mv, item: InventoryItem) -> dict:
     attrs = item.attrs_dict
     payload = {
-        "id": item.id, "_label": item.name or f"#{item.number}",
+        "id": item.id, "_number": item.number, "_label": item.name or f"#{item.number}",
         "_locked": not _can_edit(item), "_manage": _can_manage(item),
         "name": item.name, "category": item.category, "status": item.status, "owner": item.owner,
         "is_shared": "1" if item.is_shared else "0", "quantity": item.quantity, "unit": item.unit,

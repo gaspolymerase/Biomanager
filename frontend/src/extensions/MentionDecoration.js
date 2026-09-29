@@ -1,4 +1,4 @@
-// Inline @mouse 123 / @plasmid 4 / @order 7 → styled chip via ProseMirror
+// Inline @mouse 123 / @plasmid 4 / @order 7 / @antibodies 12 → styled chip via ProseMirror
 // decorations. The text stays as plain markdown source — only visual styling
 // is added on matching ranges. Click → navigate, hover → custom rich popover
 // fetched from /notebook/lookup/<type>/<id>. No schema changes, no markdown
@@ -8,23 +8,13 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-// Adding a new entity type: extend the regex alternatives and add a NAVIGATION
-// entry. The backend must also expose /notebook/lookup/<type>/<id> and
-// /notebook/search/<type> for hover info and the suggestion dropdown to work.
-const MENTION_RE = /@(mouse|plasmid|order)\s+(\d+)/g;
+// The types are mouse, plasmid, order and every inventory (mentionTypes.js).
+// The backend exposes /notebook/lookup/<type>/<id> and /notebook/search/<type>
+// for hover info and the suggestion dropdown, for each of them.
+import { mentionRe, mentionTypes, styleOf } from './mentionTypes.js';
 
 // The record itself (app.py notebook_open_mention redirects to its page).
-const NAVIGATION = {
-  mouse: (id) => `/notebook/open/mouse/${id}`,
-  plasmid: (id) => `/notebook/open/plasmid/${id}`,
-  order: (id) => `/notebook/open/order/${id}`,
-};
-
-const TYPE_LABELS = {
-  mouse: 'Mouse',
-  plasmid: 'Plasmid',
-  order: 'Order',
-};
+const navigation = (type, id) => `/notebook/open/${type}/${id}`;
 
 // Per-page cache so multiple hovers on the same chip skip the network.
 const lookupCache = new Map(); // key: `${type}:${id}` -> data
@@ -92,13 +82,14 @@ function positionPopover(chip) {
 
 function renderPopover(type, id, data, errorMsg) {
   const el = ensurePopover();
-  const navUrl = NAVIGATION[type] ? NAVIGATION[type](id) : '#';
-  const typeLabel = TYPE_LABELS[type] || type;
+  const navUrl = navigation(type, id);
+  const typeLabel = mentionTypes().labels[type] || type;
+  const tag = styleOf(type);
 
   if (errorMsg) {
     el.innerHTML = `
       <div class="entity-popover-head">
-        <span class="entity-popover-tag entity-popover-tag-${type}">${typeLabel}</span>
+        <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
         <span class="entity-popover-id">#${id}</span>
       </div>
       <div class="entity-popover-body">${errorMsg}</div>
@@ -109,7 +100,7 @@ function renderPopover(type, id, data, errorMsg) {
   if (!data) {
     el.innerHTML = `
       <div class="entity-popover-head">
-        <span class="entity-popover-tag entity-popover-tag-${type}">${typeLabel}</span>
+        <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
         <span class="entity-popover-id">#${id}</span>
       </div>
       <div class="entity-popover-body entity-popover-loading">Loading…</div>
@@ -149,11 +140,14 @@ function renderPopover(type, id, data, errorMsg) {
       ['Requester', data.requester_name],
     ];
     rows = fields.filter(([_, v]) => v).map(([k, v]) => row(k, v)).join('');
+  } else if (Array.isArray(data.fields)) {
+    // An inventory record: the server sends the fields worth showing.
+    rows = data.fields.map(([k, v]) => row(k, v)).join('');
   }
 
   el.innerHTML = `
     <div class="entity-popover-head">
-      <span class="entity-popover-tag entity-popover-tag-${type}">${typeLabel}</span>
+      <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
       <span class="entity-popover-id">#${escapeHtml(String(id))}</span>
       <a href="${escapeAttr(navUrl)}" class="entity-popover-open" title="Open in a new tab">↗</a>
     </div>
@@ -289,14 +283,14 @@ function buildDecorations(doc) {
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
     const text = node.text;
-    const re = new RegExp(MENTION_RE.source, 'g');
+    const re = mentionRe();
     let match;
     while ((match = re.exec(text)) !== null) {
       const from = pos + match.index;
       const to = from + match[0].length;
       decos.push(
         Decoration.inline(from, to, {
-          class: `entity-mention entity-mention-${match[1]}`,
+          class: `entity-mention entity-mention-${styleOf(match[1])}`,
           'data-entity-type': match[1],
           'data-entity-id': match[2],
         })
@@ -332,14 +326,9 @@ export const MentionDecoration = Extension.create({
             const chip = target.closest('.entity-mention');
             if (!chip) return false;
             if (!(event.metaKey || event.ctrlKey)) return false;
-            const type = chip.getAttribute('data-entity-type');
-            const url = NAVIGATION[type] && NAVIGATION[type](chip.getAttribute('data-entity-id'));
-            if (url) {
-              openInAppTab(url);
-              event.preventDefault();
-              return true;
-            }
-            return false;
+            openInAppTab(navigation(chip.getAttribute('data-entity-type'), chip.getAttribute('data-entity-id')));
+            event.preventDefault();
+            return true;
           },
           handleDOMEvents: {
             mouseover(_view, event) {

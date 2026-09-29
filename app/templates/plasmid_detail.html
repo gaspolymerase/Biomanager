@@ -153,6 +153,13 @@
         #{{ plasmid.plasmid_id }} shows here.</p>
     {% endif %}
   </article>
+  <article class="card mt-3 max-w-[760px] used-in" data-used-in="plasmid" data-used-in-number="{{ plasmid.plasmid_id }}" hidden>
+    <header class="card-head"><h2>{{ icon('notebook') }} Used in notebook pages</h2></header>
+    <div class="px-4 py-3">
+      <p class="used-in-hint">Link it from a page by typing <code data-used-in-code></code>.</p>
+      <div data-used-in-list></div>
+    </div>
+  </article>
 </section>
 
 {# ============ Properties ============ #}
@@ -168,6 +175,7 @@
   </div>
 </section>
 
+<script src="{{ url_for('static', filename='used-in.js') }}?v={{ asset_version('used-in.js') }}" defer></script>
 {# OVE UMD bundle. Exposes window.createVectorEditor. Loaded BEFORE the
    inline script so the global is in place when we read it. #}
 <script src="{{ url_for('static', filename='notebook-build/plasmid-app.js') }}?v={{ asset_version('notebook-build/plasmid-app.js') }}" defer

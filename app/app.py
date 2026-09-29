@@ -5067,6 +5067,8 @@ def notebook():
                               if selected_page is not None else None)
         selected_tab_id_value = selected_tab.id if selected_tab else None
         me = {"username": g.user.username, "name": g.user.display_name or g.user.username}
+        mention_types = [{"key": m.key, "label": m.label, "noun": m.item_noun}
+                         for m in _mention_modules(db_session).values()]
 
     return render_template(
         "notebook.html",
@@ -5078,6 +5080,7 @@ def notebook():
         kind_icons=lab_notebook.KIND_ICONS,
         statuses=lab_notebook.STATUSES,
         me=me,
+        mention_types=mention_types,
         starters=[{"key": key, "title": st["title"], "kind": st["kind"], "hint": st["hint"]}
                   for key, st in lab_notebook.STARTERS.items()],
     )
@@ -5985,6 +5988,58 @@ def notebook_lookup_plasmid(plasmid_id: int):
         )
 
 
+# @links to inventory records: "@antibodies 12" is item #12 of the database
+# whose key is "antibodies". Mice, plasmids and orders keep their own words.
+MENTION_BUILTINS = ("mouse", "plasmid", "order", "all")
+
+
+def _mention_modules(db_session) -> dict[str, InventoryModule]:
+    """The inventories the signed-in person can see and @link, by key."""
+    from . import inventory_service as inventories
+    return {m.key: m for m in inventories.list_modules(db_session)
+            if m.kind != "orders" and m.key not in MENTION_BUILTINS}
+
+
+def _mention_items(db_session, module: InventoryModule, query: str, limit: int) -> list[InventoryItem]:
+    stmt = select(InventoryItem).where(InventoryItem.module_id_fk == module.id)
+    if query.isdigit():
+        stmt = stmt.where(InventoryItem.number == int(query))
+    elif query:
+        like = like_pattern(query)
+        stmt = stmt.where(InventoryItem.name.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
+                          | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\"))
+    return list(db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)))
+
+
+def _mention_label(module: InventoryModule, item: InventoryItem, with_noun: bool = False) -> str:
+    parts = [f"{module.item_noun.capitalize()} #{item.number}" if with_noun else f"#{item.number}",
+             item.name or "(no name)"]
+    parts += [v for v in (item.vendor, item.lot and f"lot {item.lot}") if v]
+    return " · ".join(parts)
+
+
+@app.route("/notebook/lookup/<key>/<int:number>")
+@login_required
+def notebook_lookup_item(key: str, number: int):
+    """What the popover on an @<inventory> <n> chip shows."""
+    from . import inventory_service as inventories
+    with SessionLocal() as db_session:
+        module = _mention_modules(db_session).get(key)
+        item = module and db_session.scalar(select(InventoryItem).where(
+            InventoryItem.module_id_fk == module.id, InventoryItem.number == number))
+        if not item:
+            return jsonify({"ok": False}), 404
+        where = " · ".join(v for v in ((item.rack.name if item.rack else ""), inventories.rack_label(item),
+                                       item.location_note) if v)
+        amount = " ".join(v for v in (item.quantity, item.unit) if v)
+        fields = [("Name", item.name), ("Category", item.category), ("Status", item.status),
+                  ("Owner", "Lab common" if item.is_shared else item.owner), ("Vendor", item.vendor),
+                  ("Catalog #", item.catalog_number), ("Lot", item.lot), ("Amount", amount), ("Where", where),
+                  ("Expires", item.expires_on.isoformat() if item.expires_on else "")]
+        return jsonify({"ok": True, "label": _mention_label(module, item, True), "type_label": module.label,
+                        "fields": [[k, v] for k, v in fields if v]})
+
+
 def _order_items_query(db_session, query: str, limit: int):
     """Orders for @order mentions: items of the first orders inventory,
     where an order's number is what @order <n> refers to."""
@@ -6056,6 +6111,14 @@ def notebook_open_mention(entity_type: str, number: int):
                 return redirect(url_for("inventory.module", key=module.key, open=found[0].id))
             flash(f"There is no order #{number}.", "warning")
             return redirect(url_for("home_dashboard"))
+        module = _mention_modules(db_session).get(entity_type)
+        if module is not None:
+            item = db_session.scalar(select(InventoryItem).where(
+                InventoryItem.module_id_fk == module.id, InventoryItem.number == number))
+            if item is not None:
+                return redirect(url_for("inventory.module", key=module.key, open=item.id))
+            flash(f"There is no {module.item_noun} #{number} in {module.label}.", "warning")
+            return redirect(url_for("inventory.module", key=module.key))
     abort(404)
 
 
@@ -6067,10 +6130,10 @@ def notebook_backlinks(entity_type: str, entity_id: int):
     Scoped to pages the current user may open (theirs and shared). Returns a list of
     {page_id, page_title, tab_id, tab_title, snippet, updated_at}.
     """
-    if entity_type not in ("mouse", "plasmid", "order"):
-        return jsonify({"ok": False, "error": "bad type"}), 400
     needle = f"@{entity_type} {entity_id}"
     with SessionLocal() as db_session:
+        if entity_type not in ("mouse", "plasmid", "order") and entity_type not in _mention_modules(db_session):
+            return jsonify({"ok": False, "error": "bad type"}), 400
         stmt = (
             lab_notebook.accessible_filter(
                 select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
@@ -6187,7 +6250,20 @@ def notebook_search_entity(entity_type: str):
                     "label": f"Order #{o.number} · {o.vendor or '?'} · {o.name or '(no item)'}",
                 })
 
+            # Every other inventory, most recent first; a bare "@" keeps to
+            # the three above so the list stays short.
+            if query:
+                for module in _mention_modules(db_session).values():
+                    for i in _mention_items(db_session, module, query, per_type_limit):
+                        items.append({"type": module.key, "type_label": module.label, "id": i.number,
+                                      "label": _mention_label(module, i, True)})
+
             return jsonify({"ok": True, "items": items[:limit]})
+        module = _mention_modules(db_session).get(entity_type)
+        if module is not None:
+            return jsonify({"ok": True, "items": [
+                {"id": i.number, "label": _mention_label(module, i)}
+                for i in _mention_items(db_session, module, query, limit)]})
         return jsonify({"ok": False, "error": f"Unknown entity type: {entity_type}"}), 400
 
 

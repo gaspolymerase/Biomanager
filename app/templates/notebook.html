@@ -342,6 +342,8 @@ async function createPage(tabId) {
 }
 BioActions.register({ createPage: createPage, createTab: createTab, renameTab: renameTab });
 </script>
+{# The inventories a page can @link ("@antibodies 12"), for the editor's @ menu and chips. #}
+<script type="application/json" id="nb-mention-types">{{ mention_types | tojson }}</script>
 <script src="{{ url_for('static', filename='notebook-page.js') }}?v={{ asset_version('notebook-page.js') }}" defer></script>
 <script src="{{ url_for('static', filename='notebook-build/notebook-app.js') }}?v={{ asset_version('notebook-build/notebook-app.js') }}" defer data-missing-flag="__notebookBundleMissing"></script>
 {% endblock %}
