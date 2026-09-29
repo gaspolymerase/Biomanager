@@ -241,6 +241,17 @@ class CrossAndCollectionTests(StockCase):
                 (progeny,) = ids_after(self.mid, before)
                 self.assertEqual(unit(progeny)["ready_on"], days_ahead(days))
 
+    def test_progeny_moved_to_another_temperature_emerge_on_its_time(self):
+        cross = self.make_cross(self.a, self.key, rack_id=self.rack("25"))
+        before = top(self.mid)
+        self.action(self.a, self.key, cross, "collect")
+        (progeny,) = ids_after(self.mid, before)
+        self.assertEqual(unit(progeny)["ready_on"], days_ahead(10))
+        cold = self.rack("18")
+        r = self.a.post(f"/stocks/{self.key}/units/{progeny}/place", data={"rack_id": cold, "row": 1, "col": 1})
+        self.assertTrue(r.get_json()["ok"])
+        self.assertEqual(unit(progeny)["ready_on"], days_ahead(19))     # all of it still to go, at 18 °C
+
     def test_collecting_from_a_stock_or_discarded_cross_is_refused(self):
         stock = self.make_vial(self.a, self.key, purpose="stock")
         cross = self.make_cross(self.a, self.key)

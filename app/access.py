@@ -34,7 +34,8 @@ def current_user():
 ROLES = {
     "member": ("Member", "Changes their own records, and the lab's shared ones."),
     "care": ("Animal care", "Technicians and vets: may change any lab's animals, cages, tanks and vials "
-                            "(weights, moves, flips, health), but not experiments, notebooks or settings."),
+                            "(weights, moves, flips, health). Other people's experiments and notebook pages, "
+                            "and settings, stay theirs; they keep their own like a member."),
     "facility": ("Facility manager", "Animal care, plus the facility's racks, rooms, incubators, water systems "
                                      "and databases' settings. Not accounts."),
     "admin": ("Admin", "Everything, including accounts and Lab setup."),

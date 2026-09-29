@@ -782,7 +782,8 @@ track.
   Admins can change anything.
 - **Roles for a facility** (Manage users → role): **Animal care**
   (technicians, vets) may change any lab's animals, cages, tanks and
-  vials, but not experiments, notebooks or settings; a **Facility
+  vials, but not other people's experiments, notebook pages or settings
+  (their own they keep like a member); a **Facility
   manager** also runs the racks, rooms, incubators, water systems and
   databases' settings, but not accounts.
 - **Sign in with your institution.** Besides Google and Microsoft, a

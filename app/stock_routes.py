@@ -362,7 +362,11 @@ def _unit_from_form(session, mv, unit: StockUnit, form, placing: bool = True, us
     for text in (unit.genotype, unit.female_genotype, unit.male_genotype):
         svc.remember_genotype(session, mv.id, text or "", user)
     if placing and "rack_id" in form and form_changed(form, "rack_id", "position"):
-        return svc.apply_position(session, unit, form.get("rack_id"), form.get("position"))
+        before = unit.rack
+        problem = svc.apply_position(session, unit, form.get("rack_id"), form.get("position"))
+        after = session.get(StockRack, unit.rack_id_fk) if unit.rack_id_fk else None
+        svc.follow_temperature(mv, unit, before, after)
+        return problem
     return None
 
 
@@ -517,6 +521,7 @@ def place_unit(key: str, unit_id: int):
             if unit.rack_row is None:
                 return jsonify({"ok": False, "error": "That cell is taken. Drop it on an empty cell."}), 409
             holder.rack_id_fk, holder.rack_row, holder.rack_col = unit.rack_id_fk, unit.rack_row, unit.rack_col
+        svc.follow_temperature(svc.view(row), unit, unit.rack, rack)
         unit.rack_id_fk, unit.rack_row, unit.rack_col = rack.id, r, c
         session.commit()
     return jsonify({"ok": True})

@@ -189,6 +189,23 @@ def unit_temperature(mv: ModuleView, unit: StockUnit) -> str:
     return rack_temperature(mv, unit.rack)
 
 
+def follow_temperature(mv: ModuleView, unit: StockUnit, before: StockRack | None, after: StockRack | None) -> None:
+    """Progeny still developing that move to another temperature (18 °C
+    from 25 °C) emerge later or sooner: what is left of their development
+    is rescaled to the new temperature's time. The emerge date was worked
+    out once, at collection, and stayed put before."""
+    if unit.purpose != presets.PROGENY or unit.ready_on is None:
+        return
+    today = date.today()
+    old, new = rack_temperature(mv, before), rack_temperature(mv, after)
+    if unit.ready_on <= today or old == new:
+        return
+    old_days, new_days = mv.interval("develop", old), mv.interval("develop", new)
+    if old_days and new_days and old_days != new_days:
+        left = (unit.ready_on - today).days / old_days
+        unit.ready_on = today + timedelta(days=max(1, round(left * new_days)))
+
+
 def flip_interval(mv: ModuleView, rack: StockRack) -> int:
     return rack.flip_days or mv.interval("flip", rack_temperature(mv, rack))
 
