@@ -1253,11 +1253,55 @@ def generate_litter_id(session, cage: CageRecord | None) -> str:
     return next_litter_id(session)
 
 
-def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -> tuple[str, str, str]:
+_PLAIN_NUMBER = re.compile(r"^-?\d+(?:[.,]\d+)?$")
+XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def sheet_safe(value):
+    """A cell a spreadsheet shows as text rather than runs: someone's note
+    that starts with = + - @ (=HYPERLINK(…), say) would otherwise be a
+    formula when the export is opened in Excel. A plain number stays one."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r") and not _PLAIN_NUMBER.match(value):
+        return "'" + value
+    return value
+
+
+def csv_text(rows) -> str:
+    """Rows as CSV that Excel opens as UTF-8 (a byte-order mark) with no
+    cell taken for a formula (sheet_safe)."""
     output = io.StringIO()
-    delimiter = "," if export_format == "csv" else "\t"
-    writer = csv.writer(output, delimiter=delimiter)
-    writer.writerow(
+    writer = csv.writer(output)
+    for row in rows:
+        writer.writerow([sheet_safe(v) for v in row])
+    return "\ufeff" + output.getvalue()
+
+
+def xlsx_bytes(sheets) -> bytes:
+    """[(title, rows)] as an .xlsx workbook, header rows bold, every text
+    cell kept as text (never a formula)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    book = Workbook()
+    for i, (title, rows) in enumerate(sheets):
+        sheet = book.active if i == 0 else book.create_sheet()
+        sheet.title = title[:31]
+        for row in rows:
+            sheet.append(row)
+            for cell in sheet[sheet.max_row]:
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    cell.data_type = "s"
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        sheet.freeze_panes = "A2"
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -> tuple[str | bytes, str, str]:
+    """The Mice sheet as CSV, or as an Excel workbook (.xlsx) that Import
+    from Excel reads back."""
+    table = [
         [
             "Mouse_ID",
             "Active",
@@ -1279,9 +1323,9 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
             "Date_of_Death",
             "Note",
         ]
-    )
+    ]
     for row in mouse_rows:
-        writer.writerow(
+        table.append(
             [
                 row["mouse_id"],
                 "Yes" if row["active"] else "No",
@@ -1304,9 +1348,9 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
                 row["note"],
             ]
         )
-    filename = "mice_export.csv" if export_format == "csv" else "mice_export.xls"
-    mimetype = "text/csv" if export_format == "csv" else "application/vnd.ms-excel"
-    return output.getvalue(), filename, mimetype
+    if export_format == "csv":
+        return csv_text(table), "mice_export.csv", "text/csv"
+    return xlsx_bytes([("Mice", table)]), "mice_export.xlsx", XLSX_MIMETYPE
 
 
 # ---------------------------------------------------------------------------

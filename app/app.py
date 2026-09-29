@@ -70,6 +70,7 @@ from .models import (
     UserIdentity,
 )
 from .services import (
+    csv_text,
     add_notification,
     breeder_mice,
     is_breeder_purpose,
@@ -1891,32 +1892,45 @@ def export_my_data():
             mice = db_session.scalars(
                 select(MouseRecord).where(MouseRecord.owner == username).order_by(MouseRecord.mouse_id)
             ).all()
-            mice_csv = _io.StringIO()
-            writer = _csv.writer(mice_csv)
-            writer.writerow(["mouse_id", "gender", "genotype", "status", "owner", "cage_id", "litter_id", "dob", "dod", "note"])
-            for m in mice:
-                writer.writerow([
-                    m.mouse_id, m.gender, m.genotype, m.status, m.owner,
-                    m.cage.cage_id if m.cage else "",
-                    m.litter.litter_id if m.litter else "",
-                    m.litter.date_of_birth.isoformat() if (m.litter and m.litter.date_of_birth) else "",
-                    m.date_of_death.isoformat() if m.date_of_death else "",
-                    m.note,
-                ])
-            zf.writestr("mice.csv", mice_csv.getvalue())
+            iso = lambda d: d.isoformat() if d else ""
+            zf.writestr("mice.csv", csv_text([
+                ["mouse_id", "gender", "genotype", "status", "owner", "cage_id", "litter_id", "dob", "dod", "note"],
+                *([m.mouse_id, m.gender, m.genotype, m.status, m.owner, m.cage.cage_id if m.cage else "",
+                   m.litter.litter_id if m.litter else "", iso(m.litter.date_of_birth) if m.litter else "",
+                   iso(m.date_of_death), m.note] for m in mice)]))
+
+            cages = db_session.scalars(
+                select(CageRecord).where(CageRecord.owner == username).order_by(CageRecord.cage_id)
+            ).all()
+            zf.writestr("cages.csv", csv_text([
+                ["cage_id", "purpose", "location", "rack", "row", "column", "shared", "litter_born", "notes"],
+                *([c.cage_id, c.purpose, c.cage_location, c.rack.name if c.rack else "", c.rack_row or "",
+                   c.rack_col or "", "yes" if c.is_shared else "no", iso(c.date_give_birth), c.notes]
+                  for c in cages)]))
+
+            weights = db_session.scalars(
+                select(MouseWeight).join(MouseRecord, MouseWeight.mouse_id_fk == MouseRecord.id)
+                .where(MouseRecord.owner == username).order_by(MouseWeight.weigh_date)
+            ).all()
+            zf.writestr("mouse_weights.csv", csv_text([
+                ["mouse_id", "date", "grams", "notes", "recorded_by"],
+                *([w.mouse.mouse_id, iso(w.weigh_date), w.grams, w.notes, w.recorded_by] for w in weights)]))
+
+            experiments = db_session.scalars(
+                select(Experiment).where(Experiment.owner_username == username).order_by(Experiment.id)
+            ).all()
+            zf.writestr("experiments.csv", csv_text([
+                ["name", "status", "start", "end", "database", "description", "treatment_plan", "readout"],
+                *([e.name, e.status, iso(e.start_date), iso(e.end_date), e.db, e.description, e.treatment_plan,
+                   e.readout] for e in experiments)]))
 
             plasmids = db_session.scalars(
                 select(PlasmidRecord).where(PlasmidRecord.owner == username).order_by(PlasmidRecord.plasmid_id)
             ).all()
-            plasmid_csv = _io.StringIO()
-            writer = _csv.writer(plasmid_csv)
-            writer.writerow(["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location", "notes"])
-            for p in plasmids:
-                writer.writerow([
-                    p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance,
-                    p.owner, p.location, p.notes,
-                ])
-            zf.writestr("plasmids.csv", plasmid_csv.getvalue())
+            zf.writestr("plasmids.csv", csv_text([
+                ["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location", "notes"],
+                *([p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance, p.owner, p.location, p.notes]
+                  for p in plasmids)]))
 
             tabs = db_session.scalars(
                 select(NotebookTab).where(NotebookTab.owner_username == username).order_by(NotebookTab.position, NotebookTab.id)
@@ -1941,6 +1955,9 @@ def export_my_data():
                 "exported_at": datetime.utcnow().isoformat(),
                 "counts": {
                     "mice": len(mice),
+                    "cages": len(cages),
+                    "mouse_weights": len(weights),
+                    "experiments": len(experiments),
                     "plasmids": len(plasmids),
                     "notebook_pages": sum(len(t.pages) for t in tabs),
                 },

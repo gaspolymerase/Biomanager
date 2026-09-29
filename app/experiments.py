@@ -899,10 +899,9 @@ def export(experiment_id: int, fmt: str):
         exp, place = _load(s, experiment_id)
         long_rows, wide, manip, stats = _rows_for_export(s, exp, place)
         base = _re.sub(r"[^A-Za-z0-9._-]+", "-", exp.name).strip("-")[:60] or "experiment"
+    from .services import csv_text
     if fmt == "csv":
-        out = io.StringIO()
-        csv.writer(out).writerows(long_rows)
-        return Response(out.getvalue(), mimetype="text/csv",
+        return Response(csv_text(long_rows), mimetype="text/csv",
                         headers={"Content-Disposition": f"attachment; filename={base}-readout.csv"})
     if fmt != "xlsx":
         abort(404)
@@ -915,6 +914,9 @@ def export(experiment_id: int, fmt: str):
         sheet.title = title
         for row in rows:
             sheet.append(row)
+            for cell in sheet[sheet.max_row]:
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    cell.data_type = "s"          # someone's text, never a formula
         for cell in sheet[1]:
             cell.font = Font(bold=True)
         sheet.freeze_panes = "A2"

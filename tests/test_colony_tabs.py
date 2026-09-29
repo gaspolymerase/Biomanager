@@ -391,6 +391,23 @@ class WhereThingsAreTests(AppTestCase):
         self.assertIn("Cage_ID,Rack,Position,", header)
         self.assertTrue(any(f",{code},{rack},B3," in line for line in lines))
 
+    def test_exports_are_a_real_workbook_and_never_run_a_formula(self):
+        import io
+        from openpyxl import load_workbook
+        col = self.make_colony(self.a, self.admin, n_mice=1)
+        execute("update mice set note=? where id=?", '=HYPERLINK("http://x.test","click")', col["mice"][0])
+        text = self.a.get("/colony/mice/export?format=csv&scope=all").get_data(as_text=True)
+        self.assertTrue(text.startswith("\ufeff"))                    # Excel opens it as UTF-8
+        self.assertIn("'=HYPERLINK", text)
+        r = self.a.get("/colony/mice/export?format=excel&scope=all")
+        self.assertIn("mice_export.xlsx", r.headers["Content-Disposition"])
+        sheet = load_workbook(io.BytesIO(r.get_data())).active
+        cells = [c for row in sheet.iter_rows() for c in row if c.value == '=HYPERLINK("http://x.test","click")']
+        self.assertEqual([c.data_type for c in cells], ["s"])           # text, not a formula
+        token = self.a.post("/import-sheet/mice/upload", data={"file": (io.BytesIO(r.get_data()), "mice_export.xlsx")},
+                            content_type="multipart/form-data")
+        self.assertEqual(token.status_code, 302)                       # Import from Excel reads it back
+
     def test_the_breeders_tab_shows_rack_position_and_sexes(self):
         rack, code = self.placed_cage()
         html = self.get_ok(self.a, "/colony?view=breeders&scope=all")
