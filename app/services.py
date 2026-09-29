@@ -63,8 +63,7 @@ DEFAULT_MOUSE_OPTIONS = {
     "gender": ["F", "M", "Unknown"],
     "purpose": ["Breeder", "Breeding", "Exp"],
     "status": MOUSE_STATUS_OPTIONS,
-    "owner": ["Lab Member"],
-    "genotype": ["Trp2 iCreER/+", "R26 Ai9/+", "WT"],
+    "genotype": ["WT"],
 }
 RETIRED_PRESET_FIELDS = ("cage_location",)
 UPLOAD_DIR = uploads_dir()

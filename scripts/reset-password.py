@@ -6,8 +6,8 @@ Settings -> Manage users. The new password is typed at a prompt, so it never
 lands in shell history.
 
     python scripts/reset-password.py                 # list accounts
-    python scripts/reset-password.py alex         # reset that account
-    python scripts/reset-password.py alex --admin # …and make them admin
+    python scripts/reset-password.py alex            # reset that account
+    python scripts/reset-password.py alex --admin    # …and make them admin
 
 Talks to the database directly rather than importing the app, which keeps
 it fast and means it still works when the app itself will not start.

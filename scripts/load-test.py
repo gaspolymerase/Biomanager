@@ -43,7 +43,7 @@ def fill(n_mice: int, alive: float = 0.05) -> None:
                             MouseWeight, NotebookPage, NotebookTab, StockModule, StockUnit, TankRecord, UserAccount)
     rnd = random.Random(7)
     today = date.today()
-    genes = ["Ai14/+", "DAT-IRES-Cre/+", "Sst-Cre/+", "Pvalb-Cre/Pvalb-Cre", "WT", "Vglut2-Cre/+", "Trp2 iCreER/+"]
+    genes = ["Ai14/+", "DAT-IRES-Cre/+", "Sst-Cre/+", "Pvalb-Cre/Pvalb-Cre", "WT", "Vglut2-Cre/+", "Rosa26-CreERT2/+"]
     with SessionLocal() as s:
         users = [u for u in s.scalars(select(UserAccount.username))]
         start_mouse = (s.scalar(select(MouseRecord.mouse_id).order_by(MouseRecord.mouse_id.desc()).limit(1)) or 0) + 1

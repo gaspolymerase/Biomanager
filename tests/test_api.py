@@ -95,6 +95,15 @@ class Tokens(Base):
         self.assertIn("API tokens", self.get_ok(self.m, "/settings"))
         self.assertEqual(self.call("get", "/nothing-here", tok).status_code, 404)
 
+    def test_the_reference_lists_every_endpoint_served(self):
+        # Scripts are written from /api: nothing served may be missing from it, nothing in it may be gone.
+        served = set()
+        for rule in app.url_map.iter_rules():
+            if rule.rule.startswith("/api/v1") and "_rest" not in rule.rule and rule.rule != "/api/v1/openapi.json":
+                path = re.sub(r"<(?:[^:>]+:)?([^>]+)>", r"{\1}", rule.rule).rstrip("/") or "/api/v1"
+                served |= {(m, path) for m in rule.methods - {"HEAD", "OPTIONS"}}
+        self.assertEqual(served, {(method, path) for method, path, *_ in api.ENDPOINTS})
+
 
 class Colony(Base):
     def test_mice_by_page(self):

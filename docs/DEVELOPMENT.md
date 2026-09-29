@@ -415,8 +415,12 @@ stamped at head instead. Because create_all() runs first, a revision must
 tolerate what it adds already being there: use `migrations/helpers.py`
 (`create_table`, `add_column`). `scripts/upgrade-check.py` makes a demo
 lab with every release tag, opens it with this code and checks the schema,
-the row counts, the revision, the copy and the pages;
-`.github/workflows/upgrade-check.yml` runs it on master and on tags.
+the row counts, the revision, the copy and the pages. With `--postgres
+<url>` it does the same for a lab server: that release's own
+`migrate-to-postgres.py` moves its demo lab into a new PostgreSQL database
+on that server, and this code opens it (no copy there: the backup service
+takes one before an update). `.github/workflows/upgrade-check.yml` runs
+both on master and on tags.
 
 **A SQLite file must not live in a cloud-synced folder.** OneDrive, Dropbox
 and Google Drive do not honour SQLite's file locking: a sync mid-write, or

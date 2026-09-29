@@ -4,6 +4,7 @@ from tests.base import *  # noqa: F401,F403
 from tests.base import ON_POSTGRES, POSTGRES_URL, AppTestCase, ROOT, one, uniq
 
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -170,6 +171,9 @@ class MigrateToPostgres(unittest.TestCase):
         # The deleted strain's id 3 is never handed out again.
         (next_id,), = self.target("SELECT nextval(pg_get_serial_sequence('strains', 'id'))")
         self.assertGreater(next_id, 3)
+        # At the copy's revision, so the app's first start upgrades nothing.
+        from app import upgrade
+        self.assertEqual(self.target("SELECT version_num FROM alembic_version"), [(upgrade.head_revision(),)])
         (token,), = self.target("SELECT refresh_token FROM google_calendar_links")
         self.assertTrue(token.startswith("enc:v1:"))  # encrypted on the way (start-up step)
 
@@ -225,3 +229,29 @@ class ServerBundle(unittest.TestCase):
             self.assertFalse([n for n in names if n.endswith("/.env") or "/backups/" in n], names)
             self.assertFalse([n for n in names if n != "Biomanager" and not n.startswith("Biomanager/deploy")], names)
             self.assertFalse([n for n in names if "/._" in n or n.startswith("._")], names)
+
+    def test_what_ships_names_no_one(self):
+        # deploy/ goes out in the public bundle, and app/, scripts/, migrations/ and site/ in
+        # every build, image and the website: no one's own server, and none of the words
+        # the maintainers keep private. Those are listed outside this public repository:
+        # the PRIVATE_WORDS secret in CI, or a git-ignored .private-words file, one a line.
+        words = os.environ.get("BIOMANAGER_PRIVATE_WORDS", "")
+        listed = Path(ROOT) / ".private-words"
+        if listed.is_file():
+            words += "\n" + listed.read_text()
+        words = [w.strip() for w in re.split(r"[\n,]", words) if w.strip() and not w.startswith("#")]
+        private = re.compile("|".join(re.escape(w) for w in words), re.I) if words else None
+        found = []
+        for top in ("deploy", "app", "scripts", "migrations", "site"):
+            for path in (Path(ROOT) / top).rglob("*"):
+                if not path.is_file() or "/backups/" in str(path) or "/uploads/" in str(path) or path.name == ".env":
+                    continue
+                if path.suffix in (".pyc", ".png", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".icns", ".mp4"):
+                    continue
+                text = path.read_text(errors="ignore")
+                rel = path.relative_to(ROOT)
+                found += [f"{rel}: a tailnet" for m in re.findall(r"([a-z0-9-]+)\.ts\.net", text)
+                          if m not in ("tail1234", "tailXXXX")]
+                if private:
+                    found += [f"{rel}: a private word" for _ in private.findall(text)]
+        self.assertEqual(found, [])

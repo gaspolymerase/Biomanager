@@ -34,8 +34,10 @@ For each lab, with its champion (an hour or two):
   *care* or *facility* role; set up institution sign-in if they need it.
 - [ ] **Labels.** Print cage cards (or tank and vial labels) for one rack,
   on their printer or label printer, and scan one with a phone.
-- [ ] **Backups.** On a server, confirm the nightly backup ran and restore
-  one into a scratch folder (`deploy/RUNBOOK.md`). On a desktop, make one
+- [ ] **Backups.** On a server, confirm the nightly backup ran, run a
+  restore test (`docker compose exec backup restore-test.sh`), turn on the
+  alerts (`deploy/README.md`, *Alerts*), and fill in the champion's copy of
+  the table at the top of `deploy/RUNBOOK.md`. On a desktop, make one
   (`python scripts/dbtool.py backup`) and note where it went.
 - [ ] **The agreement.** Tell them plainly: their data stays on their
   computer or server; the usage report has counts only and is sent only if

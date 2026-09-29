@@ -31,3 +31,6 @@ deploy/certs/*
 
 # Launch clips, post packs and numbers (promo/README.md)
 promo/out/
+
+# Words kept out of what ships (tests/test_deploy.py), one a line
+.private-words

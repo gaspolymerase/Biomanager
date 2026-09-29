@@ -193,7 +193,7 @@ docker compose exec backup restore-test.sh  # a restore test now
 
 ### Off-site copies (Backblaze B2)
 
-The copies on this server and on the admin's Mac do not survive losing both.
+The copies on this server (and on an admin's Mac, below) do not survive losing both.
 An off-site copy in Backblaze B2 does, and costs nothing at this size (the
 first 10 GB are free; a year of nightly backups is well under 1 GB).
 
@@ -208,10 +208,10 @@ first 10 GB are free; a year of nightly backups is well under 1 GB).
 4. **Application Keys → Add a New Application Key**: name `biomanager-server`,
    access to **this bucket only**, **Read and Write**. Keep the page open: the
    `applicationKey` is shown only once.
-5. From the Mac, in your own terminal:
+5. On the server, in your own terminal (over SSH, `ssh -t <server> sudo …`):
 
    ```bash
-   ssh -t biomanager sudo /opt/biomanager/Biomanager/deploy/host/offsite-setup.sh
+   sudo /opt/biomanager/Biomanager/deploy/host/offsite-setup.sh
    ```
 
    Repository: `s3:https://<endpoint>/<bucket>/biomanager`. Paste the keyID
@@ -228,6 +228,23 @@ stops passing. A failed off-site copy never counts against the local backup.
 
 Other S3-compatible storage (AWS S3, Wasabi, a university's S3 service)
 works the same way with its own endpoint.
+
+### A copy on a Mac
+
+An admin's Mac can pull the server's backups every night at 03:15 into
+`~/BioManagerBackups`, checking each new dump is readable. It never deletes
+a copy because the server did, so a damaged server can't empty it. It needs
+`ssh <server>` to work without a password prompt, and passwordless `sudo`
+on the server (the backups are root's). On the Mac, from a copy of `deploy/`:
+
+```bash
+BIOMANAGER_SSH_HOST=<server> BIOMANAGER_SERVER_BACKUPS=<BACKUP_DIR on the server> deploy/mac/install.sh
+```
+
+`BACKUP_DIR` is the one in `.env`, as a full path (for the default,
+`/opt/biomanager/Biomanager/deploy/backups`). A macOS notification says
+when a night's copy fails, or when the server's newest backup is over two
+days old. `deploy/mac/install.sh --remove` stops it; the copies stay.
 
 ### Restoring
 
@@ -251,6 +268,20 @@ Nothing is deleted. The database being replaced is renamed
 
 From the off-site copy, first `restic restore latest --target /somewhere`
 with the same repository and password, then restore from those files.
+
+## Alerts
+
+The watchdog checks the site, the services, the disk, the backups and
+their restore tests every 5 minutes, and a weekly job refreshes the images
+the stack is built on (a backup first). On the server:
+
+```bash
+sudo /opt/biomanager/Biomanager/deploy/host/install.sh
+```
+
+It makes a private [ntfy](https://ntfy.sh) topic and prints its name:
+subscribe to it in the ntfy app on your phone. Alerts say what is wrong,
+never any lab data. [RUNBOOK.md](RUNBOOK.md) says what to do for each.
 
 ## Updating
 

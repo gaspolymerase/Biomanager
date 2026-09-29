@@ -199,7 +199,9 @@
           as Excel wrote them (<code>3/14/2026</code>, <code>14/03/2026</code>): each column decides whether day or month comes
           first. <i>Male</i>, <i>m</i> and <i>♂</i> all become M; statuses and people are matched by name.</li>
         <li><b>Preview, then import.</b> <b>Preview the import</b> runs every row through the same checks as the database's own
-          form and lists any that would be skipped, by its row number in Excel. <b>Import 120 mice</b> (the button counts them)
+          form and lists any that would be skipped, by its row number in Excel. A <i>Total</i> line under the records is left
+          out, and a mouse whose ID is already taken (in the colony, or by an earlier row) gets the next free one, with yours kept
+          in its notes; the preview says so for each. <b>Import 120 mice</b> (the button counts them)
           saves the rest as one batch, which <b>Batch history</b> can undo; <b>Change the matches</b> goes back a step.</li>
         <li><b>A new group, not a sheet?</b> For mice, <b>Add many</b> describes one mouse and how many, or loads the CSV from its
           <b>Download a template</b>. In any inventory and in Plasmids, <b>Add many</b> takes a list pasted straight from Excel —

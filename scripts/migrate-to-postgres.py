@@ -166,8 +166,10 @@ def main() -> int:
         scratch = Path(tmp)
         copy = snapshot(source, scratch)
         print(f"read     : {source} (working on a copy)")
-        metadata, _sqlite_engine = bring_up_to_date(copy, scratch)
+        metadata, sqlite_engine = bring_up_to_date(copy, scratch)
         tables = list(metadata.sorted_tables)
+        from app import upgrade
+        revision = upgrade.current_revision(sqlite_engine) or upgrade.head_revision()   # the copy is at the newest
 
         target = create_engine(target_url, future=True)
         existing = set(inspect(target).get_table_names())
@@ -215,7 +217,7 @@ def main() -> int:
                 conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version "
                                   "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
                 conn.execute(text("DELETE FROM alembic_version"))
-                conn.execute(text("INSERT INTO alembic_version VALUES ('0001_baseline')"))
+                conn.execute(text("INSERT INTO alembic_version VALUES (:r)"), {"r": revision})
                 # Deferred foreign keys are checked here, all at once.
                 conn.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
                 mismatched = []

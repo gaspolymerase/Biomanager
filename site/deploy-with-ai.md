@@ -255,4 +255,7 @@ Tell the person, in plain words: the address; that the first account is the
 admin; where backups are (`/opt/biomanager/backups`, nightly, restore-tested
 weekly) and whether off-site is on; the ntfy topic for alerts; how to update
 (above); and that `deploy/RUNBOOK.md` in the bundle says what to do when an
-alert arrives. The user guide is https://gaspolymerase.github.io/biomanager/guide.html.
+alert arrives. Fill in its table at the top (*Where everything is*) with them:
+the address, the server and where to start or rebuild it, where backups go,
+off-site or not, the ntfy topic; and have them keep a copy somewhere other
+than the server. The user guide is https://gaspolymerase.github.io/biomanager/guide.html.

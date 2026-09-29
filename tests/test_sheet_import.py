@@ -101,6 +101,12 @@ class Tidying(AppTestCase):
         self.assertEqual(si.tidy_choice("Sacrificed", choices), ("sac", True))
         execute("delete from dropdown_options where field_name='status' and option_value='Stock'")
 
+    def test_a_total_line_is_not_a_record(self):
+        for line in (["TOTAL", "", "7 mice"], ["", "Grand total:", "12"], ["Totals"], ["sum", "3"]):
+            self.assertTrue(si.is_total(line), line)
+        for line in (["Total RNA", "liver"], ["1001", "total"], [""]):
+            self.assertFalse(si.is_total(line), line)
+
     def test_sexes_and_choices(self):
         self.assertEqual(si.tidy_choice("Male", si.SEXES), ("M", True))
         self.assertEqual(si.tidy_choice("♀", si.SEXES)[0], "F")
@@ -181,6 +187,22 @@ class Importing(AppTestCase):
         self.assertIn("Cage colour: red", got[3])
         self.assertIn("Room: B12", got[3])                       # no cage to hold the room
         self.assertEqual(last_batch()[2], "create")
+
+    def test_a_taken_mouse_id_and_a_total_line_are_named(self):
+        n = (one("select max(mouse_id) from mice") or 0) + 1000
+        tag = uniq("TG")
+        data = xlsx([["Ear tag", "Sex", "Strain"], [str(n), "M", tag], [str(n), "F", tag], ["TOTAL", "", "2 mice"]])
+        token, html = self.upload(self.a, "mice", "colony.xlsx", data)
+        form = {**self.chosen(html), "sheet": "Sheet1", "fill-owner": "me"}
+        preview = self.a.post(f"/import-sheet/file/{token}/preview", data=form).get_data(as_text=True)
+        self.assertIn("2 of 2 rows", preview)
+        self.assertIn("Row 4 looks like the sheet&#39;s total, so it&#39;s left out.", preview)
+        self.assertIn(f"Mouse ID {n} is taken (in the colony or by an earlier row)", preview)
+        self.post(self.a, f"/import-sheet/file/{token}/run", data=form)
+        self.assertEqual(count("mice", "transgene_1=?", tag), 2)
+        second = row("select mouse_id, note from mice where transgene_1=? and gender='F'", tag)
+        self.assertNotEqual(second[0], n)
+        self.assertIn(f"ID in the spreadsheet: {n}", second[1])
 
     def test_plasmids_with_boxes_positions_and_a_location_column(self):
         box = uniq("Box ")

@@ -40,4 +40,8 @@ jobs:
           grep -v pywebview requirements.txt > /tmp/requirements-ci.txt
           python -m pip install -r /tmp/requirements-ci.txt
       - name: Run the tests
+        env:
+          # Words the maintainers keep out of what ships (tests/test_deploy.py); a secret, so
+          # this public repository never lists them. Empty on forks: that check is skipped.
+          BIOMANAGER_PRIVATE_WORDS: ${{ secrets.PRIVATE_WORDS }}
         run: python -m unittest discover -s tests -t .
