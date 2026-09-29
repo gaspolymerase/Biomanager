@@ -663,6 +663,67 @@ def page_import():
         return jsonify({"ok": True, "page_id": page.id, "tab_id": tab.id, "url": page_url(page.id)})
 
 
+# ---------------------------------------------------------------- templates
+
+_FENCE = re.compile(r"^(`{3,})([a-z]+)[ \t]*\n(.*?)\n\1[ \t]*$", re.M | re.S)
+_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{3,}")
+_UPLOAD_LINE = re.compile(r"^\s*!?\[[^\]]*\]\(/static/uploads/[^)]*\)\s*$")
+
+
+def _empty_block(kind: str, raw: str) -> str:
+    """A block with its setup kept and its results gone: a data sheet keeps
+    its columns and each row's first cell; a plate reader its layout of
+    standards and blanks; a qPCR block its reference gene and control."""
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return raw
+    if not isinstance(data, dict):
+        return raw
+    if kind == "sheet" and isinstance(data.get("rows"), list):
+        data["rows"] = [[row[0]] + [""] * (len(row) - 1) if isinstance(row, list) and row else row
+                        for row in data["rows"]]
+    elif kind == "plate":
+        data["values"] = {}
+    elif kind == "qpcr":
+        data["rows"] = []
+    elif kind == "experiment":
+        data["id"] = None
+    else:
+        return raw
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def structure_only(body: str) -> str:
+    """A page as a template for the next run: its headings, text, steps and
+    table headers stay; ticks are cleared, each table row keeps only its
+    first cell, results in data blocks go, and uploaded pictures and files
+    are left out."""
+    blocks: list[str] = []
+
+    def keep(match):
+        blocks.append(f"{match.group(1)}{match.group(2)}\n{_empty_block(match.group(2), match.group(3))}\n{match.group(1)}")
+        return f"\x00{len(blocks) - 1}\x00"
+
+    text = _FENCE.sub(keep, body or "")
+    out, in_table = [], 0
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if _UPLOAD_LINE.match(line):
+            continue
+        line = re.sub(r"^(\s*[-*+] )\[[xX]\]", r"\1[ ]", line)
+        if stripped.startswith("|"):
+            in_table += 1
+            if in_table > 2 and not _TABLE_SEP.match(line):        # a body row: its first cell only
+                cells = stripped.strip("|").split("|")
+                line = "| " + cells[0].strip() + " |" + "  |" * (len(cells) - 1)
+        else:
+            in_table = 0
+        out.append(line)
+    text = "\n".join(out)
+    return re.sub(r"\x00(\d+)\x00", lambda m: blocks[int(m.group(1))], text)
+
+
 # ---------------------------------------------------------------- new pages
 
 def _today_label(day: date) -> str:
@@ -701,9 +762,10 @@ def page_new():
             title = title or starter["title"]
         elif data.get("template_id"):
             template = s.get(NotebookTemplate, _int(data["template_id"]) or 0)
-            if template is None or template.owner_username != me:
+            if template is None or not (template.owner_username == me or template.lab):
                 return _fail("Template not found.", 404)
             title, body = title or template.title, template.body or ""
+            kind = template.kind if template.kind in KINDS and template.kind != "daily" else "note"
         if tab is None:
             if kind == "experiment":
                 tab = tab_named(s, me, EXPERIMENTS_TAB)

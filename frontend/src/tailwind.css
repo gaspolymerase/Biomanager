@@ -1256,6 +1256,10 @@
   }
   .record-fill-hint.is-warning { @apply border-amber-200 bg-amber-50 text-amber-900; }
   .record-dialog-body label > .is-filled { @apply border-brand-200 bg-brand-50/60; }
+  /* A tick under a BioDialog prompt (static/dialogs.js). */
+  .bio-dialog-check { @apply flex flex-wrap items-center gap-x-2 text-[13px] text-ink; }
+  .bio-dialog-check > input { @apply h-4 w-4; }
+  .bio-dialog-hint { @apply basis-full pl-6 text-[12px] text-muted; }
   /* A sheet cell the server works out (a primer's length, GC, Tm). */
   .sheet-derived { @apply cursor-default text-muted; }
   /* "Used in notebook pages" (static/used-in.js). */

@@ -289,9 +289,13 @@
         <form id="notebook-template-form">
           <label>Title <input name="title" required placeholder="e.g. PCR protocol"></label>
           <label>Icon <input name="icon" maxlength="4" placeholder="Optional, one character"></label>
+          <label>Page type
+            <select name="kind">{% for k, label in kinds.items() if k != 'daily' %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select>
+          </label>
           <label>Body (Markdown)
             <textarea name="body" rows="6" placeholder="# Goal&#10;&#10;## Materials&#10;&#10;## Steps&#10;1. ..."></textarea>
           </label>
+          <label class="cal-check"><input type="checkbox" name="lab" value="1"> Share it with the lab</label>
           <div class="notebook-template-form-actions"><button type="submit" class="btn btn-primary">Save template</button></div>
         </form>
       </details>

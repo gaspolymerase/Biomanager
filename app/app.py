@@ -5696,20 +5696,33 @@ def audit_log_view():
     return render_template("audit.html", entries=entries)
 
 
+def _templates_visible(me: str):
+    """Your own templates and the lab's."""
+    return (NotebookTemplate.owner_username == me) | NotebookTemplate.lab.is_(True)
+
+
 @app.route("/notebook/templates")
 @login_required
 def notebook_templates_list():
+    """Your templates, then the lab's, each with its page type."""
+    me = g.user.username
     with SessionLocal() as db_session:
         rows = db_session.scalars(
-            select(NotebookTemplate)
-            .where(NotebookTemplate.owner_username == g.user.username)
-            .order_by(NotebookTemplate.updated_at.desc())
+            select(NotebookTemplate).where(_templates_visible(me))
+            .order_by((NotebookTemplate.owner_username != me), NotebookTemplate.updated_at.desc())
         ).all()
+        names = lab_notebook.display_names(db_session, list({t.owner_username for t in rows}))
         return jsonify({"ok": True, "templates": [
             {
                 "id": t.id,
                 "title": t.title,
                 "icon": t.icon,
+                "kind": t.kind or "note",
+                "kind_label": lab_notebook.KINDS.get(t.kind or "note", "Note"),
+                "lab": bool(t.lab),
+                "mine": t.owner_username == me,
+                "can_delete": t.owner_username == me or (bool(t.lab) and access.is_admin()),
+                "owner_name": names.get(t.owner_username, t.owner_username),
                 "body_preview": (t.body or "")[:160],
                 "updated_at": t.updated_at.isoformat(),
             }
@@ -5722,10 +5735,10 @@ def notebook_templates_list():
 def notebook_template_get(template_id: int):
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or template.owner_username != g.user.username:
+        if template is None or not (template.owner_username == g.user.username or template.lab):
             return jsonify({"ok": False}), 404
-        return jsonify({"ok": True, "template": {"id": template.id, "title": template.title,
-                                                 "icon": template.icon, "body": template.body or ""}})
+        return jsonify({"ok": True, "template": {"id": template.id, "title": template.title, "icon": template.icon,
+                                                 "kind": template.kind or "note", "body": template.body or ""}})
 
 
 @app.route("/notebook/templates/create", methods=["POST"])
@@ -5737,11 +5750,16 @@ def notebook_template_create():
       title (str, required)
       icon  (str, optional — emoji/single-character)
       body  (str, optional)
-      from_page_id (int, optional — if set, copies the page body into the template)
+      kind  (str, optional — the page type pages made from it get)
+      from_page_id (int, optional — copies the page's text and its type)
+      structure_only (1, optional — with from_page_id: headings, steps and
+        table headers, without the results; lab_notebook.structure_only)
+      lab (1, optional — everyone in the lab can start pages from it)
     """
-    title = (request.form.get("title") or "").strip() or "Untitled template"
+    title = (request.form.get("title") or "").strip()[:160] or "Untitled template"
     icon = (request.form.get("icon") or "").strip()
     body = request.form.get("body", "")
+    kind = request.form.get("kind", "")
     from_page_id = request.form.get("from_page_id", type=int)
 
     with SessionLocal() as db_session:
@@ -5750,26 +5768,35 @@ def notebook_template_create():
             if page is None or lab_notebook.role_for(db_session, page) is None:
                 return jsonify({"ok": False, "error": "page not found"}), 404
             body = page.body or body
+            info = lab_notebook.info_for(db_session, page.id)
+            kind = info.kind if info is not None else kind
+            if request.form.get("structure_only") == "1":
+                body = lab_notebook.structure_only(body)
         template = NotebookTemplate(
             owner_username=g.user.username,
             title=title,
             icon=icon,
             body=body,
+            kind=kind if kind in lab_notebook.KINDS and kind != "daily" else "note",
+            lab=request.form.get("lab") == "1",
         )
         db_session.add(template)
         db_session.commit()
         return jsonify({
             "ok": True,
-            "template": {"id": template.id, "title": template.title, "icon": template.icon},
+            "template": {"id": template.id, "title": template.title, "icon": template.icon,
+                         "kind": template.kind, "lab": template.lab},
         })
 
 
 @app.route("/notebook/templates/<int:template_id>/delete", methods=["POST"])
 @login_required
 def notebook_template_delete(template_id: int):
+    """Its maker's to delete (a lab template also an admin's)."""
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or template.owner_username != g.user.username:
+        if template is None or not (template.owner_username == g.user.username
+                                    or (template.lab and access.is_admin())):
             return jsonify({"ok": False}), 404
         db_session.delete(template)
         db_session.commit()
@@ -5789,7 +5816,7 @@ def notebook_create_page_from_template():
 
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or template.owner_username != g.user.username:
+        if template is None or not (template.owner_username == g.user.username or template.lab):
             return jsonify({"ok": False, "error": "template not found"}), 404
 
         if tab_id:

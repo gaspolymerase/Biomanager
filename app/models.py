@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -553,6 +554,10 @@ class NotebookTemplate(Base):
     title: Mapped[str] = mapped_column(String(160), default="Untitled template")
     body: Mapped[str] = mapped_column(Text, default="")
     icon: Mapped[str] = mapped_column(String(40), default="")
+    # The page type a page made from it gets (note, experiment, protocol…);
+    # empty: a note. Lab: everyone in the lab can start pages from it.
+    kind: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    lab: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

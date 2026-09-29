@@ -159,11 +159,13 @@
         return;
       }
       list.innerHTML = d.templates.map(function (t) {
+        var tags = (t.kind && t.kind !== 'note' ? '<span class="badge badge-quiet">' + esc(t.kind_label) + '</span>' : '') +
+          (t.lab ? '<span class="badge badge-brand" title="Everyone in the lab can use it">Lab' + (t.mine ? '' : ' · ' + esc(t.owner_name)) + '</span>' : '');
         return '<div class="notebook-template-row"><button type="button" class="notebook-template-pick" data-template="' + t.id + '">' +
           '<span class="notebook-template-icon">' + (t.icon ? esc(t.icon) : icon('file')) + '</span>' +
-          '<span class="notebook-template-meta"><span class="notebook-template-title">' + esc(t.title) + '</span>' +
+          '<span class="notebook-template-meta"><span class="notebook-template-title">' + esc(t.title) + ' ' + tags + '</span>' +
           '<span class="notebook-template-preview">' + esc(t.body_preview || '') + '</span></span></button>' +
-          '<button type="button" class="notebook-template-del" title="Delete template" aria-label="Delete template" data-del-template="' + t.id + '">' + icon('trash') + '</button></div>';
+          (t.can_delete ? '<button type="button" class="notebook-template-del" title="Delete template" aria-label="Delete template" data-del-template="' + t.id + '">' + icon('trash') + '</button>' : '') + '</div>';
       }).join('');
     }).catch(function () { list.innerHTML = '<div class="notebook-template-empty">Could not load templates.</div>'; });
   }
@@ -1039,11 +1041,21 @@
       if (what === 'source') openSource();
       if (what === 'version') saveNamedVersion();
       if (what === 'template') {
-        BioDialog.prompt('Save this page as a template named', page.title || 'Untitled template', { okLabel: 'Save template' }).then(function (name) {
+        BioDialog.prompt('Save this page as a template named', page.title || 'Untitled template', {
+          okLabel: 'Save template',
+          checks: [
+            { name: 'structure_only', label: 'Structure only', checked: true,
+              hint: 'Keeps the headings, steps and table headers; leaves out the results, ticks, readings and pictures.' },
+            { name: 'lab', label: 'Share it with the lab', hint: 'Everyone can start a page from it.' },
+          ],
+        }).then(function (answer) {
+          var name = answer && answer.value;
           if (!name) return;
           var f = new FormData();
           f.append('title', name);
           f.append('from_page_id', page.id);
+          if (answer.checks.structure_only) f.append('structure_only', '1');
+          if (answer.checks.lab) f.append('lab', '1');
           flushed().then(function () {
             return fetch('/notebook/templates/create', { method: 'POST', body: f });
           }).then(function (r) { return r.json(); })
