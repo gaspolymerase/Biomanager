@@ -101,6 +101,14 @@ class Tidying(AppTestCase):
         self.assertEqual(si.tidy_dates(["1.5e-07"])[0], [""])   # (numbers are not dates)
         self.assertEqual(si._cell(1.5e-07), "1.5e-07")
 
+    def test_the_export_s_formula_guard_is_undone_on_import(self):
+        rows = si.read_workbook("mice.csv", "Genotype,Note\n'+/+,'=1+1\n'-/-,it's fine\n".encode())["Sheet 1"]
+        self.assertEqual(rows[1:], [["+/+", "=1+1"], ["-/-", "it's fine"]])
+        headers, _rows, _first = si.split_header([["Colony", "March", "2026", "", ""],
+                                                  ["Ear tag", "Sex", "DOB", "Strain", "Cage"],
+                                                  ["1", "F", "2026-01-01", "Cre", "10"]])
+        self.assertEqual(headers[0], "Ear tag")                  # a title of 3 of 5 cells
+
     def test_excel_date_numbers_and_iso(self):
         out, _ = si.tidy_dates(["46095", "2026-03-14 00:00", "not a date"])
         self.assertEqual(out[:2], ["2026-03-14", "2026-03-14"])

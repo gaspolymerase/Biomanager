@@ -107,6 +107,13 @@ def _cell(value) -> str:
     return str(value).strip()
 
 
+def _unguard(text: str) -> str:
+    """BioManager's own CSV exports put ' before a value starting with = + -
+    or @ (so a spreadsheet doesn't run it: services.sheet_safe); reading
+    one back, "'+/+" is the genotype +/+ again."""
+    return text[1:] if text[:1] == "'" and text[1:2] in ("=", "+", "-", "@") else text
+
+
 def _trim(rows: list[list[str]]) -> list[list[str]]:
     """Rows of one width, the empty ones at the end dropped. Empty rows
     before and between stay, so row numbers are Excel's."""
@@ -218,7 +225,7 @@ def read_workbook(filename: str, data: bytes) -> dict[str, list[list[str]]]:
         delimiter = ";"
     else:
         delimiter = ","
-    rows = [[c.strip() for c in r[:MAX_COLS]] for r in csv.reader(io.StringIO(text), delimiter=delimiter)]
+    rows = [[_unguard(c.strip()) for c in r[:MAX_COLS]] for r in csv.reader(io.StringIO(text), delimiter=delimiter)]
     rows = _trim(rows[: MAX_ROWS + 20])
     return {"Sheet 1": rows} if rows else {}
 
@@ -230,7 +237,7 @@ def split_header(rows: list[list[str]]) -> tuple[list[str], list[list[str]], int
     skipped, even one of two or three cells."""
     filled = [sum(1 for c in row if c.strip()) for row in rows[:10]]
     widest = max(filled, default=0)
-    need = max(min(2, widest), round(widest * 0.6))
+    need = max(min(2, widest), widest - max(1, widest // 5))
     at = next((i for i, n in enumerate(filled) if n >= need), 0)
     headers, seen = [], {}
     for i, h in enumerate(rows[at] if rows else []):

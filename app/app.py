@@ -209,14 +209,17 @@ def next_number_retried(view):
     def wrapped_view(*args, **kwargs):
         import random
         import time
-        for attempt in range(4):
+        tries = 6
+        for attempt in range(tries):
             flashes = list(session.get("_flashes") or [])
             try:
                 return view(*args, **kwargs)
             except IntegrityError:
-                if attempt == 3:
+                if attempt == tries - 1:
                     raise
                 session["_flashes"] = flashes        # the failed try's messages go with it
+                for upload in request.files.values():
+                    upload.stream.seek(0)             # the next try reads the uploaded file again
                 time.sleep(random.uniform(0.02, 0.12) * (attempt + 1))
 
     return wrapped_view
@@ -397,6 +400,14 @@ def handle_forbidden(_error):
     return render_template("error.html", title="You don't have access to that", message=message), 403
 
 
+def _plain_error_page(title: str, message: str) -> str:
+    """error_plain.html rendered straight from the template, without the
+    app's context processors: they read the database, which may be what
+    just failed."""
+    return app.jinja_env.get_template("error_plain.html").render(
+        title=title, message=message, request=request, url_for=url_for)
+
+
 def _wants_json() -> bool:
     """A background save, the API, or a page script's fetch: answer JSON,
     never a redirect to a page (which a script reads as a broken reply)."""
@@ -418,7 +429,7 @@ def handle_database_unavailable(error: OperationalError):
                "if it keeps happening, tell whoever runs the server.")
     if _wants_json():
         return jsonify({"ok": False, "error": message}), 503
-    return render_template("error_plain.html", title="The database is not answering", message=message), 503
+    return _plain_error_page("The database is not answering", message), 503
 
 
 @app.errorhandler(StaleDataError)
@@ -456,7 +467,7 @@ def handle_server_error(_error):
               "use Send feedback to say what you were doing."
     if _wants_json():
         return jsonify({"ok": False, "error": message}), 500
-    return render_template("error_plain.html", title="Something went wrong", message=message), 500
+    return _plain_error_page("Something went wrong", message), 500
 
 
 @app.errorhandler(IntegrityError)
@@ -2198,6 +2209,10 @@ def admin_toggle_disabled(user_id: int):
         target.disabled = not target.disabled
         if target.disabled:
             security.end_sessions(db_session, target)   # enabling it again won't bring them back
+            from .models import LabCopyKey
+            for key in db_session.scalars(select(LabCopyKey).where(LabCopyKey.user_id_fk == target.id,
+                                                                     LabCopyKey.revoked_at.is_(None))):
+                key.revoked_at = datetime.utcnow()      # their computers' copy keys too
         db_session.commit()
         flash(f"{target.username} {'disabled' if target.disabled else 'enabled'}.", "success")
     return redirect(url_for("admin_users"))

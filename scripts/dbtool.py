@@ -150,7 +150,10 @@ def cmd_restore(args) -> int:
     # Replacing the file under a running app mixes the two: the app keeps
     # writing into the restored file from what it had open.
     if not args.yes:
-        answer = input("Is BioManager closed (the app quit, or the server stopped)? [y/N] ").strip().lower()
+        try:
+            answer = input("Is BioManager closed (the app quit, or the server stopped)? [y/N] ").strip().lower()
+        except EOFError:
+            sys.exit("Nothing was changed. Quit the app or stop the server, then run this again with --yes.")
         if answer not in ("y", "yes"):
             sys.exit("Nothing was changed. Quit the app or stop the server, then run this again.")
     target = database_path()

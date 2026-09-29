@@ -107,6 +107,13 @@ class KeyTests(CopyCase):
         kid = one("select id from lab_copy_keys where label=?", label)
         self.assertEqual(self.m.post(f"/settings/lab-copies/{kid}/revoke").status_code, 404)
 
+    def test_disabling_an_account_revokes_its_keys_for_good(self):
+        admin2 = make_user(uniq("admin"), role="admin")
+        key = self.make_key(client_for(admin2))
+        self.post(self.a, f"/admin/users/{user_id(admin2)}/disable")
+        self.post(self.a, f"/admin/users/{user_id(admin2)}/disable")      # enabled again
+        self.assertEqual(self.api("/api/lab-copy/files", key).status_code, 401)
+
     def test_a_disabled_account_s_keys_stop_working(self):
         admin2 = make_user(uniq("admin"), role="admin")
         key = self.make_key(client_for(admin2))

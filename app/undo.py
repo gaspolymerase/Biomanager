@@ -74,6 +74,20 @@ def blockers(session, batch: BatchRecord) -> list[str]:
         problems.append("No recorded changes to reverse.")
         return problems
 
+    for entry in entries:
+        if entry.table_name not in UNDOABLE_TABLES:
+            problems.append(f"Table {entry.table_name} cannot be reversed automatically.")
+            break
+    late = _changed_since(session, batch, entries)
+    if late:
+        problems.append(late)
+    return problems
+
+
+def _changed_since(session, batch: BatchRecord, entries=None) -> str:
+    """Why reverting would throw away a later edit, or ""."""
+    if entries is None:
+        entries = session.scalars(select(AuditEntry).where(AuditEntry.batch_id_fk == batch.id)).all()
     # Its own undos and redos ("undo of batch #N", and undos of those) are
     # not someone's later edit: a redone batch can be undone again.
     chain, frontier = {batch.id}, {batch.id}
@@ -85,8 +99,7 @@ def blockers(session, batch: BatchRecord) -> list[str]:
     touched_since = 0
     for entry in entries:
         if entry.table_name not in UNDOABLE_TABLES:
-            problems.append(f"Table {entry.table_name} cannot be reversed automatically.")
-            break
+            continue
         later = session.scalar(
             select(AuditEntry.id).where(
                 AuditEntry.table_name == entry.table_name,
@@ -99,10 +112,9 @@ def blockers(session, batch: BatchRecord) -> list[str]:
         if later is not None:
             touched_since += 1
     if touched_since:
-        problems.append(
-            f"{touched_since} record(s) changed after this batch — reverting "
-            "would throw those later edits away.")
-    return problems
+        return (f"{touched_since} record(s) changed after this batch — reverting "
+                "would throw those later edits away.")
+    return ""
 
 
 def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
@@ -120,6 +132,18 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
     if not claimed:
         return {"ok": False, "problems": ["Already undone."], "reverted": 0}
     session.refresh(batch)
+    if not force:
+        # Lock what it will change (PostgreSQL; SQLite has one writer at a
+        # time anyway), then look again: an edit saved between the check
+        # above and now would otherwise be overwritten without a word.
+        for entry in session.scalars(select(AuditEntry).where(AuditEntry.batch_id_fk == batch.id)):
+            model = _model_for(entry.table_name)
+            if model is not None and entry.action != "delete":
+                session.get(model, entry.record_id, with_for_update=True, populate_existing=True)
+        late = _changed_since(session, batch)
+        if late:
+            session.rollback()
+            return {"ok": False, "problems": [late], "reverted": 0}
 
     entries = session.scalars(
         select(AuditEntry)
