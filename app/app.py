@@ -1886,7 +1886,11 @@ def settings():
                 confirm = request.form.get("confirm_password", "")
                 # An account made by signing in with Google or Microsoft has
                 # no password yet; it may set one without a current one.
-                if security.has_password(user) and not security.check_password(user, current):
+                check_key = ("current-password", user.id)
+                if security.password_check_throttle.retry_after(check_key):
+                    flash("Too many wrong passwords. Try again in 15 minutes.", "error")
+                elif security.has_password(user) and not security.check_password(user, current):
+                    security.password_check_throttle.failed(check_key)   # a stolen session can't guess on
                     flash("Current password is incorrect.", "error")
                 elif problem := security.password_problem(new_pw, user.username):
                     flash(problem, "error")
@@ -2234,8 +2238,15 @@ def register():
         display_name = request.form.get("display_name", "").strip()
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
+        signup_key = ("signup", request.remote_addr or "")
         if not username or not password:
             flash("Username and password are required.", "error")
+        elif not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,39}", username):
+            # Plain letters and digits: "аlex" in Cyrillic looks like "alex" in the lab's lists.
+            flash("A username is 2–40 letters (a–z), digits, dots, dashes or underscores. Your full name, in "
+                  "any alphabet, goes in Name.", "error")
+        elif not first and security.signup_throttle.retry_after(signup_key):
+            flash("Too many sign-ups from here in the last hour. Try again later, or ask a lab admin.", "error")
         elif needs_code and not security.setup_code_matches(request.form.get("setup_code")):
             flash("That setup code is not right. It is printed in the server log when BioManager starts.", "error")
         elif problem := security.password_problem(password, username):
@@ -2244,7 +2255,8 @@ def register():
             flash("Passwords do not match.", "error")
         else:
             with SessionLocal() as db_session:
-                existing = db_session.scalar(select(UserAccount).where(UserAccount.username == username))
+                existing = db_session.scalar(select(UserAccount).where(
+                    func.lower(UserAccount.username) == username.lower()))
                 if existing is not None:
                     flash("That username already exists.", "error")
                 else:
@@ -2265,6 +2277,8 @@ def register():
                                              f"{display_name or username} signed up as {username}. "
                                              "Approve them in Settings → Manage users.")
                     db_session.commit()
+                    if not first:
+                        security.signup_throttle.failed(signup_key)     # counts sign-ups, not failures
                     if first:
                         security.clear_setup_code()
                         flash("Admin account created. You can sign in now.", "success")

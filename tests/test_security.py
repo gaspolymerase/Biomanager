@@ -1,6 +1,8 @@
 """Running on a network: cross-site requests, sign-in, sign-up approval,
 sessions, uploads, the signing key and the production entry points
 (app/security.py)."""
+import html as html_lib
+
 from tests.base import *  # noqa: F401,F403
 from tests.base import AUTOSAVE, AppTestCase, count, flashes, location, make_user, one, uniq, user_id
 
@@ -196,6 +198,31 @@ class SessionsFollowThePassword(AppTestCase):
         self.assertEqual(theirs.get("/settings").status_code, 302)
         again, _ = sign_in(username)
         self.assertEqual(again.get("/settings").status_code, 200)
+
+    def register(self, username, password="a long enough passphrase"):
+        c = app.test_client()
+        r = c.post("/register", data={"username": username, "password": password, "confirm_password": password},
+                   follow_redirects=True)
+        return html_lib.unescape(r.get_data(as_text=True))
+
+    def test_look_alike_usernames_are_refused(self):
+        self.assertIn("A username is 2", self.register("аlex" + uniq("")))            # Cyrillic а
+        self.assertIn("A username is 2", self.register("*"))
+        self.assertIn("already exists", self.register(self.member.upper()))
+
+    def test_sign_ups_from_one_address_are_limited(self):
+        for _ in range(5):
+            self.assertIn("needs to approve", self.register(uniq("joiner")))
+        self.assertIn("Too many sign-ups", self.register(uniq("joiner")))
+
+    def test_guessing_the_current_password_in_settings_is_limited(self):
+        c, _ = sign_in(make_user_with_password())
+        wrong = {"action": "password", "current_password": "not it at all", "new_password": "x" * 12,
+                 "confirm_password": "x" * 12}
+        for _ in range(10):
+            c.post("/settings", data=wrong)
+        r = c.post("/settings", data={**wrong, "current_password": PASSWORD}, follow_redirects=True)
+        self.assertIn("Too many wrong passwords", r.get_data(as_text=True))
 
     def test_a_session_without_the_stamp_is_not_accepted(self):
         c = app.test_client()

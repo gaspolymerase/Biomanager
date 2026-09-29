@@ -259,6 +259,13 @@ class AppTestCase(unittest.TestCase):
 
     maxDiff = None
 
+    def setUp(self):
+        super().setUp()
+        # Rate limits count across the whole run otherwise (one address, one process).
+        from app import security
+        security.signup_throttle.reset()
+        security.password_check_throttle.reset()
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()

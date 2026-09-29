@@ -236,6 +236,19 @@ def signed_out(db) -> bool:
 
 # ---------------------------------------------------------------- set-up
 
+from flask.sessions import SecureCookieSessionInterface  # noqa: E402
+
+
+class _SessionInterface(SecureCookieSessionInterface):
+    """The API is signed in by its token alone (app/api.py): its replies
+    never set or refresh the browser's session cookie."""
+
+    def should_set_cookie(self, app, session) -> bool:
+        if request.path == "/api/v1" or request.path.startswith("/api/"):
+            return False
+        return super().should_set_cookie(app, session)
+
+
 def init_app(app) -> None:
     """Configure cookies, limits and the request checks. Call after the
     hook that loads g.user, which the uploads check needs."""
@@ -246,6 +259,7 @@ def init_app(app) -> None:
         PERMANENT_SESSION_LIFETIME=timedelta(days=_int("BIOMANAGER_SESSION_DAYS", 7)),
         MAX_CONTENT_LENGTH=_int("BIOMANAGER_MAX_UPLOAD_MB", 64) * 1024 * 1024,
     )
+    app.session_interface = _SessionInterface()
     hops = _int("BIOMANAGER_PROXY_HOPS", 0)
     if hops:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops, x_host=hops, x_port=hops)
@@ -350,14 +364,20 @@ def content_security_policy() -> str:
 
 def csp_report():
     """Browsers post here what the policy blocked. Logged, nothing stored."""
+    # Anyone can post here, so: a few a minute per address, and each value
+    # one short line (a newline in a field wrote a fake log line).
+    if report_throttle.retry_after(("csp", request.remote_addr or "")):
+        return "", 204
+    report_throttle.failed(("csp", request.remote_addr or ""))
     raw = request.get_data(cache=False, as_text=True)[:8192]
+    one_line = lambda v: repr(str(v or "")[:200])
     try:
         import json
         body = json.loads(raw or "{}")
         report = body.get("csp-report", body)
-        log.warning("CSP blocked %s on %s (%s)", report.get("blocked-uri") or report.get("blockedURL"),
-                    report.get("document-uri") or report.get("documentURL"),
-                    report.get("violated-directive") or report.get("effectiveDirective"))
+        log.warning("CSP blocked %s on %s (%s)", one_line(report.get("blocked-uri") or report.get("blockedURL")),
+                    one_line(report.get("document-uri") or report.get("documentURL")),
+                    one_line(report.get("violated-directive") or report.get("effectiveDirective")))
     except (ValueError, AttributeError):
         log.warning("CSP report that could not be read: %r", raw[:300])
     return "", 204
@@ -513,6 +533,11 @@ class LoginThrottle:
 
 
 login_throttle = LoginThrottle()
+# Sign-ups per address (each notifies every admin), wrong current passwords
+# in Settings per account, and CSP reports per address.
+signup_throttle = LoginThrottle(limit=5, window=60 * 60)
+password_check_throttle = LoginThrottle(limit=10, window=15 * 60)
+report_throttle = LoginThrottle(limit=30, window=60)
 
 
 def login_keys(username: str) -> tuple:
