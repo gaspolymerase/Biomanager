@@ -198,8 +198,11 @@ sheet, and describe your organism:
 - **What it needs**, from a checklist — crosses, cohorts, a nursery
   stage, genotyping, environment logs, cryo inventory, census and more.
 - **Schedules** like "wean at P21", which can vary with rearing
-  temperature.
-- **Your own columns** — text, numbers, dates, dropdowns, people or links.
+  temperature. Each rule counts from its own last **Done** (feeding
+  doesn't restart the split's clock), and Done can be dated to the day it
+  was really done.
+- **Your own columns** — text, numbers, dates, dropdowns, people or links,
+  edited in the sheet like the others and set on many rows at once.
 - **Experiments**, the same as the mouse colony's, on your animals,
   groups or cohorts, with body weight, length, survival or your own
   readout.
@@ -225,6 +228,10 @@ two buttons beside its name: **Configure** (for whoever may change it) and
 Upload a GenBank, FASTA or SnapGene file and BioManager keeps the sequence
 and its features, with an interactive map you can edit. Plasmid boxes sit
 on the same rack grid as everything else, so every tube has an address.
+Each tube keeps its miniprep's concentration (ng/µL) and 260/280, and a
+plasmid can be **Lab common**: anyone can edit it, while its owner still
+decides whose it is. A plasmid's page lists the notebook pages that
+`@plasmid` it.
 
 <p align="center">
   <img src="docs/screenshots/plasmid-map.webp" alt="A plasmid map with features, restriction sites and the sequence view" width="100%">
@@ -237,11 +244,13 @@ change:
 
 | Preset | Tracks |
 | --- | --- |
-| 🧫 **Samples** | harvested tissue and material, linked to the animal it came from, stored at RT / 4 °C / −20 °C / −80 °C / LN₂ in a box position |
+| 🧫 **Samples** | harvested tissue and material, linked to the animal it came from, stored at RT / 4 °C / −20 °C / −80 °C / LN₂ in a box position, with its concentration, unit, 260/280, 260/230 and volume as numbers |
 | 🛒 **Orders** | a board from *requested* to *ordered* to *received*, with vendor, catalogue number, price and grant account |
 | ⚗️ **Reagents** | quantity, concentration, CAS number, hazard, supplier and lot, and expiry dates with warnings |
 | 🔬 **Antibodies** | host, clonality, clone, conjugate, reactivity, applications, dilution, RRID and where each vial is stored |
 | 🦠 **Viruses** | AAV, lentivirus, rabies and other vectors: serotype, promoter, payload, titer, biosafety level, the date made, and the plasmid each was made from — which opens that plasmid, whose page lists every virus made from it |
+| 🧬 **Primers & oligos** | sequence, direction, target and pair, with length, GC % and Tm worked out from the sequence; **Add primer pair** makes the forward and reverse at once, linked and side by side in a box |
+| 🧫 **Cell lines** | frozen vials of each line and clone: species, parent, passage, freeze date, cells per vial, mycoplasma result and date, and where each vial sits in the LN₂ boxes |
 | 📝 **Custom** | whatever you define |
 
 Each inventory can keep **your own stock** apart from **lab common
@@ -256,7 +265,16 @@ stock**, and statuses and categories can be renamed without losing items.
   pick an earlier item or catalogue number and the vendor, price and grant
   fill themselves in.
 - **Order again** — one click on a reagent, antibody or virus starts a new order
-  with its details, and the quantity, price and grant of the last time.
+  with its details, and the quantity, price and grant of the last time. A
+  record that is already on order shows **On order**, and Order again says
+  which order is open and who asked for it.
+- **Requests reach the lab manager** — a new order tells the lab's admins.
+- **Boxes that look after themselves** — a tube marked used up, empty or
+  discarded leaves its box position free (its location note keeps where it
+  was); a box can say where it is kept (−80 °C, LN₂), and what goes in
+  takes that as its *Stored at*; a tube put in a box with no position takes
+  the next free one. **New box** can make several alike at once
+  (*Tower A 1 … 13*).
 - **From the box to the shelf** — when an order is marked received,
   BioManager offers to add it to Reagents, Antibodies or Viruses with everything
   already filled in.
@@ -278,20 +296,27 @@ stock**, and statuses and categories can be renamed without losing items.
   genotyping, sac reminders), fly and worm flips, organism schedules and
   reagent expiry filled in for you. Shows your **Google Calendar** and any
   **ICS subscription** alongside.
-  - **Repeating events**: every day, week or month, until a date, with
-    single dates taken out.
+  - **Repeating events**: every day, week or month, or every month on the
+    same weekday ("the first Monday"), until a date. One date can be taken
+    out (**Delete this one**) or changed on its own (**Change this one
+    only**).
   - **Protocol timelines**: write the steps once in days from day 0
     (tamoxifen days 0–4, implant day 14, perfuse day 42), start them for an
     experiment or cohort, and every step lands on the calendar. Move day 0
     and they all move.
   - **Equipment booking**: time on the confocal or a rig; double bookings
-    are refused, saying who has it.
+    are refused, saying who has it. A booking can repeat every day, weekday
+    or week until a date (if one repeat clashes, none is made), and
+    **Duplicate** books the same instrument and times on another day.
   - **Time away**: leave and conferences, with what falls due while you
     are away and who covers it (they are told).
   - **On your phone**: a private link that Apple, Google or Outlook
     Calendar subscribes to, with just your things or the whole lab.
 - **Lab notebook** — pages in topics, written like a document and saved as
-  Markdown. A page links to mice, plasmids and orders (`@mouse 12`), so the
+  Markdown. A page links to mice, plasmids, orders and any inventory record
+  (`@mouse 12`, `@antibodies 5`): type **@** and a name, catalogue number
+  or lot, and the record's popover shows its lot and place. The record's
+  dialog lists the pages that link it (**Used in notebook pages**), so the
   record and the notes point at each other. Type **/** on a new line for
   everything below.
   - **Experiments**: aim, setup, samples and lot numbers, steps, results.
@@ -334,7 +359,13 @@ stock**, and statuses and categories can be renamed without losing items.
     own are saved to a shared library.
   - **Calculators**: dilution (C₁V₁ = C₂V₂), molarity, master mix, serial
     dilution, ligation insert, cell counting and seeding, agarose gel,
-    DNA/RNA concentration and copy number.
+    DNA/RNA concentration and copy number, and protein concentration from
+    A₂₈₀ (µM and mg/mL, with ε and MW worked out from a pasted sequence).
+  - **Templates**: **Save as template** keeps the page's type (an
+    Experiment template makes Experiments). **Structure only** keeps the
+    headings, steps and table headers and leaves out the results, ticks,
+    readings and pictures; **Share it with the lab** lets everyone start a
+    page from it.
   - **Timers**: every duration written in a step ("incubate 30 min") gets a
     ⏱ button; timers keep running across pages and ring, vibrate and notify
     when they end.
@@ -343,7 +374,8 @@ stock**, and statuses and categories can be renamed without losing items.
   - **Meetings and seminars**: a rotation of who presents next, notes for
     each meeting shared with everyone in it, the coming meetings on the
     calendar, and action items (`- [ ] @name order primers, due
-    2026-10-02`) sent to each person's to-dos.
+    2026-10-02`) sent to each person's to-dos, from any page with ⋯ →
+    **Send @name tasks as to-dos**.
   - **Markdown, plus**: tables, checklists, code, equations in LaTeX
     (`$…$` inline or an equation block), Mermaid diagrams (flowcharts,
     sequence, Gantt timelines) and mind maps from an indented list. Edit
@@ -352,7 +384,8 @@ stock**, and statuses and categories can be renamed without losing items.
   - **Working together**: share a page with lab mates (or the whole lab)
     to read or to edit. Editors write in it at the same time and see each
     other's cursors. Comments sit on a passage of text, and an `@name`
-    tells that person. A mention of a mouse, plasmid or order opens that
+    tells that person, as it does in any record's notes (a reagent, an
+    order, a plasmid, a cage). A mention of a mouse, plasmid or order opens that
     record in a new BioManager tab. Anyone can turn these notebook notices off under
     **Settings → Notifications**.
   - **Version history**: every editing session is kept, compared line by
@@ -401,7 +434,8 @@ stock**, and statuses and categories can be renamed without losing items.
     </td>
     <td valign="top">
       <h4>↩️ Batch actions with undo</h4>
-      Tick rows, then set a field, add them to an experiment or sac them.
+      Tick rows, then <b>Set field</b> (any column, your own included), add
+      them to an experiment or sac them.
       Every bulk action can be <b>undone</b> — unless someone has edited
       those records since, so their work is never silently lost.
     </td>
@@ -469,7 +503,9 @@ it is:
   databases; in the fixed ones it goes into each record's notes as
   `Header: value`, so nothing is lost.
 - **Must-have columns are filled in.** If your sheet has no owner, say who
-  every row belongs to (you, by default).
+  every row belongs to (you, by default); for plasmids and stock, whether
+  every row is Personal or Lab common (or a *Lab common* column says so row
+  by row).
 - **Values are tidied.** Excel dates in any style (day or month first,
   decided per column and otherwise by Lab setup's date style, `12-May-26`,
   or a date number; a future date of birth is left blank and kept in the
@@ -498,6 +534,9 @@ becomes a card with its columns under their names, and rack grids get a
   100 × 62 mm), Zebra (2 × 1, 3 × 1, 4 × 2, 4 × 2.5 in) or cryo-tube
   labels — and prints one label a page, typed to fit. Each person's
   choice is remembered.
+- **What each label says**: for tubes, tick the fields (box, position, lot,
+  a column such as concentration, the day printed…) and **Two lines for
+  long text**, so a cryo label's name and place wrap instead of being cut.
 - **Zebra**: **Download for Zebra (.zpl)** gives the labels in the
   printer's own language. Or an admin adds the Zebra's address on the
   lab's network once, and **Send to Zebra** prints them straight away.

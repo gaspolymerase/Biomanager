@@ -129,6 +129,11 @@ A module declares:
   See `app/organisms.py`.
 - **Schedule rules** — `anchor date + offset`, optionally varying by rearing
   temperature. One rule covers "flip flies every 14 days at 25 °C, 28 at 18 °C".
+  `complete_due()` takes the day it was done (never later than today) and
+  moves a service anchor (`SERVICE_ANCHORS`, e.g. `last_serviced_on`) to it,
+  unless two recurring rules on that kind of subject count from the same
+  anchor: then the anchor stays and each counts from its own last
+  completion in `recompute_due()`.
 - **Custom fields** — typed per-module columns stored in each row's `attrs`
   JSON, which generate their own form inputs, table columns and validation.
 
@@ -172,6 +177,11 @@ Who may change what lives in one place, `app/access.py`:
   its `is_shared` flag. The whole lab can edit them and pick mice out of them.
 - **Unowned records stay open**, so records predating ownership don't lock
   anyone out.
+- **Lab common** (`is_shared`) on inventory items and plasmids
+  (`plasmids.is_shared`, revision 0010; `access.LAB_COMMON_RECORDS`) lets
+  anyone edit the record; deleting it,
+  changing its owner or making it personal again is `access.can_manage()`:
+  its owner, an admin, or anyone while it is unowned.
 - **Admins can do anything.**
 
 Visibility is deliberately *not* restricted — a census with holes is not a
@@ -241,13 +251,62 @@ pages are in `app/lab_routes.py`.
 - **Order again:** a reagent, antibody or virus row links to
   `/inventory/<orders>?reorder=<key>:<id>`; `_reorder_payload()` builds the
   new-order dialog, taking quantity, price and grant from the last order
-  of the same thing (by `stocked_as`, then catalogue number).
+  of the same thing (by `stocked_as`, then catalogue number). An open order
+  for it (`_same_thing()`: made by Order again from it, the same catalogue
+  number, or the same name when it has none; status in the orders
+  inventory's `open_statuses`) turns the row's cart into **On order**
+  (`_open_orders_of()`) and puts an amber `_warn` hint in the dialog.
+- **Positions and Stored at:** `apply_status()` frees the box cell of an
+  item moving to `GONE_FROM_BOX` (used up, empty, discarded) and writes
+  "was in Box · D7" into an empty location note; `_item_from_form` then
+  doesn't put it back from the dialog's unchanged box fields.
+  `inventory_racks.stored_at` (revision 0007) is where a box is kept; a
+  `before_flush` listener in `inventory_service` (`insert=True`, so it runs
+  before the audit listener and undo restores it) gives any item whose
+  `rack_id_fk` changed that value in its *Stored at* column
+  (`stored_at_field()`: key `storage_temp` or label "Stored at"), whichever
+  path moved it. Saving a box with a new Stored at updates its items.
+  `save_rack` with `count` > 1 makes numbered boxes (`_create_boxes`).
+- **Primers:** the same listener fills a primer's `length`, `gc` and `tm`
+  (`PRIMER_DERIVED`) from `attrs.sequence` in a `primers` inventory
+  (`primer_numbers()`: SantaLucia 1998 nearest-neighbour stacks, 50 mM Na⁺
+  entropy correction, 250 nM primer in excess). The sheet shows them read
+  only and `_row_json` sends them back after a save. `add_primer_pair`
+  makes *name*-F and *name*-R through `_item_from_form`, flushing between
+  them so the second takes the next free cell.
+- **Presets:** `inventory.PRESETS` (and `lab.INVENTORY_CHOICES` for the
+  setup survey) include `primers` and `cell_lines`; Samples has number
+  columns for what was measured (`SAMPLE_MEASURES`), which revision 0008
+  adds to Samples databases made earlier unless a column of that key or
+  name is there. The same revision adds `plasmids.concentration`
+  and `plasmids.a260_280` (typed numbers, checked by `_plasmid_measure`).
+- **Set field:** the selection bar's `action=field` (`bulk_fields()`: the
+  built-in columns the inventory uses, every custom one but *source*, and
+  notes) runs each ticked row through `_item_from_form` with that one
+  column, inside the batch; a refused value leaves that row as it was and
+  is named. Organisms do the same for custom fields (`bulk_animals`,
+  `bulk_housing`, `_set_custom`), and their sheet edits custom cells in
+  place, with `attr_<key>_was` so a stale row doesn't undo a later change
+  (`read_attrs_checked` skips a field whose value equals its `_was`).
 - **Received → stock:** `_offers_stock()` is true when a save moved an
   order to received and it is not stocked yet; autosave and board moves
   answer `offer_stock`, the dialog redirects with `?offer=<id>`.
   `order_to_reagents` redirects to the new record with `?open=<id>`. These
   one-shot parameters are removed from the address on load and from the
   referrer in `_back()`.
+
+## Calendar repeats and bookings
+
+`app/lab_calendar.py`. A repeating event is one `calendar_events` row and a
+`calendar_repeats` row (`freq` daily, weekly, monthly or `nthweekday` —
+every month on the weekday of the first date, "the fifth" read as the
+last; `interval`; `until`; `skip`, the dates taken out), expanded by
+`occurrences()` for the range on screen. *Change this one only* posts a new
+event with `split_from: {event_id, date}`, which adds that date to the
+series' `skip` in the same transaction. A new booking may carry
+`repeat: {freq: daily | weekdays | weekly, until}`: `_repeated_slots()`
+lists the slots (at most `MAX_REPEATED_BOOKINGS`), every one is checked
+for a clash first, and each becomes an `equipment_bookings` row of its own.
 
 ## Copies of the lab on every computer
 
@@ -282,7 +341,13 @@ PostgreSQL).
 `app/notify.py`. A `before_flush` listener looks at dirty records (mice,
 cages, tanks, fish, organisms, housing, vials, inventory items) and new
 organism genotype calls, and notes who should hear what: an owner change,
-a move to another cage/tank, a genotype recorded, an order status. Notes are
+a move to another cage/tank, a genotype recorded, an order status. A new
+item in the orders inventory tells every active admin but the requester
+(`_order_request`, category `orders`). An `@name` newly added to a
+record's notes (`NOTE_FIELDS`: inventory items, plasmids, mice, cages,
+tanks, vials, organisms, housing) tells that person with a link to the
+record (`_mentions`, category `notebook`); `_resolve` checks at commit that
+the name is still there and is someone. Notes are
 turned into `notifications` rows in `before_commit`, grouped per recipient,
 category and kind of change (twenty mice moved: one row listing them), never
 to the actor, and dropped on rollback. `send()` respects the
@@ -312,6 +377,26 @@ the rules; the editor is `frontend/src/` and the page around it is
 | `notebook_comments` | comments on a page or a quoted passage, and replies |
 | `notebook_recipes` | the lab's buffer library (the built-in ones are `PRESET_RECIPES`) |
 | `notebook_meeting_series` | a meeting's rotation (`members` in order, `next_index`), day and time |
+| `notebook_templates` | a person's templates: title, Markdown, the page `kind` a page made from it gets, and `lab` (everyone may start from it; revision 0009) |
+
+**Templates.** `Save as template` posts `from_page_id`, and with
+`structure_only=1` the body goes through `lab_notebook.structure_only()`:
+headings, text and table headers stay; ticks are cleared, a table's body
+rows keep only their first cell, uploaded images and files go, and data
+blocks keep their setup (`_empty_block`: a sheet's columns and first
+cells, a plate's roles, a qPCR block's reference and control; results
+emptied).
+
+**Record links.** `@<type> <number>` in a page is a chip
+(`frontend/src/extensions/MentionDecoration.js`), the `@` menu is
+`MentionSuggestion.js`, and the words they know are `mentionTypes.js`:
+`mouse`, `plasmid`, `order`, and every inventory key the page lists in
+`#nb-mention-types` (`app._mention_modules()`: inventories the person can
+see, except orders, which is `@order`). `/notebook/search|lookup|open|
+backlinks/<type>/…` serve each kind; an inventory record's popover is
+`{fields: [[label, value]…]}`. `static/used-in.js` fills *Used in notebook
+pages* on an inventory record's dialog (from the payload's `_number`) and
+a plasmid's Storage tab.
 
 **Colony experiments in a page.** The `experiment` block
 (`frontend/src/blocks/experiment.js`) keeps only `{"id", "show",
@@ -495,7 +580,11 @@ printer's size, which prints one label a page (`@page { size }`, no
 margin) with type sized by `labels.fit()`; the last choice for each kind is
 kept in the session cookie. `?format=zpl&dpi=203|300` returns ZPL II
 (`labels.to_zpl`: `^CI28` UTF-8, text through `^FH_` so `^ ~ _` are hex,
-`^BQN` QR at the largest magnification that fits). An admin sets the lab's
+`^BQN` QR at the largest magnification that fits). For inventories the
+page offers *On each label* (`f=` repeated, with `fields_set=1`; kept per
+kind in the `label_fields` cookie) and *Two lines for long text* (`wrap`,
+`label_wrap`): CSS line-clamp on the page, a two-line `^FB` title in ZPL.
+An admin sets the lab's
 Zebra (`app_settings.label_printer`, host or host:port, and
 `label_printer_dpi`); `POST /labels/send` opens a socket to it on port
 9100. `labels.printer_address` only accepts private, loopback, link-local

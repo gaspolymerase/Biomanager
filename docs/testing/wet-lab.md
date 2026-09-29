@@ -12,7 +12,8 @@ be built.
 The testers were AI agents (Claude Code) with the same brief
 ([BRIEF.md](wet-lab/BRIEF.md)). The five full reports are in
 [wet-lab/](wet-lab/), and the people are fictional. The code tested is the
-1.0 candidate, with the fixes in [TESTING.md](../TESTING.md).
+1.0 candidate, with the fixes in [TESTING.md](../TESTING.md). What was
+changed afterwards is under [What was done for 1.0](#what-was-done-for-10).
 
 | Person | Role and project | Report |
 | --- | --- | --- |
@@ -169,6 +170,20 @@ Asked by = how many of the five testers ran into the problem.
 Not confirmed: sharing a page with one person seemed not to register for
 Quinn, but four person-to-person shares by the others were saved, so it is
 not counted as a bug.
+
+## What was done for 1.0
+
+After the test, for 1.0:
+
+- **Bugs fixed:** 1, 3, 4, 5, 6, 7, 8, 9, 10, 12 and the cryo labels in 15.
+  Still open: 2 (not reproduced), 11, 13, 14, 16, 17, the box tiles in 15,
+  and the small ones in 18 (oligos now have an *ordered* status).
+- **Quick wins done:** every row of the quick-wins table, with these left
+  out: the "for: @person" hand-off on a record, and a Cell culture preset
+  (Primers & oligos and Cell lines are presets now). @name tasks go to
+  to-dos from any page with ⋯ → *Send @name tasks as to-dos*, not from
+  every checklist line as it is typed.
+- **Bigger pieces and large** are for after 1.0, sample lineage first.
 
 ## How it was done, and its limits
 
