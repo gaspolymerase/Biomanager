@@ -82,6 +82,12 @@
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
       const row = body.row || {};
+      // What was just saved is what the row now shows (the server's own
+      // values below correct it where it changed them).
+      cellsOf(form).forEach((el) => {
+        const was = el.name && el.type !== 'checkbox' && form.querySelector(`[name="${el.name}_was"]`);
+        if (was) was.value = el.value;
+      });
       Object.entries(row.values || {}).forEach(([name, value]) => {
         const was = form.querySelector(`[name="${name}_was"]`);
         if (was) was.value = value == null ? '' : value;

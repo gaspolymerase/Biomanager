@@ -479,6 +479,27 @@ class MouseBatchEditTests(Case):
         batch = newest_batch(self.member)
         self.assertEqual((batch[1], batch[2]), ("mark as sac", 2))
 
+    def test_a_row_open_since_before_a_colleague_s_edit_does_not_undo_it(self):
+        mid = self.ids[0]
+        shown = sheet_form(mid)
+        opened = {**shown, **{f"{k}_was": v for k, v in shown.items() if k in (
+            "gender", "status", "transgene_1", "owner", "note", "cage_id", "litter_id", "date_of_death")}}
+        self.autosave(self.a, update_url(mid), sheet_form(mid, status="geno"))    # a colleague, meanwhile
+        self.autosave(self.m, update_url(mid), {**opened, "note": "weighed"})     # the open row: only the note
+        self.assertEqual((mouse(mid)["status"], mouse(mid)["note"]), ("geno", "weighed"))
+
+    def test_saving_another_cell_keeps_a_note_s_line_breaks(self):
+        mid = self.ids[0]
+        execute("update mice set note=?, transgene_1=? where id=?", "Healthy\nCoat: black", "Cre\n(het)", mid)
+        # The sheet's one-line cells send the text without its line breaks.
+        self.autosave(self.m, update_url(mid), sheet_form(mid, gender="F", note="HealthyCoat: black",
+                                                          transgene_1="Cre(het)"))
+        self.assertEqual(one("select note from mice where id=?", mid), "Healthy\nCoat: black")
+        self.assertEqual(one("select transgene_1 from mice where id=?", mid), "Cre\n(het)")
+        self.assertEqual(one("select gender from mice where id=?", mid), "F")
+        self.autosave(self.m, update_url(mid), sheet_form(mid, note="Rewritten"))
+        self.assertEqual(one("select note from mice where id=?", mid), "Rewritten")
+
     def test_batch_sac_keeps_the_day_a_mouse_already_died(self):
         earlier = date.today() - timedelta(days=3)
         execute("update mice set status='sac', date_of_death=? where id=?", earlier, self.ids[0])

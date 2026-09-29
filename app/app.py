@@ -954,12 +954,29 @@ def future_birth(form, field: str = "date_of_birth", what: str = "A date of birt
     return None
 
 
+def _keep_lines(stored: str | None, sent: str) -> str:
+    """What a one-line cell sends back for a value with line breaks is the
+    value without them (browsers drop them from an <input>): that is the
+    stored value unchanged, not an edit. Saving another cell of the row
+    must not squash a multi-line note into one line."""
+    if stored and ("\n" in stored or "\r" in stored) and sent == re.sub(r"[\r\n]", "", stored).strip():
+        return stored
+    return sent
+
+
 def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owner_on_transfer: bool = True) -> tuple[str | None, str | None]:
+    # A sheet row sends every cell, and with each a "<name>_was" copy of
+    # what the row showed (form_changed): a cell it didn't change is left as
+    # the database has it, so saving one cell of a row open since before a
+    # colleague's edit doesn't quietly undo that edit. Dialogs send no
+    # copies, so everything they show counts.
     original_owner = mouse.owner
     transfer_recipient = None
     litter_code = form.get("litter_id", "").strip()
     dob = parse_date(form.get("date_of_birth"))
-    if litter_code:
+    if not form_changed(form, "litter_id", "date_of_birth"):
+        pass
+    elif litter_code:
         set_mouse_litter(mouse, get_or_create_litter(db_session, litter_code, dob))
     elif dob is not None:
         # A mouse's date of birth lives on its litter. Given a date and no
@@ -972,7 +989,7 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
 
     # A form that does not carry the cage (a cage card's mouse row, which
     # only shows the mouse's own fields) leaves the mouse where it is.
-    if "cage_id" in form or form.get("auto_new_cage") == "1":
+    if ("cage_id" in form and form_changed(form, "cage_id")) or form.get("auto_new_cage") == "1":
         cage_input = form.get("cage_id", "").strip()
         existing_cage = db_session.scalar(select(CageRecord).where(CageRecord.cage_id == cage_input)) if cage_input else None
         if existing_cage is not None and existing_cage is not mouse.cage and not access.can_edit_cage(existing_cage):
@@ -996,14 +1013,19 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
             if error:
                 flash(error, "error")
 
-    transgenes = transgene_values_from_form(form)
-    sync_mouse_transgenes(mouse, transgenes)
-    mouse.gender = form.get("gender", "").strip()
+    stored = [mouse.transgene_1, mouse.transgene_2, mouse.transgene_3, mouse.transgene_4]
+    if form_changed(form, *(f"transgene_{n}" for n in range(1, 5))):
+        transgenes = [_keep_lines(old, new) for old, new in zip(stored, transgene_values_from_form(form))]
+        sync_mouse_transgenes(mouse, transgenes)
+    if form_changed(form, "gender"):
+        mouse.gender = form.get("gender", "").strip()
     previous_status = mouse.status
-    mouse.status = form.get("status", "").strip()
-    status_normalized = mouse.status.lower()
-    requested_owner = form.get("owner", "").strip()
-    mouse.note = form.get("note", "").strip()
+    if form_changed(form, "status"):
+        mouse.status = form.get("status", "").strip()
+    status_normalized = (mouse.status or "").lower()
+    requested_owner = form.get("owner", "").strip() if form_changed(form, "owner") else (mouse.owner or "")
+    if form_changed(form, "note"):
+        mouse.note = _keep_lines(mouse.note, form.get("note", "").strip())
     # Absent (a cage card does not show it) or unchanged from its `_was`
     # copy, the stored date stands; the status rules below still stamp or
     # clear it when the status crosses into or out of an end status.

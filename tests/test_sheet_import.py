@@ -87,6 +87,12 @@ class Tidying(AppTestCase):
         self.assertEqual(out, ["2026-03-04"])
         self.assertIn("month first", " ".join(notes))
 
+    def test_dashed_two_digit_years_are_day_or_month_first_not_year_first(self):
+        out, _notes = si.tidy_dates(["15-03-26", "31-12-25"])
+        self.assertEqual(out, ["2026-03-15", "2025-12-31"])
+        self.assertEqual(si.tidy_dates(["5 Mar 2026", "12-May-26", "May 12, 2026"])[0],
+                         ["2026-03-05", "2026-05-12", "2026-05-12"])
+
     def test_excel_date_numbers_and_iso(self):
         out, _ = si.tidy_dates(["46095", "2026-03-14 00:00", "not a date"])
         self.assertEqual(out[:2], ["2026-03-14", "2026-03-14"])

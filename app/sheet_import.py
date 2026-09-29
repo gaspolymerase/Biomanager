@@ -419,11 +419,14 @@ def tidy_dates(values: list[str], day_first: bool = False) -> tuple[list[str], l
         if re.match(r"^\d{5}(\.\d+)?$", raw) and 20000 < float(raw) < 80000:
             out[i] = (date(1899, 12, 30) + timedelta(days=int(float(raw)))).isoformat()   # an Excel date number
             continue
-        known = parse_date(raw) or _named_month(raw)
+        # 15-03-26 is a day, a month and a year like 15/03/26, not 2015-03-26:
+        # two-digit groups go to the day-or-month rule below before anything
+        # reads them as a year first.
+        match = _SLASH.match(raw)
+        known = None if match else (parse_date(raw) or _named_month(raw))
         if known:
             out[i] = known.isoformat()
             continue
-        match = _SLASH.match(raw)
         if not match:
             notes.append(f"“{raw}” isn't a date, so it's left blank.")
             out[i] = ""

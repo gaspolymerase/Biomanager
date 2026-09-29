@@ -316,6 +316,12 @@
             <input type="hidden" name="cage_rack_was" value="{{ row.cage_rack_id or '' }}">
             <input type="hidden" name="cage_position_was" value="{{ row.cage_position }}">
             <input type="hidden" name="cage_location_was" value="{{ row.cage_location }}">
+            {# The same for the mouse's own cells: one left as it was is left
+               as the database has it (a colleague may have changed it since). #}
+            {% for name in ("gender", "status", "transgene_1", "transgene_2", "transgene_3", "transgene_4", "owner",
+                            "note", "cage_id", "litter_id", "date_of_birth", "date_of_death") %}
+              <input type="hidden" name="{{ name }}_was" value="{{ row[name] if row[name] is not none else '' }}">
+            {% endfor %}
           </form>
         {% endfor %}
 
