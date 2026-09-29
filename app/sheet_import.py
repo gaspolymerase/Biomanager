@@ -1561,7 +1561,9 @@ def _go(token: str, commit: bool):
             return redirect(target.back_url)
         flash("Nothing was imported: every row had a problem.", "error")
     labels = {f.key: f.label for f in target.fields}
-    return render_template("sheet_import.html", stage="preview", target=target, target_key=payload["target"],
+    # A fill chosen from a list reads as the list said it ("Lab common", not "1").
+    fill_words = {f.key: dict(f.options) for f in target.fields if f.options}
+    return render_template("sheet_import.html", stage="preview", fill_words=fill_words, target=target, target_key=payload["target"],
                            token=token, payload=payload, sheet=sheet, headers=headers, results=results, plan=plan,
                            labels=labels, form=request.form)
 

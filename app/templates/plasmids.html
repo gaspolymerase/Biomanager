@@ -17,7 +17,7 @@
     <span class="badge">{{ boxes|length }} {{ 'box' if boxes|length == 1 else 'boxes' }}</span>
     <span class="ml-1.5">
       {% if current_user.role == 'admin' %}Admin — you can edit anything.
-      {% else %}Plasmids owned by other people are read-only.{% endif %}
+      {% else %}Plasmids owned by other people are read-only, unless they are lab common.{% endif %}
     </span>
   </div>
 {% endblock %}
@@ -158,7 +158,7 @@
                   <option value="1" {% if p.is_shared %}selected{% endif %}>Lab common</option>
                 </select>
               </td>
-              <td>{{ sheet_ui.owner_cell(p.owner, f, not r.manageable) }}</td>
+              <td {% if not r.manageable and not locked %}title="Lab common: only {{ p.owner or 'its owner' }} or an admin can change whose it is"{% endif %}>{{ sheet_ui.owner_cell(p.owner, f, not r.manageable) }}</td>
               <td>
                 <select form="{{ f }}" name="box_id" data-autosave="1" data-dead-values="" aria-label="Box" {% if locked %}disabled{% endif %}>
                   {{ box_options(p.box_id_fk, '–') }}
@@ -187,8 +187,9 @@
                   </form>
                   <form method="post" action="{{ url_for('delete_plasmid', row_id=p.id) }}"
                         data-confirm="Delete plasmid #{{ p.plasmid_id }}? You can undo it from Batch history.">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete plasmid #{{ p.plasmid_id }}"
-                            {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
+                    <button type="submit" class="row-icon-btn danger-button"
+                            title="{{ 'Delete plasmid #' ~ p.plasmid_id if r.manageable else 'Only ' ~ (p.owner or 'its owner') ~ ' or an admin can delete it' }}"
+                            {% if not r.manageable %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
@@ -464,6 +465,14 @@
         sub.appendChild(link);
       }
       if (hint) hint.textContent = (!isNew && data._locked) ? `${data.owner || 'Someone else'}’s plasmid: read only` : '';
+      // Lab common lets anyone edit it; whose it is stays with its owner.
+      const fixed = !isNew && !data._locked && data._manage === false;
+      ['owner', 'is_shared'].forEach((name) => {
+        const el = form.elements[name];
+        if (!el) return;
+        el.disabled = Boolean(data._locked) || fixed;
+        el.title = fixed ? `Lab common: only ${data.owner || 'its owner'} or an admin can change whose it is` : '';
+      });
     });
   })();
 

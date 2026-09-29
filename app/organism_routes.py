@@ -1863,6 +1863,8 @@ def bulk_animals(key: str):
         custom = _custom_field(session, module, "organism", field) if action == "set" else None
         if action == "set" and field not in ("status", "housing_id_fk", "owner") and custom is None:
             return _fail(key, "animals", "Pick what to set.")
+        if custom is not None and not value and request.form.get("clear") != "1":
+            return _fail(key, "animals", f"Type what to set {custom.label} to. (To empty it on those rows, leave it blank and confirm.)")
         if action not in ("set", "delete"):
             return _fail(key, "animals", "Unknown action.")
         housing_id = None
@@ -1928,6 +1930,8 @@ def bulk_housing(key: str):
         custom = _custom_field(session, module, "housing", field) if action == "set" else None
         if action == "set" and field not in ("purpose", "owner", "location_id_fk") and custom is None:
             return _fail(key, "housing", "Pick what to set.")
+        if custom is not None and not value and request.form.get("clear") != "1":
+            return _fail(key, "housing", f"Type what to set {custom.label} to. (To empty it on those rows, leave it blank and confirm.)")
         if action not in ("set", "delete"):
             return _fail(key, "housing", "Unknown action.")
         location_id = None

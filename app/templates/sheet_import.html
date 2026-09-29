@@ -218,7 +218,7 @@
           <dd>→ {{ labels.get(key) or ('a new column' if key == '_new' and target.can_add_columns else 'the notes') }}</dd>
         {% endfor %}
         {% for key, value in plan.fills.items() if key in labels and key not in plan.mapping.values() %}
-          <dt class="si-fine">every row</dt><dd>{{ labels[key] }}: {{ 'you' if value == 'me' else value }}</dd>
+          <dt class="si-fine">every row</dt><dd>{{ labels[key] }}: {{ 'you' if value == 'me' else (fill_words.get(key, {}).get(value) or value) }}</dd>
         {% endfor %}
       </dl>
     </div>

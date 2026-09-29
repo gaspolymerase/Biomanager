@@ -1123,6 +1123,8 @@ def bulk(key: str):
     skipped and counted."""
     action = request.form.get("action", "")
     value = (request.form.get("value") or "").strip()
+    if action == "rack" and value == "unplace":     # the Move picker's "Unplace"
+        value = ""
     ids = [int(i) for i in request.form.getlist("selected_ids") if i.isdigit()]
     with SessionLocal() as session:
         row = _module_or_404(session, key)
@@ -1147,6 +1149,8 @@ def bulk(key: str):
             field = next((f for f in bulk_fields(mv) if f["name"] == request.form.get("field")), None)
             if field is None:
                 return _done(key, error="Pick the column to set.")
+            if not value.strip() and request.form.get("clear") != "1":
+                return _done(key, error=f"Type what to set {field['label']} to. (To empty it on those rows, leave it blank and confirm.)")
         need, verb = BULK_ACTIONS[action]
         refused: list[str] = []
         done = skipped = 0

@@ -259,12 +259,16 @@
     });
 
     calendar.on('selectDateTime', (sel) => {
-      openItem({
-        kind: 'event',
-        start: toLocalInput(tuiToDate(sel.start)),
-        end: toLocalInput(tuiToDate(sel.end || sel.start)),
-        isAllday: !!sel.isAllday,
-      });
+      const start = tuiToDate(sel.start);
+      const end = tuiToDate(sel.end || sel.start);
+      // One day picked in Month view (a double-click): a timed event that
+      // day, 09:00–10:00, like New event. Several days dragged: all day.
+      if (sel.isAllday && ymd(start) === ymd(end)) {
+        const day = ymd(start);
+        openItem({ kind: 'event', start: `${day}T09:00`, end: `${day}T10:00`, isAllday: false });
+      } else {
+        openItem({ kind: 'event', start: toLocalInput(start), end: toLocalInput(end), isAllday: !!sel.isAllday });
+      }
       try { calendar.clearGridSelections(); } catch (_) {}
     });
 
@@ -923,24 +927,27 @@
 
   /* Ends follows Starts: moving the start keeps the event's length, so an
      event can't be made to end before it begins by forgetting the end. */
-  (function () {
-    const f = form.elements;
-    if (!f.start || !f.end) return;
+  /* The same for a booking's From and To, so moving a duplicated booking to
+     another day is one change. */
+  function endFollowsStart(startEl, endEl) {
+    if (!startEl || !endEl) return;
     let length = null;
     const ms = (v) => (v ? new Date(v.length === 10 ? `${v}T00:00` : v).getTime() : NaN);
-    const remember = () => { const d = ms(f.end.value) - ms(f.start.value); length = Number.isFinite(d) && d >= 0 ? d : null; };
-    f.start.addEventListener('focus', remember);
-    f.end.addEventListener('change', remember);
-    f.start.addEventListener('change', () => {
-      const start = ms(f.start.value);
+    const remember = () => { const d = ms(endEl.value) - ms(startEl.value); length = Number.isFinite(d) && d >= 0 ? d : null; };
+    startEl.addEventListener('focus', remember);
+    endEl.addEventListener('change', remember);
+    startEl.addEventListener('change', () => {
+      const start = ms(startEl.value);
       if (!Number.isFinite(start)) return;
-      if (length === null && Number.isFinite(ms(f.end.value)) && ms(f.end.value) >= start) return;
+      if (length === null && Number.isFinite(ms(endEl.value)) && ms(endEl.value) >= start) return;
       const end = new Date(start + (length ?? 60 * 60 * 1000));
       const pad = (n) => String(n).padStart(2, '0');
       const date = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
-      f.end.value = f.end.type === 'date' ? date : `${date}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
+      endEl.value = endEl.type === 'date' ? date : `${date}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
     });
-  })();
+  }
+  endFollowsStart(form.elements.start, form.elements.end);
+  endFollowsStart(form.elements.booking_start, form.elements.booking_end);
 
   /* Change this one only: this date becomes an event of its own with what
      the dialog now says, and the series leaves the date out. */

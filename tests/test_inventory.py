@@ -970,6 +970,22 @@ class BulkTests(InventoryCase):
         self.assertEqual(item(rid)["status"], "empty")
         self.assertEqual(attrs_of(rid).get("used_up_on"), T)
 
+    def test_set_field_with_nothing_typed_clears_only_when_confirmed(self):
+        ids = self.reagents(2, lot="L-9")
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "lot", "value": "", "selected_ids": [str(i) for i in ids]})
+        self.assertFlash(r, "Type what to set Lot to", "error")
+        self.assertEqual({item(i)["lot"] for i in ids}, {"L-9"})
+        self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "lot", "value": "", "clear": "1", "selected_ids": [str(i) for i in ids]})
+        self.assertEqual({item(i)["lot"] for i in ids}, {""})
+
+    def test_move_to_unplace(self):
+        bid = self.make_rack(self.a, self.key)
+        ids = self.reagents(1, rack_id=str(bid))
+        self.bulk(self.a, "rack", ids, "unplace")
+        self.assertIsNone(item(ids[0])["rack_id_fk"])
+
     def test_used_up_frees_the_box_position_and_notes_where_it_was(self):
         bid = self.make_rack(self.a, self.key, rows=3, cols=3)
         box = one("select name from inventory_racks where id=?", bid)

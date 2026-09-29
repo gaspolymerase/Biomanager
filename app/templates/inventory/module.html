@@ -388,9 +388,10 @@
         {% if m.has('storage') %}
           <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form>
             <input type="hidden" name="action" value="rack">
-            <select name="value" aria-label="Box">
+            <select name="value" aria-label="Box" required>
+              <option value="" disabled selected>Choose a box…</option>
               {% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}
-              <option value="">Unplace</option>
+              <option value="unplace">Unplace</option>
             </select>
             <button type="submit" class="btn btn-sm">Move</button>
           </form>
@@ -562,7 +563,7 @@
               <label class="col-span-full"><span>{{ fd.label }}{{ star(name) }}</span> <textarea name="{{ name }}" rows="2"{{ req(name) }}></textarea></label>
             {% else %}
               {% if fd.key in derived_fields %}
-                <label><span>{{ fd.label }}</span> <input name="{{ name }}" readonly tabindex="-1" title="Worked out from the sequence when you save"></label>
+                <label><span>{{ fd.label }}</span> <input name="{{ name }}" readonly tabindex="-1" placeholder="from the sequence, on save" title="Worked out from the sequence when you save"></label>
               {% else %}
               <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}"{% if fd.key == 'sequence' %} class="font-mono" spellcheck="false" autocomplete="off"{% endif %} {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% elif fd.type == 'number' %}type="number" step="any"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
               {% endif %}

@@ -41,7 +41,7 @@ CATEGORIES = {
     "genotyping": ("Genotyping", "Genotypes recorded or requested for your animals, and what is waiting"),
     "orders": ("Orders", "Your orders placed, received or cancelled; for admins, new requests"),
     "lab": ("Lab news", "Databases or functions added for the lab"),
-    "notebook": ("Notebook", "Pages shared with you, comments and @mentions (in pages and in records' notes), "
+    "notebook": ("Notebook and @mentions", "Pages shared with you, comments and @mentions (in pages and in records' notes), "
                              "meeting notes and action items"),
     "experiments": ("Experiments", "Once a day: manipulations and readouts due in your experiments"),
 }

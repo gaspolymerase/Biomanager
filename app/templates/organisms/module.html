@@ -1700,7 +1700,7 @@
                 {% endfor %}
               </select>
               <span class="field-hint normal-case tracking-normal">
-                Completing a recurring item restarts “last …” dates at today; birth and set-up dates are never changed.
+                Marking a recurring item Done (today, or the day it was done) restarts its “last …” date; when two recurring rules share that date, each counts from its own last Done instead. Birth and set-up dates are never changed.
               </span>
             </label>
             <label class="field-label">Days after<input type="number" name="offset_days" value="14" min="0" required></label>

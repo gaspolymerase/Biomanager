@@ -6400,7 +6400,7 @@ def _plasmid_payload(p, box, editable: bool) -> dict:
     """The record dialog's view of a plasmid (see static/record-dialog.js)."""
     values = _plasmid_values(p, box)
     return {
-        "id": p.id, "_label": _plasmid_label(p), "_locked": not editable,
+        "id": p.id, "_label": _plasmid_label(p), "_locked": not editable, "_manage": access.can_manage(p),
         "plasmid_id": p.plasmid_id, **values,
         "box_id_was": values["box_id"], "position_was": values["position"],
     }
