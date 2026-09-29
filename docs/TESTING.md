@@ -128,6 +128,15 @@ The one new database change for 1.0, one cage per rack place (revision
 place: the oldest kept it, the other two were taken off the rack with a
 line in their notes, and the rule was in place afterwards.
 
+## Function test: a wet lab's everyday work
+
+After the stress test, a second test asked a different question: can a
+wet-lab-heavy lab plan and record its everyday experiments in BioManager,
+and what is tedious? Five testers played a lab manager and four researchers
+(cloning, cell culture and CRISPR, protein purification, RNA and Westerns)
+in one lab for two simulated weeks. The findings, the chores that repeat
+and the functions they suggest are in [testing/wet-lab.md](testing/wet-lab.md).
+
 ## How it was done
 
 Each tester got the same brief: use only your own server, port, database
