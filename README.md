@@ -899,6 +899,7 @@ weights, experiments, plasmids and notebook pages as a zip at any time.
 | [`deploy/RUNBOOK.md`](deploy/RUNBOOK.md) | Running a lab server: alerts, outages, restores, people joining and leaving |
 | [`docs/GOOGLE_CALENDAR_SETUP.md`](docs/GOOGLE_CALENDAR_SETUP.md) | Connecting Google Calendar |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | How BioManager is built: stack, styling, icons, the organism engine, access control, audit and undo, tests, security settings |
+| [`docs/TESTING.md`](docs/TESTING.md) | How 1.0 was tested: six areas stress-tested like a lab and an attacker would, what was found and fixed, and the full reports |
 
 Working on BioManager itself? Start with
 [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md). The test suite runs on SQLite
