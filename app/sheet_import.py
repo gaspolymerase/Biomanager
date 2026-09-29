@@ -302,6 +302,7 @@ class Field:
     choices: dict[str, str] | None = None
     note: str = ""                     # shown beside it on the match page
     custom: bool = False               # one of the database's own columns
+    options: tuple = ()                # (value, label) for the "every row gets" choice
 
     def also(self) -> list[str]:
         """A few other names it's known by, for the upload page."""
@@ -832,7 +833,7 @@ class PlasmidTarget(Target):
         p = PlasmidRecord(plasmid_id=number, name=name[:200], backbone=v.get("backbone", "")[:200],
                           insert_seq=v.get("insert_seq", "")[:200], resistance=v.get("resistance", "")[:80],
                           owner=_owner(ctx, v.get("owner", ""), warnings, extras),
-                          location=v.get("location", "")[:120])
+                          location=v.get("location", "")[:120], is_shared=v.get("is_shared") == "1")
         for key, label, limit in (("concentration", "Concentration", 40), ("a260_280", "260/280", 20)):
             value = v.get(key, "").strip().replace(",", ".")
             try:
@@ -882,6 +883,7 @@ def plasmid_target(session) -> Target:
             Field("a260_280", "260/280", ("260/280", "a260/280", "a260/a280", "purity")),
             Field("owner", "Owner", ("owner", "user", "person", "made by", "maker", "researcher", "depositor"),
                   kind="owner", required=True, fill="me"),
+            shared_field(),
             Field("notes", "Notes", ("note", "comment", "remark", "description", "source", "reference")),
         ])
 
@@ -1127,6 +1129,8 @@ class InventoryTarget(Target):
         form = {k: v[k] for k in v if k.startswith("attr_") or k in (
             "name", "category", "quantity", "unit", "vendor", "catalog_number", "lot", "location_note",
             "received_on", "expires_on", "status")}
+        if mv.has("sharing") and v.get("is_shared") in ("0", "1"):
+            form["is_shared"] = v["is_shared"]
         form["owner"] = _owner(ctx, v.get("owner", ""), warnings, extras)
         form["notes"] = _extras_note(v.get("notes", ""), extras)
         if "status" in form and form["status"].strip():
@@ -1158,6 +1162,20 @@ class InventoryTarget(Target):
             warnings.append(problem)
         session.flush()
         return f"#{item.number} {(item.name or '')[:40]}", warnings
+
+
+# Personal or lab common, however a sheet says it; the import page offers it
+# for every row when the sheet doesn't.
+SHARED_CHOICES = {"lab common": "1", "lab": "1", "common": "1", "shared": "1", "yes": "1", "y": "1", "true": "1",
+                  "1": "1", "personal": "0", "mine": "0", "private": "0", "own": "0", "no": "0", "n": "0",
+                  "false": "0", "0": "0"}
+
+
+def shared_field() -> Field:
+    return Field("is_shared", "Belongs to", ("belongs to", "lab common", "common", "shared", "lab stock",
+                                             "personal or lab"),
+                 kind="choice", choices=SHARED_CHOICES, required=True, fill="0",
+                 options=(("0", "Personal (its owner's)"), ("1", "Lab common: anyone can edit")))
 
 
 # Other names a lab's sheet uses for a preset's own columns (inventory.py
@@ -1209,6 +1227,8 @@ def inventory_target(session, module) -> Target:
               kind="owner", required=True, fill="me"),
         Field("notes", "Notes", ("note", "comment", "remark", "description")),
     ]
+    if mv.has("sharing"):
+        fields.insert(-1, shared_field())
     needs = {"vendor": "supplier", "catalog_number": "supplier", "lot": "supplier", "quantity": "quantity",
              "unit": "quantity", "rack": "storage", "position": "storage", "received_on": "received",
              "expires_on": "expiry"}

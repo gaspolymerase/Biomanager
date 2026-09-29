@@ -256,6 +256,15 @@ class BoxTests(InventoryCase):
         bid = self.make_rack(self.m, self.key)
         self.assertEqual(one("select created_by from inventory_racks where id=?", bid), self.member)
 
+    def test_several_boxes_at_once_are_numbered_on(self):
+        base = uniq("Tower ")
+        self.make_rack(self.m, self.key, f"{base} 1")
+        r = self.post(self.m, f"/inventory/{self.key}/racks/save", data={
+            "id": "", "name": base, "rows": "9", "cols": "9", "kind": "box", "count": "3", **GRID_NAMING})
+        self.assertFlash(r, f"Made 3 boxes: {base} 2 to {base} 4", "success")
+        names = [n for (n,) in rows("select name from inventory_racks where name like ? order by id", f"{base}%")]
+        self.assertEqual(names, [f"{base} {i}" for i in (1, 2, 3, 4)])
+
     def test_member_cannot_rename_or_resize_someone_elses_box(self):
         name = uniq("AdminBox")
         bid = self.make_rack(self.a, self.key, name)

@@ -221,6 +221,18 @@ class PermissionTests(AppTestCase):
         self.assertFlash(r, "belongs to", "error")
         self.assertEqual(count("plasmids", "id=?", self.rid), 1)
 
+    def test_a_lab_common_plasmid_is_anyones_to_edit_but_its_owners_to_give_away_or_delete(self):
+        self.assertSaved(self.autosave(self.m, f"/plasmids/{self.rid}/update", {"is_shared": "1"}))
+        self.assertSaved(self.autosave(self.o, f"/plasmids/{self.rid}/update", {"notes": "miniprep 2 in box B"}))
+        self.assertEqual(plasmid(self.rid, "notes"), ("miniprep 2 in box B",))
+        r = self.autosave(self.o, f"/plasmids/{self.rid}/update", {"owner": self.other})
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("lab common", r.get_json()["error"])
+        self.assertEqual(self.autosave(self.o, f"/plasmids/{self.rid}/update", {"is_shared": "0"}).status_code, 403)
+        self.assertFlash(self.post(self.o, f"/plasmids/{self.rid}/delete"), "lab common", "error")
+        self.assertEqual(count("plasmids", "id=?", self.rid), 1)
+        self.assertEqual(plasmid(self.rid, "owner"), (self.member,))
+
     def test_member_cannot_move_someone_elses_plasmid(self):
         mine = self.make_box(self.o)
         r = self.o.post(f"/plasmids/{self.rid}/move", data={"box_id": str(mine), "box_row": "0", "box_col": "0"})

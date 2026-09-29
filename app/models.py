@@ -455,6 +455,9 @@ class PlasmidRecord(Base):
     # doesn't name them still works.
     concentration: Mapped[str] = mapped_column(String(40), default="", server_default="")
     a260_280: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Lab common: anyone may edit it; deleting it or changing its owner is
+    # still the owner's (or an admin's), as for lab common stock.
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false(), index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     # ---- Sequence design (the "working" side of the plasmid record) ------
     # full_sequence: raw nucleotide string (uppercase ACGT/N), no newlines

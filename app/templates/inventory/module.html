@@ -681,6 +681,10 @@
         {% for kind in ['box', 'rack', 'shelf', 'drawer', 'freezer'] %}<option value="{{ kind }}">{{ kind|capitalize }}</option>{% endfor %}
       </select>
     </label>
+    <label data-box-count>How many
+      <input type="number" name="count" min="1" max="50" value="1"
+             title="Several boxes alike, named after this one: Tower A 1, Tower A 2…">
+    </label>
     {% if stored_at_field %}
       <label class="col-span-full">{{ stored_at_field.label }}
         <select name="stored_at">
@@ -696,6 +700,17 @@
 
 {% block body_end %}
 <script src="{{ url_for('static', filename='used-in.js') }}?v={{ asset_version('used-in.js') }}" defer></script>
+<script nonce="{{ csp_nonce() }}">
+  /* "How many" is for a new box only. */
+  (function () {
+    const dialog = document.getElementById('inv-rack-dialog');
+    if (!dialog) return;
+    dialog.addEventListener('record-dialog:open', (event) => {
+      const isNew = Boolean(event.detail && event.detail.isNew);
+      dialog.querySelectorAll('[data-box-count]').forEach((el) => { el.hidden = !isNew; });
+    });
+  })();
+</script>
 <script type="application/json" id="inv-page-data">{{ {"isAdmin": is_admin, "me": current_user.username,
                                                         "openStatuses": m.open_statuses | map('lower') | list} | tojson }}</script>
 <script type="application/json" id="inv-fill-data">{{ remembered.fill | tojson }}</script>

@@ -556,7 +556,7 @@ def fish():
 def plasmid_json(p: PlasmidRecord, sequence: bool = False) -> dict:
     out = {"plasmid_id": p.plasmid_id, "name": p.name or "", "backbone": p.backbone or "", "insert": p.insert_seq or "",
            "resistance": p.resistance or "", "owner": p.owner or "", "location": p.location or "",
-           "concentration": p.concentration or "", "a260_280": p.a260_280 or "",
+           "concentration": p.concentration or "", "a260_280": p.a260_280 or "", "shared": bool(p.is_shared),
            "box": p.storage_box or "", "notes": p.notes or "", "has_sequence": bool(p.full_sequence),
            "updated_at": _stamp(p.updated_at)}
     if sequence:

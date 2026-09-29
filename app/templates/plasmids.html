@@ -58,6 +58,7 @@
     <div class="dt-chips" role="group" aria-label="Show">
       <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">All <span class="dt-chip-count">{{ counts.all }}</span></button>
       <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ counts.mine }}</span></button>
+      <button type="button" class="dt-chip" data-dt-filter="shared:true" aria-pressed="false">Lab common <span class="dt-chip-count">{{ counts.lab }}</span></button>
       <button type="button" class="dt-chip" data-dt-filter="seq:true" aria-pressed="false">Has sequence <span class="dt-chip-count">{{ counts.sequence }}</span></button>
       <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false">In a box <span class="dt-chip-count">{{ counts.stored }}</span></button>
     </div>
@@ -97,6 +98,9 @@
             <th class="dt-sortable" data-sort-key="resistance" style="width: 112px;">
               <span class="dt-col-head">{{ icon('resistance', 'dt-col-icon') }}Resistance<span class="dt-sort-indicator"></span></span>
             </th>
+            <th class="dt-sortable" data-sort-key="shared" style="width: 112px;" title="Lab common: anyone in the lab can edit it">
+              <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Belongs to<span class="dt-sort-indicator"></span></span>
+            </th>
             <th class="dt-sortable" data-sort-key="owner" style="width: 88px;">
               <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
             </th>
@@ -131,6 +135,7 @@
             {% set locked = not r.editable %}
             <tr data-id="{{ p.id }}" data-pid="{{ p.plasmid_id }}" data-length="{{ r.length }}"
                 data-mine="{{ 'true' if r.mine else 'false' }}" data-seq="{{ 'true' if r.length else 'false' }}"
+                data-shared="{{ 'true' if p.is_shared else 'false' }}"
                 data-active="{{ 'true' if r.stored else 'false' }}"
                 class="{% if locked %}is-locked{% endif %}">
               <td class="sheet-pin sheet-pin-0">
@@ -146,7 +151,14 @@
               <td><input form="{{ f }}" name="backbone" value="{{ p.backbone }}" data-autosave="1" aria-label="Backbone" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="insert_seq" value="{{ p.insert_seq }}" title="{{ p.insert_seq }}" data-autosave="1" aria-label="Insert" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1" aria-label="Resistance" {% if locked %}disabled{% endif %}></td>
-              <td>{{ sheet_ui.owner_cell(p.owner, f, locked) }}</td>
+              <td>
+                <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ 'lab' if p.is_shared else 'mine' }}" data-autosave="1"
+                        aria-label="Belongs to" {% if not r.manageable %}disabled {% if not locked %}title="Only {{ p.owner or 'its owner' }} or an admin can change whose it is"{% endif %}{% endif %}>
+                  <option value="0" {% if not p.is_shared %}selected{% endif %}>Personal</option>
+                  <option value="1" {% if p.is_shared %}selected{% endif %}>Lab common</option>
+                </select>
+              </td>
+              <td>{{ sheet_ui.owner_cell(p.owner, f, not r.manageable) }}</td>
               <td>
                 <select form="{{ f }}" name="box_id" data-autosave="1" data-dead-values="" aria-label="Box" {% if locked %}disabled{% endif %}>
                   {{ box_options(p.box_id_fk, '–') }}
@@ -265,6 +277,11 @@
       <button type="submit" class="btn btn-sm">Set owner</button>
     </form>
     <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
+      <input type="hidden" name="action" value="shared">
+      <select name="value" aria-label="Belongs to"><option value="1">Lab common</option><option value="0">Personal</option></select>
+      <button type="submit" class="btn btn-sm">Set</button>
+    </form>
+    <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
       <input type="hidden" name="action" value="resistance">
       <input name="value" list="plasmid-resistance" placeholder="resistance" aria-label="New resistance">
       <button type="submit" class="btn btn-sm">Set resistance</button>
@@ -322,6 +339,9 @@
         <label>Insert <input name="insert_seq" placeholder="What is cloned in"></label>
         <label>Resistance <input name="resistance" list="plasmid-resistance"></label>
         <label>Owner <input name="owner" list="sheet-owners"></label>
+        <label>Belongs to
+          <select name="is_shared"><option value="0">Personal: only the owner (and admins) can edit</option><option value="1">Lab common: anyone can edit</option></select>
+        </label>
       </fieldset>
       <fieldset class="record-group">
         <legend>Storage</legend>
@@ -370,6 +390,11 @@
 
 {% block body_end %}
 <script nonce="{{ csp_nonce() }}">
+  /* The Belongs to pill takes its colour from what it says. */
+  document.addEventListener('change', (e) => {
+    const pill = e.target.closest && e.target.closest('.plasmid-sheet .scope-pill');
+    if (pill) pill.dataset.scope = pill.value === '1' ? 'lab' : 'mine';
+  });
   /* Open a given box (after saving one, the server sends ?box=<id>): the
      rack grid reads its remembered box when it starts, which is after this. */
   (function () {

@@ -1241,6 +1241,9 @@ def save_rack(key: str):
                       f"({', '.join(i.name or '#' + str(i.number) for i in outside[:4])}{'…' if n > 4 else ''}). "
                       f"Move them first.", "error")
                 return redirect(url_for("inventory.module", key=key))
+        count = _int(form.get("count"), 1, 1, MAX_BOXES_AT_ONCE) if rack is None else 1
+        if count > 1:
+            return _create_boxes(session, row, mv, form, rows, cols, count)
         if rack is None:
             rack = InventoryRack(module_id_fk=row.id, created_by=g.user.username)
             session.add(rack)
@@ -1258,6 +1261,30 @@ def save_rack(key: str):
         session.commit()
         flash(f"Saved {rack.name}.", "success")
     return redirect(url_for("inventory.module", key=key))
+
+
+MAX_BOXES_AT_ONCE = 50
+
+
+def _create_boxes(session, row, mv, form, rows: int, cols: int, count: int):
+    """Several boxes alike at once ("Tower A" × 13 → Tower A 1 … Tower A 13),
+    numbered on from any already named so."""
+    base = (form.get("name") or "").strip()[:110] or "Box"
+    taken = set(session.scalars(select(InventoryRack.name).where(InventoryRack.module_id_fk == row.id)))
+    naming = json.dumps(positions.scheme_from_form(form))
+    made, n = [], 1
+    while len(made) < count:
+        name = f"{base} {n}"
+        n += 1
+        if name in taken:
+            continue
+        session.add(InventoryRack(module_id_fk=row.id, created_by=g.user.username, name=name,
+                                  kind=(form.get("kind") or "box").strip()[:40], rows=rows, cols=cols, naming=naming,
+                                  stored_at=(form.get("stored_at") or "").strip()[:40]))
+        made.append(name)
+    session.commit()
+    flash(f"Made {count} {'boxes' if count > 1 else 'box'}: {made[0]} to {made[-1]}.", "success")
+    return redirect(url_for("inventory.module", key=row.key))
 
 
 @bp.route("/<key>/racks/<int:rack_id>/delete", methods=["POST"])

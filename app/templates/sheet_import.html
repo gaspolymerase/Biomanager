@@ -166,6 +166,10 @@
                   <option value="{{ name }}" {% if typed == name %}selected{% endif %}>{{ name }}</option>
                 {% endfor %}
               </select>
+            {% elif f.options %}
+              <select name="fill-{{ f.key }}" aria-label="{{ f.label }} for every row">
+                {% for value, label in f.options %}<option value="{{ value }}" {% if typed == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
             {% else %}
               <input name="fill-{{ f.key }}" value="{{ typed if typed != 'me' }}" placeholder="a value for every row"
                      {% if f.kind == 'date' %}type="date"{% endif %} aria-label="{{ f.label }} for every row">

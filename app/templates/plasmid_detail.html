@@ -108,7 +108,13 @@
     <form method="post" action="{{ url_for('update_plasmid', row_id=plasmid.row_id) }}" class="modal-grid p-4">
       <input type="hidden" name="box_id_was" value="{{ plasmid.box_id }}">
       <input type="hidden" name="position_was" value="{{ plasmid.position }}">
-      <label>Owner <input name="owner" value="{{ plasmid.owner }}" list="sheet-owners" {% if locked %}disabled{% endif %}></label>
+      <label>Owner <input name="owner" value="{{ plasmid.owner }}" list="sheet-owners" {% if locked or not plasmid.can_manage %}disabled{% endif %}></label>
+      <label>Belongs to
+        <select name="is_shared" {% if locked or not plasmid.can_manage %}disabled{% endif %}>
+          <option value="0" {% if not plasmid.is_shared %}selected{% endif %}>Personal</option>
+          <option value="1" {% if plasmid.is_shared %}selected{% endif %}>Lab common: anyone can edit</option>
+        </select>
+      </label>
       <label>Storage location <input name="location" value="{{ plasmid.location }}" placeholder="−80 freezer, shelf 2 (when not in a box)" {% if locked %}disabled{% endif %}></label>
       <label>Box
         <select name="box_id" {% if locked %}disabled{% endif %}>

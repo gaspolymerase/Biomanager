@@ -378,6 +378,25 @@ class Importing(AppTestCase):
         self.assertEqual(got[:2], ("male", "T-9"))
         self.assertEqual(float(json.loads(got[2])["weight_g"]), 4.5)
 
+    def test_plasmids_can_all_come_in_as_lab_common(self):
+        name = uniq("pCommon")
+        token, html = self.upload(self.a, "plasmids", "p.csv", f"Name\n{name}\n".encode())
+        self.assertIn('name="fill-is_shared"', html)
+        self.post(self.a, f"/import-sheet/file/{token}/run",
+                  data={**self.chosen(html), "sheet": "Sheet 1", "fill-is_shared": "1"})
+        self.assertEqual(one("select is_shared from plasmids where name=?", name), True)
+
+    def test_an_inventory_sheet_says_which_rows_are_lab_common(self):
+        key = self.fresh_inventory()
+        mine, common = uniq("Tris "), uniq("PBS ")
+        data = xlsx([["Name", "Lab common"], [mine, "no"], [common, "yes"]])
+        token, html = self.upload(self.a, f"inventory:{key}", "r.xlsx", data)
+        chosen = self.chosen(html)
+        self.assertEqual(chosen["map-1"], "is_shared")
+        self.post(self.a, f"/import-sheet/file/{token}/run", data={**chosen, "sheet": "Sheet1"})
+        self.assertEqual([one("select is_shared from inventory_items where name=?", n) for n in (mine, common)],
+                         [False, True])
+
     def test_problems_name_the_sheet_s_own_row(self):
         data = xlsx([["Plasmids of the lab"], ["Name", "Vector"], ["pOk", "pUC19"], [], ["", "no name"]])
         token, html = self.upload(self.a, "plasmids", "p.xlsx", data)

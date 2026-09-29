@@ -2010,9 +2010,9 @@ def export_my_data():
             ).all()
             zf.writestr("plasmids.csv", csv_text([
                 ["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location",
-                 "concentration", "a260_280", "notes"],
+                 "concentration", "a260_280", "lab_common", "notes"],
                 *([p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance, p.owner, p.location,
-                   p.concentration, p.a260_280, p.notes]
+                   p.concentration, p.a260_280, "yes" if p.is_shared else "", p.notes]
                   for p in plasmids)]))
 
             tabs = db_session.scalars(
@@ -6375,7 +6375,7 @@ def _plasmid_values(p, box) -> dict:
     return {
         "name": p.name, "backbone": p.backbone, "insert_seq": p.insert_seq,
         "resistance": p.resistance, "owner": p.owner, "location": p.location,
-        "concentration": p.concentration, "a260_280": p.a260_280,
+        "concentration": p.concentration, "a260_280": p.a260_280, "is_shared": "1" if p.is_shared else "0",
         "notes": p.notes, "box_id": str(p.box_id_fk or ""), "storage_box": box.name if box else "",
         "position": pbox.label(p, box),
     }
@@ -6472,7 +6472,7 @@ def plasmids():
             editable = access.can_edit(p)
             box = box_by_id.get(p.box_id_fk)
             rows.append({
-                "p": p, "box": box, "editable": editable, "mine": p.owner == me,
+                "p": p, "box": box, "editable": editable, "manageable": access.can_manage(p), "mine": p.owner == me,
                 "stored": pbox.is_stored(p), "position": pbox.label(p, box),
                 "where": _plasmid_where(p, box),
                 "length": len(p.full_sequence or ""),
@@ -6487,6 +6487,7 @@ def plasmids():
             "mine": sum(1 for r in rows if r["mine"]),
             "sequence": sum(1 for r in rows if r["length"]),
             "stored": sum(1 for r in rows if r["stored"]),
+            "lab": sum(1 for r in rows if r["p"].is_shared),
         }
         box_list = [{"id": b.id, "name": b.name, "location": b.location or ""} for b in boxes]
         return render_template(
@@ -6646,6 +6647,7 @@ def _make_plasmids(db_session, form, user, count, name, names, requested, parsed
                 owner=owner,
                 location=(form.get("location") or "").strip()[:120],
                 concentration=measures["concentration"], a260_280=measures["a260_280"],
+                is_shared=form.get("is_shared") == "1",
                 notes=(form.get("notes") or "").strip(),
             )
             pbox.put_in(record, box)
@@ -6706,6 +6708,15 @@ def update_plasmid(row_id: int):
             return _plasmid_answer(db_session, p, error=_plasmid_denied(p), status=403)
         if "name" in form and not form["name"].strip() and (p.name or "").strip():
             return _plasmid_answer(db_session, p, error="A plasmid needs a name.", status=400)
+        # Lab common lets anyone edit it; whose it is stays its owner's call.
+        shared = form.get("is_shared") in ("1", "true", "on") if "is_shared" in form else bool(p.is_shared)
+        owner_changes = "owner" in form and (form.get("owner") or "").strip()[:120] != (p.owner or "")
+        if (owner_changes or shared != bool(p.is_shared)) and not access.can_manage(p):
+            owner = (p.owner or "").strip() or "its owner"
+            return _plasmid_answer(db_session, p, status=403, error=(
+                f"Plasmid #{p.plasmid_id} is lab common, so you can edit it, but only {owner} or an admin "
+                "can change whose it is."))
+        p.is_shared = shared
         for field, limit in (("name", 200), ("backbone", 200), ("insert_seq", 200),
                              ("resistance", 80), ("owner", 120), ("location", 120)):
             if field in form:
@@ -6765,8 +6776,10 @@ def delete_plasmid(row_id: int):
         if p is None:
             flash("That plasmid no longer exists.", "error")
             return redirect(url_for("plasmids"))
-        if not access.can_edit(p):
-            flash(_plasmid_denied(p), "error")
+        if not access.can_manage(p):
+            flash(_plasmid_denied(p) if not access.can_edit(p) else
+                  f"Plasmid #{p.plasmid_id} is lab common: only {(p.owner or '').strip() or 'its owner'} or an admin can delete it.",
+                  "error")
             return redirect(url_for("plasmids"))
         label = _plasmid_label(p)
         # A batch of one, so Batch history can bring it back.
@@ -6818,7 +6831,7 @@ def bulk_plasmids():
         if not records:
             flash("Tick the plasmids to change first.", "info")
             return redirect(url_for("plasmids"))
-        if action not in ("owner", "resistance", "move", "delete"):
+        if action not in ("owner", "resistance", "move", "delete", "shared"):
             flash("Unknown batch action.", "error")
             return redirect(url_for("plasmids"))
         target, target_name = None, ""
@@ -6834,7 +6847,10 @@ def bulk_plasmids():
                 target_name = value[:80]
                 target = pbox.by_name(db_session, target_name)
                 target_name = target.name if target else target_name
-        editable = [p for p in records if access.can_edit(p)]
+        # Whose it is, lab common or not, and deleting: the owner's; the rest:
+        # anyone who may edit it.
+        allowed = access.can_manage if action in ("owner", "shared", "delete") else access.can_edit
+        editable = [p for p in records if allowed(p)]
         skipped = len(records) - len(editable)
         done, unplaced = 0, 0
         noun = lambda n: "plasmid" if n == 1 else "plasmids"  # noqa: E731
@@ -6843,6 +6859,7 @@ def bulk_plasmids():
             "resistance": f"set resistance to {value or 'none'} on {len(editable)} {noun(len(editable))}",
             "move": f"move {len(editable)} {noun(len(editable))} to {target_name or 'no box'}",
             "delete": f"delete {len(editable)} {noun(len(editable))}",
+            "shared": f"make {len(editable)} {noun(len(editable))} {'lab common' if value == '1' else 'personal'}",
         }
         with audit.batch(db_session, "delete" if action == "delete" else "update",
                          descriptions[action], "plasmids") as batch_row:
@@ -6854,6 +6871,12 @@ def bulk_plasmids():
                     stamp_updated(p)
                     done += 1
                 message = f"Set {action} on {done} {noun(done)}."
+            elif action == "shared":
+                for p in editable:
+                    p.is_shared = value == "1"
+                    stamp_updated(p)
+                    done += 1
+                message = f"Made {done} {noun(done)} {'lab common' if value == '1' else 'personal'}."
             elif action == "move":
                 box = target
                 if box is None and target_name:
@@ -7008,6 +7031,7 @@ def plasmid_detail(row_id: int):
             "owner": p.owner,
             "location": p.location,
             "concentration": p.concentration, "a260_280": p.a260_280,
+            "is_shared": bool(p.is_shared), "can_manage": access.can_manage(p),
             "notes": p.notes,
             "box_id": p.box_id_fk or "",
             "storage_box": box.name if box else "",
