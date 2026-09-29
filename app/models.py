@@ -1422,6 +1422,9 @@ class InventoryRack(Base):
     cols: Mapped[int] = mapped_column(Integer, default=9)
     naming: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Where the box is kept ("−80 °C", "LN₂"): what goes in takes it as its
+    # "Stored at" (inventory_service.follow_box). Empty: not said.
+    stored_at: Mapped[str] = mapped_column(String(40), default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")   # may resize or delete it (and admins)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

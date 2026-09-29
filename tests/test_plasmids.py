@@ -172,6 +172,13 @@ class CreatePlasmidTests(AppTestCase):
         self.assertEqual(by_name(name, "box_id_fk, box_row"), [(box, None)])
         self.assertFlash(r, "outside the box", "warning")
 
+    def test_moving_into_another_box_with_no_position_takes_its_next_free_cell(self):
+        old_box, new_box = self.make_box(self.a), self.make_box(self.a)
+        self.make_plasmid(self.a, box_id=new_box, position="A1")
+        pid = self.make_plasmid(self.a, box_id=old_box, position="C3")
+        self.post(self.a, f"/plasmids/{pid}/update", data={"box_id": str(new_box), "position": ""})
+        self.assertEqual(plasmid(pid, "box_id_fk, box_row, box_col"), (new_box, 0, 1))
+
 
 # ================================================================ permissions
 

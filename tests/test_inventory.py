@@ -947,6 +947,39 @@ class BulkTests(InventoryCase):
         self.assertEqual(item(rid)["status"], "empty")
         self.assertEqual(attrs_of(rid).get("used_up_on"), T)
 
+    def test_used_up_frees_the_box_position_and_notes_where_it_was(self):
+        bid = self.make_rack(self.a, self.key, rows=3, cols=3)
+        box = one("select name from inventory_racks where id=?", bid)
+        ids = self.reagents(2, rack_id=str(bid))
+        self.bulk(self.a, "status", ids, "empty")
+        self.assertEqual({item(i)["rack_id_fk"] for i in ids}, {None})
+        self.assertEqual(one("select location_note from inventory_items where id=?", ids[0]), f"was in {box} · A1")
+        # The dialog still shows the old box and position: that doesn't put it back.
+        [rid] = self.reagents(1, rack_id=str(bid), position="C3")
+        self.post(self.a, f"/inventory/{self.key}/items/save", data={
+            "id": str(rid), "name": item(rid)["name"], "status": "discarded", "rack_id": str(bid), "position": "C3"})
+        self.assertEqual(item(rid)["rack_id_fk"], None)
+        # Low stock stays where it is.
+        [low] = self.reagents(1, rack_id=str(bid))
+        self.bulk(self.a, "status", [low], "low")
+        self.assertEqual(item(low)["rack_id_fk"], bid)
+
+    def test_what_goes_in_a_box_takes_the_box_s_stored_at(self):
+        minus80 = self.make_rack(self.a, self.key, stored_at="−80 °C")
+        ln2 = self.make_rack(self.a, self.key, stored_at="LN₂")
+        ids = self.reagents(2, rack_id=str(minus80))
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"−80 °C"})
+        self.bulk(self.a, "rack", ids, str(ln2))                         # Move to box
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"LN₂"})
+        batch_id, _description, _ = newest_batch(self.admin)
+        self.post(self.a, f"/batches/{batch_id}/undo")                  # undo puts both back
+        self.assertEqual({(item(i)["rack_id_fk"], attrs_of(i).get("storage_temp")) for i in ids}, {(minus80, "−80 °C")})
+        # Moving the box itself moves what is in it.
+        name = one("select name from inventory_racks where id=?", minus80)
+        self.post(self.a, f"/inventory/{self.key}/racks/save", data={
+            "id": str(minus80), "name": name, "rows": "9", "cols": "9", "stored_at": "−20 °C", **GRID_NAMING})
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"−20 °C"})
+
     def test_set_field_sets_any_column_on_the_ticked_rows(self):
         ids = self.reagents(3)
         r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={

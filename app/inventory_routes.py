@@ -240,7 +240,8 @@ def _grid_payload(mv, racks, items) -> dict:
                    "naming": positions.scheme(r.naming),
                    **({"edit": {"data-record-payload": json.dumps({
                        "id": r.id, "_label": r.name, "name": r.name, "rows": r.rows, "cols": r.cols,
-                       "kind": r.kind, **{f"naming_{k}": v for k, v in positions.scheme(r.naming).items()}})}}
+                       "kind": r.kind, "stored_at": r.stored_at,
+                       **{f"naming_{k}": v for k, v in positions.scheme(r.naming).items()}})}}
                       if _can_manage_rack(r) else {})}
                   for r in racks],
         "items": [{
@@ -374,6 +375,7 @@ def module(key: str):
             "remembered": svc.remembered(session, mv, items),
             "can_configure": _can_configure(row), "is_admin": access.is_admin(),
             "bulk_fields": bulk_fields(mv),
+            "stored_at_field": svc.stored_at_field(mv),
             "terminal_statuses": sorted(svc.TERMINAL_STATUSES),
             "counts": {
                 "all": len(items),
@@ -543,10 +545,16 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
         raise Refused(f"{_and(missing)} can’t be left empty.")
 
     # Status last: it may fill the received date or stamp a used-up date.
+    place_was = (str(item.rack_id_fk or ""), svc.rack_label(item))
     if "status" in form and (creating or form_changed(form, "status")):
         problem = svc.apply_status(mv, item, form.get("status"))
         if problem:
             raise Refused(problem)
+    # Used up just freed its cell: the dialog still showing that box and
+    # position is not a request to put it back.
+    freed = place_was[0] and not item.rack_id_fk
+    if freed and (form.get("rack_id", "").strip(), form.get("position", "").strip()) in (place_was, (place_was[0], "")):
+        return None, notes
 
     if mv.has("storage") and "rack_id" in form and form_changed(form, "rack_id", "position"):
         return svc.apply_position(session, item, form.get("rack_id"), form.get("position")), notes
@@ -1142,6 +1150,13 @@ def save_rack(key: str):
             session.add(rack)
         rack.name = (form.get("name") or "").strip()[:120] or "Box"
         rack.kind = (form.get("kind") or "box").strip()[:40]
+        if "stored_at" in form:
+            stored_at = form.get("stored_at", "").strip()[:40]
+            moved = rack.id is not None and stored_at != (rack.stored_at or "")
+            rack.stored_at = stored_at
+            if moved:  # the box went somewhere else, and its tubes with it
+                for item in session.scalars(select(InventoryItem).where(InventoryItem.rack_id_fk == rack.id)):
+                    svc.follow_box(session, item)
         rack.rows, rack.cols = rows, cols
         rack.naming = json.dumps(positions.scheme_from_form(form))
         session.commit()

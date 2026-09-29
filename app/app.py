@@ -6677,6 +6677,10 @@ def update_plasmid(row_id: int):
                     except ValueError as exc:
                         problem = str(exc)
                     else:
+                        if row is None and (current is None or current.id != box.id):
+                            # Into another box with no position: its next free cell.
+                            cells = pbox.free_cells(db_session, box, 1)
+                            row, col = cells[0] if cells else (None, None)
                         problem, _ = pbox.place(db_session, p, box, row, col)
         if problem and request.headers.get("X-Autosave") == "1":
             db_session.rollback()

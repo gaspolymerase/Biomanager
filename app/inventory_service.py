@@ -7,7 +7,9 @@ import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import get_history
 
 from . import inventory as presets
 from . import positions
@@ -214,6 +216,9 @@ def expiry_state(item: InventoryItem, today: date | None = None) -> str:
 # Statuses after which an item is gone: used up, emptied, thrown out,
 # cancelled. Moving into one stamps the day in attrs[ENDED_ATTR].
 TERMINAL_STATUSES = {"used up", "empty", "discarded", "cancelled"}
+# Of those, the ones that leave the box: the tube's cell is freed for the
+# next one, and its location note says where it was.
+GONE_FROM_BOX = {"used up", "empty", "discarded"}
 # Stock that runs out or expires: Home's "Expiring & low stock", and what a
 # received order can be added to (inventory_routes.STOCK_KINDS).
 RESTOCK_KINDS = ("reagents", "antibodies", "viruses")
@@ -260,7 +265,9 @@ def apply_status(mv, item: InventoryItem, new_status, today: date | None = None)
     An item keeps a status the list no longer has as long as it is not
     changed. Changing to "received" fills an empty received date; changing
     to a terminal status (used up, empty, discarded, cancelled) records the
-    day in attrs, and reviving the item clears it again."""
+    day in attrs, and reviving the item clears it again. Used up, empty or
+    discarded also frees its box position (the location note, if empty,
+    keeps where it was)."""
     new = str(new_status or "").strip()[:40]
     old = item.status or ""
     if mv.statuses:
@@ -282,6 +289,12 @@ def apply_status(mv, item: InventoryItem, new_status, today: date | None = None)
         attrs.setdefault(ENDED_ATTR, today.isoformat())
     else:
         attrs.pop(ENDED_ATTR, None)
+    if new.lower() in GONE_FROM_BOX and item.rack is not None:
+        where = " · ".join(filter(None, [item.rack.name, rack_label(item)]))
+        if not (item.location_note or "").strip():
+            item.location_note = f"was in {where}"[:200]
+        item.rack_id_fk = item.rack_row = item.rack_col = None
+        item.rack = None
     if attrs != before:
         item.attrs = json.dumps(attrs)
     return None
@@ -424,6 +437,39 @@ def open_order_count(session) -> int:
             total += session.scalar(select(func.count(InventoryItem.id)).where(
                 InventoryItem.module_id_fk == module.id, InventoryItem.status.in_(statuses))) or 0
     return total
+
+
+def stored_at_field(mv) -> dict | None:
+    """The inventory's "Stored at" column (−80 °C, LN₂…), if it has one."""
+    return next((f for f in mv.fields if f["key"] == "storage_temp"
+                 or f["label"].strip().lower() == "stored at"), None)
+
+
+def follow_box(session, item: InventoryItem) -> None:
+    """A tube put in a box whose place is known takes it as its "Stored at"."""
+    rack = item.rack if item.rack is not None and item.rack.id == item.rack_id_fk else (
+        session.get(InventoryRack, item.rack_id_fk) if item.rack_id_fk else None)
+    if rack is None or not rack.stored_at:
+        return
+    module = session.get(InventoryModule, item.module_id_fk)
+    field = module and stored_at_field(view(module))
+    if field is None:
+        return
+    attrs = item.attrs_dict
+    if attrs.get(field["key"]) != rack.stored_at:
+        attrs[field["key"]] = rack.stored_at
+        item.attrs = json.dumps(attrs)
+
+
+@event.listens_for(Session, "before_flush", insert=True)
+def _items_follow_their_box(session, _context, _instances) -> None:
+    """Whichever way an item changed box (dialog, sheet, grid drag, Move,
+    Add many, import), its "Stored at" follows. Runs before the audit
+    listener, so undoing the move puts the old value back too."""
+    for obj in list(session.new) + list(session.dirty):
+        if isinstance(obj, InventoryItem) and obj.rack_id_fk and (
+                obj in session.new or get_history(obj, "rack_id_fk").has_changes()):
+            follow_box(session, obj)
 
 
 def apply_position(session, item: InventoryItem, rack_raw, position_raw) -> str | None:

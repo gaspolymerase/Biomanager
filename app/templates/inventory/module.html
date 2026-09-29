@@ -626,6 +626,15 @@
         {% for kind in ['box', 'rack', 'shelf', 'drawer', 'freezer'] %}<option value="{{ kind }}">{{ kind|capitalize }}</option>{% endfor %}
       </select>
     </label>
+    {% if stored_at_field %}
+      <label class="col-span-full">{{ stored_at_field.label }}
+        <select name="stored_at">
+          <option value="">Not said</option>
+          {% for o in stored_at_field.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+        </select>
+        <span class="text-[12px] text-muted">What goes in this box takes it as its {{ stored_at_field.label }}.</span>
+      </label>
+    {% endif %}
   {% endcall %}
 {% endif %}
 {% endblock %}
