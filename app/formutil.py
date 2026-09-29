@@ -20,3 +20,9 @@ def form_changed(form, *names) -> bool:
         if was is None or form.get(name, "").strip() != was.strip():
             return True
     return False
+
+
+def like_pattern(text: str) -> str:
+    """ "%text%" for .ilike(…, escape="\\"), with the text's own % and _
+    kept literal: a search for "50%" is not a search for everything."""
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"

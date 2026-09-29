@@ -70,6 +70,7 @@ from .models import (
     UserAccount,
     UserIdentity,
 )
+from .formutil import like_pattern
 from .services import (
     csv_text,
     add_notification,
@@ -5146,8 +5147,9 @@ def global_search():
         q = q.lstrip("#").strip()
     if not q:
         return jsonify({"ok": True, "results": []})
-    like = f"%{q}%"
-    is_digit = q.isdigit()
+    # % and _ are what they are, not LIKE's wildcards (they matched everything).
+    like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    is_digit = q.isdigit() and len(q) <= 12        # a 21-digit "number" is text to look for, not an ID
     limit = 5
     results: list[dict] = []
     with SessionLocal() as db_session:
@@ -5156,7 +5158,7 @@ def global_search():
             mouse_stmt = mouse_stmt.where(MouseRecord.mouse_id == int(q))
         else:
             mouse_stmt = mouse_stmt.where(
-                MouseRecord.genotype.ilike(like) | MouseRecord.owner.ilike(like) | MouseRecord.note.ilike(like)
+                MouseRecord.genotype.ilike(like, escape="\\") | MouseRecord.owner.ilike(like, escape="\\") | MouseRecord.note.ilike(like, escape="\\")
             )
         for m in db_session.scalars(mouse_stmt.order_by(MouseRecord.mouse_id.desc()).limit(limit)).all():
             results.append({
@@ -5171,9 +5173,9 @@ def global_search():
 
         # The rest of the colony: cages, litters, experiments, strains.
         cage_stmt = select(CageRecord).where(
-            CageRecord.cage_id.ilike(like) | CageRecord.purpose.ilike(like)
-            | CageRecord.genotype_summary.ilike(like) | CageRecord.card_id.ilike(like)
-            | CageRecord.notes.ilike(like) | CageRecord.room.ilike(like))
+            CageRecord.cage_id.ilike(like, escape="\\") | CageRecord.purpose.ilike(like, escape="\\")
+            | CageRecord.genotype_summary.ilike(like, escape="\\") | CageRecord.card_id.ilike(like, escape="\\")
+            | CageRecord.notes.ilike(like, escape="\\") | CageRecord.room.ilike(like, escape="\\"))
         for cage in db_session.scalars(cage_stmt.order_by(CageRecord.cage_id).limit(limit)).all():
             live = sum(1 for mouse in cage.mice if mouse_is_active(mouse))
             results.append({
@@ -5184,8 +5186,8 @@ def global_search():
                 "url": url_for("colony", view="cages", scope="all", q=cage.cage_id),
             })
         litter_stmt = select(LitterRecord).where(
-            LitterRecord.litter_id.ilike(like) | LitterRecord.cohort_name.ilike(like)
-            | LitterRecord.notes.ilike(like))
+            LitterRecord.litter_id.ilike(like, escape="\\") | LitterRecord.cohort_name.ilike(like, escape="\\")
+            | LitterRecord.notes.ilike(like, escape="\\"))
         for litter in db_session.scalars(litter_stmt.order_by(LitterRecord.litter_id).limit(limit)).all():
             results.append({
                 "type": "litter",
@@ -5197,8 +5199,8 @@ def global_search():
                 "url": url_for("colony", view="litters", q=litter.litter_id),
             })
         exp_stmt = select(Experiment).where(
-            Experiment.name.ilike(like) | Experiment.description.ilike(like)
-            | Experiment.treatment_plan.ilike(like))
+            Experiment.name.ilike(like, escape="\\") | Experiment.description.ilike(like, escape="\\")
+            | Experiment.treatment_plan.ilike(like, escape="\\"))
         for exp in db_session.scalars(exp_stmt.order_by(Experiment.created_at.desc()).limit(limit)).all():
             results.append({
                 "type": "experiment",
@@ -5209,8 +5211,8 @@ def global_search():
                 "url": experiment_pages.page_url(exp),
             })
         strain_stmt = select(StrainRecord).where(
-            StrainRecord.strain_name.ilike(like) | StrainRecord.strain_number.ilike(like)
-            | StrainRecord.strain_background.ilike(like) | StrainRecord.description.ilike(like))
+            StrainRecord.strain_name.ilike(like, escape="\\") | StrainRecord.strain_number.ilike(like, escape="\\")
+            | StrainRecord.strain_background.ilike(like, escape="\\") | StrainRecord.description.ilike(like, escape="\\"))
         for strain in db_session.scalars(strain_stmt.order_by(StrainRecord.strain_name).limit(limit)).all():
             results.append({
                 "type": "strain",
@@ -5225,10 +5227,10 @@ def global_search():
             plasmid_stmt = plasmid_stmt.where(PlasmidRecord.plasmid_id == int(q))
         else:
             plasmid_stmt = plasmid_stmt.where(
-                PlasmidRecord.name.ilike(like) | PlasmidRecord.backbone.ilike(like)
-                | PlasmidRecord.insert_seq.ilike(like) | PlasmidRecord.resistance.ilike(like)
-                | PlasmidRecord.owner.ilike(like) | PlasmidRecord.storage_box.ilike(like)
-                | PlasmidRecord.location.ilike(like) | PlasmidRecord.notes.ilike(like)
+                PlasmidRecord.name.ilike(like, escape="\\") | PlasmidRecord.backbone.ilike(like, escape="\\")
+                | PlasmidRecord.insert_seq.ilike(like, escape="\\") | PlasmidRecord.resistance.ilike(like, escape="\\")
+                | PlasmidRecord.owner.ilike(like, escape="\\") | PlasmidRecord.storage_box.ilike(like, escape="\\")
+                | PlasmidRecord.location.ilike(like, escape="\\") | PlasmidRecord.notes.ilike(like, escape="\\")
             )
         for p in db_session.scalars(plasmid_stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(limit)).all():
             # Where it is, in its box's own position names ("Box A · D7").
@@ -5253,10 +5255,10 @@ def global_search():
             item_stmt = item_stmt.where(InventoryItem.number == int(q))
         else:
             item_stmt = item_stmt.where(
-                InventoryItem.name.ilike(like) | InventoryItem.category.ilike(like)
-                | InventoryItem.vendor.ilike(like) | InventoryItem.catalog_number.ilike(like)
-                | InventoryItem.lot.ilike(like) | InventoryItem.notes.ilike(like)
-                | InventoryItem.attrs.ilike(like)
+                InventoryItem.name.ilike(like, escape="\\") | InventoryItem.category.ilike(like, escape="\\")
+                | InventoryItem.vendor.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
+                | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.notes.ilike(like, escape="\\")
+                | InventoryItem.attrs.ilike(like, escape="\\")
             )
         for item in db_session.scalars(item_stmt.order_by(InventoryItem.id.desc()).limit(limit * 2)).all():
             module = modules.get(item.module_id_fk)
@@ -5281,8 +5283,8 @@ def global_search():
             unit_stmt = unit_stmt.where(StockUnit.number == int(q))
         else:
             unit_stmt = unit_stmt.where(
-                StockUnit.genotype.ilike(like) | StockUnit.female_genotype.ilike(like)
-                | StockUnit.male_genotype.ilike(like) | StockUnit.notes.ilike(like))
+                StockUnit.genotype.ilike(like, escape="\\") | StockUnit.female_genotype.ilike(like, escape="\\")
+                | StockUnit.male_genotype.ilike(like, escape="\\") | StockUnit.notes.ilike(like, escape="\\"))
         for unit in db_session.scalars(unit_stmt.order_by(StockUnit.id.desc()).limit(limit * 2)).all():
             mv = stock_modules.get(unit.module_id_fk)
             if mv is None:
@@ -5299,8 +5301,8 @@ def global_search():
         # Zebrafish tanks, lines and clutches.
         for t in db_session.scalars(
                 select(TankRecord).options(joinedload(TankRecord.line))
-                .where(TankRecord.tank_id.ilike(like) | TankRecord.card_id.ilike(like)
-                       | TankRecord.owner.ilike(like) | TankRecord.notes.ilike(like))
+                .where(TankRecord.tank_id.ilike(like, escape="\\") | TankRecord.card_id.ilike(like, escape="\\")
+                       | TankRecord.owner.ilike(like, escape="\\") | TankRecord.notes.ilike(like, escape="\\"))
                 .order_by(TankRecord.tank_id).limit(limit)).all():
             results.append({
                 "type": "tank", "id": t.id, "label": f"Tank {t.tank_id}",
@@ -5308,8 +5310,8 @@ def global_search():
                 "url": url_for("zebrafish", view="tanks") + f"#tank-{t.id}",
             })
         for ln in db_session.scalars(
-                select(FishLine).where(FishLine.name.ilike(like) | FishLine.zfin_name.ilike(like)
-                                       | FishLine.allele.ilike(like) | FishLine.transgene_summary.ilike(like))
+                select(FishLine).where(FishLine.name.ilike(like, escape="\\") | FishLine.zfin_name.ilike(like, escape="\\")
+                                       | FishLine.allele.ilike(like, escape="\\") | FishLine.transgene_summary.ilike(like, escape="\\"))
                 .order_by(FishLine.name).limit(limit)).all():
             results.append({
                 "type": "fish-line", "id": ln.id, "label": ln.name,
@@ -5317,7 +5319,7 @@ def global_search():
                 "url": url_for("zebrafish_line_detail", line_id=ln.id),
             })
         for c in db_session.scalars(
-                select(ClutchRecord).where(ClutchRecord.clutch_id.ilike(like) | ClutchRecord.notes.ilike(like))
+                select(ClutchRecord).where(ClutchRecord.clutch_id.ilike(like, escape="\\") | ClutchRecord.notes.ilike(like, escape="\\"))
                 .order_by(ClutchRecord.date_of_fertilization.desc()).limit(limit)).all():
             results.append({
                 "type": "clutch", "id": c.id, "label": f"Clutch {c.clutch_id}",
@@ -5333,7 +5335,7 @@ def global_search():
         page_stmt = (
             lab_notebook.accessible_filter(
                 select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
-            .where(NotebookPage.title.ilike(like) | NotebookPage.body.ilike(like))
+            .where(NotebookPage.title.ilike(like, escape="\\") | NotebookPage.body.ilike(like, escape="\\"))
             .order_by(NotebookPage.updated_at.desc())
             .limit(limit)
         )
@@ -5955,9 +5957,9 @@ def _order_items_query(db_session, query: str, limit: int):
     if query.isdigit():
         stmt = stmt.where(InventoryItem.number == int(query))
     elif query:
-        like = f"%{query}%"
-        stmt = stmt.where(InventoryItem.name.ilike(like) | InventoryItem.vendor.ilike(like)
-                          | InventoryItem.catalog_number.ilike(like))
+        like = like_pattern(query)
+        stmt = stmt.where(InventoryItem.name.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\")
+                          | InventoryItem.catalog_number.ilike(like, escape="\\"))
     return db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)).all()
 
 
@@ -6033,7 +6035,7 @@ def notebook_backlinks(entity_type: str, entity_id: int):
         stmt = (
             lab_notebook.accessible_filter(
                 select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
-            .where(NotebookPage.body.ilike(f"%{needle}%"))
+            .where(NotebookPage.body.ilike(like_pattern(needle), escape="\\"))
             .order_by(NotebookPage.updated_at.desc())
             .limit(25)
         )
@@ -6076,7 +6078,7 @@ def notebook_search_entity(entity_type: str):
             if query.isdigit():
                 stmt = stmt.where(MouseRecord.mouse_id == int(query))
             elif query:
-                stmt = stmt.where(MouseRecord.genotype.ilike(f"%{query}%") | MouseRecord.owner.ilike(f"%{query}%"))
+                stmt = stmt.where(MouseRecord.genotype.ilike(like_pattern(query), escape="\\") | MouseRecord.owner.ilike(like_pattern(query), escape="\\"))
             stmt = stmt.order_by(MouseRecord.mouse_id.desc()).limit(limit)
             rows = db_session.scalars(stmt).all()
             return jsonify({"ok": True, "items": [
@@ -6088,7 +6090,7 @@ def notebook_search_entity(entity_type: str):
             if query.isdigit():
                 stmt = stmt.where(PlasmidRecord.plasmid_id == int(query))
             elif query:
-                stmt = stmt.where(PlasmidRecord.name.ilike(f"%{query}%") | PlasmidRecord.backbone.ilike(f"%{query}%"))
+                stmt = stmt.where(PlasmidRecord.name.ilike(like_pattern(query), escape="\\") | PlasmidRecord.backbone.ilike(like_pattern(query), escape="\\"))
             stmt = stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(limit)
             rows = db_session.scalars(stmt).all()
             return jsonify({"ok": True, "items": [
@@ -6111,9 +6113,9 @@ def notebook_search_entity(entity_type: str):
             if query.isdigit():
                 mouse_stmt = mouse_stmt.where(MouseRecord.mouse_id == int(query))
             elif query:
-                like = f"%{query}%"
+                like = like_pattern(query)
                 mouse_stmt = mouse_stmt.where(
-                    MouseRecord.genotype.ilike(like) | MouseRecord.owner.ilike(like)
+                    MouseRecord.genotype.ilike(like, escape="\\") | MouseRecord.owner.ilike(like, escape="\\")
                 )
             mouse_stmt = mouse_stmt.order_by(MouseRecord.mouse_id.desc()).limit(per_type_limit)
             for m in db_session.scalars(mouse_stmt).all():
@@ -6127,9 +6129,9 @@ def notebook_search_entity(entity_type: str):
             if query.isdigit():
                 plasmid_stmt = plasmid_stmt.where(PlasmidRecord.plasmid_id == int(query))
             elif query:
-                like = f"%{query}%"
+                like = like_pattern(query)
                 plasmid_stmt = plasmid_stmt.where(
-                    PlasmidRecord.name.ilike(like) | PlasmidRecord.backbone.ilike(like)
+                    PlasmidRecord.name.ilike(like, escape="\\") | PlasmidRecord.backbone.ilike(like, escape="\\")
                 )
             plasmid_stmt = plasmid_stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(per_type_limit)
             for p in db_session.scalars(plasmid_stmt).all():

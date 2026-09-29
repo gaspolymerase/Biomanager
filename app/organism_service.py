@@ -33,6 +33,7 @@ from .models import (
     Organism,
     OrganismModule,
 )
+from .formutil import like_pattern
 from .organisms import (
     AUTO_SEED_PRESETS,
     CAPABILITY_BY_KEY,
@@ -1183,7 +1184,7 @@ def search(session, q: str, limit: int = 5) -> list[dict]:
     q = (q or "").strip()
     if not q:
         return []
-    like = f"%{q}%"
+    like = like_pattern(q)
     modules = {m.id: m for m in session.scalars(select(OrganismModule))}
     out: list[dict] = []
 
@@ -1195,22 +1196,22 @@ def search(session, q: str, limit: int = 5) -> list[dict]:
         })
 
     for row in session.scalars(select(Organism).where(
-            Organism.code.ilike(like) | Organism.genotype.ilike(like) | Organism.notes.ilike(like)
-            | Organism.attrs.ilike(like)).order_by(Organism.id.desc()).limit(limit)):
+            Organism.code.ilike(like, escape="\\") | Organism.genotype.ilike(like, escape="\\") | Organism.notes.ilike(like, escape="\\")
+            | Organism.attrs.ilike(like, escape="\\")).order_by(Organism.id.desc()).limit(limit)):
         module = modules.get(row.module_id_fk)
         if module is not None:
             add(module, "animals", row.code or f"{module.organism_noun} #{row.id}",
                 [row.status, row.genotype, row.owner], row.id)
     for row in session.scalars(select(OrgHousing).where(
-            OrgHousing.code.ilike(like) | OrgHousing.card_id.ilike(like) | OrgHousing.notes.ilike(like)
-            | OrgHousing.attrs.ilike(like)).order_by(OrgHousing.id.desc()).limit(limit)):
+            OrgHousing.code.ilike(like, escape="\\") | OrgHousing.card_id.ilike(like, escape="\\") | OrgHousing.notes.ilike(like, escape="\\")
+            | OrgHousing.attrs.ilike(like, escape="\\")).order_by(OrgHousing.id.desc()).limit(limit)):
         module = modules.get(row.module_id_fk)
         if module is not None:
             add(module, "housing", f"{module.housing_noun.capitalize()} {row.code}",
                 [row.purpose, row.owner], row.id)
     for row in session.scalars(select(OrgLine).where(
-            OrgLine.code.ilike(like) | OrgLine.name.ilike(like) | OrgLine.genotype.ilike(like)
-            | OrgLine.attrs.ilike(like)).order_by(OrgLine.id.desc()).limit(limit)):
+            OrgLine.code.ilike(like, escape="\\") | OrgLine.name.ilike(like, escape="\\") | OrgLine.genotype.ilike(like, escape="\\")
+            | OrgLine.attrs.ilike(like, escape="\\")).order_by(OrgLine.id.desc()).limit(limit)):
         module = modules.get(row.module_id_fk)
         if module is not None:
             add(module, "lines", f"{row.code}{' · ' + row.name if row.name else ''}",

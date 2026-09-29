@@ -167,6 +167,17 @@ class PagesRender(AppTestCase):
             r = self.a.get("/colony?view=mice", headers={"X-Autosave": "1"})
             self.assertEqual((r.status_code, r.get_json()["ok"]), (503, False))
 
+    def test_search_is_case_blind_in_every_script_and_takes_percent_literally(self):
+        tag = uniq("Δ-Cre Café ")
+        self.make_colony(self.a, self.admin, n_mice=1)
+        mid = one("select max(id) from mice")
+        execute("update mice set genotype=?, transgene_1=? where id=?", tag, tag, mid)
+        found = lambda q: [r["label"] for r in self.a.get("/search", query_string={"q": q}).get_json()["results"]]
+        self.assertTrue(found(tag.lower().replace("café", "CAFÉ")))
+        self.assertEqual(found(tag.replace(" ", "%", 1)), [])     # "Δ-Cre%Café" is not "Δ-Cre Café"
+        self.assertEqual(found(tag.replace(" ", "_", 1)), [])
+        self.assertEqual(self.a.get("/search", query_string={"q": "1" * 21}).status_code, 200)
+
     def test_a_wrong_address_gets_the_app_s_own_page(self):
         r = self.a.get("/no/such/page")
         self.assertEqual(r.status_code, 404)

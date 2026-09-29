@@ -40,6 +40,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import selectinload
 from werkzeug.datastructures import MultiDict
 
+from .formutil import like_pattern
 from . import access, lab
 from .db import SessionLocal
 from .models import (ApiToken, CageRecord, Experiment, FishRecord, InventoryItem, InventoryRack, LitterRecord,
@@ -323,7 +324,7 @@ def mice():
         if request.args.get("sex"):
             stmt = stmt.where(MouseRecord.gender == request.args["sex"].strip().upper())
         if request.args.get("genotype"):
-            stmt = stmt.where(MouseRecord.genotype.ilike(f"%{request.args['genotype'].strip()}%"))
+            stmt = stmt.where(MouseRecord.genotype.ilike(like_pattern(request.args['genotype'].strip()), escape="\\"))
         since = _since()
         if since:
             stmt = stmt.where(or_(MouseRecord.updated_at >= since, MouseRecord.created_at >= since))
@@ -568,9 +569,9 @@ def plasmids():
     with SessionLocal() as s:
         stmt = select(PlasmidRecord)
         if request.args.get("q"):
-            q = f"%{request.args['q'].strip()}%"
-            stmt = stmt.where(or_(PlasmidRecord.name.ilike(q), PlasmidRecord.insert_seq.ilike(q),
-                                  PlasmidRecord.backbone.ilike(q)))
+            q = like_pattern(request.args['q'].strip())
+            stmt = stmt.where(or_(PlasmidRecord.name.ilike(q, escape="\\"), PlasmidRecord.insert_seq.ilike(q, escape="\\"),
+                                  PlasmidRecord.backbone.ilike(q, escape="\\")))
         return _page(s, stmt, PlasmidRecord, plasmid_json)
 
 
@@ -622,7 +623,7 @@ def stock_units(key: str):
             if request.args.get(name):
                 stmt = stmt.where(getattr(StockUnit, name) == request.args[name])
         if request.args.get("genotype"):
-            stmt = stmt.where(StockUnit.genotype.ilike(f"%{request.args['genotype'].strip()}%"))
+            stmt = stmt.where(StockUnit.genotype.ilike(like_pattern(request.args['genotype'].strip()), escape="\\"))
         return _page(s, stmt, StockUnit, lambda u: unit_json(mv, u))
 
 
@@ -709,7 +710,7 @@ def inventory_items(key: str):
             if request.args.get(name):
                 stmt = stmt.where(func.lower(getattr(InventoryItem, name)) == request.args[name].strip().lower())
         if request.args.get("q"):
-            stmt = stmt.where(InventoryItem.name.ilike(f"%{request.args['q'].strip()}%"))
+            stmt = stmt.where(InventoryItem.name.ilike(like_pattern(request.args['q'].strip()), escape="\\"))
         since = _since()
         if since:
             stmt = stmt.where(or_(InventoryItem.updated_at >= since, InventoryItem.created_at >= since))

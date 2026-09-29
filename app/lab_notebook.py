@@ -34,6 +34,7 @@ from datetime import date, datetime, timedelta, timezone
 from flask import Blueprint, Response, abort, g, jsonify, redirect, request, url_for
 from sqlalchemy import delete, func, or_, select
 
+from .formutil import like_pattern
 from . import access, notebook_protocols, notify
 from .db import SessionLocal
 from .models import (CalendarEvent, NotebookComment, NotebookMeetingSeries, NotebookPage, NotebookPageInfo,
@@ -1032,8 +1033,8 @@ def search():
         elif whose == "shared":
             stmt = stmt.where(NotebookTab.owner_username != me)
         for term in terms:
-            like = f"%{term}%"
-            stmt = stmt.where(or_(NotebookPage.title.ilike(like), NotebookPage.body.ilike(like)))
+            like = like_pattern(term)
+            stmt = stmt.where(or_(NotebookPage.title.ilike(like, escape="\\"), NotebookPage.body.ilike(like, escape="\\")))
         if tag:
             stmt = stmt.where(NotebookPageInfo.tags.like(f"%,{tag},%"))
         if kind in KINDS:
