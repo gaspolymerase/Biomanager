@@ -185,6 +185,31 @@ After the test, for 1.0:
   every checklist line as it is typed.
 - **Bigger pieces and large** are for after 1.0, sample lineage first.
 
+**Re-test.** Two testers (Sasha's bench work as one; Morgan's, Quinn's and
+Avery's as the other) then did that work again on a fresh demo lab. Every
+fix and quick win above worked, and what they found was fixed too:
+
+- Set field with nothing typed emptied the column on every ticked row; it
+  now asks first.
+- Move's box list started on a real box; it now starts at "Choose a box…".
+- A day double-clicked in Month view opened as All day.
+- A duplicated booking's end didn't follow its start.
+- In a page, @ and a name offered mice rather than the person.
+- A new page didn't focus its title.
+- Structure-only templates kept the writing under Observations and
+  Conclusion.
+- Cryo labels dropped ticked fields without saying so, and printed a
+  concentration without its unit.
+- Smaller: 260/230 wasn't a sheet column; "µL" showed as "ΜL" in
+  headings; decimal commas were saved as text; the Lab common plasmid
+  wording.
+
+Left for later: Month view needs a double-click to open an event;
+instruments can't be renamed; saving a template under a taken name makes a
+second one; a refusal shows behind the open dialog; a record chip reads
+"@antibodies 6" rather than the antibody's name; and Nanodrop values still
+go in tube by tube (no pasting a column).
+
 ## How it was done, and its limits
 
 - **Setup.** A frozen copy of the 1.0 candidate ran with gunicorn (3 workers)
