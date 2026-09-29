@@ -1515,7 +1515,8 @@ def _go(token: str, commit: bool):
                 (_dir() / f"{token}.json").unlink()
             except OSError:
                 pass
-            skipped = f" {len(results['problems'])} rows were skipped." if results["problems"] else ""
+            n = len(results["problems"])
+            skipped = (f" {n} row was skipped." if n == 1 else f" {n} rows were skipped.") if n else ""
             flash(Markup(f"Imported {len(results['created'])} {target.nouns if len(results['created']) != 1 else target.noun} "
                          f"from {payload['filename']}.{skipped} "
                          f'<a href="{url_for("batches_view")}">Undo</a>'), "success")

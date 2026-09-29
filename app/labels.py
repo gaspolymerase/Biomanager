@@ -417,7 +417,7 @@ def _page(built: dict):
         except ValueError:
             pass
         name = built["kind"].replace("/", "-")
-        return Response(to_zpl(built["cards"], size, dpi), mimetype="text/plain; charset=utf-8",
+        return Response(to_zpl(built["cards"], size, dpi), mimetype="text/plain",
                         headers={"Content-Disposition": f'attachment; filename="{name}-labels.zpl"'})
     cards = built["cards"]
     layout = fit(size) if stock != "sheet" else None
