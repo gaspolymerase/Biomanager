@@ -360,15 +360,21 @@ class BoxTests(InventoryCase):
         self.assertEqual((item(holder)["rack_row"], item(holder)["rack_col"]), (1, 1))
         self.assertIsNone(item(loose)["rack_id_fk"])
 
-    def test_saving_into_a_taken_position_saves_the_rest_and_reports_it(self):
+    def test_a_new_item_at_a_taken_position_is_not_saved_and_says_why(self):
         bid = self.make_rack(self.a, self.key)
         self.make_item(self.a, self.key, uniq("R"), rack_id=str(bid), position="D7")
         name = uniq("R")
         r = self.post(self.a, f"/inventory/{self.key}/items/save",
                       data={"id": "", "name": name, "rack_id": str(bid), "position": "D7"})
+        self.assertFlash(r, "Not saved:", "error")
         self.assertFlash(r, "already holds", "error")
-        [rid] = items_named(self.key, name)
-        self.assertIsNone(item(rid)["rack_row"])
+        self.assertEqual(items_named(self.key, name), [])      # no half-saved record to duplicate
+
+    def test_into_a_box_with_no_position_takes_the_next_free_one(self):
+        bid = self.make_rack(self.a, self.key)
+        self.make_item(self.a, self.key, uniq("R"), rack_id=str(bid), position="A1")
+        rid = self.make_item(self.a, self.key, uniq("R"), rack_id=str(bid), position="")
+        self.assertEqual((item(rid)["rack_id_fk"], item(rid)["rack_row"], item(rid)["rack_col"]), (bid, 1, 2))
 
     def test_an_inline_position_outside_the_box_is_refused(self):
         bid = self.make_rack(self.a, self.key, rows=3, cols=3)

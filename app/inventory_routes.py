@@ -587,6 +587,13 @@ def save_item(key: str):
         except Refused as refused:
             session.rollback()
             return _done(key, error=str(refused))
+        if error:
+            # A position that can't be taken (another tube is there): nothing
+            # is saved, and the dialog says why and keeps what was typed. It
+            # used to save the record without its box and leave the dialog
+            # open, so pressing Create again made a second one.
+            session.rollback()
+            return _done(key, error=f"Not saved: {error}")
         item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
         if creating and row.kind in STOCK_KINDS and request.form.get("from_order"):
             # Made from a received order's "Add to stock": the order now
@@ -601,8 +608,6 @@ def save_item(key: str):
         label = item.name or f"#{item.number}"
         for note in notes:
             flash(note, "warning")
-        if error:
-            return _done(key, error=f"Saved {label}, but: {error}")
         if not _wants_json() and _offers_stock(session, mv, item, status_was):
             flash(f"Saved {label}.", "success")
             return redirect(_back(key, offer=item.id))

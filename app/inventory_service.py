@@ -438,7 +438,11 @@ def apply_position(session, item: InventoryItem, rack_raw, position_raw) -> str 
     if rack is None or rack.module_id_fk != item.module_id_fk:
         return "That box is not part of this inventory."
     if not position_raw:
-        item.rack_id_fk, item.rack_row, item.rack_col = rack.id, None, None
+        # Into a box with no position given: the next free one, as Add many
+        # and Move do (a delivery otherwise sat "unplaced" in its box). One
+        # already in this box whose position is cleared on purpose stays so.
+        cells = free_cells(session, rack, 1) if item.rack_id_fk != rack.id else []
+        item.rack_id_fk, (item.rack_row, item.rack_col) = rack.id, (cells[0] if cells else (None, None))
         return None
     cell = positions.parse(position_raw, rack.naming, rack.rows, rack.cols)
     if cell is None:

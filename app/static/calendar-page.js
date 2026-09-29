@@ -644,7 +644,8 @@
       return openItem(Object.assign({ kind, bookingStart: toLocalInput(start), bookingEnd: toLocalInput(new Date(start.getTime() + 3600000)) }, extra || {}));
     }
     if (kind === 'away') return openItem({ kind, awayStart: day, awayEnd: day, awayOwner: DATA.me });
-    return openItem({ kind, start: `${day}T09:00`, end: `${day}T10:00`, isAllday: true });
+    // Timed, as the times it shows say: typed times were dropped when All day was ticked by default.
+    return openItem({ kind, start: `${day}T09:00`, end: `${day}T10:00`, isAllday: false });
   }
 
   $('#cal-side-toggle').addEventListener('click', () => {
@@ -690,6 +691,12 @@
 
   const modal = $('#biocal-modal');
   const form = $('#biocal-form');
+  // Changing a start or end time means a timed event.
+  ['start', 'end'].forEach((name) => form.elements[name].addEventListener('input', () => {
+    const v = form.elements[name].value;
+    if (v && v.slice(11, 16) !== '00:00') form.elements.isAllday.checked = false;
+  }));
+
   const formError = $('#cal-form-error');
   const delBtn = $('#biocal-delete');
   const delOneBtn = $('#cal-delete-one');
@@ -750,7 +757,7 @@
     form.elements.title.value = item.title || '';
     form.elements.start.value = kind === 'event' ? (item.start || '') : '';
     form.elements.end.value = kind === 'event' ? (item.end || '') : '';
-    form.elements.isAllday.checked = item.isAllday !== false;
+    form.elements.isAllday.checked = !!item.isAllday;
     const day = (item.start || '').slice(0, 10) || ymd(new Date());
     dueCustom.value = day;
     selectDuePreset(presetForDate(day));

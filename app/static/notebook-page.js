@@ -319,16 +319,37 @@
         menu.hidden = !hits.length;
       });
     });
-    menu.addEventListener('mousedown', function (e) { e.preventDefault(); });
-    menu.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-user]');
-      if (!b) return;
+    function pick(b) {
       var pos = textarea.selectionStart;
       var before = textarea.value.slice(0, pos).replace(/@([\w.-]*)$/, '@' + b.dataset.user + ' ');
       textarea.value = before + textarea.value.slice(pos);
       textarea.selectionStart = textarea.selectionEnd = before.length;
       menu.hidden = true;
       textarea.focus();
+    }
+    function highlight(step) {
+      var items = $$('[data-user]', menu);
+      if (!items.length) return;
+      var at = items.findIndex(function (x) { return x.classList.contains('is-active'); });
+      items.forEach(function (x) { x.classList.remove('is-active'); });
+      items[(at + step + items.length) % items.length].classList.add('is-active');
+    }
+    // With the list open, the keyboard chooses from it: arrows move, Enter
+    // or Tab picks (the first one when none is highlighted), Escape closes.
+    // Enter used to add a new line and leave "@Sas" as plain text, so
+    // nobody was told.
+    textarea.addEventListener('keydown', function (e) {
+      if (menu.hidden) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); highlight(e.key === 'ArrowDown' ? 1 : -1); }
+      else if (e.key === 'Enter' || e.key === 'Tab') {
+        var b = $('[data-user].is-active', menu) || $('[data-user]', menu);
+        if (b) { e.preventDefault(); e.stopPropagation(); pick(b); }
+      } else if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; }
+    });
+    menu.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    menu.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-user]');
+      if (b) pick(b);
     });
     textarea.addEventListener('blur', function () { setTimeout(function () { menu.hidden = true; }, 150); });
   }
@@ -872,15 +893,27 @@
 
   // Title, date, topic.
   var title = $('#page-title');
+  // A title typed here and not yet saved is the page's title: the sync
+  // poll (onMeta) brings the server's, which is older until the save lands,
+  // and must not put it back (a title typed just before tabbing into the
+  // page or opening Markdown was lost that way).
+  var titleUnsaved = null;
+  function saveTitleNow() {
+    if (titleUnsaved === null) return Promise.resolve();
+    var value = title.value;
+    $$('.notebook-page-item[data-page-id="' + page.id + '"] .page-title-label').forEach(function (el) { el.textContent = value || 'Untitled page'; });
+    document.title = (value || 'Untitled page') + document.title.replace(/^[^·|—-]*/, ' ');
+    return saveField('title', value).then(function () {
+      page.title = value;
+      if (titleUnsaved === value) titleUnsaved = null;
+    });
+  }
   if (title && canEdit) {
-    var saveTitle = debounce(function () {
-      saveField('title', title.value);
-      $$('.notebook-page-item[data-page-id="' + page.id + '"] .page-title-label').forEach(function (el) { el.textContent = title.value || 'Untitled page'; });
-      document.title = (title.value || 'Untitled page') + document.title.replace(/^[^·|—-]*/, ' ');
-    }, 400);
-    title.addEventListener('input', saveTitle);
+    var saveTitle = debounce(saveTitleNow, 400);
+    title.addEventListener('input', function () { titleUnsaved = title.value; saveTitle(); });
+    title.addEventListener('change', saveTitleNow);     // leaving the box saves at once
     title.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); if (nb) nb.editor.commands.focus('start'); }
+      if (e.key === 'Enter') { e.preventDefault(); saveTitleNow(); if (nb) nb.editor.commands.focus('start'); }
     });
   }
   var dateInput = $('#page-entry-date');
@@ -1112,7 +1145,7 @@
       onChange: debounce(updateRun, 400),
       onStatus: function (s) { if (s === 'offline') setSaved('Offline — changes will be sent when back', true); },
       onMeta: function (m) {
-        if (m.title && title && document.activeElement !== title && title.value !== m.title) title.value = m.title;
+        if (m.title && title && titleUnsaved === null && document.activeElement !== title && title.value !== m.title) title.value = m.title;
       },
       onReset: restartEditor,
       onCommentOpen: function (id) { openPanel('comments', { focus: id }); },
