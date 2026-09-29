@@ -134,47 +134,56 @@ def _defs(pal: Palette) -> str:
       <stop offset="0" stop-color="#fff" stop-opacity="0.95"/>
       <stop offset="0.5" stop-color="#fff" stop-opacity="0.25"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0.55"/>
-    </linearGradient>
-    <filter id="bm-drop" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="10" stdDeviation="11" flood-color="{pal.shade}" flood-opacity="0.28"/>
-    </filter>
-    <filter id="bm-soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="9" stdDeviation="9" flood-color="{pal.shade}" flood-opacity="0.26"/>
-    </filter>'''
+    </linearGradient>'''
 
 
 def _helix(pal: Palette) -> tuple[str, str]:
-    """Two strands: white where a strand is in front, glass where behind."""
-    amp, y0, y1, n = 118, 262, 762, 240
+    """Two strands: white where a strand is in front, glass where behind.
+
+    Each strand is x = 512 + amp·sin(φ + phase), y rising evenly with φ. It
+    is in front while cos(φ + phase) ≥ 0, so it changes sides where that
+    crosses zero; each run between is drawn as cubic Béziers a quarter-turn
+    long, whose handles follow the curve's slope (under a pixel from the sine).
+    """
+    amp, y0, y1 = 118, 262, 762
     phi0, phi1 = -math.pi / 2, 2.5 * math.pi
+    rise = (y1 - y0) / (phi1 - phi0)
 
-    def runs(phase: float):
-        front, back, cur, cur_front = [], [], [], None
-        for i in range(n + 1):
-            t = i / n
-            phi = phi0 + (phi1 - phi0) * t
-            x, y = 512 + amp * math.sin(phi + phase), y0 + (y1 - y0) * t
-            is_front = math.cos(phi + phase) >= 0
-            if cur_front is None:
-                cur_front = is_front
-            if is_front != cur_front:
-                cur.append((x, y))
-                (front if cur_front else back).append(cur)
-                cur, cur_front = [(x, y)], is_front
-            cur.append((x, y))
-        (front if cur_front else back).append(cur)
-        return front, back
+    def point(phi, phase):
+        return 512 + amp * math.sin(phi + phase), y0 + rise * (phi - phi0)
 
-    def d(pts):
-        return "M" + " L".join(f"{_f(x)} {_f(y)}" for x, y in pts)
+    def slope(phi, phase):
+        return amp * math.cos(phi + phase), rise
 
-    fa, ba = runs(0)
-    fb, bb = runs(math.pi)
-    back = "".join(f'<path d="{d(r)}"/>' for r in ba + bb if len(r) > 4)
-    front = "".join(f'<path d="{d(r)}"/>' for r in fa + fb if len(r) > 4)
+    def curve(a, b, phase):
+        steps = max(1, math.ceil((b - a) / (math.pi / 4) - 1e-9))
+        h = (b - a) / steps
+        x, y = point(a, phase)
+        out = [f"M{_f(x)} {_f(y)}"]
+        for i in range(steps):
+            p, q = a + i * h, a + (i + 1) * h
+            (x0, y0_), (x3, y3) = point(p, phase), point(q, phase)
+            (dx0, dy0), (dx3, dy3) = slope(p, phase), slope(q, phase)
+            out.append(f"C{_f(x0 + dx0 * h / 3)} {_f(y0_ + dy0 * h / 3)} "
+                       f"{_f(x3 - dx3 * h / 3)} {_f(y3 - dy3 * h / 3)} {_f(x3)} {_f(y3)}")
+        return "".join(out)
+
+    front, back = [], []
+    for phase in (0, math.pi):
+        # Where this strand passes behind the other or comes back in front.
+        k = math.ceil((phi0 + phase - math.pi / 2) / math.pi - 1e-9)
+        cuts = [phi0]
+        while (c := math.pi / 2 + k * math.pi - phase) < phi1 - 1e-9:
+            if c > phi0 + 1e-9:
+                cuts.append(c)
+            k += 1
+        cuts.append(phi1)
+        for a, b in zip(cuts, cuts[1:]):
+            mid = (a + b) / 2
+            (front if math.cos(mid + phase) >= 0 else back).append(f'<path d="{curve(a, b, phase)}"/>')
     return f'''<g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <g stroke="#fff" stroke-opacity="0.38" stroke-width="54">{back}</g>
-    <g filter="url(#bm-soft)" stroke="url(#bm-white)" stroke-width="66">{front}</g>
+    <g stroke="#fff" stroke-opacity="0.38" stroke-width="54">{"".join(back)}</g>
+    <g stroke="url(#bm-white)" stroke-width="66">{"".join(front)}</g>
   </g>''', ""
 
 
@@ -200,7 +209,7 @@ def _mouse(pal: Palette) -> tuple[str, str]:
     return f"""<g transform="translate(512 512) scale(1.16) translate(-494 -560)">
     <path d="M324 632 C250 640 218 706 268 744 C318 782 404 764 456 742" {GLASS_LINE} stroke-width="28"/>
     <circle cx="552" cy="404" r="90" {GLASS}/>
-    <g filter="url(#bm-soft)"><path d="{body}" fill="url(#bm-white)" mask="url(#bm-mouse)"/></g>
+    <g><path d="{body}" fill="url(#bm-white)" mask="url(#bm-mouse)"/></g>
   </g>""", extra
 
 
@@ -213,7 +222,7 @@ def _zebrafish(pal: Palette) -> tuple[str, str]:
     <path d="M344 512 L230 404 C262 462 270 488 274 512 C270 536 262 562 230 620 Z" {GLASS}/>
     <path d="M458 432 Q514 348 598 426 Z" {GLASS}/>
     <path d="M492 596 Q540 668 612 598 Z" {GLASS}/>
-    <g filter="url(#bm-soft)"><path d="{body}" fill="url(#bm-white)" mask="url(#bm-fish)"/></g>
+    <g><path d="{body}" fill="url(#bm-white)" mask="url(#bm-fish)"/></g>
   </g>""", extra
 
 
@@ -249,7 +258,7 @@ def _worm(pal: Palette) -> tuple[str, str]:
     """C. elegans in white, crawling across a glass plate."""
     body, (hx, hy), width = _worm_outline()
     return f"""<circle cx="512" cy="530" r="236" {GLASS}/>
-  <g filter="url(#bm-soft)" fill="url(#bm-white)"><path d="{body}"/><circle cx="{_f(hx)}" cy="{_f(hy)}" r="{width}"/></g>""", ""
+  <g fill="url(#bm-white)"><path d="{body}"/><circle cx="{_f(hx)}" cy="{_f(hy)}" r="{width}"/></g>""", ""
 
 
 def _fly(pal: Palette) -> tuple[str, str]:
@@ -266,7 +275,7 @@ def _fly(pal: Palette) -> tuple[str, str]:
     return f"""<g transform="translate(512 512) scale(1.08) translate(-512 -506)">
     {wing.format(cx=622, r=-24)}
     {wing.format(cx=402, r=24)}
-    <g filter="url(#bm-soft)" fill="url(#bm-white)">
+    <g fill="url(#bm-white)">
       <ellipse cx="512" cy="604" rx="78" ry="134" mask="url(#bm-abdomen)"/>
       <ellipse cx="512" cy="446" rx="92" ry="82"/>
       <circle cx="512" cy="330" r="52" mask="url(#bm-head)"/>
@@ -291,7 +300,7 @@ def _cryobox(pal: Palette) -> tuple[str, str]:
     extra = _cut("bm-caps", "".join(rings))
     return f"""<rect x="262" y="262" width="500" height="500" rx="100" {GLASS}/>
   {slot}
-  <g filter="url(#bm-soft)"><g fill="url(#bm-white)" mask="url(#bm-caps)">{"".join(caps)}</g></g>""", extra
+  <g><g fill="url(#bm-white)" mask="url(#bm-caps)">{"".join(caps)}</g></g>""", extra
 
 
 def _microtube(pal: Palette) -> tuple[str, str]:
@@ -301,7 +310,7 @@ def _microtube(pal: Palette) -> tuple[str, str]:
     extra = f'<clipPath id="bm-tube"><path d="{tube}"/></clipPath>'
     return f"""<g transform="translate(0 -6)">
     <path d="{tube}" {GLASS}/>
-    <g filter="url(#bm-soft)" fill="url(#bm-white)">
+    <g fill="url(#bm-white)">
       <g clip-path="url(#bm-tube)"><path d="M380 600 Q512 624 644 600 L644 820 L380 820 Z"/></g>
       <rect x="378" y="304" width="268" height="52" rx="18"/>
       <rect x="394" y="238" width="236" height="56" rx="22"/>
@@ -315,7 +324,7 @@ def _petri(pal: Palette) -> tuple[str, str]:
     dots = "".join(f'<circle cx="{x}" cy="{y}" r="{r}"/>' for x, y, r in colonies)
     return f"""<circle cx="512" cy="512" r="300" {GLASS}/>
   <circle cx="512" cy="512" r="250" fill="#fff" fill-opacity="0.16" stroke="#fff" stroke-opacity="0.5" stroke-width="4"/>
-  <g filter="url(#bm-soft)" fill="url(#bm-white)">{dots}</g>
+  <g fill="url(#bm-white)">{dots}</g>
   <path d="M288 392 A274 274 0 0 1 392 288" fill="none" stroke="#fff" stroke-opacity="0.9" stroke-width="10" stroke-linecap="round"/>""", ""
 
 
@@ -355,7 +364,7 @@ def render(glyph: str, color: str, variant: str = "app") -> str:
     elif variant == "glyph":
         ground = ""
     else:
-        ground = ('<g filter="url(#bm-drop)"><rect x="100" y="100" width="824" height="824" rx="185.4" fill="url(#bm-bg)"/></g>'
+        ground = ('<rect x="100" y="100" width="824" height="824" rx="185.4" fill="url(#bm-bg)"/>'
                   '<rect x="100" y="100" width="824" height="824" rx="185.4" fill="url(#bm-light)"/>')
         body += ('<rect x="102" y="102" width="820" height="820" rx="184" fill="none" '
                  'stroke="#fff" stroke-opacity="0.16" stroke-width="2"/>')
