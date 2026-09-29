@@ -930,27 +930,40 @@ def due_items(session, module: OrganismModule, horizon_days: int = 14, include_d
     return out
 
 
-def complete_due(session, module: OrganismModule, due_id: int, user: str) -> OrgDue | None:
+def complete_due(session, module: OrganismModule, due_id: int, user: str,
+                 done_on: date | None = None) -> OrgDue | None:
+    """Tick a schedule item off, today or on the day it was really done
+    (never later than today)."""
     row = session.scalar(
         select(OrgDue).where(OrgDue.id == due_id, OrgDue.module_id_fk == module.id)
     )
     if row is None or row.done_on is not None:
         return None
-    row.done_on = date.today()
+    today = date.today()
+    done = min(done_on or today, today)
+    row.done_on = done
     row.done_by = user
 
     # Roll a service anchor ("last flipped", "last refreshed") forward so
     # recurring maintenance restarts its clock. Anchors that are facts about
     # the subject — a birth date, the day a unit was set up — are never
     # rewritten: recompute_due counts those rules from the last completion.
-    rule = view(module).rule(row.rule_key) or {}
+    # Nor is an anchor two recurring rules share (feed every 2 days, split
+    # every 4, both from "last serviced"): feeding would restart the split's
+    # clock, so each of those counts from its own last completion instead.
+    mv = view(module)
+    rule = mv.rule(row.rule_key) or {}
     model = RULE_SUBJECTS.get(row.subject_kind)
     anchor = rule.get("anchor")
-    if (rule.get("recurring") and model is not None and anchor in SERVICE_ANCHORS
+    shared = sum(1 for r in mv.schedule_rules if r.get("recurring") and r.get("anchor") == anchor
+                 and r.get("applies_to") == row.subject_kind) > 1
+    if (rule.get("recurring") and model is not None and anchor in SERVICE_ANCHORS and not shared
             and anchor_allowed(row.subject_kind, anchor)):
         subject = session.get(model, row.subject_id)
         if subject is not None and hasattr(subject, anchor):
-            setattr(subject, anchor, date.today())
+            current = getattr(subject, anchor)
+            if current is None or current < done:          # a backdated Done never moves it back
+                setattr(subject, anchor, done)
 
     log_event(session, module, row.subject_kind, row.subject_id, row.rule_key,
               recorded_by=user, notes=f"{rule.get('label', row.rule_key)} completed")
@@ -1042,20 +1055,31 @@ def census(session, module: OrganismModule) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def age_label(module: OrganismModule, start: date | None, end: date | None = None) -> str:
-    """Age in the unit this organism's community actually uses."""
+# Where a record keeps its count when age is counted in passages or
+# generations: a custom column with one of these keys.
+COUNT_KEYS = {"passages": ("passage", "passages", "passage_number", "p"),
+              "generations": ("generation", "generations", "f")}
+
+
+def age_label(module: OrganismModule, start: date | None, end: date | None = None,
+              attrs: dict | None = None) -> str:
+    """Age in the unit this organism's community actually uses. Counted in
+    passages or generations, it is the record's own count ("P12", "F3")
+    from its Passage / Generation column; days only when it has none."""
+    unit = module.age_unit
+    if unit in COUNT_KEYS and attrs:
+        count = next((str(attrs[k]).strip() for k in COUNT_KEYS[unit] if str(attrs.get(k) or "").strip()), "")
+        if count:
+            return f"{'P' if unit == 'passages' else 'F'}{count.lstrip('PpFf')}"
     if start is None:
         return ""
     days = ((end or date.today()) - start).days
     if days < 0:
         return ""
-    unit = module.age_unit
     if unit == "weeks":
         return f"{days // 7}w"
     if unit == "dpf":
         return f"{days} dpf"
-    if unit in ("generations", "passages"):
-        return f"{days}d"
     return f"{days}d"
 
 

@@ -178,7 +178,7 @@
                 </select>
               </td>
               <td><input type="date" name="birth_on" form="{{ f }}" value="{{ row.birth_on or '' }}" data-empty="{{ '0' if row.birth_on else '1' }}" data-autosave="1" aria-label="Born" {% if locked %}disabled{% endif %}></td>
-              <td class="sheet-num">{{ age_label(module_row, row.birth_on, row.death_on) or '–' }}</td>
+              <td class="sheet-num" {% if module_row.age_unit in ('passages', 'generations') %}title="From its {{ 'Passage' if module_row.age_unit == 'passages' else 'Generation' }} column; days since born when that is empty"{% endif %}>{{ age_label(module_row, row.birth_on, row.death_on, attrs) or '–' }}</td>
               <td><input type="date" name="death_on" form="{{ f }}" value="{{ row.death_on or '' }}" data-empty="{{ '0' if row.death_on else '1' }}" data-autosave="1" data-dead-if-set aria-label="Died or removed" {% if locked %}disabled{% endif %}></td>
               {% if module.has('genotyping') %}
                 <td><input class="ident" name="genotype" form="{{ f }}" value="{{ row.genotype }}" title="{{ row.genotype }}" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
@@ -1200,7 +1200,10 @@
               <span class="badge shrink-0">in {{ item.days }}d</span>
             {% endif %}
             {% if item.assigned_to %}{{ item.assigned_to | owner_badge }}{% endif %}
-            <form method="post" action="{{ url_for('organisms.complete_due', key=module.key, due_id=item.id) }}" class="shrink-0">
+            <form method="post" action="{{ url_for('organisms.complete_due', key=module.key, due_id=item.id) }}" class="flex shrink-0 items-center gap-1">
+              {# Done today, or on the day it was really done (it moves the next one with it). #}
+              <input type="date" name="done_on" class="field h-7 w-[132px] text-[12px]" max="{{ today_iso }}" value="{{ today_iso }}"
+                     aria-label="Done on" title="The day it was done" {% if not item.editable %}disabled{% endif %}>
               <button type="submit" class="btn btn-sm" {% if not item.editable %}disabled title="Only the owner or an admin can mark this done"{% endif %}>{{ icon('check') }} Done</button>
             </form>
           </div>

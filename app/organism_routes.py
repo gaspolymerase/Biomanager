@@ -641,6 +641,7 @@ def module(key: str):
                 "-80 °C", "liquid nitrogen", "sperm", "embryo"
             ]
 
+        ctx["today_iso"] = date.today().isoformat()
         return render_template("organisms/module.html", **ctx)
 
 
@@ -1685,11 +1686,21 @@ def complete_due(key: str, due_id: int):
         subject = svc.due_subject(session, due)
         if subject is not None and not access.can_edit(subject):
             return _fail(key, "schedule", access.reason_denied(subject), 403)
-        row = svc.complete_due(session, module, due_id, g.user.username)
+        done_on = None
+        raw = (request.form.get("done_on") or "").strip()
+        if raw:
+            try:
+                done_on = date.fromisoformat(raw)
+            except ValueError:
+                return _fail(key, "schedule", f"“{raw}” is not a date.", 400)
+            if done_on > date.today():
+                return _fail(key, "schedule", "It can't be done in the future: pick today or an earlier day.", 400)
+        row = svc.complete_due(session, module, due_id, g.user.username, done_on=done_on)
         session.flush()
         svc.recompute_due(session, module)
         session.commit()
-        flash("Marked done." if row else "Already done.", "success" if row else "info")
+        when = "" if not done_on or done_on == date.today() else f" on {done_on:%a %d %b}"
+        flash(f"Marked done{when}." if row else "Already done.", "success" if row else "info")
         return _redirect_back(key, "schedule")
 
 

@@ -874,6 +874,47 @@ class ScheduleTests(OrganismCase):
         self.assertEqual(one("select last_serviced_on from organism_housing where id=?", unit), T)
         self.assertEqual([d for _, d in self.open_due(key, unit)], [days_ahead(7)])
 
+    def test_two_rules_on_one_date_each_keep_their_own_last_done(self):
+        key = self.make_organism_module(self.a)
+        url = f"/organisms/{key}"
+        mid = self.organism_module_id(key)
+        unit = self.make_housing(self.a, key, owner=self.admin, last_serviced_on=days_ago(5))
+        for label, days in (("Feed", "2"), ("Split", "4")):
+            self.post(self.a, f"{url}/rule/save", {"label": label, "applies_to": "housing", "anchor": "last_serviced_on",
+                                                   "offset_days": days, "recurring": "1"})
+        rules = {r["label"]: r["key"] for r in json.loads(module_row(key, "schedule_rules"))}
+
+        def due(label):
+            return rows("select id, due_on from organism_due where module_id_fk=? and rule_key=? and subject_id=? "
+                        "and done_on is null", mid, rules[label], unit)
+
+        [(feed_id, _)] = due("Feed")
+        [(_split_id, split_due)] = due("Split")
+        # Fed yesterday, ticked today: the next feed is from yesterday, and the split keeps its own date.
+        r = self.post(self.a, f"{url}/due/{feed_id}/done", {"done_on": days_ago(1)})
+        self.assertFlash(r, "Marked done on", "success")
+        self.assertEqual(one("select done_on from organism_due where id=?", feed_id), days_ago(1))
+        self.assertEqual([d for _, d in due("Feed")], [days_ahead(1)])
+        self.assertEqual([d for _, d in due("Split")], [split_due])
+        self.assertEqual(one("select last_serviced_on from organism_housing where id=?", unit), days_ago(5))
+
+    def test_done_cannot_be_in_the_future(self):
+        animal = self.make_animal(self.a, self.key, owner=self.admin, birth_on=days_ago(40))
+        _, label = self.rule(offset_days="10")
+        [(due_id, _)] = self.open_due(self.rule_key(label), animal)
+        r = self.post(self.a, f"{self.url}/due/{due_id}/done", {"done_on": days_ahead(2)})
+        self.assertIn("future", " ".join(errors(r)))
+        self.assertIsNone(one("select done_on from organism_due where id=?", due_id))
+
+    def test_age_counted_in_passages_is_the_passage_number(self):
+        from types import SimpleNamespace
+        from datetime import date, timedelta
+        from app.organism_service import age_label
+        TODAY = date.today()
+        cells = SimpleNamespace(age_unit="passages")
+        self.assertEqual(age_label(cells, TODAY - timedelta(days=9), attrs={"passage": "12"}), "P12")
+        self.assertEqual(age_label(cells, TODAY - timedelta(days=9), attrs={}), "9d")
+
     def test_rule_anchor_must_belong_to_its_subject(self):
         r, label = self.rule(applies_to="cohort", anchor="last_serviced_on")
         self.assertIn("counts from one of", " ".join(errors(r)))
