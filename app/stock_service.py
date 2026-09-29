@@ -103,16 +103,24 @@ class ModuleView:
         return [str(t["temp"]) for t in self.temperatures]
 
     def interval(self, what: str, temp: str | None) -> int:
-        """Days for "flip", "develop" or "collect" at a temperature, falling
-        back to the default temperature, then to the nearest one listed."""
+        """Days for "flip", "develop" or "collect" at a temperature: the one
+        listed, else the nearest one listed (21 °C takes 22's, 30 takes
+        29's; "RT", room temperature, counts as 22), else the default
+        temperature's."""
         table = {norm_temp(t["temp"]): t for t in self.temperatures}
-        row = table.get(norm_temp(temp)) or table.get(norm_temp(self.s["default_temperature"]))
+        row = table.get(norm_temp(temp))
         if row is None and self.temperatures:
+            raw = norm_temp(temp).lower()
+            target = 22.0 if raw in ("rt", "room", "room temp", "room temperature") else None
             try:
-                target = float(temp or self.s["default_temperature"])
-                row = min(self.temperatures, key=lambda t: abs(float(t["temp"]) - target))
+                target = target if target is not None else float(raw)
+                listed = [t for t in self.temperatures if _number(t["temp"]) is not None]
+                if listed:
+                    row = min(listed, key=lambda t: abs(_number(t["temp"]) - target))
             except (TypeError, ValueError):
-                row = self.temperatures[0]
+                pass
+        if row is None:
+            row = table.get(norm_temp(self.s["default_temperature"])) or (self.temperatures[0] if self.temperatures else None)
         try:
             return max(1, int(row[what]))
         except (TypeError, ValueError, KeyError):
@@ -120,6 +128,13 @@ class ModuleView:
 
     def code(self, unit: StockUnit) -> str:
         return f"{self.s['code_prefix']}{unit.number}"
+
+
+def _number(text) -> float | None:
+    try:
+        return float(norm_temp(text))
+    except (TypeError, ValueError):
+        return None
 
 
 def view(module: StockModule) -> ModuleView:

@@ -241,6 +241,14 @@ class CrossAndCollectionTests(StockCase):
                 (progeny,) = ids_after(self.mid, before)
                 self.assertEqual(unit(progeny)["ready_on"], days_ahead(days))
 
+    def test_a_temperature_not_in_the_table_takes_the_nearest(self):
+        from app import stock_service as svc
+        from app.db import SessionLocal
+        with SessionLocal() as s:
+            mv = svc.view(svc.get_module(s, self.key))
+            self.assertEqual([mv.interval("develop", t) for t in ("22", "21", "30", "RT", "18.0", "abc")],
+                             [13, 13, 8, 13, 19, mv.interval("develop", mv.s["default_temperature"])])
+
     def test_progeny_moved_to_another_temperature_emerge_on_its_time(self):
         cross = self.make_cross(self.a, self.key, rack_id=self.rack("25"))
         before = top(self.mid)
