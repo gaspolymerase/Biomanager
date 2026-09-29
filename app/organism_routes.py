@@ -1815,6 +1815,23 @@ def _selected(session, model, module) -> list:
         model.module_id_fk == module.id, model.id.in_(ids)).order_by(model.id)))
 
 
+def _custom_field(session, module, entity: str, field: str):
+    """The custom field a bulk "attr_<key>" names, for this entity."""
+    if not field.startswith("attr_"):
+        return None
+    return next((f for f in svc.fields_for(session, module.id, entity) if f"attr_{f.key}" == field), None)
+
+
+def _set_custom(row, custom, value: str) -> str | None:
+    """One custom field's value on one record, checked as the dialog checks
+    it; the problem in words when it can't be taken."""
+    attrs, errors = svc.read_attrs_checked({f"attr_{custom.key}": value}, [custom], svc.load_dict(row.attrs))
+    if errors:
+        return errors[0] + " Nothing was changed."
+    row.attrs = json.dumps(attrs)
+    return None
+
+
 @bp.route("/<key>/animals/bulk", methods=["POST"])
 def bulk_animals(key: str):
     """Set status, housing or owner on the ticked records, or delete them.
@@ -1832,7 +1849,8 @@ def bulk_animals(key: str):
         editable = [r for r in rows if access.can_edit(r)]
         skipped = len(rows) - len(editable)
         noun = lambda n: mv.organism_noun if n == 1 else mv.organism_noun_plural
-        if action == "set" and field not in ("status", "housing_id_fk", "owner"):
+        custom = _custom_field(session, module, "organism", field) if action == "set" else None
+        if action == "set" and field not in ("status", "housing_id_fk", "owner") and custom is None:
             return _fail(key, "animals", "Pick what to set.")
         if action not in ("set", "delete"):
             return _fail(key, "animals", "Unknown action.")
@@ -1854,6 +1872,10 @@ def bulk_animals(key: str):
                     svc.apply_status_rules(mv, row, previous)
                 elif field == "housing_id_fk":
                     row.housing_id_fk = housing_id
+                elif custom is not None:
+                    problem = _set_custom(row, custom, value)
+                    if problem:
+                        return _fail(key, "animals", problem)
                 else:
                     row.owner = value
                 row.updated_at, row.updated_by = datetime.utcnow(), g.user.username
@@ -1866,7 +1888,8 @@ def bulk_animals(key: str):
         if action == "delete":
             message = f"Deleted {n} {noun(n)}."
         else:
-            label = {"status": "status", "housing_id_fk": mv.housing_noun, "owner": "owner"}[field]
+            label = custom.label if custom is not None else {"status": "status", "housing_id_fk": mv.housing_noun,
+                                                              "owner": "owner"}[field]
             message = f"Set {label} on {n} {noun(n)}."
         if skipped:
             message += f" {skipped} belong to someone else and were left alone."
@@ -1891,7 +1914,8 @@ def bulk_housing(key: str):
         editable = [u for u in units if access.can_edit(u)]
         skipped = len(units) - len(editable)
         noun = lambda n: mv.housing_noun if n == 1 else mv.housing_noun_plural
-        if action == "set" and field not in ("purpose", "owner", "location_id_fk"):
+        custom = _custom_field(session, module, "housing", field) if action == "set" else None
+        if action == "set" and field not in ("purpose", "owner", "location_id_fk") and custom is None:
             return _fail(key, "housing", "Pick what to set.")
         if action not in ("set", "delete"):
             return _fail(key, "housing", "Unknown action.")
@@ -1913,6 +1937,10 @@ def bulk_housing(key: str):
                     if unit.location_id_fk != location_id:
                         unit.location_id_fk = location_id
                         unit.row = unit.col = None
+                elif custom is not None:
+                    problem = _set_custom(unit, custom, value)
+                    if problem:
+                        return _fail(key, "housing", problem)
                 else:
                     setattr(unit, field, value)
                 unit.updated_at, unit.updated_by = datetime.utcnow(), g.user.username
@@ -1931,7 +1959,7 @@ def bulk_housing(key: str):
             message = (f"Moved {n} {noun(n)}. They are unplaced there: drag them onto the "
                        f"{mv.container_noun} grid to give them a position.")
         else:
-            message = f"Set {field} on {n} {noun(n)}."
+            message = f"Set {custom.label if custom is not None else field} on {n} {noun(n)}."
         if skipped:
             message += f" {skipped} belong to someone else and were left alone."
     flash(message, "success" if editable else "error")

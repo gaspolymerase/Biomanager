@@ -157,6 +157,8 @@
                 <button type="button" data-more="print">{{ icon('print') }} Print / PDF</button>
                 <button type="button" data-more="template">{{ icon('template') }} Save as template</button>
                 {% if can_edit %}<button type="button" data-more="version">{{ icon('success') }} Save a named version</button>{% endif %}
+                {# Any page, not only meeting notes: a task line naming @someone becomes their to-do. #}
+                {% if can_edit and p.kind != 'meeting' %}<button type="button" data-action="action-items" title="Each open task that names @someone becomes their to-do on the calendar">{{ icon('list-check') }} Send @name tasks as to-dos</button>{% endif %}
                 {% if p.real_role == 'owner' and not p.signed %}<button type="button" data-more="delete" class="is-danger">{{ icon('trash') }} Delete page</button>{% endif %}
               </div>
             </div>

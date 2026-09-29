@@ -22,6 +22,7 @@ import zlib
 from datetime import date, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from werkzeug.datastructures import ImmutableMultiDict
 from flask import (
     Blueprint, abort, flash, g, jsonify, redirect, render_template, request, url_for,
 )
@@ -372,6 +373,7 @@ def module(key: str):
             "stock_links": _order_stock_links(session, row, items),
             "remembered": svc.remembered(session, mv, items),
             "can_configure": _can_configure(row), "is_admin": access.is_admin(),
+            "bulk_fields": bulk_fields(mv),
             "terminal_statuses": sorted(svc.TERMINAL_STATUSES),
             "counts": {
                 "all": len(items),
@@ -983,8 +985,31 @@ BULK_ACTIONS = {
     "rack": ("edit", "Moved"),
     "owner": ("manage", "Changed the owner of"),
     "shared": ("manage", "Changed who can edit"),
+    "field": ("edit", "Set"),
     "delete": ("manage", "Deleted"),
 }
+
+# Built-in columns "Set field" offers, and the feature each needs.
+BULK_FIELD_NEEDS = {"vendor": "supplier", "catalog_number": "supplier", "lot": "supplier", "quantity": "quantity",
+                    "unit": "quantity", "received_on": "received", "expires_on": "expiry", "location_note": "storage"}
+
+
+def bulk_fields(mv) -> list[dict]:
+    """What the bulk bar's "Set field" can set on the ticked rows: the
+    built-in columns this database uses and every custom one, as the form
+    field the item dialog posts."""
+    out = [{"name": "category", "label": mv.category_label, "type": "text", "options": mv.categories}]
+    labels = {"vendor": "Vendor", "catalog_number": "Catalog number", "lot": "Lot", "quantity": "Quantity",
+              "unit": "Unit", "received_on": "Received", "expires_on": "Expires", "location_note": "Location"}
+    for name, label in labels.items():
+        if mv.has(BULK_FIELD_NEEDS[name]):
+            out.append({"name": name, "label": label, "type": "date" if name.endswith("_on") else "text", "options": []})
+    for field in mv.fields:
+        if field["type"] != "source":
+            out.append({"name": f"attr_{field['key']}", "label": field["label"],
+                        "type": field["type"], "options": field.get("options") or []})
+    out.append({"name": "notes", "label": "Notes", "type": "text", "options": []})
+    return out
 
 
 @bp.route("/<key>/items/bulk", methods=["POST"])
@@ -1013,7 +1038,13 @@ def bulk(key: str):
             rack = session.get(InventoryRack, int(value)) if value.isdigit() else None
             if rack is None or rack.module_id_fk != row.id:
                 return _done(key, error="That box is not part of this inventory.")
+        field = None
+        if action == "field":
+            field = next((f for f in bulk_fields(mv) if f["name"] == request.form.get("field")), None)
+            if field is None:
+                return _done(key, error="Pick the column to set.")
         need, verb = BULK_ACTIONS[action]
+        refused: list[str] = []
         done = skipped = 0
         notes: list[str] = []
         with audit.batch(session, "delete" if action == "delete" else "update",
@@ -1033,6 +1064,18 @@ def bulk(key: str):
                     item.owner = value[:80]
                 elif action == "shared":
                     item.is_shared = value == "1"
+                elif action == "field":
+                    # Through the dialog's own checks (a number column takes
+                    # numbers, a date a date), one column only.
+                    kept = {c.key: getattr(item, c.key) for c in InventoryItem.__table__.columns}
+                    try:
+                        _item_from_form(session, mv, item, ImmutableMultiDict({field["name"]: value}))
+                    except Refused as problem:
+                        for column, old in kept.items():     # this one stays as it was
+                            setattr(item, column, old)
+                        refused.append(str(problem))
+                        skipped += 1
+                        continue
                 elif action == "rack":
                     if rack is None:
                         item.rack_id_fk = item.rack_row = item.rack_col = None
@@ -1047,7 +1090,12 @@ def bulk(key: str):
                 done += 1
         noun = mv.item_noun if done == 1 else mv.item_noun_plural
         session.commit()
+    if action == "field":
+        verb = f"Set {field['label']} on"
     message = f"{verb} {done} {noun}."
+    if refused:
+        flash(f"Not set on {len(refused)}: {refused[0]}", "error")
+        skipped -= len(refused)
     if skipped:
         message += (f" {skipped} left alone: only their owner or an admin can do that."
                     if need == "manage" else f" {skipped} belong to someone else and were left alone.")

@@ -193,7 +193,7 @@
                   {% endif %}
                 </td>
               {% endif %}
-              {{ F.table_cells(own_fields, attrs) }}
+              {{ F.table_cells(own_fields, attrs, form=f, locked=locked) }}
               <td>{{ sheet_ui.owner_cell(row.owner, f, locked, list_id='org-owners') }}</td>
               <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ row.notes }}" title="{{ row.notes }}" placeholder="Add a note" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
@@ -245,6 +245,7 @@
           <button type="submit" class="btn btn-sm">Move</button>
         </form>
       {% endif %}
+      {{ F.bulk_set_field(own_fields, url_for('organisms.bulk_animals', key=module.key)) }}
       <form method="post" action="{{ url_for('organisms.bulk_animals', key=module.key) }}" class="selbar-group" data-selection-form>
         <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="owner">
         <input name="value" list="org-owners" placeholder="owner" aria-label="Owner" class="w-[110px]">
@@ -429,7 +430,7 @@
               {% endif %}
               <td class="sheet-num">{{ occupancy.get(unit.id, 0) }}</td>
               <td><input type="date" name="last_serviced_on" form="{{ f }}" value="{{ unit.last_serviced_on or '' }}" data-empty="{{ '0' if unit.last_serviced_on else '1' }}" data-autosave="1" aria-label="Last serviced" {% if locked %}disabled{% endif %}></td>
-              {{ F.table_cells(own_fields, attrs) }}
+              {{ F.table_cells(own_fields, attrs, form=f, locked=locked) }}
               <td>{{ sheet_ui.owner_cell(unit.owner, f, locked, list_id='org-owners') }}</td>
               <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ unit.notes }}" title="{{ unit.notes }}" placeholder="Add a note" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
@@ -471,6 +472,7 @@
 
     <div class="selbar" data-selection-bar hidden>
       <span class="selbar-count" data-selection-count></span>
+      {{ F.bulk_set_field(own_fields, url_for('organisms.bulk_housing', key=module.key)) }}
       <form method="post" action="{{ url_for('organisms.bulk_housing', key=module.key) }}" class="selbar-group" data-selection-form>
         <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="purpose">
         <select name="value" aria-label="Purpose">{{ choice_options(module.housing_purposes, None, '–') }}</select>

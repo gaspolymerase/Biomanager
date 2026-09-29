@@ -131,8 +131,33 @@
     refresh();
   }
 
+  // "Set field": the value box follows the column chosen (a date picker
+  // for a date, the column's own choices offered for a choice column).
+  function wireFieldPicker(select) {
+    const form = select.form;
+    const input = form.querySelector('[data-bulk-value]');
+    const list = input && input.list;
+    const sync = () => {
+      const opt = select.selectedOptions[0];
+      if (!opt || !input) return;
+      input.type = opt.dataset.type === 'date' ? 'date' : 'text';
+      input.inputMode = opt.dataset.type === 'number' ? 'decimal' : '';
+      if (list) {
+        list.innerHTML = '';
+        (opt.dataset.options || '').split('\n').filter(Boolean).forEach((o) => {
+          const el = document.createElement('option');
+          el.value = o;
+          list.appendChild(el);
+        });
+      }
+    };
+    select.addEventListener('change', sync);
+    sync();
+  }
+
   function init() {
     document.querySelectorAll('[data-selection-scope]').forEach(setup);
+    document.querySelectorAll('[data-bulk-field]').forEach(wireFieldPicker);
   }
 
   if (document.readyState === 'loading') {

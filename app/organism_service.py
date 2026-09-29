@@ -505,6 +505,8 @@ def read_attrs_checked(form, field_rows: list[ModuleField], existing: dict | Non
             elif creating and row.default_value:
                 attrs[row.key] = row.default_value.strip().lower() in ("1", "yes", "true", "on", "y")
             continue
+        if name in form and f"{name}_was" in form and (form.get(name) or "").strip() == (form.get(f"{name}_was") or "").strip():
+            continue        # a sheet cell left as it was: a colleague may have changed it since
         if name in form:
             raw = (form.get(name) or "").strip()
         elif creating:

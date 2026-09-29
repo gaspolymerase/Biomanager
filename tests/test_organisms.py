@@ -526,6 +526,36 @@ class BulkTests(OrganismCase):
         self.assertEqual(count("organisms", "id=?", theirs), 1)
         self.assertEqual(count("organisms", "id=?", mine), 0)
 
+    def custom_field(self, field_type="number", **extra):
+        label = uniq("Passage ")
+        self.post(self.a, f"{self.url}/field/add", {"entity": "organism", "label": label, "field_type": field_type,
+                                                     "show_in_table": "1", **extra})
+        return rows("select key from organism_module_fields where module_id_fk=? and label=?", self.mid, label)[0][0]
+
+    def test_set_field_sets_a_custom_field_on_the_ticked_records_in_one_undoable_batch(self):
+        key = self.custom_field()
+        ids = [self.make_animal(self.a, self.key, owner=self.admin) for _ in range(3)]
+        r = self.post(self.a, f"{self.url}/animals/bulk", {"action": "set", "field": f"attr_{key}", "value": "14",
+                                                           "selected_ids": ids})
+        self.assertIn("on 3 newts", flash_text(r))
+        values = [json.loads(a or "{}").get(key) for (a,) in rows(
+            f"select attrs from organisms where id in ({','.join('?' * 3)}) order by id", *ids)]
+        self.assertEqual(values, [14, 14, 14])
+        r = self.post(self.a, f"{self.url}/animals/bulk", {"action": "set", "field": f"attr_{key}", "value": "lots",
+                                                           "selected_ids": ids})
+        self.assertIn("must be a number", " ".join(errors(r)))
+
+    def test_a_custom_column_is_edited_in_the_sheet_and_a_stale_cell_keeps_a_later_change(self):
+        key = self.custom_field()
+        animal = self.make_animal(self.a, self.key, owner=self.admin, **{f"attr_{key}": "12"})
+        self.assertIn(f'name="attr_{key}" form="row-a-{animal}"', self.page(self.a, "animals"))
+        r = self.autosave(self.a, f"{self.url}/animal/save", {"id": animal, f"attr_{key}": "13", f"attr_{key}_was": "12"})
+        self.assertTrue(r.get_json()["ok"])
+        # A row still showing 12, saving another cell, leaves 13 alone.
+        self.autosave(self.a, f"{self.url}/animal/save", {"id": animal, "notes": "fed", f"attr_{key}": "12",
+                                                           f"attr_{key}_was": "12"})
+        self.assertEqual(json.loads(rows("select attrs from organisms where id=?", animal)[0][0])[key], 13)
+
     def test_bulk_with_nothing_selected_changes_nothing(self):
         r = self.post(self.a, f"{self.url}/animals/bulk", {"action": "delete"})
         self.assertEqual(flashes(r)[0][0], "info")

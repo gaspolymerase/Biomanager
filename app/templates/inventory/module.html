@@ -382,6 +382,16 @@
             <button type="submit" class="btn btn-sm">Move</button>
           </form>
         {% endif %}
+        {# Any column, custom ones too: a titer on 10 aliquots, "on hold" on a lot, a myco date on every line. #}
+        <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="field">
+          <select name="field" aria-label="Column to set" data-bulk-field>
+            {% for f in bulk_fields %}<option value="{{ f.name }}" data-type="{{ f.type }}"{% if f.options %} data-options="{{ f.options|join('\n') }}"{% endif %}>{{ f.label }}</option>{% endfor %}
+          </select>
+          <input name="value" aria-label="Value" placeholder="value" list="inv-bulk-field-options" data-bulk-value>
+          <datalist id="inv-bulk-field-options"></datalist>
+          <button type="submit" class="btn btn-sm">Set field</button>
+        </form>
         <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form
               title="Only for {{ m.item_noun_plural }} you own (admins: any)">
           <input type="hidden" name="action" value="owner">

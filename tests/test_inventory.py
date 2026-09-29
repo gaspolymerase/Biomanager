@@ -947,6 +947,28 @@ class BulkTests(InventoryCase):
         self.assertEqual(item(rid)["status"], "empty")
         self.assertEqual(attrs_of(rid).get("used_up_on"), T)
 
+    def test_set_field_sets_any_column_on_the_ticked_rows(self):
+        ids = self.reagents(3)
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "attr_storage_temp", "value": "−80 °C", "selected_ids": [str(i) for i in ids]})
+        self.assertFlash(r, "Set Stored at on 3 reagents", "success")
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"−80 °C"})
+        self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "lot", "value": "L2231", "selected_ids": [str(i) for i in ids]})
+        self.assertEqual({item(i)["lot"] for i in ids}, {"L2231"})
+        batch_id, _description, _ = newest_batch(self.admin)
+        self.post(self.a, f"/batches/{batch_id}/undo")                  # one batch, undoable
+        self.assertEqual({item(i)["lot"] for i in ids}, {""})
+
+    def test_set_field_refuses_a_value_the_column_doesnt_take(self):
+        ids = self.reagents(1)
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "expires_on", "value": "someday", "selected_ids": [str(i) for i in ids]})
+        self.assertIsNone(item(ids[0])["expires_on"])
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "no_such_column", "value": "x", "selected_ids": [str(i) for i in ids]})
+        self.assertFlash(r, "Pick the column to set", "error")
+
     def test_bulk_refuses_an_unknown_status(self):
         ids = self.reagents(1)
         r = self.bulk(self.a, "status", ids, "vanished")
