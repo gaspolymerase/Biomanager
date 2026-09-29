@@ -11,11 +11,13 @@ fixed when the app is built or installed come from here:
   app/static/apple-touch-icon.png     iPhone home screen (iOS rounds it)
   desktop/BioManager.png, .icns, .ico the desktop app (Linux, macOS, Windows)
   android/app/src/main/res/mipmap-*/  the Android launcher, adaptive layers
+  site/assets/icon.svg, icon-192.png, apple-touch-icon.png   the website
 
     python3 scripts/build-app-icon.py
 
-Needs macOS (Quick Look renders the SVG, iconutil packs the .icns) and
-Pillow. Run it again after changing a drawing or the default.
+Needs Pillow, and a renderer: Quick Look on macOS (iconutil then packs the
+.icns), or Chromium through Playwright anywhere else (Pillow packs it).
+Run it again after changing a drawing or the default.
 """
 from __future__ import annotations
 
@@ -32,6 +34,7 @@ from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "app" / "static"
+SITE = ROOT / "site" / "assets"
 DESKTOP = ROOT / "desktop"
 RES = ROOT / "android" / "app" / "src" / "main" / "res"
 
@@ -56,8 +59,33 @@ def load_appearance():
     return module
 
 
+def chromium_png(svg: str, transparent: bool) -> Image.Image:
+    """The SVG at 1024 × 1024 in Chromium (Playwright), where there is no Quick Look."""
+    import base64
+    import glob
+    from playwright.sync_api import sync_playwright
+    page_html = ('<html><body style="margin:0"><img width="1024" height="1024" style="display:block" '
+                 f'src="data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}"></body></html>')
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception:   # a preinstalled Chromium that this Playwright didn't download
+            found = sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome"))
+            if not found:
+                raise
+            browser = p.chromium.launch(executable_path=found[-1])
+        page = browser.new_page(viewport={"width": 1024, "height": 1024})
+        page.set_content(page_html)
+        page.wait_for_timeout(200)
+        png = page.screenshot(omit_background=transparent)
+        browser.close()
+    return Image.open(io.BytesIO(png)).convert("RGBA")
+
+
 def rasterize(svg: str, work: Path, name: str) -> Image.Image:
-    """The SVG at 1024 × 1024, via Quick Look (WebKit)."""
+    """The SVG at 1024 × 1024, via Quick Look (WebKit), or Chromium."""
+    if shutil.which("qlmanage") is None:
+        return chromium_png(svg, transparent=False)
     src = work / f"{name}.svg"
     src.write_text(svg)
     subprocess.run(["qlmanage", "-t", "-s", "1024", "-o", str(work), str(src)],
@@ -73,7 +101,10 @@ def rasterize_transparent(svg: str, work: Path, name: str) -> Image.Image:
 
     Quick Look fills sparse transparent drawings with white, so the drawing
     is rendered on black and on white and the alpha recovered from the two.
+    Chromium keeps the transparency itself.
     """
+    if shutil.which("qlmanage") is None:
+        return chromium_png(svg, transparent=True)
     on_black = rasterize(svg.replace("</defs>", '</defs><rect width="1024" height="1024" fill="#000"/>', 1),
                          work, name + "-black")
     on_white = rasterize(svg.replace("</defs>", '</defs><rect width="1024" height="1024" fill="#fff"/>', 1),
@@ -104,17 +135,17 @@ def save(image: Image.Image, path: Path) -> None:
 
 
 def main() -> None:
-    if shutil.which("qlmanage") is None or shutil.which("iconutil") is None:
-        raise SystemExit("Needs macOS: qlmanage and iconutil render the icons.")
     ap = load_appearance()
     glyph, color = ap.DEFAULT_GLYPH, ap.DEFAULT_COLOR
 
-    (STATIC / "icon.svg").write_text(HEADER + ap.render(glyph, color))
-    print("wrote app/static/icon.svg")
+    for folder in (STATIC, SITE):
+        (folder / "icon.svg").write_text(HEADER + ap.render(glyph, color))
+        print("wrote", (folder / "icon.svg").relative_to(ROOT))
 
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        app_icon = rasterize(ap.render(glyph, color, "app"), work, "app")
+        # Transparent round the rounded square, for the dock, the taskbar and dark pages.
+        app_icon = rasterize_transparent(ap.render(glyph, color, "app"), work, "app")
         full = rasterize(ap.render(glyph, color, "full"), work, "full")
         fg = rasterize_transparent(ap.render(glyph, color, "glyph"), work, "glyph")
         bg = rasterize(ap.render(glyph, color, "background"), work, "background")
@@ -124,6 +155,8 @@ def main() -> None:
         save(sized(app_icon, 512), STATIC / "icon-512.png")
         save(sized(full, 512), STATIC / "icon-maskable-512.png")
         save(sized(full, 180).convert("RGB"), STATIC / "apple-touch-icon.png")
+        save(sized(app_icon, 192), SITE / "icon-192.png")
+        save(sized(full, 180).convert("RGB"), SITE / "apple-touch-icon.png")
 
         # Desktop app
         save(sized(app_icon, 512), DESKTOP / "BioManager.png")
@@ -132,7 +165,10 @@ def main() -> None:
         for px in (16, 32, 128, 256, 512):
             sized(app_icon, px).save(iconset / f"icon_{px}x{px}.png")
             sized(app_icon, px * 2).save(iconset / f"icon_{px}x{px}@2x.png")
-        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(DESKTOP / "BioManager.icns")], check=True)
+        if shutil.which("iconutil"):
+            subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(DESKTOP / "BioManager.icns")], check=True)
+        else:
+            sized(app_icon, 1024).save(DESKTOP / "BioManager.icns", format="ICNS")
         print("wrote desktop/BioManager.icns")
         buf = io.BytesIO()
         sized(app_icon, 256).save(buf, format="ICO", sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])

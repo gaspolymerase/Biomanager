@@ -69,13 +69,13 @@ sits correctly beside native apps in the Dock. The mark is a double helix,
 the one symbol every organism in the app shares.
 
 One drawing in `app/appearance.py` serves every size, from 28px beside a
-heading to 512px on a desktop, so the two `feDropShadow` filters there are
-kept tight: a wide blur reads as depth at the large end and as haze at the
-small one, which is what makes an icon look blurred rather than small.
-`scripts/build-app-icon.py` re-renders the SVG and every PNG, `.icns`, `.ico`
-and Android layer after a change; the website's copies
-(`site/assets/icon.svg`, `icon-192.png`, `apple-touch-icon.png`) are updated by
-hand from `app/static/`.
+heading to 512px on a desktop, so it is plain vector shapes: no SVG filters
+(a blur or drop shadow is drawn at screen resolution by some browsers, Safari
+among them, and turns the white edges to haze) and curves as Béziers, not
+runs of short lines. `scripts/build-app-icon.py` re-renders the SVG and every
+PNG, `.icns`, `.ico` and Android layer after a change, and the website's
+copies (`site/assets/icon.svg`, `icon-192.png`, `apple-touch-icon.png`); it
+renders with Quick Look on a Mac and with Chromium (Playwright) elsewhere.
 
 ## Interface
 
