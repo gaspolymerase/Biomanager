@@ -479,6 +479,19 @@ class MouseBatchEditTests(Case):
         batch = newest_batch(self.member)
         self.assertEqual((batch[1], batch[2]), ("mark as sac", 2))
 
+    def test_new_mouse_saved_at_the_same_moment_as_another_gets_the_next_number(self):
+        from unittest import mock
+        import app.app as app_module
+        taken = one("select mouse_id from mice where id=?", self.ids[0])
+        real = app_module.next_mouse_id
+        calls = iter([taken])            # the number another save took a moment ago
+        with mock.patch.object(app_module, "next_mouse_id", lambda s: next(calls, None) or real(s)):
+            r = self.m.post("/colony/mice/create", data={"owner": self.member, "status": "experiment",
+                                                         "note": "same moment"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(count("mice", "note=?", "same moment"), 1)
+        self.assertNotIn("already used", " ".join(flash_texts(self.m, "error")))
+
     def test_a_row_open_since_before_a_colleague_s_edit_does_not_undo_it(self):
         mid = self.ids[0]
         shown = sheet_form(mid)

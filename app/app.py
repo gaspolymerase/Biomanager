@@ -195,6 +195,30 @@ def login_required(view):
     return wrapped_view
 
 
+def next_number_retried(view):
+    """For a save that hands out the next free number (a mouse, a cage, a
+    litter). Two people saving at the same moment both read the same
+    highest number, and the database refuses the second: try that save
+    again, with a fresh number, rather than tell them an ID they never
+    typed "is already used". A number someone typed that is taken is
+    refused as before, after the retries."""
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        import random
+        import time
+        for attempt in range(4):
+            flashes = list(session.get("_flashes") or [])
+            try:
+                return view(*args, **kwargs)
+            except IntegrityError:
+                if attempt == 3:
+                    raise
+                session["_flashes"] = flashes        # the failed try's messages go with it
+                time.sleep(random.uniform(0.02, 0.12) * (attempt + 1))
+
+    return wrapped_view
+
+
 def admin_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
@@ -2502,6 +2526,7 @@ def mouse_weight_delete(mouse_row_id: int, weight_id: int):
 
 @app.route("/colony/mice/create", methods=["POST"])
 @login_required
+@next_number_retried
 def create_mouse():
     refused = future_birth(request.form)
     if refused:
@@ -2521,6 +2546,7 @@ def create_mouse():
 
 @app.route("/colony/mice/new-record", methods=["POST"])
 @login_required
+@next_number_retried
 def create_blank_mouse():
     with SessionLocal() as db_session:
         mouse = MouseRecord(mouse_id=next_mouse_id(db_session), owner=g.user.username)
@@ -2584,6 +2610,7 @@ def update_mouse(mouse_row_id: int):
 
 @app.route("/colony/mice/<int:mouse_row_id>/duplicate", methods=["POST"])
 @login_required
+@next_number_retried
 def duplicate_mouse(mouse_row_id: int):
     with SessionLocal() as db_session:
         source_mouse = db_session.get(MouseRecord, mouse_row_id)
@@ -3166,6 +3193,7 @@ def _batch_preview(rows: list[dict], warnings: list[str]):
 
 @app.route("/colony/mice/batch/create", methods=["POST"])
 @login_required
+@next_number_retried
 def batch_mice_create():
     """Write the previewed rows, with one contiguous block of IDs."""
     rows = _rows_from_grid(request.form)
@@ -3262,6 +3290,7 @@ def _free_rack_cells(db_session, rack, count: int, start: tuple[int, int] | None
 
 @app.route("/colony/cages/create", methods=["POST"])
 @login_required
+@next_number_retried
 def create_cage():
     """Create a cage, or several ("How many", 1–20) with consecutive IDs.
     A blank ID takes the next free one(s); a typed ID starts the run. An ID
@@ -3850,6 +3879,7 @@ def _too_young_to_wean(cage) -> str | None:
 
 @app.route("/colony/cages/<int:cage_row_id>/wean-distribute", methods=["POST"])
 @login_required
+@next_number_retried
 def cage_wean_distribute(cage_row_id: int):
     """Wean the source cage and distribute its pups to new or existing cages.
 
@@ -3963,6 +3993,7 @@ def _litter_refusal(litter, view: str = "litters"):
 
 @app.route("/colony/litters/create", methods=["POST"])
 @login_required
+@next_number_retried
 def create_litter():
     """Create a litter. A blank ID takes the next free number; an ID that is
     already a litter is refused rather than overwriting that litter."""
@@ -5251,6 +5282,7 @@ def global_search():
 
 @app.route("/import/<entity>", methods=["POST"])
 @login_required
+@next_number_retried
 def csv_import(entity: str):
     """Import a CSV into one of the data tables.
 
