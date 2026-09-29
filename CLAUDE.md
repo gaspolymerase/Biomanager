@@ -3,10 +3,12 @@
 How the app is built and tested is in `docs/DEVELOPMENT.md`; running a lab
 server is in `deploy/RUNBOOK.md`.
 
-`deploy/` goes to every lab in the public server bundle, so it names no one
-lab's server: our own (its VM, tailnet, Mac and off-site storage) is in
-`docs/OUR-SERVER.md`, which is not bundled. A change to one runbook usually
-belongs in the other too.
+This repository is public, and `deploy/` goes to every lab in the server
+bundle: nothing here names a maintainer's own server, account, address or
+institution. Our own server's runbook is kept outside the repository; a
+change to `deploy/RUNBOOK.md` usually belongs in that copy too. The words to
+keep out are the `PRIVATE_WORDS` secret (and a git-ignored `.private-words`
+locally), which `tests/test_deploy.py` checks against.
 
 ## Changing the database's shape
 

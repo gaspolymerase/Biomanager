@@ -231,19 +231,27 @@ class ServerBundle(unittest.TestCase):
             self.assertFalse([n for n in names if "/._" in n or n.startswith("._")], names)
 
     def test_what_ships_names_no_one(self):
-        # deploy/ goes out in the public bundle, and app/, scripts/ and migrations/ in
-        # every desktop build and server image: no one's server, name or address.
-        # Our own server's runbook is docs/OUR-SERVER.md, which ships in neither.
-        ours = re.compile(r"\bbiomanager-vm\b|biomanager_key|alex|barbara|\blab member\b|\bmcclintock lab\b|52350568|university", re.I)
+        # deploy/ goes out in the public bundle, and app/, scripts/, migrations/ and site/ in
+        # every build, image and the website: no one's own server, and none of the words
+        # the maintainers keep private. Those are listed outside this public repository:
+        # the PRIVATE_WORDS secret in CI, or a git-ignored .private-words file, one a line.
+        words = os.environ.get("BIOMANAGER_PRIVATE_WORDS", "")
+        listed = Path(ROOT) / ".private-words"
+        if listed.is_file():
+            words += "\n" + listed.read_text()
+        words = [w.strip() for w in re.split(r"[\n,]", words) if w.strip() and not w.startswith("#")]
+        private = re.compile("|".join(re.escape(w) for w in words), re.I) if words else None
         found = []
-        for top in ("deploy", "app", "scripts", "migrations"):
+        for top in ("deploy", "app", "scripts", "migrations", "site"):
             for path in (Path(ROOT) / top).rglob("*"):
                 if not path.is_file() or "/backups/" in str(path) or "/uploads/" in str(path) or path.name == ".env":
                     continue
-                if path.suffix in (".pyc", ".png", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".icns"):
+                if path.suffix in (".pyc", ".png", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".icns", ".mp4"):
                     continue
                 text = path.read_text(errors="ignore")
                 rel = path.relative_to(ROOT)
-                found += [f"{rel}: {m}" for m in re.findall(r"([a-z0-9-]+)\.ts\.net", text) if m != "tail1234"]
-                found += [f"{rel}: {m}" for m in ours.findall(text)]
+                found += [f"{rel}: a tailnet" for m in re.findall(r"([a-z0-9-]+)\.ts\.net", text)
+                          if m not in ("tail1234", "tailXXXX")]
+                if private:
+                    found += [f"{rel}: a private word" for _ in private.findall(text)]
         self.assertEqual(found, [])
