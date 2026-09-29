@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Install the watchdog and weekly maintenance timers on the server:
-#   sudo deploy/host/install.sh
+# Install the watchdog and weekly maintenance timers on the server, from the
+# deploy folder:
+#   sudo host/install.sh
 # Creates /etc/biomanager/watchdog.env with a private ntfy topic the first
 # time; subscribe to that topic in the ntfy app to get the alerts.
 set -euo pipefail
@@ -21,6 +22,8 @@ NTFY_TOPIC=biomanager-$(openssl rand -hex 12)
 #BACKUP_MAX_HOURS=26
 X
 fi
+# Where this stack is, so the watchdog reads its .env (and BACKUP_DIR) wherever it was unpacked.
+grep -q '^DEPLOY_DIR=' /etc/biomanager/watchdog.env || echo "DEPLOY_DIR=$(dirname "$here")" >> /etc/biomanager/watchdog.env
 systemctl daemon-reload
 systemctl enable --now biomanager-watchdog.timer biomanager-maintenance.timer
 . /etc/biomanager/watchdog.env

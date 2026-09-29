@@ -201,7 +201,7 @@ docker compose logs app | grep "setup code"</code></pre></li>
             <li><b>Android:</b> <b>Settings → Security → Encryption &amp; credentials → Install a certificate → CA certificate</b>.</li>
           </ul></li>
         <li><b>Let people in:</b> allow incoming connections on port 443 in the computer's firewall, and send the lab the
-          address. On Linux, also install the watchdog and weekly updates: <code>sudo deploy/host/install.sh</code>.</li>
+          address. On Linux, also install the watchdog and weekly updates: <code>sudo host/install.sh</code> (in the <code>deploy</code> folder).</li>
       </ol>
       <div class="note warn"><b>One computer holds everything.</b> Put <code>BACKUP_DIR</code> on a second disk, and
         copy the backups somewhere else too — see <a href="#safe">Keeping the data safe</a>.</div>
@@ -287,7 +287,7 @@ BACKUP_DIR=/opt/biomanager/backups</code></pre>
 <pre><code>docker compose up -d
 docker compose ps                      # wait until app and backup say "healthy"
 docker compose logs app | grep "setup code"
-sudo deploy/host/install.sh            # watchdog, weekly updates and phone alerts</code></pre>
+sudo host/install.sh                   # watchdog, weekly updates and phone alerts</code></pre>
       <p>On a device with Tailscale, open <code>https://DOMAIN/register</code> and create the admin account with the
         setup code. <code>install.sh</code> prints an <a href="https://ntfy.sh">ntfy</a> topic: subscribe to it in the
         ntfy app to hear if the site, the backups or the disk ever need you.</p>
@@ -327,7 +327,7 @@ TLS=acme
 ACME_EMAIL=you@yourlab.org       # Let's Encrypt writes here before a certificate expires</code></pre>
           then <code>docker compose up -d</code>. Caddy gets and renews the certificate by itself.</li>
         <li>Create the admin account at <code>https://biomanager.yourlab.org/register</code> with the setup code, and run
-          <code>sudo deploy/host/install.sh</code>.</li>
+          <code>sudo host/install.sh</code> (in the <code>deploy</code> folder).</li>
       </ol>
     </section>
 

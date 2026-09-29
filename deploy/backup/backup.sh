@@ -9,12 +9,21 @@ set -euo pipefail
 log() { echo "[$(date -Is)] $*"; }
 
 # A dump of the wrong (or an empty) database would look like a backup.
-if ! psql -XAtc "SELECT 1 FROM users LIMIT 1" > /dev/null 2>&1; then
+if ! accounts=$(psql -XAtc "SELECT count(*) FROM users" 2>/dev/null); then
   log "$PGDATABASE on $PGHOST has no BioManager tables — wrong database, or the app has never started. No backup taken."
   exit 1
 fi
+# A lab with no accounts has nothing to keep, and a copy of it must never
+# become the newest backup: on a replacement server, before its restore,
+# that copy would go off-site and "restore latest" would bring back an
+# empty lab.
+if [ "${accounts:-0}" -eq 0 ]; then
+  log "no accounts in $PGDATABASE yet: nothing to back up (and nothing sent off-site)."
+  exit 0
+fi
 
 umask 077
+trap 'rm -f -- "${dump:-}.partial" "${files:-}.partial"' EXIT   # a failed step leaves no half-written file
 stamp=$(date -u +%Y%m%d-%H%M%SZ)
 mkdir -p "$BACKUP_ROOT/db" "$BACKUP_ROOT/files"
 dump="$BACKUP_ROOT/db/biomanager-$stamp.dump"
@@ -27,8 +36,12 @@ pg_dump --format=custom --compress=6 --no-owner --file="$dump.partial"
 pg_restore --list "$dump.partial" > /dev/null   # readable, table of contents intact
 mv "$dump.partial" "$dump"
 
-tar -C "$APPDATA_DIR" --exclude="./.before-restore-*" -czf "$files.partial" .
-tar -tzf "$files.partial" > /dev/null
+if ! tar -C "$APPDATA_DIR" --exclude="./.before-restore-*" -czf "$files.partial" . \
+    || ! tar -tzf "$files.partial" > /dev/null; then
+  rm -f -- "$dump"
+  log "could not archive the app's files in $APPDATA_DIR. No backup taken."
+  exit 1
+fi
 mv "$files.partial" "$files"
 
 log "backed up: $(basename "$dump") ($(du -h "$dump" | cut -f1)), $(basename "$files") ($(du -h "$files" | cut -f1))"
@@ -60,7 +73,10 @@ offsite() {
     *) log "cannot open the off-site repository: $(echo "$err" | grep -v '^Is there a repository' | tail -n 1)"; return 1 ;;
   esac
   timeout "$OFFSITE_BACKUP_TIMEOUT" restic backup --quiet --tag biomanager --host biomanager "$dump" "$files" || return 1
-  timeout "$OFFSITE_BACKUP_TIMEOUT" restic forget --quiet --tag biomanager --host biomanager \
+  # Grouped by host and tag: each snapshot's paths carry its own time, so
+  # restic's default grouping (host and paths) put every snapshot alone in
+  # its group, and nothing was ever forgotten.
+  timeout "$OFFSITE_BACKUP_TIMEOUT" restic forget --quiet --tag biomanager --host biomanager --group-by host,tags \
     --keep-daily 30 --keep-weekly 12 --keep-monthly 24 --prune \
     || log "off-site pruning failed (the new copy was made; old ones are kept)"
   log "sent off-site to $RESTIC_REPOSITORY"

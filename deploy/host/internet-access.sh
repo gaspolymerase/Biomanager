@@ -24,7 +24,9 @@ PORT=8443
 [ "$(id -u)" = 0 ] || { echo "Run it with sudo."; exit 1; }
 [ -f "$ENV_FILE" ] || { echo "No $ENV_FILE: set the server up first (deploy/README.md)."; exit 1; }
 
-get() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true; }
+# As docker compose reads it: a trailing "# comment" and quotes are not the value.
+get() { grep -E "^$1=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- \
+          | sed -E 's/[[:space:]]+#.*$//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/; s/[[:space:]]+$//' || true; }
 put() {  # KEY VALUE: replace that line or add it, keeping the file's owner and mode
   local tmp
   tmp=$(mktemp "$ENV_FILE.XXXXXX")

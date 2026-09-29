@@ -13,7 +13,20 @@ set -uo pipefail
 CONF=/etc/biomanager/watchdog.env
 [ -f "$CONF" ] && . "$CONF"
 : "${DEPLOY_DIR:=/opt/biomanager/Biomanager/deploy}"
-: "${BACKUP_ROOT:=/opt/biomanager/backups}"
+
+# A setting from the lab's .env, as docker compose reads it: a trailing
+# "# comment" and surrounding quotes are not part of the value.
+env_value() {
+  grep -E "^$1=" "$DEPLOY_DIR/.env" 2>/dev/null | tail -n 1 | cut -d= -f2- \
+    | sed -E 's/[[:space:]]+#.*$//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/; s/[[:space:]]+$//'
+}
+# Where the backup service writes: BACKUP_DIR in .env (./backups unless
+# changed), relative to the deploy folder, as compose.yaml mounts it.
+if [ -z "${BACKUP_ROOT:-}" ]; then
+  BACKUP_ROOT=$(env_value BACKUP_DIR); BACKUP_ROOT=${BACKUP_ROOT:-./backups}
+  case "$BACKUP_ROOT" in /*) ;; *) BACKUP_ROOT="$DEPLOY_DIR/${BACKUP_ROOT#./}" ;; esac
+fi
+TLS_MODE=$(env_value TLS)
 : "${STATE_DIR:=/var/lib/biomanager-watchdog}"
 : "${DISK_LIMIT_PERCENT:=85}"
 : "${BACKUP_MAX_HOURS:=26}"
@@ -22,7 +35,7 @@ CONF=/etc/biomanager/watchdog.env
 : "${REPEAT_HOURS:=6}"
 : "${NTFY_SERVER:=https://ntfy.sh}"
 : "${NTFY_TOPIC:=}"
-DOMAIN=${DOMAIN:-$(grep -E '^DOMAIN=' "$DEPLOY_DIR/.env" 2>/dev/null | cut -d= -f2-)}
+DOMAIN=${DOMAIN:-$(env_value DOMAIN)}
 
 mkdir -p "$STATE_DIR"
 now=$(date +%s)
@@ -52,9 +65,18 @@ report() {
   fi
 }
 
-# --- the site answers, through Caddy, over HTTPS
+# --- the site answers, through Caddy, over HTTPS. With TLS=internal the
+# certificate is Caddy's own, which this machine doesn't trust: check it
+# against Caddy's root, as the lab's computers do once they have it.
+trust=()
+if [ "${TLS_MODE:-internal}" = "internal" ]; then
+  root=$(mktemp)
+  trap 'rm -f "$root"' EXIT
+  (cd "$DEPLOY_DIR" && docker compose exec -T caddy cat /data/caddy/pki/authorities/local/root.crt) > "$root" 2>/dev/null \
+    && [ -s "$root" ] && trust=(--cacert "$root")
+fi
 if [ -n "$DOMAIN" ]; then
-  if curl -fsS -m 20 -o /dev/null "https://$DOMAIN/healthz"; then report site ok
+  if curl -fsS -m 20 "${trust[@]}" -o /dev/null "https://$DOMAIN/healthz"; then report site ok
   else report site "https://$DOMAIN/healthz does not answer. Check: cd $DEPLOY_DIR && docker compose ps"; fi
 fi
 
@@ -85,7 +107,7 @@ t=$(age_of "$BACKUP_ROOT/last-restore-test")
   || report restore-test "no successful restore test for $(( t / 86400 )) days"
 
 # --- off-site copies, once they are set up (RESTIC_REPOSITORY in .env)
-if grep -qE '^RESTIC_REPOSITORY=.+' "$DEPLOY_DIR/.env" 2>/dev/null; then
+if [ -n "$(env_value RESTIC_REPOSITORY)" ]; then
   o=$(age_of "$BACKUP_ROOT/last-offsite")
   [ "$o" -lt $(( BACKUP_MAX_HOURS * 3600 )) ] && report offsite ok \
     || report offsite "the last off-site copy is $(( o / 3600 )) hours old. See: docker compose logs backup"
@@ -94,8 +116,10 @@ if grep -qE '^RESTIC_REPOSITORY=.+' "$DEPLOY_DIR/.env" 2>/dev/null; then
     || report offsite-restore-test "the off-site copy has not been read back for $(( ot / 86400 )) days"
 fi
 
-# --- the HTTPS certificate is not about to lapse (Tailscale renews it)
-if [ -n "$DOMAIN" ]; then
+# --- the HTTPS certificate is not about to lapse (Tailscale or Let's
+# Encrypt renew it). Caddy's own (TLS=internal) lasts hours and Caddy
+# renews it itself, so there is nothing to warn about there.
+if [ -n "$DOMAIN" ] && [ "${TLS_MODE:-internal}" != "internal" ]; then
   end=$(echo | timeout 20 openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" 2>/dev/null \
         | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
   if [ -n "$end" ]; then
