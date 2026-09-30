@@ -426,6 +426,7 @@
   .flash-success { @apply border-ok-200 bg-ok-50 text-ok-700; }
   .flash-error   { @apply border-danger-200 bg-danger-50 text-danger-700; }
   .flash-warning { @apply border-warn-200 bg-warn-50 text-warn-700; }
+  .dialog-refusal { @apply mb-3; }
   .flash-info    { @apply border-info-200 bg-info-50 text-info-600; }
 }
 
@@ -2086,6 +2087,7 @@
     @apply pointer-events-none fixed bottom-5 left-1/2 z-100 flex -translate-x-1/2
            flex-col items-center gap-2;
   }
+  .toast-host[popover] { @apply top-auto right-auto m-0 overflow-visible border-0 bg-transparent p-0; }
 
   .toast {
     @apply pointer-events-auto max-w-[min(420px,calc(100vw-2rem))] translate-y-2 rounded-xl

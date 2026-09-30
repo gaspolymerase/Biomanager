@@ -52,6 +52,7 @@ class RecordLinks(InventoryCase):
         got = self.m.get(f"/notebook/lookup/{self.abs}/{self.number}").get_json()
         self.assertTrue(got["ok"])
         self.assertIn(["Lot", "L-4471"], got["fields"])
+        self.assertEqual(got["name"], one("select name from inventory_items where id=?", self.item))  # the chip's name
         r = self.m.get(f"/notebook/open/{self.abs}/{self.number}")
         self.assertIn(f"/inventory/{self.abs}?open={self.item}", r.headers["Location"])
         self.assertEqual(self.m.get(f"/notebook/lookup/{self.abs}/99999").status_code, 404)

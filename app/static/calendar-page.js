@@ -301,7 +301,15 @@
         return;
       }
       const item = findItem(event.id);
-      if (item) openFromItem(item);
+      if (item) openOnce(item);
+    });
+    // Month view: one click opens an item. The calendar's own click there
+    // only came on a double-click; this and it open it once between them.
+    tuiHost.addEventListener('click', (e) => {
+      if (currentView !== 'month' || e.target.closest('.biocal-task-cb')) return;
+      const chipEl = e.target.closest('.cal-chip[data-item-id]');
+      const item = chipEl && findItem(chipEl.dataset.itemId);
+      if (item) openOnce(item);
     });
 
     let savedView = null;
@@ -659,6 +667,14 @@
   });
 
   // ================================================================ opening an item
+
+  let lastOpened = { id: '', at: 0 };
+  function openOnce(item) {
+    const now = Date.now();
+    if (lastOpened.id === item.id && now - lastOpened.at < 800) return undefined;
+    lastOpened = { id: item.id, at: now };
+    return openFromItem(item);
+  }
 
   function openFromItem(item) {
     const raw = item.raw || {};
@@ -1188,16 +1204,38 @@
 
   const equipModal = $('#cal-equip-modal');
   const equipForm = $('#cal-equip-form');
-  $('#cal-equip-manage').addEventListener('click', () => { renderEquipManage(); showError($('#cal-equip-error'), ''); equipModal.showModal(); });
+  $('#cal-equip-manage').addEventListener('click', () => { renderEquipManage(); editEquipment(null); showError($('#cal-equip-error'), ''); equipModal.showModal(); });
 
   function renderEquipManage() {
     $('#cal-equip-manage-list').innerHTML = (DATA.equipment || []).map((e) => `
       <li><span class="cal-dot" style="background:${e.color}"></span>
         <span class="cal-equip-name">${escapeHtml(e.name)}${e.location ? `<small>${escapeHtml(e.location)}</small>` : ''}</span>
-        ${e.editable ? `<button type="button" class="btn btn-sm" data-retire="${e.id}">Remove</button>` : ''}</li>`).join('')
+        ${e.editable ? `<button type="button" class="btn btn-sm btn-ghost" data-equip-edit="${e.id}">Edit</button>
+          <button type="button" class="btn btn-sm" data-retire="${e.id}">Remove</button>` : ''}</li>`).join('')
       || '<li class="cal-muted">No instruments yet. Add the first below.</li>';
   }
+  // Edit: the form below takes the instrument's name, place and colour, and
+  // Save changes it (a new name keeps its bookings).
+  const equipSubmit = $('#cal-equip-submit');
+  const addLabel = equipSubmit.innerHTML;
+  function editEquipment(eq) {
+    const f = equipForm.elements;
+    f.id.value = eq ? eq.id : '';
+    f.name.value = eq ? eq.name : '';
+    f.location.value = eq ? eq.location || '' : '';
+    if (eq && eq.color) f.color.value = eq.color;
+    if (eq) equipSubmit.textContent = 'Save changes';
+    else equipSubmit.innerHTML = addLabel;
+    $('#cal-equip-cancel-edit').hidden = !eq;
+    if (eq) f.name.focus();
+  }
+  $('#cal-equip-cancel-edit').addEventListener('click', () => { equipForm.reset(); editEquipment(null); });
   $('#cal-equip-manage-list').addEventListener('click', async (e) => {
+    const edit = e.target.closest('[data-equip-edit]');
+    if (edit) {
+      editEquipment((DATA.equipment || []).find((x) => x.id === Number(edit.dataset.equipEdit)));
+      return;
+    }
     const btn = e.target.closest('[data-retire]');
     if (!btn || !(await BioDialog.confirm('Remove this instrument? Its past bookings stay on the calendar.', { danger: true }))) return;
     postJson(`/calendar/equipment/${btn.dataset.retire}/delete`, {}).then((j) => {
@@ -1211,14 +1249,17 @@
   equipForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const f = equipForm.elements;
-    postJson('/calendar/equipment', { name: f.name.value, location: f.location.value, color: f.color.value }).then((j) => {
-      if (!j.ok) return showError($('#cal-equip-error'), j.error || "Couldn't add it.");
+    const renamed = !!f.id.value;
+    postJson('/calendar/equipment', { id: f.id.value || undefined, name: f.name.value, location: f.location.value, color: f.color.value }).then((j) => {
+      if (!j.ok) return showError($('#cal-equip-error'), j.error || "Couldn't save it.");
       DATA.equipment = (DATA.equipment || []).filter((x) => x.id !== j.equipment.id).concat([j.equipment])
         .sort((a, b) => a.name.localeCompare(b.name));
       equipForm.reset();
+      editEquipment(null);
       showError($('#cal-equip-error'), '');
       renderEquipManage();
       renderEquipment();
+      if (renamed && calendar) fetchAndRender();   // its bookings, under the new name
       return undefined;
     });
   });

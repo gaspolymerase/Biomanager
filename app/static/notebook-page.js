@@ -196,8 +196,21 @@
     var tform = $('#notebook-template-form');
     if (tform) tform.addEventListener('submit', function (event) {
       event.preventDefault();
-      fetch('/notebook/templates/create', { method: 'POST', body: new FormData(tform) }).then(function (r) { return r.json(); })
-        .then(function (d) { if (d.ok) { tform.reset(); loadTemplates(); } });
+      saveTemplate(new FormData(tform)).then(function (d) { if (d && d.ok) { tform.reset(); loadTemplates(); } });
+    });
+  }
+
+  // Save a template; one of the same name already yours is replaced only
+  // when that is what was wanted.
+  function saveTemplate(form) {
+    var post = function () { return fetch('/notebook/templates/create', { method: 'POST', body: form }).then(function (r) { return r.json(); }); };
+    return post().then(function (d) {
+      if (!d.exists) return d;
+      return BioDialog.confirm(d.error + ' Replace it with this one?', { okLabel: 'Replace it' }).then(function (ok) {
+        if (!ok) return null;
+        form.set('replace', '1');
+        return post();
+      });
     });
   }
 
@@ -1076,10 +1089,8 @@
           f.append('from_page_id', page.id);
           if (answer.checks.structure_only) f.append('structure_only', '1');
           if (answer.checks.lab) f.append('lab', '1');
-          flushed().then(function () {
-            return fetch('/notebook/templates/create', { method: 'POST', body: f });
-          }).then(function (r) { return r.json(); })
-            .then(function (d) { if (d.ok) toast('Saved as the template “' + esc(name) + '”.'); });
+          flushed().then(function () { return saveTemplate(f); })
+            .then(function (d) { if (d && d.ok) toast('Saved as the template “' + esc(name) + '”.'); });
         });
       }
       if (what === 'delete') {

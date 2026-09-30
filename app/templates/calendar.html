@@ -347,6 +347,7 @@
     <div class="record-dialog-body">
       <ul class="cal-equip-manage" id="cal-equip-manage-list"></ul>
       <div class="record-group">
+        <input type="hidden" name="id" value="">
         <label>Name <input name="name" placeholder="e.g. Confocal (LSM 900)" autocomplete="off"></label>
         <label>Where <input name="location" placeholder="e.g. Room 4.12" autocomplete="off"></label>
         <label class="cal-check">Colour <input type="color" name="color" value="#30b0c7"></label>
@@ -355,8 +356,9 @@
     </div>
     <footer class="record-dialog-foot">
       <span class="mr-auto"></span>
+      <button type="button" class="btn" id="cal-equip-cancel-edit" hidden>Cancel edit</button>
       <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-equip-modal">Close</button>
-      <button type="submit" class="btn btn-primary">{{ icon('plus') }} Add instrument</button>
+      <button type="submit" class="btn btn-primary" id="cal-equip-submit">{{ icon('plus') }} Add instrument</button>
     </footer>
   </form>
 </dialog>

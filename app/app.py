@@ -5879,15 +5879,20 @@ def notebook_template_create():
             kind = info.kind if info is not None else kind
             if request.form.get("structure_only") == "1":
                 body = lab_notebook.structure_only(body)
-        template = NotebookTemplate(
-            owner_username=g.user.username,
-            title=title,
-            icon=icon,
-            body=body,
-            kind=kind if kind in lab_notebook.KINDS and kind != "daily" else "note",
-            lab=request.form.get("lab") == "1",
-        )
-        db_session.add(template)
+        # One of theirs by that name already: asked first, then saved over
+        # (replace=1), not a second one of the same name in the list.
+        template = db_session.scalar(select(NotebookTemplate).where(
+            NotebookTemplate.owner_username == g.user.username,
+            func.lower(NotebookTemplate.title) == title.lower()).limit(1))
+        if template is not None and request.form.get("replace") != "1":
+            return jsonify({"ok": False, "exists": True,
+                            "error": f"You already have a template called “{template.title}”."}), 409
+        if template is None:
+            template = NotebookTemplate(owner_username=g.user.username)
+            db_session.add(template)
+        template.title, template.icon, template.body = title, icon, body
+        template.kind = kind if kind in lab_notebook.KINDS and kind != "daily" else "note"
+        template.lab = request.form.get("lab") == "1"
         db_session.commit()
         return jsonify({
             "ok": True,
@@ -6180,7 +6185,7 @@ def notebook_lookup_item(key: str, number: int):
                   ("Catalog #", item.catalog_number), ("Lot", item.lot), ("Amount", amount), ("Where", where),
                   ("Expires", item.expires_on.isoformat() if item.expires_on else "")]
         return jsonify({"ok": True, "label": _mention_label(module, item, True), "type_label": module.label,
-                        "fields": [[k, v] for k, v in fields if v]})
+                        "name": item.name or "", "fields": [[k, v] for k, v in fields if v]})
 
 
 def _order_items_query(db_session, query: str, limit: int):

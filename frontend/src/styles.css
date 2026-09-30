@@ -188,6 +188,13 @@
   transition: background 0.12s ease, color 0.12s ease;
 }
 
+/* The record's name after its number (MentionDecoration.js); shown, not typed. */
+.entity-mention[data-entity-name]::after {
+  content: '· ' attr(data-entity-name);
+  font-weight: 400;
+  opacity: 0.85;
+}
+
 .entity-mention:hover {
   background: var(--color-brand-100);
   color: var(--color-brand-800);

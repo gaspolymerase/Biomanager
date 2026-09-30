@@ -186,6 +186,18 @@ class BookingTests(Calendar):
     def book(self, client, eq, start, end, **extra):
         return self.post_json(client, "/calendar/bookings", {"equipment_id": eq["id"], "start": start, "end": end, **extra})
 
+    def test_an_instrument_is_renamed_and_keeps_its_bookings(self):
+        eq = self.instrument()
+        day = days_ahead(4)
+        self.assertTrue(self.book(self.m, eq, f"{day}T09:00", f"{day}T10:00").get_json()["ok"])
+        name = uniq("Confocal LSM 980 ")
+        r = self.post_json(self.m, "/calendar/equipment", {"id": eq["id"], "name": name, "location": "4.14"})
+        self.assertEqual((r.get_json()["equipment"]["id"], r.get_json()["equipment"]["name"]), (eq["id"], name))
+        titles = [i["title"] for i in self.items(self.m)["items"] if i["kind"] == "booking"]
+        self.assertTrue(any(t.startswith(name) for t in titles), titles)
+        # Someone else's instrument is theirs to rename.
+        self.assertEqual(self.post_json(self.o, "/calendar/equipment", {"id": eq["id"], "name": "Mine"}).status_code, 403)
+
     def test_overlapping_bookings_are_refused_with_who_has_it(self):
         eq = self.instrument()
         day = days_ahead(3)

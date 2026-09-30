@@ -278,6 +278,46 @@ function showPopoverFor(chip) {
     });
 }
 
+/* A chip reads "@antibodies 6 · Anti-p53 (DO-1)": the record's name after
+   its number, from the same lookup as the popover. The page's text stays
+   "@antibodies 6"; the name is only shown (styles.css, ::after). */
+const nameCache = new Map(); // `${type}:${id}` -> name ('' when it has none)
+const nameWaiting = new Set();
+
+function nameOf(type, data) {
+  if (!data) return '';
+  if (type === 'plasmid') return data.name || '';
+  if (type === 'order') return data.item_name || '';
+  return data.name || '';
+}
+
+function fetchNames(doc, view, key) {
+  const wanted = [];
+  doc.descendants((node) => {
+    if (!node.isText || !node.text) return;
+    const re = mentionRe();
+    let match;
+    while ((match = re.exec(node.text)) !== null) {
+      const k = `${match[1]}:${match[2]}`;
+      if (match[1] !== 'mouse' && !nameCache.has(k) && !nameWaiting.has(k)) wanted.push([match[1], match[2], k]);
+    }
+  });
+  wanted.slice(0, 40).forEach(([type, id, k]) => {
+    nameWaiting.add(k);
+    fetch(`/notebook/lookup/${type}/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        nameCache.set(k, data && data.ok ? nameOf(type, data) : '');
+        if (data && data.ok) lookupCache.set(k, { data });
+      })
+      .catch(() => nameCache.set(k, ''))
+      .finally(() => {
+        nameWaiting.delete(k);
+        if (nameCache.get(k) && !view.isDestroyed) view.dispatch(view.state.tr.setMeta(key, 'names'));
+      });
+  });
+}
+
 function buildDecorations(doc) {
   const decos = [];
   doc.descendants((node, pos) => {
@@ -288,11 +328,13 @@ function buildDecorations(doc) {
     while ((match = re.exec(text)) !== null) {
       const from = pos + match.index;
       const to = from + match[0].length;
+      const name = nameCache.get(`${match[1]}:${match[2]}`);
       decos.push(
         Decoration.inline(from, to, {
           class: `entity-mention entity-mention-${styleOf(match[1])}`,
           'data-entity-type': match[1],
           'data-entity-id': match[2],
+          ...(name ? { 'data-entity-name': name.length > 40 ? `${name.slice(0, 39)}…` : name } : {}),
         })
       );
     }
@@ -313,8 +355,16 @@ export const MentionDecoration = Extension.create({
             return buildDecorations(doc);
           },
           apply(tr, old) {
-            return tr.docChanged ? buildDecorations(tr.doc) : old;
+            return tr.docChanged || tr.getMeta(key) === 'names' ? buildDecorations(tr.doc) : old;
           },
+        },
+        view(editorView) {
+          fetchNames(editorView.state.doc, editorView, key);
+          return {
+            update(view, prev) {
+              if (!view.state.doc.eq(prev.doc)) fetchNames(view.state.doc, view, key);
+            },
+          };
         },
         props: {
           decorations(state) {

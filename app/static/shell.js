@@ -19,7 +19,13 @@
     if (!toastHost) {
       toastHost = document.createElement('div');
       toastHost.className = 'toast-host';
+      // In the top layer, so a message sent from an open dialog shows in
+      // front of it rather than behind its backdrop.
+      if ('popover' in toastHost) toastHost.popover = 'manual';
       document.body.appendChild(toastHost);
+    }
+    if (toastHost.popover) {
+      try { toastHost.hidePopover(); toastHost.showPopover(); } catch (e) { /* not in the page yet */ }
     }
     const el = document.createElement('div');
     el.className = 'toast' + (kind ? ' toast-' + kind : '');

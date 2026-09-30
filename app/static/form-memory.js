@@ -100,6 +100,25 @@
     });
   }
 
+  // The refusal, inside the reopened dialog: on the page it sat behind the
+  // dialog's backdrop, where nobody could read why nothing was saved.
+  function showRefusal(dialog) {
+    const text = Array.from(document.querySelectorAll('.flash-message.flash-error'))
+      .map((el) => el.textContent.trim()).filter(Boolean);
+    if (!dialog || !text.length) return;
+    dialog.querySelectorAll('[data-refusal]').forEach((el) => el.remove());
+    const note = document.createElement('div');
+    note.className = 'flash-message flash-error dialog-refusal';
+    note.setAttribute('role', 'alert');
+    note.dataset.refusal = '';
+    note.textContent = text.join(' ');
+    const body = dialog.querySelector('.record-dialog-body') || dialog.querySelector('form') || dialog;
+    body.prepend(note);
+    // It goes when the form is sent again.
+    const form = note.closest('form');
+    if (form) form.addEventListener('submit', () => note.remove(), { once: true });
+  }
+
   function restore() {
     let state = null;
     try {
@@ -137,6 +156,7 @@
       // "Tank T-3", as it read when it was sent (the payload has no label).
       const title = dialog.querySelector('[data-record-title]');
       if (title && state.title) title.textContent = state.title;
+      showRefusal(dialog);
       return;
     }
 
@@ -146,6 +166,7 @@
     if (details) details.open = true;
     if (dialog && !dialog.open && typeof dialog.showModal === 'function') dialog.showModal();
     else form.scrollIntoView({ block: 'center' });
+    if (dialog) showRefusal(dialog);
     const first = form.querySelector('input:not([type=hidden]):not(:disabled), select:not(:disabled), textarea:not(:disabled)');
     if (first) { try { first.focus({ preventScroll: true }); } catch (_) {} }
   }

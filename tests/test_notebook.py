@@ -602,6 +602,19 @@ Use fresh ECL.
         self.assertTrue(r.get_json()["ok"], r.get_data(as_text=True))
         return r.get_json()["template"]["id"]
 
+    def test_a_taken_template_name_is_asked_about_then_replaced(self):
+        name = uniq("Miniprep ")
+        first = self.m.post("/notebook/templates/create", data={"title": name, "body": "one"}).get_json()
+        again = self.m.post("/notebook/templates/create", data={"title": name.upper(), "body": "two"})
+        self.assertEqual((again.status_code, again.get_json()["exists"]), (409, True))
+        self.assertEqual(count("notebook_templates", "owner_username=? and lower(title)=lower(?)", self.member, name), 1)
+        replaced = self.m.post("/notebook/templates/create", data={"title": name, "body": "two", "replace": "1"}).get_json()
+        self.assertEqual(replaced["template"]["id"], first["template"]["id"])
+        self.assertEqual(one("select body from notebook_templates where id=?", first["template"]["id"]), "two")
+        # Someone else may have one of the same name.
+        other = client_for(make_user())
+        self.assertTrue(other.post("/notebook/templates/create", data={"title": name, "body": "x"}).get_json()["ok"])
+
     def test_an_experiment_template_makes_experiments(self):
         page = self.new_page(self.m, starter="western")
         tid = self.template_from(self.m, page)
