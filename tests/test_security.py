@@ -272,6 +272,19 @@ class SignUp(AppTestCase):
         self.assertEqual(one("select role from users where username=?", username), "member")
         self.assertEqual(sign_in(username)[1].status_code, 302)
 
+    def test_approving_settles_the_admins_notices(self):
+        waiting, _ = self.register()
+        approved, _ = self.register()
+        unread = lambda name: count("notifications", "recipient_username=? and is_read=? and message like ?",
+                                    self.admin, False, f"% as {name}. %")
+        self.assertEqual((unread(waiting), unread(approved)), (1, 1))
+        self.post(self.a, f"/admin/users/{user_id(approved)}/disable")
+        self.assertEqual((unread(waiting), unread(approved)), (1, 0))
+        # One approved some other way (or before this): Home settles it.
+        execute("update users set role='member', disabled=? where username=?", False, waiting)
+        self.get_ok(self.a, "/home")
+        self.assertEqual(unread(waiting), 0)
+
     def test_the_admin_page_offers_approve(self):
         username, _ = self.register()
         html = self.get_ok(self.a, "/admin/users")

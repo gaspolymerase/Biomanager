@@ -362,6 +362,15 @@ def server_timezone() -> str:
     return time.tzname[0] or "UTC"
 
 
+def clock_zone() -> str:
+    """The zone the app's clock runs on now, by name, so a page shows times
+    on the same clock as the lines the app writes ("Started: 16:00"), not the
+    browser's. Blank on Windows, where the app runs on the computer's zone."""
+    if not hasattr(time, "tzset"):
+        return ""
+    return os.environ.get("TZ") or server_timezone()
+
+
 def timezone_names() -> list[str]:
     """Region/City names to pick from (Lab setup's list)."""
     try:

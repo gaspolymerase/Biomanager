@@ -467,6 +467,31 @@ def tell_lab(session, actor: str, title: str, message: str = "", link: str = "")
 
 # ---------------------------------------------------------------- reading
 
+SIGNUP_TITLE = "Account waiting for approval"
+_SIGNUP_NAME = re.compile(r"\bas (\S+)\. Approve")
+
+
+def settle_signups(session) -> int:
+    """Mark read every "Account waiting for approval" whose account no
+    longer waits (approved, or removed), for every admin: one admin's
+    approval settles the others' notices too. Commits if it changed any."""
+    notes = session.scalars(select(NotificationRecord).where(
+        NotificationRecord.category == "account", NotificationRecord.title == SIGNUP_TITLE,
+        NotificationRecord.is_read.is_(False))).all()
+    if not notes:
+        return 0
+    waiting = set(session.scalars(select(UserAccount.username).where(UserAccount.role == "pending")))
+    settled = 0
+    for n in notes:
+        m = _SIGNUP_NAME.search(n.message or "")
+        if m and m.group(1) not in waiting:
+            n.is_read = True
+            settled += 1
+    if settled:
+        session.commit()
+    return settled
+
+
 def unread_count(session, username: str) -> int:
     return session.scalar(select(func.count(NotificationRecord.id)).where(
         NotificationRecord.recipient_username == username, NotificationRecord.is_read.is_(False))) or 0

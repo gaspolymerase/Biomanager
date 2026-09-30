@@ -32,13 +32,25 @@
     if (!iso) return null;
     return new Date(/Z|[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z');
   }
+  // Times on the lab's clock, not this browser's: "started 16:00" in the
+  // header then says what the "Started: 16:00" line in the page says, for
+  // everyone, wherever their computer thinks it is.
+  var ZONE = (function (z) {
+    try { if (z) new Intl.DateTimeFormat([], { timeZone: z }); return z || undefined; } catch (_) { return undefined; }
+  })(DATA.labZone);
+  function inLab(o) {
+    o = Object.assign({}, o || {});
+    if (ZONE) o.timeZone = ZONE;
+    return o;
+  }
   function timeText(iso) {
     var d = when(iso);
     if (!d || isNaN(d)) return '';
     var now = new Date();
-    var same = d.toDateString() === now.toDateString();
-    var t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return same ? 'today ' + t : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' }) + ' ' + t;
+    var day = function (x) { return x.toLocaleDateString('en-CA', inLab()); };
+    var same = day(d) === day(now);
+    var t = d.toLocaleTimeString([], inLab({ hour: '2-digit', minute: '2-digit' }));
+    return same ? 'today ' + t : d.toLocaleDateString([], inLab({ day: 'numeric', month: 'short', year: day(d).slice(0, 4) === day(now).slice(0, 4) ? undefined : 'numeric' })) + ' ' + t;
   }
   function api(url, opts) {
     opts = opts || {};
@@ -143,7 +155,7 @@
 
   $$('[data-starter]').forEach(function (b) {
     b.addEventListener('click', function () {
-      var body = { starter: b.dataset.starter };
+      var body = { starter: b.dataset.starter, open_tab_id: DATA.selectedTab || '' };
       api('/notebook/api/pages/new', { body: body }).then(function (d) { go(d.url); })
         .catch(function (e) { toast('Could not make the page: ' + esc(e.message), true); });
     });
@@ -174,7 +186,7 @@
       var pick = event.target.closest('[data-template]');
       var del = event.target.closest('[data-del-template]');
       if (pick) {
-        api('/notebook/api/pages/new', { body: { template_id: Number(pick.dataset.template) } }).then(function (d) { go(d.url); });
+        api('/notebook/api/pages/new', { body: { template_id: Number(pick.dataset.template), open_tab_id: DATA.selectedTab || '' } }).then(function (d) { go(d.url); });
       } else if (del) {
         BioDialog.confirm('Delete this template?', { danger: true }).then(function (ok) {
           if (ok) fetch('/notebook/templates/' + del.dataset.delTemplate + '/delete', { method: 'POST' }).then(loadTemplates);
@@ -490,7 +502,7 @@
     title: 'Signatures',
     render: function (box) {
       api('/notebook/api/pages/' + page.id + '/signatures').then(function (d) {
-        var when = function (iso) { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); };
+        var when = function (iso) { return new Date(iso).toLocaleString([], inLab({ dateStyle: 'medium', timeStyle: 'short' })); };
         var label = { sign: 'Signed', review: 'Reviewed', witness: 'Witnessed', amend: 'Opened to amend' };
         var list = d.entries.length ? '<ol class="nb-sig-list">' + d.entries.map(function (e) {
           return '<li class="nb-sig" data-action="' + esc(e.action) + '"><b>' + esc(label[e.action] || e.action) + '</b> by ' + esc(e.name) +
@@ -557,11 +569,11 @@
         box.innerHTML = (canEdit ? '<div class="nb-field-row"><button type="button" class="btn" id="nb-save-version">' + icon('success') + ' Save a named version</button></div>' : '') +
           '<ul class="nb-list nb-versions">' + d.versions.map(function (v, i) {
             var day = (when(v.saved_at) || new Date()).toDateString();
-            var head = day !== lastDay ? '<li class="nb-list-day">' + esc((when(v.saved_at) || new Date()).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })) + '</li>' : '';
+            var head = day !== lastDay ? '<li class="nb-list-day">' + esc((when(v.saved_at) || new Date()).toLocaleDateString([], inLab({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }))) + '</li>' : '';
             lastDay = day;
             var label = v.kind === 'release' ? '<b class="nb-pill">v' + v.number + '</b> ' : v.kind === 'manual' ? '<b class="nb-pill is-quiet">saved</b> ' : v.kind === 'restore' ? '<b class="nb-pill is-quiet">restored</b> ' : '';
             return head + '<li class="nb-list-row nb-version" data-version="' + v.id + '"><span class="nb-avatar" style="background:' + colorFor(v.saved_by) + '">' + esc(initials(v.saved_by_name)) + '</span>' +
-              '<span class="nb-grow"><span>' + label + esc(v.label || (i === 0 ? 'Latest' : 'Edits')) + '</span><small>' + esc(v.saved_by_name) + ' · ' + esc((when(v.saved_at) || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</small></span></li>';
+              '<span class="nb-grow"><span>' + label + esc(v.label || (i === 0 ? 'Latest' : 'Edits')) + '</span><small>' + esc(v.saved_by_name) + ' · ' + esc((when(v.saved_at) || new Date()).toLocaleTimeString([], inLab({ hour: '2-digit', minute: '2-digit' }))) + '</small></span></li>';
           }).join('') + '</ul><div id="nb-version-view"></div>';
         var save = $('#nb-save-version', box);
         if (save) save.addEventListener('click', function () { saveNamedVersion().then(function () { PANELS.history.render(box); }); });
@@ -871,7 +883,7 @@
     var f = {};
     f[field] = value;
     return post(f).then(function (r) { return r.json(); }).then(function (d) {
-      if (d.ok) setSaved('Saved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      if (d.ok) setSaved('Saved ' + new Date().toLocaleTimeString([], inLab({ hour: '2-digit', minute: '2-digit' })));
       else setSaved('Not saved', true);
     }).catch(function () { setSaved('Offline — not saved yet', true); });
   }
@@ -887,7 +899,7 @@
     return post({ body: markdown }, headers).then(function (r) {
       if (r.status === 409) { restartEditor(); return; }
       return r.json().then(function (d) {
-        if (d.ok) setSaved('Saved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        if (d.ok) setSaved('Saved ' + new Date().toLocaleTimeString([], inLab({ hour: '2-digit', minute: '2-digit' })));
         else setSaved('Not saved', true);
       });
     }).catch(function () { setSaved('Offline — will save with the next change', true); });
@@ -958,7 +970,7 @@
       } else if (action === 'finish') {
         meta({ action: 'finish', outcome: b.dataset.outcome }).then(function () { window.location.reload(); });
       } else if (action === 'start-experiment') {
-        BioDialog.prompt('Name the experiment', page.title + ' — ' + new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }), { okLabel: 'Start' }).then(function (name) {
+        BioDialog.prompt('Name the experiment', page.title + ' — ' + new Date().toLocaleDateString([], inLab({ day: 'numeric', month: 'short', year: 'numeric' })), { okLabel: 'Start' }).then(function (name) {
           if (name === null) return;
           flushed().then(function () {
             return api('/notebook/api/pages/' + page.id + '/start-experiment', { body: { title: name } });
@@ -989,12 +1001,12 @@
     var box = $('#nb-stamps');
     if (!box) return;
     var parts = [];
-    if (page.started_at) parts.push('<span title="' + esc(when(page.started_at).toLocaleString()) + '">' + icon('clock') + ' started ' + esc(timeText(page.started_at)) + '</span>');
-    if (page.finished_at) parts.push('<span title="' + esc(when(page.finished_at).toLocaleString()) + '">finished ' + esc(timeText(page.finished_at)) + '</span>');
+    if (page.started_at) parts.push('<span title="' + esc(when(page.started_at).toLocaleString([], inLab())) + '">' + icon('clock') + ' started ' + esc(timeText(page.started_at)) + '</span>');
+    if (page.finished_at) parts.push('<span title="' + esc(when(page.finished_at).toLocaleString([], inLab())) + '">finished ' + esc(timeText(page.finished_at)) + '</span>');
     if (page.edited_by_name && page.edited_by !== me.username) parts.push('<span>last edited by ' + esc(page.edited_by_name) + '</span>');
     box.innerHTML = parts.length ? '<span class="meta-sep">·</span>' + parts.join(' · ') : '';
     var started = $('#nb-started');
-    if (started && page.started_at) started.textContent = when(page.started_at).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    if (started && page.started_at) started.textContent = when(page.started_at).toLocaleString([], inLab({ weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
   }
   drawStamps();
 

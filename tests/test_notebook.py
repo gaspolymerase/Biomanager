@@ -295,6 +295,28 @@ class PageKindTests(Notebook):
         self.assertIn("```calc", body)
         self.assertEqual(one("select t.title from notebook_tabs t join notebook_pages p on p.tab_id_fk=t.id where p.id=?", page), "Experiments")
 
+    def test_a_page_started_with_a_topic_open_goes_in_that_topic(self):
+        user = make_user()
+        c = client_for(user)
+        self.new_page(c)                                         # makes the Inbox
+        c.post("/notebook/tabs/create", data={"title": "SOPs"})
+        sops = one("select id from notebook_tabs where owner_username=? and title='SOPs'", user)
+        topic = lambda page: one("select t.title from notebook_tabs t join notebook_pages p on p.tab_id_fk=t.id "
+                                 "where p.id=?", page)
+        self.assertEqual(topic(self.new_page(c, starter="blank", open_tab_id=sops)), "SOPs")
+        self.assertEqual(topic(self.new_page(c, starter="protocol", open_tab_id=sops)), "SOPs")
+        # Experiments and meetings keep their own topics; someone else's topic is no place.
+        self.assertEqual(topic(self.new_page(c, starter="experiment", open_tab_id=sops)), "Experiments")
+        self.assertNotEqual(topic(self.new_page(self.m, starter="blank", open_tab_id=sops)), "SOPs")
+
+    def test_the_page_shows_times_on_the_lab_s_clock(self):
+        from unittest import mock
+        from app import lab
+        page = self.new_page(self.m, starter="experiment")
+        with mock.patch.object(lab, "clock_zone", return_value="America/New_York"):
+            html = self.m.get(f"/notebook?page={page}").get_data(as_text=True)
+        self.assertIn('"labZone": "America/New_York"', html)
+
     def test_the_notebook_page_renders_every_kind(self):
         for starter in ("blank", "experiment", "protocol", "meeting", "seminar", "daily", "cloning", "western"):
             page = self.new_page(self.m, starter=starter)

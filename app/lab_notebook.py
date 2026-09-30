@@ -780,10 +780,16 @@ def page_new():
             title, body = title or template.title, template.body or ""
             kind = template.kind if template.kind in KINDS and template.kind != "daily" else "note"
         if tab is None:
+            # The topic open in the notebook, for a plain page: started from
+            # the SOPs topic, it belongs there. Experiments and meetings go to
+            # their own topics wherever they're started.
+            open_tab = s.get(NotebookTab, _int(data.get("open_tab_id")) or 0) if data.get("open_tab_id") else None
             if kind == "experiment":
                 tab = tab_named(s, me, EXPERIMENTS_TAB)
             elif kind in ("meeting", "seminar"):
                 tab = tab_named(s, me, MEETINGS_TAB)
+            elif open_tab is not None and open_tab.owner_username == me:
+                tab = open_tab
             else:
                 tab = first_tab(s, me)
         extra = {"status": "planned"} if kind == "experiment" else {}

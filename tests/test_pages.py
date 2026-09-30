@@ -183,6 +183,17 @@ class PagesRender(AppTestCase):
         self.assertEqual(found(tag.replace(" ", "_", 1)), [])
         self.assertEqual(self.a.get("/search", query_string={"q": "1" * 21}).status_code, 200)
 
+    def test_search_puts_names_that_start_with_it_first(self):
+        tag = uniq("Q")                      # a word nobody else has
+        for n in range(12):                  # a dozen that only mention it, newer than the tubes
+            self.make_item(self.a, "samples", name=uniq("Column "), notes=f"ran on {tag}00")
+        for n in range(2):
+            self.make_item(self.m, "samples", name=f"{tag}-R{n}")
+        for n in range(12):
+            self.make_item(self.a, "samples", name=uniq("Column "), notes=f"ran on {tag}00")
+        labels = [r["label"] for r in self.m.get("/search", query_string={"q": tag}).get_json()["results"]]
+        self.assertTrue(labels and f"{tag}-R" in labels[0] and f"{tag}-R" in labels[1], labels)
+
     def test_mangled_numbers_in_an_address_are_not_server_errors(self):
         huge = "9" * 21
         for url in (f"/notebook?page={huge}", f"/notebook?tab=x", "/notebook/search/mouse?limit=x",

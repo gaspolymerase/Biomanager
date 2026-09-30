@@ -77,7 +77,7 @@ import jwt
 from flask import Blueprint, abort, flash, g, redirect, request, session, url_for
 from sqlalchemy import func, select
 
-from . import security
+from . import notify, security
 from .db import SessionLocal
 from .models import UserAccount, UserIdentity
 
@@ -415,7 +415,7 @@ def _request_account(db_session, provider: Provider, claims: dict):
     admins = db_session.scalars(select(UserAccount.username).where(
         UserAccount.role == "admin", UserAccount.disabled.is_(False))).all()
     for admin_name in admins:
-        add_notification(db_session, admin_name, "Account waiting for approval",
+        add_notification(db_session, admin_name, notify.SIGNUP_TITLE,
                          f"{display_name or username} asked to join with {provider.label} "
                          f"as {username}. Approve them in Settings → Manage users.",
                          category="account", link=url_for("admin_users"))

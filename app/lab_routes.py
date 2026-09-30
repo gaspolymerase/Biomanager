@@ -309,6 +309,8 @@ def notifications():
     if category not in notify.CATEGORIES and category not in ("account", "general"):
         category = ""
     with SessionLocal() as db_session:
+        if g.user.role == "admin":
+            notify.settle_signups(db_session)
         rows = [_row(n) for n in notify.recent(db_session, g.user.username, limit=200,
                                                unread_only=(show == "unread"), category=category)]
         unread = notify.unread_count(db_session, g.user.username)

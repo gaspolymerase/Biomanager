@@ -9,7 +9,7 @@ from functools import wraps
 from flask import Flask, Response, abort, flash, g, get_flashed_messages, has_request_context, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from markupsafe import Markup, escape
 from werkzeug.datastructures import ImmutableMultiDict
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.orm.exc import StaleDataError
@@ -1747,6 +1747,8 @@ def home_dashboard():
         has_restock = any(m.kind in _inv.RESTOCK_KINDS for m in visible_inventories)
         has_stocks = bool(stock_service.list_modules(db_session))
         setup_needed = g.user.role == "admin" and not lab.setup_done(db_session)
+        if g.user.role == "admin":
+            notify.settle_signups(db_session)
         for_you = [{"id": n.id, "title": n.title, "created_at": n.created_at}
                    for n in notify.recent(db_session, g.user.username, limit=5, unread_only=True)]
 
@@ -2286,6 +2288,7 @@ def admin_toggle_disabled(user_id: int):
             target.role = "member"
             target.disabled = False
             db_session.commit()
+            notify.settle_signups(db_session)
             flash(f"{target.username} approved. They can sign in now.", "success")
             return redirect(url_for("admin_users"))
         target.disabled = not target.disabled
@@ -2369,7 +2372,7 @@ def register():
                         admins = db_session.scalars(select(UserAccount.username).where(
                             UserAccount.role == "admin", UserAccount.disabled.is_(False))).all()
                         for admin_name in admins:
-                            add_notification(db_session, admin_name, "Account waiting for approval", category="account",
+                            add_notification(db_session, admin_name, notify.SIGNUP_TITLE, category="account",
                                              link=url_for("admin_users"), message=
                                              f"{display_name or username} signed up as {username}. "
                                              "Approve them in Settings → Manage users.")
@@ -5178,6 +5181,7 @@ def notebook():
         statuses=lab_notebook.STATUSES,
         me=me,
         mention_types=mention_types,
+        lab_zone=lab.clock_zone(),
         starters=[{"key": key, "title": st["title"], "kind": st["kind"], "hint": st["hint"]}
                   for key, st in lab_notebook.STARTERS.items()],
     )
@@ -5290,6 +5294,14 @@ def global_search():
     like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     is_digit = q.isdigit() and len(q) <= 12        # a 21-digit "number" is text to look for, not an ID
     limit = 5
+    starts = like[1:]                               # "S20%": a name that starts with it
+
+    def by_name(column, *then):
+        """A name that is the search, then one that starts with it, then one
+        that has it, then the rest (a match in the notes): "S20" finds the
+        S20-* tubes before a note that says "S200"."""
+        return (case((func.lower(column) == q.lower(), 0), (column.ilike(starts, escape="\\"), 1),
+                     (column.ilike(like, escape="\\"), 2), else_=3), *then)
     results: list[dict] = []
     with SessionLocal() as db_session:
         mouse_stmt = select(MouseRecord)
@@ -5371,7 +5383,7 @@ def global_search():
                 | PlasmidRecord.owner.ilike(like, escape="\\") | PlasmidRecord.storage_box.ilike(like, escape="\\")
                 | PlasmidRecord.location.ilike(like, escape="\\") | PlasmidRecord.notes.ilike(like, escape="\\")
             )
-        for p in db_session.scalars(plasmid_stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(limit)).all():
+        for p in db_session.scalars(plasmid_stmt.order_by(*by_name(PlasmidRecord.name, PlasmidRecord.plasmid_id.desc())).limit(limit)).all():
             # Where it is, in its box's own position names ("Box A · D7").
             where = _plasmid_where(p, _box_of(db_session, p))
             results.append({
@@ -5389,7 +5401,7 @@ def global_search():
         # Only databases this person sees: the lab's and their own (app/lab.py).
         from . import inventory_service as inventories
         modules = {m.id: m for m in inventories.list_modules(db_session)}
-        item_stmt = select(InventoryItem)
+        item_stmt = select(InventoryItem).where(InventoryItem.module_id_fk.in_(list(modules)))
         if is_digit:
             item_stmt = item_stmt.where(InventoryItem.number == int(q))
         else:
@@ -5399,7 +5411,7 @@ def global_search():
                 | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.notes.ilike(like, escape="\\")
                 | InventoryItem.attrs.ilike(like, escape="\\")
             )
-        for item in db_session.scalars(item_stmt.order_by(InventoryItem.id.desc()).limit(limit * 2)).all():
+        for item in db_session.scalars(item_stmt.order_by(*by_name(InventoryItem.name, InventoryItem.id.desc())).limit(limit * 2)).all():
             module = modules.get(item.module_id_fk)
             if module is None:
                 continue
@@ -5475,7 +5487,7 @@ def global_search():
             lab_notebook.accessible_filter(
                 select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
             .where(NotebookPage.title.ilike(like, escape="\\") | NotebookPage.body.ilike(like, escape="\\"))
-            .order_by(NotebookPage.updated_at.desc())
+            .order_by(*by_name(NotebookPage.title, NotebookPage.updated_at.desc()))
             .limit(limit)
         )
         for page in db_session.scalars(page_stmt).all():
