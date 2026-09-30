@@ -76,8 +76,11 @@ def require_login():
     return None
 
 
-def _qr_svg(payload: str, scale: int = 4) -> str:
+def _qr_svg(payload: str, scale: int = 4, fit: bool = False) -> str:
     """Inline SVG for a QR code, or an empty string if segno is missing.
+    `fit`: sized by the page (a viewBox, no width): a label's CSS shrinks
+    the whole code to its box. Without it, a code drawn 99 px wide in a
+    58 px box was cut to one corner and could not be scanned.
 
     segno is an optional dependency: without it the cards still print, just
     without the scannable part, which is better than a 500 at the printer.
@@ -88,7 +91,7 @@ def _qr_svg(payload: str, scale: int = 4) -> str:
         return ""
     # Error level M survives a smudged or partly peeled label.
     qr = segno.make(payload, error="m")
-    return qr.svg_inline(scale=scale, border=0, dark="#15191d")
+    return qr.svg_inline(scale=scale, border=0, dark="#15191d", omitsize=fit)
 
 
 @bp.route("/qr.svg")
@@ -464,7 +467,7 @@ def _page(built: dict):
     layout = fit(size) if stock != "sheet" else None
     left_out: set[str] = set()      # rows that didn't fit, to say so
     for card in cards:
-        card["qr"] = _qr_svg(card["target"], scale=3) if card.get("target") else ""
+        card["qr"] = _qr_svg(card["target"], scale=3, fit=True) if card.get("target") else ""
         if layout:
             # A title on two lines takes the room of one row.
             room = layout["rows"] - (1 if card.get("shared") else 0) - (1 if wrap and layout["rows"] > 1 else 0)

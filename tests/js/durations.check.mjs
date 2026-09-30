@@ -1,6 +1,6 @@
 // Run by tests/test_notebook_blocks.py: which durations in a page get a step timer, in Node.
 import assert from 'node:assert/strict';
-import { findDurations } from '../../frontend/src/durations.js';
+import { findDurations, timerLabel } from '../../frontend/src/durations.js';
 
 const timed = (text) => findDurations(text).map((d) => d.text);
 // Steps are timed.
@@ -19,4 +19,10 @@ assert.deepEqual(timed('48 h harvest: filter 0.45 µm'), []);
 assert.deepEqual(timed('RNA from cells 72 h post-transduction'), []);
 assert.deepEqual(timed('T = 6 h'), []);
 assert.deepEqual(timed('24 h time point'), []);
+// Each timer is named by its own step.
+{
+  const t = 'Tue: lyse in TRIzol, incubate 5 min at RT, then centrifuge 12,000 × g 15 min at 4 °C.';
+  const names = findDurations(t).map((d) => timerLabel(t, d.index, d.index + d.length));
+  assert.deepEqual(names, ['incubate 5 min at RT', 'centrifuge 12,000 × g 15 min at 4 °C']);
+}
 console.log('ok');

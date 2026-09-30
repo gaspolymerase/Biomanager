@@ -21,9 +21,37 @@
   // chemical picker, then the built-in ones.
   let labChemicals = [];
   try { labChemicals = JSON.parse(document.getElementById('util-lab-chemicals').textContent || '[]'); } catch (_) {}
+  // A name as people type it: "MgCl2·6H2O", "mgcl2.6h2o", "MgCl₂ · 6 H₂O" and
+  // "magnesium chloride hexahydrate" are one chemical; "(anhydrous)" and
+  // "(free acid)" are what the plain name means.
+  const SUBSCRIPT = { '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9' };
+  const WORDS = [
+    [/\bmagnesium chloride\b/g, 'mgcl2'], [/\bmagnesium sulfate\b/g, 'mgso4'], [/\bcalcium chloride\b/g, 'cacl2'],
+    [/\bsodium chloride\b/g, 'nacl'], [/\bpotassium chloride\b/g, 'kcl'], [/\bmanganese chloride\b/g, 'mncl2'],
+    [/\bzinc chloride\b/g, 'zncl2'], [/\bsodium hydroxide\b/g, 'naoh'], [/\bpotassium hydroxide\b/g, 'koh'],
+    [/\bmonohydrate\b/g, '.h2o'], [/\bdihydrate\b/g, '.2h2o'], [/\btrihydrate\b/g, '.3h2o'], [/\btetrahydrate\b/g, '.4h2o'],
+    [/\bhexahydrate\b/g, '.6h2o'], [/\bheptahydrate\b/g, '.7h2o'],
+  ];
+  const normChem = (name) => {
+    let t = String(name || '').toLowerCase().replace(/[₀-₉]/g, (d) => SUBSCRIPT[d]);
+    t = t.replace(/\((anhydrous|free acid)\)/g, '');
+    WORDS.forEach(([re, to]) => { t = t.replace(re, to); });
+    return t.replace(/[·•*]/g, '.').replace(/\s+/g, '').replace(/\.h2o/g, '.1h2o').replace(/^\.+|\.+$/g, '');
+  };
   const chemicals = new Map();
-  labChemicals.forEach((c) => { if (c.name && c.mw > 0) chemicals.set(c.name, c.mw); });
-  B.CHEMICALS.forEach(([name, mw]) => { if (!chemicals.has(name)) chemicals.set(name, mw); });
+  const byKey = new Map();          // normalised name → the name listed
+  const addChem = (name, mw) => {
+    const key = normChem(name);
+    if (!name || !(mw > 0) || byKey.has(key)) return;   // the lab's own first; no near-duplicates
+    chemicals.set(name, mw);
+    byKey.set(key, name);
+  };
+  labChemicals.forEach((c) => addChem(c.name, c.mw));
+  B.CHEMICALS.forEach(([name, mw]) => addChem(name, mw));
+  const chemicalNamed = (typed) => {
+    if (chemicals.has(typed)) return typed;
+    return byKey.get(normChem(typed)) || null;
+  };
   const datalist = document.getElementById('util-chemicals');
   chemicals.forEach((mw, name) => {
     const o = document.createElement('option');
@@ -39,6 +67,30 @@
 
   /* ------------------------------------------------------------- the list */
 
+  // What people type for each: the bench's words, not only the title's.
+  const ALSO = {
+    molarity: 'molar mass weigh grams make stock solution', dilution: 'c1v1 dilute stock working',
+    serial: 'standard curve dilution series', percent: 'w/v v/v % solution', xfold: '10x 1x concentrate buffer stock',
+    massmolar: 'mg/ml to mm ng/ul convert', buffer: 'ph pka henderson hasselbalch', osmolarity: 'osmolality mosm',
+    saltform: 'hydrate anhydrous salt substitute', a260: 'nanodrop dna rna concentration 260/280 purity ng/ul',
+    dnamoles: 'pmol fmol copies copy number', oligo: 'primer melting temperature tm gc resuspend',
+    ligation: 'insert vector ratio molar ratio cloning', assembly: 'gibson hifi nebuilder in-fusion cloning fragments',
+    pcrmix: 'master mix qpcr pcr reaction sybr cdna', qpcreff: 'efficiency slope standard curve e',
+    ddct: 'ddct delta delta ct livak pfaffl fold change qpcr expression', transformation: 'cfu competent cells',
+    a280: 'protein concentration nanodrop extinction coefficient', protparam: 'molecular weight pi extinction protparam',
+    stdcurve: 'bca bradford elisa lowry standard curve protein assay western', sdspage: 'acrylamide gel resolving stacking western',
+    loading: 'western lysate laemmli sample buffer lane', count: 'hemocytometer haemocytometer trypan blue viability cells/ml',
+    seeding: 'plate wells density cells per well flask', doubling: 'growth rate doubling', transfection: 'lipofectamine pei dna reagent',
+    moi: 'virus multiplicity infection transduction', titer: 'lentivirus titre tu/ml facs', freezing: 'cryopreserve dmso vials',
+    treat: 'drug dmso vehicle dose cells', od600: 'bacteria optical density culture', growth: 'od600 culture time',
+    antibiotic: 'ampicillin kanamycin selection agar plates puromycin', rcf: 'x g xg rcf centrifuge rpm g-force',
+    dose: 'mg/kg injection mouse animal body weight', agarose: 'dna gel electrophoresis', decay: 'isotope half-life radioactivity p32 s35',
+    stats: 'mean standard deviation sd sem cv average', samplesize: 'power n group size', convert: 'units convert temperature',
+  };
+  // Subscripts read as digits (A₂₆₀ is found by a260), and × as x.
+  const plain = (text) => String(text || '').toLowerCase()
+    .replace(/[₀-₉]/g, (d) => String('₀₁₂₃₄₅₆₇₈₉'.indexOf(d))).replace(/×/g, 'x').replace(/δ/g, 'd');
+
   const groups = [];
   B.CALCS.forEach((c) => {
     let g = groups.find((x) => x.name === c.group);
@@ -49,11 +101,11 @@
     <div class="util-group" data-util-group>
       <div class="util-group-label">${esc(g.name)}</div>
       ${g.calcs.map((c) => `<a class="util-link" href="#${c.id}" data-util-link="${c.id}"
-          data-search="${esc(`${c.title} ${c.blurb} ${g.name}`.toLowerCase())}">${esc(c.title)}</a>`).join('')}
+          data-search="${esc(plain(`${c.title} ${c.blurb} ${g.name} ${ALSO[c.id] || ''}`))}">${esc(c.title)}</a>`).join('')}
     </div>`).join('') + '<a class="util-link util-link-ref" href="#reference" data-search="reference tables buffers antibiotics vessels plates isotopes gels chemicals molecular weight">Reference tables</a>';
 
   search.addEventListener('input', () => {
-    const q = search.value.trim().toLowerCase();
+    const q = plain(search.value.trim());
     list.querySelectorAll('[data-search]').forEach((a) => { a.hidden = q && !a.dataset.search.includes(q); });
     list.querySelectorAll('[data-util-group]').forEach((g) => { g.hidden = ![...g.querySelectorAll('[data-util-link]')].some((a) => !a.hidden); });
   });
@@ -138,10 +190,21 @@
       save(calc.id, raw);
     };
     form.addEventListener('input', (e) => {
-      // A chemical picked from the list fills its molecular weight.
-      if (e.target.dataset.key === 'chem' && chemicals.has(e.target.value)) {
-        const mw = form.querySelector('[data-key="mw"]');
-        if (mw) mw.value = chemicals.get(e.target.value);
+      const mw = form.querySelector('[data-key="mw"]');
+      // A chemical it knows fills its molecular weight. One it doesn't know
+      // takes back the weight it filled for the last one (a stale 121.14 for
+      // "MgSO4·7H2O" gave 121 g where 246 were needed); one typed by hand stays.
+      if (e.target.dataset.key === 'chem' && mw) {
+        const known = chemicalNamed(e.target.value.trim());
+        if (known) {
+          mw.value = chemicals.get(known);
+          mw.dataset.filled = mw.value;
+        } else if (mw.dataset.filled && mw.value === mw.dataset.filled) {
+          mw.value = '';
+          delete mw.dataset.filled;
+        }
+      } else if (e.target === mw) {
+        delete mw.dataset.filled;
       }
       update();
     });
@@ -149,6 +212,11 @@
     card.querySelector('[data-util-reset]').addEventListener('click', () => { forget(calc.id); open(calc.id); });
     update();
     document.title = `${calc.title} · Utilities`;
+    // Home's Calculators card shows the ones opened last.
+    try {
+      const recent = JSON.parse(localStorage.getItem(`${KEY}recent`) || '[]').filter((r) => r && r.id !== calc.id);
+      localStorage.setItem(`${KEY}recent`, JSON.stringify([{ id: calc.id, title: calc.title }, ...recent].slice(0, 8)));
+    } catch (_) { /* storage off */ }
   }
 
   /* ---------------------------------------------------- reference tables */

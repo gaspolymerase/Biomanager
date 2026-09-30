@@ -155,7 +155,7 @@
 
   $$('[data-starter]').forEach(function (b) {
     b.addEventListener('click', function () {
-      var body = { starter: b.dataset.starter, open_tab_id: DATA.selectedTab || '' };
+      var body = { starter: b.dataset.starter, open_tab_id: DATA.topicChosen ? DATA.selectedTab || '' : '' };
       api('/notebook/api/pages/new', { body: body }).then(function (d) { go(d.url); })
         .catch(function (e) { toast('Could not make the page: ' + esc(e.message), true); });
     });
@@ -186,7 +186,7 @@
       var pick = event.target.closest('[data-template]');
       var del = event.target.closest('[data-del-template]');
       if (pick) {
-        api('/notebook/api/pages/new', { body: { template_id: Number(pick.dataset.template), open_tab_id: DATA.selectedTab || '' } }).then(function (d) { go(d.url); });
+        api('/notebook/api/pages/new', { body: { template_id: Number(pick.dataset.template), open_tab_id: DATA.topicChosen ? DATA.selectedTab || '' : '' } }).then(function (d) { go(d.url); });
       } else if (del) {
         BioDialog.confirm('Delete this template?', { danger: true }).then(function (ok) {
           if (ok) fetch('/notebook/templates/' + del.dataset.delTemplate + '/delete', { method: 'POST' }).then(loadTemplates);
@@ -932,6 +932,7 @@
     var value = title.value;
     $$('.notebook-page-item[data-page-id="' + page.id + '"] .page-title-label').forEach(function (el) { el.textContent = value || 'Untitled page'; });
     document.title = (value || 'Untitled page') + document.title.replace(/^[^·|—-]*/, ' ');
+    if (window.BiomanagerTabs && window.BiomanagerTabs.retitle) window.BiomanagerTabs.retitle(value || 'Untitled page');
     return saveField('title', value).then(function () {
       page.title = value;
       if (titleUnsaved === value) titleUnsaved = null;
@@ -947,11 +948,17 @@
   }
   // A new page: the title is where you start. "Untitled page" is only the
   // box's placeholder (the page is saved under it), so typing starts clean.
-  if (title && canEdit && !title.value) {
+  // A page still named as its starter named it ("New experiment") starts
+  // there too, the name selected so typing replaces it.
+  var starterTitle = title && (DATA.starterTitles || []).indexOf(title.value) >= 0 && title.value !== '';
+  if (title && canEdit && (!title.value || starterTitle)) {
     var focusTitle = function () {
       var here = document.activeElement;
       var elsewhere = here && here !== document.body && here !== title && !here.closest('.ProseMirror');
-      if (!document.querySelector('dialog[open]') && !elsewhere) title.focus();
+      if (!document.querySelector('dialog[open]') && !elsewhere) {
+        title.focus();
+        if (starterTitle && title.value && titleUnsaved === null) title.select();
+      }
     };
     setTimeout(focusTitle, 0);
     setTimeout(focusTitle, 400);     // after the editor has mounted

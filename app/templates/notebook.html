@@ -310,6 +310,8 @@
   'kinds': kinds,
   'statuses': statuses,
   'selectedTab': selected_tab_id,
+  'topicChosen': topic_chosen,
+  'starterTitles': starters | map(attribute='title') | list,
   'labZone': lab_zone,
 } | tojson }}</script>
 

@@ -343,6 +343,14 @@ class PageKindTests(Notebook):
         self.assertEqual(topic(self.new_page(c, starter="experiment", open_tab_id=sops)), "Experiments")
         self.assertNotEqual(topic(self.new_page(self.m, starter="blank", open_tab_id=sops)), "SOPs")
 
+    def test_a_page_started_with_no_topic_open_goes_in_the_inbox(self):
+        user = make_user()
+        c = client_for(user)
+        c.post("/notebook/tabs/create", data={"title": "Photometry"})        # the first topic
+        page = self.new_page(c, starter="blank")
+        self.assertEqual(one("select t.title from notebook_tabs t join notebook_pages p on p.tab_id_fk=t.id "
+                             "where p.id=?", page), "Inbox")
+
     def test_the_page_shows_times_on_the_lab_s_clock(self):
         from unittest import mock
         from app import lab

@@ -42,6 +42,29 @@ TRACKED_TABLES |= {"plasmid_boxes"}
 TRACKED_TABLES |= {"experiment_steps", "experiment_step_records", "experiment_subjects", "experiment_readings", "experiment_regimens", "record_signatures"}   # an experiment's manipulations, planned and done
 TRACKED_TABLES |= {"user_identities"}   # who connected which Google/Microsoft account, and when   # so deleting a box (which unplaces its plasmids) can be undone
 
+# What each table is, for the Audit log and Batch history (not "inventory_items").
+TABLE_LABELS = {
+    "mice": "Mice", "mouse_cages": "Cages", "litters": "Litters", "strains": "Strains", "plasmids": "Plasmids",
+    "plasmid_boxes": "Plasmid boxes", "orders": "Orders", "samples": "Samples", "animals": "Animals",
+    "experiments": "Experiments", "experiment_mice": "Experiment animals", "tanks": "Tanks", "fish": "Fish",
+    "fish_lines": "Fish lines", "clutches": "Clutches", "water_systems": "Water systems", "fish_racks": "Fish racks",
+    "fish_sac_log": "Fish sac log", "organisms": "Animals", "organism_housing": "Housing", "organism_lines": "Lines",
+    "organism_cohorts": "Cohorts", "organism_crosses": "Crosses", "organism_modules": "Databases",
+    "organism_module_fields": "Database fields", "organism_preservation": "Preserved stocks",
+    "organism_genotypes": "Genotypes", "users": "People", "inventory_modules": "Databases",
+    "inventory_items": "Records", "inventory_racks": "Boxes", "mouse_racks": "Mouse racks",
+    "stock_modules": "Databases", "stock_incubators": "Incubators", "stock_racks": "Racks",
+    "stock_genotypes": "Genotypes", "stock_units": "Vials and plates", "stock_frozen": "Frozen lots",
+    "experiment_steps": "Experiment steps", "experiment_step_records": "Steps done",
+    "experiment_subjects": "Experiment subjects", "experiment_readings": "Readings",
+    "experiment_regimens": "Regimens", "record_signatures": "Signatures", "user_identities": "Sign-in accounts",
+}
+
+
+def table_label(name: str) -> str:
+    return TABLE_LABELS.get(name or "", (name or "").replace("_", " ").capitalize())
+
+
 # High-churn or derived rows: logging them would bury the signal.
 IGNORED_TABLES = {
     "audit_log", "batches", "notifications", "calendar_events", "tasks",

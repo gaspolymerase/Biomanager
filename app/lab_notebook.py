@@ -877,7 +877,7 @@ def page_new():
             elif open_tab is not None and open_tab.owner_username == me:
                 tab = open_tab
             else:
-                tab = first_tab(s, me)
+                tab = tab_named(s, me, "Inbox")      # not whichever topic happens to be first
         extra = {"status": "planned"} if kind == "experiment" else {}
         page = new_page(s, tab, title or "Untitled page", body, kind=kind, **extra)
         if body:

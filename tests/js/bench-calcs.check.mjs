@@ -88,4 +88,20 @@ assert.equal(value(B.run('convert', { kind: 'temp', value: '37', from: '°C' }),
 assert.equal(B.num('2,5'), 2.5);
 assert.equal(B.num('1,000'), 1000);
 assert.equal(B.num('3e5'), 300000);
+// From the re-test: no answer that isn't one.
+assert.ok(B.run('dilution', { c1: '1', c1_unit: 'mM', c2: '10', c2_unit: 'mM', v2: '10', v2_unit: 'mL' }).error);
+assert.match(B.run('convert', { kind: 'temp', value: '1', from: 'mg' }).error, /°C, °F or K/);
+assert.equal(B.run('convert', { kind: 'massconc', value: '2', from: 'ug/ul' }).lines[1].value, '2');
+{
+  const r = B.run('seeding', { susp: '1e6', vessel: String(B.CALCS.find((c) => c.id === 'seeding').inputs[1].options.findIndex(([, l]) => /96/.test(l))), wells: '1', per: '3e5', extra: '0' });
+  assert.ok(!r.lines.some((l) => /medium/.test(l.value) && /−|-/.test(l.value)), JSON.stringify(r.lines));
+  assert.ok(r.warnings.length);
+}
+{
+  const r = B.run('stdcurve', { std: '0 0.1\n250 0.35\n500 0.6\n1000 1.1\n2000 2.1', unk: 's1 0.6' });
+  assert.ok(!/x²/.test(r.lines[0].value), r.lines[0].value);
+  assert.equal(r.table.rows[0][2], '500');
+}
+assert.match(B.run('dose', { weight: '25', weight_unit: 'g', dose: '75', conc: '20', animals: '1', extra: '0' }).lines.map((l) => l.label).join(' '), /1 animal /);
+
 console.log('ok');

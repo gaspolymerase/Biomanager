@@ -12,9 +12,6 @@
     <a class="btn {% if show_all %}btn-primary{% endif %}"
        href="{{ url_for('batches_view') }}">Everyone</a>
   {% endif %}
-  <a class="btn" href="{{ url_for('colony', view='mice') }}" title="{{ db_labels.get('colony', 'Mouse colony') }}">
-    {{ icon('back') }} {{ db_labels.get('colony', 'Mouse colony') }}
-  </a>
 {% endblock %}
 
 {% block content %}
@@ -45,7 +42,7 @@
               </td>
               <td>
                 <span class="dt-row-name whitespace-normal">{{ batch.description }}</span>
-                {% if batch.table %}<span class="ident ml-1">{{ batch.table }}</span>{% endif %}
+                {% if batch.table %}<span class="ident ml-1" title="{{ batch.table }}">{{ batch.table | table_label }}</span>{% endif %}
               </td>
               <td class="font-medium">{{ batch.count }}</td>
               <td>{% if batch.actor %}{{ batch.actor | owner_badge }}{% endif %}</td>

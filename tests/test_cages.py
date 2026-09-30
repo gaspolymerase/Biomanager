@@ -653,9 +653,9 @@ class CageCardQrTests(Case):
         real = labels._qr_svg
         seen = []
 
-        def capture(payload, scale=4):
+        def capture(payload, scale=4, fit=False):
             seen.append(payload)
-            return real(payload, scale)
+            return real(payload, scale, fit)
 
         with mock.patch.object(labels, "_qr_svg", side_effect=capture):
             self.assertEqual(client.get(url).status_code, 200)

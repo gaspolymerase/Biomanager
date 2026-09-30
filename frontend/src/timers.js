@@ -9,7 +9,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { ask, el, escapeHtml } from './util.js';
-import { findDurations } from './durations.js';
+import { findDurations, timerLabel } from './durations.js';
 
 const KEY = 'bm-nb-timers';
 export { DURATION_RE, durationSeconds, findDurations } from './durations.js';
@@ -164,12 +164,6 @@ export function timers() {
   return tray;
 }
 
-// The label for a timer started from the text: the sentence it is in.
-function labelFor(text, index) {
-  const before = text.slice(0, index);
-  const start = Math.max(before.lastIndexOf('. ') + 1, 0);
-  return text.slice(start).trim().replace(/\s+/g, ' ').slice(0, 60) || 'Timer';
-}
 
 export const StepTimers = Extension.create({
   name: 'stepTimers',
@@ -190,7 +184,7 @@ export const StepTimers = Extension.create({
             offset += len;
           });
           if (at === null) continue;
-          const label = labelFor(text, d.index + d.length);
+          const label = timerLabel(text, d.index, d.index + d.length);
           decos.push(Decoration.widget(at, () => {
             const b = document.createElement('button');
             b.type = 'button';

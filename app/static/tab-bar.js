@@ -393,6 +393,18 @@
     activate: activate,
     step: step,
     list: load,
+    /* The current page's name changed (a notebook page renamed): its tab
+       says so at once, not on the next visit. */
+    retitle(title) {
+      const bar = document.getElementById('app-tabbar');
+      const url = currentUrl();
+      const tabs = load();
+      const index = tabs.findIndex((t) => t.url === url);
+      if (index < 0 || !title) return;
+      tabs[index].title = title;
+      save(tabs);
+      if (bar) render(bar, tabs, url);
+    },
     clear() {
       save([]);
       saveActive(0);

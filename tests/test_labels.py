@@ -75,6 +75,13 @@ class Labels(InventoryCase):
         tank = self.make_tank(self.a)
         self.assertIn("Tank ", self.get_ok(self.a, f"/labels/cards/tanks?ids={tank}"))
 
+    def test_a_label_s_qr_code_scales_to_its_box_instead_of_being_cut(self):
+        item = self.make_item(self.a, "reagents", uniq("anti-RFP "))
+        html = self.get_ok(self.a, f"/labels/cards/inventory/reagents?selected_ids={item}")
+        svg = html.split('<div class="label-qr">', 1)[1].split(">", 1)[0]
+        self.assertIn('viewBox="0 0', svg)
+        self.assertNotIn("width=", svg)            # the label's CSS sizes it, the whole code
+
     def test_a_cryo_label_says_what_you_choose_and_can_wrap(self):
         box = self.make_rack(self.a, "samples", uniq("−80 A R1 B"))
         item = self.make_item(self.a, "samples", name=uniq("S01-R V-6h rep1 "), rack_id=str(box), position="B1")

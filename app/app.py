@@ -976,6 +976,11 @@ def owner_short_filter(name: str) -> str:
     return name[:5]
 
 
+@app.template_filter("table_label")
+def table_label_filter(name: str) -> str:
+    return audit.table_label(name)
+
+
 @app.template_filter("owner_badge")
 def owner_badge_filter(name: str) -> Markup:
     if not name:
@@ -5183,6 +5188,9 @@ def notebook():
         "notebook.html",
         tabs=tabs_data,
         selected_tab_id=selected_tab_id_value,
+        # A topic the person opened (?tab= or one of its pages), not the
+        # first one shown when nothing was: a new page goes there.
+        topic_chosen=selected_tab_id is not None or selected_page_id is not None,
         selected_page=selected_page_data,
         side=side,
         kinds=lab_notebook.KINDS,
@@ -5301,7 +5309,9 @@ def global_search():
         return jsonify({"ok": True, "results": []})
     # % and _ are what they are, not LIKE's wildcards (they matched everything).
     like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-    is_digit = q.isdigit() and len(q) <= 12        # a 21-digit "number" is text to look for, not an ID
+    # A record's number: digits, not a 21-digit "number" and not "0012" (a
+    # lot or catalogue number); those are text to look for.
+    is_digit = _record_number(q) is not None
     limit = 5
     starts = like[1:]                               # "S20%": a name that starts with it
 
@@ -5411,16 +5421,21 @@ def global_search():
         from . import inventory_service as inventories
         modules = {m.id: m for m in inventories.list_modules(db_session)}
         item_stmt = select(InventoryItem).where(InventoryItem.module_id_fk.in_(list(modules)))
-        if is_digit:
-            item_stmt = item_stmt.where(InventoryItem.number == int(q))
-        else:
-            item_stmt = item_stmt.where(
-                InventoryItem.name.ilike(like, escape="\\") | InventoryItem.category.ilike(like, escape="\\")
-                | InventoryItem.vendor.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
-                | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.notes.ilike(like, escape="\\")
-                | InventoryItem.attrs.ilike(like, escape="\\")
-            )
-        for item in db_session.scalars(item_stmt.order_by(*by_name(InventoryItem.name, InventoryItem.id.desc())).limit(limit * 2)).all():
+        text_match = (
+            InventoryItem.name.ilike(like, escape="\\") | InventoryItem.category.ilike(like, escape="\\")
+            | InventoryItem.vendor.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
+            | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.notes.ilike(like, escape="\\")
+            | InventoryItem.attrs.ilike(like, escape="\\"))
+        # Digits are a record's number and a lot or catalogue number too
+        # ("0012" is lot 0012M4817V, not record 12); a lot or catalogue
+        # number that starts with it comes first.
+        number = _record_number(q)
+        item_stmt = item_stmt.where(text_match | (InventoryItem.number == number) if number is not None else text_match)
+        code = (InventoryItem.lot.ilike(starts, escape="\\") | InventoryItem.catalog_number.ilike(starts, escape="\\"))
+        order = [case((code, 0), else_=1)] if q.isdigit() else []
+        if number is not None:
+            order.append(InventoryItem.number != number)
+        for item in db_session.scalars(item_stmt.order_by(*order, *by_name(InventoryItem.name, InventoryItem.id.desc())).limit(limit * 2)).all():
             module = modules.get(item.module_id_fk)
             if module is None:
                 continue
@@ -6425,6 +6440,15 @@ def notebook_search_entity(entity_type: str):
                                       "label": f"{person['name']} · @{person['username']}"})
                 items = items[:3]
 
+            # A database by its name ("@prim" → Primary antibodies): picking
+            # it writes "@primary_antibodies " and the menu lists its records.
+            if query and _record_number(query) is None:
+                q = query.lower()
+                for key, module in _mention_modules(db_session).items():
+                    if any(w.startswith(q) for w in (key, *module.label.lower().split())):
+                        items.append({"type": "database", "type_label": "Database", "id": key,
+                                      "label": f"{module.label} · @{key} <number>"})
+
             # A lot or catalogue number typed as it is (@0012, @ab2947) is what
             # was meant, before any record that happens to have that number.
             codes = []
@@ -6478,12 +6502,20 @@ def notebook_search_entity(entity_type: str):
             # Every other inventory, most recent first; a bare "@" keeps to
             # the three above so the list stays short.
             if query:
-                for module in _mention_modules(db_session).values():
-                    for i in _mention_items(db_session, module, query, per_type_limit):
-                        hit = {"type": module.key, "type_label": module.label, "id": i.number,
-                               "label": _mention_label(module, i, True)}
-                        if hit not in codes:
-                            items.append(hit)
+                # Each database's matches, taken in turn, so one with many
+                # (six SO-RNA tubes) fills the list when the others have few.
+                found = [[{"type": module.key, "type_label": module.label, "id": i.number,
+                           "label": _mention_label(module, i, True)}
+                          for i in _mention_items(db_session, module, query, limit)]
+                         for module in _mention_modules(db_session).values()]
+                room = limit - len(items)
+                while room > 0 and any(found):
+                    for hits in found:
+                        if hits and room > 0:
+                            hit = hits.pop(0)
+                            if hit not in codes:
+                                items.append(hit)
+                                room -= 1
 
             return jsonify({"ok": True, "items": items[:limit]})
         module = _mention_modules(db_session, with_old=True).get(entity_type)
@@ -7219,7 +7251,7 @@ def plasmid_detail(row_id: int):
     with SessionLocal() as db_session:
         number = db_session.scalar(select(PlasmidRecord.plasmid_id).where(PlasmidRecord.id == row_id))
     if number is None:
-        flash("Plasmid not found.", "error")
+        flash("That plasmid isn't here any more. If it was deleted, More → Batch history can undo that.", "error")
         return redirect(url_for("plasmids"))
     return redirect(url_for("plasmid_page", number=number), code=301)
 
@@ -7230,7 +7262,7 @@ def plasmid_page(number: int):
     with SessionLocal() as db_session:
         p = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == number))
         if p is None:
-            flash(f"There is no plasmid #{number}.", "error")
+            flash(f"There is no plasmid #{number}. If it was deleted, More → Batch history can undo that.", "error")
             return redirect(url_for("plasmids"))
         try:
             features = json.loads(p.features_json) if p.features_json else []

@@ -306,11 +306,14 @@
         const x = { c1: vals.c2 * vals.v2 / vals.v1, v1: vals.c2 * vals.v2 / vals.c1,
           c2: vals.c1 * vals.v1 / vals.v2, v2: vals.c1 * vals.v1 / vals.c2 }[k];
         const all = { ...vals, [k]: x };
+        // Diluting can't make it stronger: no volume that suggests otherwise.
+        if (all.c2 > all.c1 * (1 + 1e-9)) {
+          return { solved: k, error: 'The final is stronger than the stock: a dilution can’t reach it. Use a stronger stock, or a weaker final.' };
+        }
         const label = { c1: 'Stock C₁', v1: 'Stock to add', c2: 'Final C₂', v2: 'Final volume' }[k];
         const value = k[0] === 'c' ? `${fmt(x / factor('conc', v.unit[k]))} ${v.unit[k]}` : show(x, 'volume');
         const out = { solved: k, lines: [L(label, value, true)], notes: [], warnings: [] };
         if (all.v2 >= all.v1) out.lines.push(L('Diluent', show(all.v2 - all.v1, 'volume')));
-        if (all.c2 > all.c1) out.warnings.push('The final is stronger than the stock.');
         if (ok(all.v1) && all.v1 < 0.5e-6) out.warnings.push('Under 0.5 µL is hard to pipette: make an intermediate dilution.');
         out.notes.push(`1 : ${fmt(all.v2 / all.v1, 3)} dilution.`);
         return out;
@@ -704,10 +707,16 @@
         const xs = std.map((s) => s[0]); const ys = std.map((s) => s[1]);
         const quad = v.raw.fit !== 'lin' && std.length >= 4;
         const f = quad ? quadfit(xs, ys) : linfit(xs, ys);
+        // A curve term too small to matter over the standards (straight-line
+        // standards fit with a rounding-noise x² of 10⁻²²) is none: shown as
+        // nothing, and the reading is taken off the straight line.
+        const xMax = Math.max(...xs.map(Math.abs)) || 1; const yMax = Math.max(...ys.map(Math.abs)) || 1;
+        const none = (coef, power) => Math.abs(coef) * xMax ** power < 1e-9 * yMax;
+        if (quad && none(f.c, 2)) f.c = 0;
         const inv = (y) => {
           if (!quad) return (y - f.intercept) / f.slope;
           const { a, b: bb, c } = f;
-          if (Math.abs(c) < 1e-15) return (y - a) / bb;
+          if (c === 0) return (y - a) / bb;
           const disc = bb * bb - 4 * c * (a - y);
           if (disc < 0) return NaN;
           const roots = [(-bb + Math.sqrt(disc)) / (2 * c), (-bb - Math.sqrt(disc)) / (2 * c)];
@@ -722,7 +731,7 @@
           if (y > top || y < bottom) warnings.push(`${r.name || fmt(y)} is outside the standards: dilute it and read again.`);
           return [r.name || '—', fmt(y), fmt(inv(y)), fmt(inv(y) * dil)];
         });
-        const term = (c, x) => `${c < 0 ? ' − ' : ' + '}${fmt(Math.abs(c))}${x}`;
+        const term = (c, x) => (c === 0 || none(c, x === '' ? 0 : x === '·x' ? 1 : 2) ? '' : `${c < 0 ? ' − ' : ' + '}${fmt(Math.abs(c))}${x}`);
         const eq = quad ? `y = ${fmt(f.a)}${term(f.b, '·x')}${term(f.c, '·x²')}` : `y = ${fmt(f.slope)}·x${term(f.intercept, '')}`;
         return { lines: [L('Fit', eq), L('R²', fmt(f.r2, 4), true)], table: rows.length ? { head: ['Sample', 'Reading', 'On the curve', `× ${fmt(dil)}`], rows } : null, warnings };
       },
@@ -812,9 +821,15 @@
         const cells = per * wells; const susp = cells / n(v, 'susp');
         if (!ok(susp)) return { hint: 'Suspension density, cells per well and wells.' };
         const total = vol * wells;
-        const out = { lines: [L('Cells needed', fmt(cells, 3)), L('Cell suspension', `${fmt(susp)} mL`, true), L('Add medium to', `${fmt(total)} mL (${fmt(total - susp)} mL medium)`, true),
-          L('Per well', `${fmt(vol)} mL · ${fmt(per / vessel[1], 3)} cells/cm²`)], warnings: [] };
-        if (susp > total) out.warnings.push('The suspension alone is more than the volume: spin the cells down into less medium.');
+        const out = { lines: [L('Cells needed', fmt(cells, 3)), L('Cell suspension', `${fmt(susp)} mL`, true)], warnings: [] };
+        if (susp > total) {
+          // No "−0.99 mL medium": say what would work instead.
+          out.warnings.push(`The suspension alone (${fmt(susp)} mL) is more than the wells hold (${fmt(total)} mL): `
+            + `spin the cells down and resuspend at ${fmt(cells / total, 3)} cells/mL or more.`);
+        } else {
+          out.lines.push(L('Add medium to', `${fmt(total)} mL (${fmt(total - susp)} mL medium)`, true));
+        }
+        out.lines.push(L('Per well', `${fmt(vol)} mL · ${fmt(per / vessel[1], 3)} cells/cm²`));
         return out;
       },
     },
@@ -979,8 +994,13 @@
         const work = ok(n(v, 'work')) ? n(v, 'work') : d[1]; const stock = ok(n(v, 'stock')) ? n(v, 'stock') : d[2];
         const add = work / (stock * 1000) * b(v, 'vol');
         if (!ok(add)) return { hint: 'The medium volume.' };
-        return { lines: [L('Stock to add', show(add, 'volume'), true), L('Working', `${fmt(work)} ${d[0].startsWith('Penicillin') ? 'U/mL' : 'µg/mL'}`), L('That is', `${fmt(stock * 1000 / work, 3)}× stock`)],
-          notes: ['Add to agar once it has cooled to about 55 °C. For mammalian selection, find the lowest killing dose with a kill curve.'] };
+        const unit = d[0].startsWith('Penicillin') ? 'U/mL' : 'µg/mL';
+        const mammalian = d[0].includes('mammalian');
+        return { lines: [L('Stock to add', show(add, 'volume'), true), L('Working', `${fmt(work)} ${unit}`),
+          L('From a stock of', `${fmt(stock)} ${unit === 'U/mL' ? 'kU/mL' : 'mg/mL'}${ok(n(v, 'stock')) ? '' : ' (the usual)'}`),
+          L('That is', `${fmt(stock * 1000 / work, 3)}× stock`)],
+          notes: [mammalian ? 'For selection, find the lowest dose that kills untransduced cells with a kill curve first.'
+            : 'Add to agar once it has cooled to about 55 °C.'] };
       },
     },
 
@@ -1012,7 +1032,8 @@
         if (!ok(ml)) return { hint: 'Dose, weight and solution strength.' };
         const out = { lines: [L('Amount', `${fmt(mg)} mg`), L('Inject', `${fmt(ml * 1000)} µL`, true), L('Volume per kg', `${fmt(ml / kg)} mL/kg`)], warnings: [] };
         const k = (n(v, 'animals') || 1) * (1 + (n(v, 'extra') || 0) / 100);
-        out.lines.push(L(`Solution for ${fmt(n(v, 'animals') || 1)} animals (+${fmt(n(v, 'extra') || 0)} %)`, `${fmt(ml * k)} mL · ${fmt(ml * k * n(v, 'conc'))} mg`));
+        const count = n(v, 'animals') || 1;
+        out.lines.push(L(`Solution for ${fmt(count)} ${count === 1 ? 'animal' : 'animals'} (+${fmt(n(v, 'extra') || 0)} %)`, `${fmt(ml * k)} mL · ${fmt(ml * k * n(v, 'conc'))} mg`));
         if (ok(n(v, 'limit')) && ml / kg > n(v, 'limit')) out.warnings.push(`More than ${fmt(n(v, 'limit'))} mL/kg: make the solution stronger or split the dose.`);
         return out;
       },
@@ -1095,14 +1116,21 @@
       compute(v) {
         const kind = v.raw.kind || 'mass'; const x = n(v, 'value');
         if (!ok(x)) return { hint: 'A value.' };
+        // The unit as typed: any case, u or μ for µ, µg/µL for mg/mL. A unit
+        // of another kind (mg after switching to Temperature) is refused,
+        // not read as °C.
+        const typed = String(v.raw.from || '').trim().toLowerCase().replace(/[uμ]/g, 'µ').replace(/\s+/g, '');
+        const kindName = (this.inputs[0].options.find(([k]) => k === kind) || [kind, kind])[1];
         if (kind === 'temp') {
-          const from = String(v.raw.from || '°C').toUpperCase();
-          const c = from.includes('F') ? (x - 32) * 5 / 9 : from.includes('K') ? x - 273.15 : x;
+          const scale = { c: 'C', '°c': 'C', celsius: 'C', f: 'F', '°f': 'F', fahrenheit: 'F', k: 'K', kelvin: 'K' }[typed];
+          if (!scale) return { error: `${kindName}: °C, °F or K.` };
+          const c = scale === 'F' ? (x - 32) * 5 / 9 : scale === 'K' ? x - 273.15 : x;
           return { lines: [L('°C', fmt(c, 5), true), L('°F', fmt(c * 9 / 5 + 32, 5)), L('K', fmt(c + 273.15, 5))] };
         }
-        const f = factor(kind, String(v.raw.from || '').trim().replace('u', 'µ'));
-        if (!ok(f)) return { error: `Units here: ${U[kind].map(([u]) => u).join(', ')}.` };
-        return { lines: U[kind].map(([u, g]) => L(u, fmt(x * f / g, 5))) };
+        const same = { 'µg/µl': 'mg/ml', 'mg/l': 'µg/ml', 'µg/l': 'ng/ml' }[typed] || typed;
+        const row = U[kind].find(([u]) => u.toLowerCase().replace(/\s+/g, '') === same);
+        if (!row) return { error: `${kindName}: ${U[kind].map(([u]) => u).join(', ')}.` };
+        return { lines: U[kind].map(([u, g]) => L(u, fmt(x * row[1] / g, 5))) };
       },
     },
   ];

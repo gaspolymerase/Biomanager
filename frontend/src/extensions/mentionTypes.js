@@ -33,5 +33,5 @@ export function mentionRe() {
 }
 
 export function typedTriggerRe() {
-  return new RegExp(`@(${mentionTypes().alt})\\s+([\\w-]*)$`);
+  return new RegExp(`@(${mentionTypes().alt})\\s+([\\p{L}\\p{N}_\\-/.]*)$`, 'u');
 }

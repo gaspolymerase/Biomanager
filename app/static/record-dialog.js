@@ -27,6 +27,24 @@
     const button = event.target.closest('[data-record-edit]');
     if (!button) return;
     const dialog = document.getElementById(button.dataset.recordEdit);
+    // A stored value that is a choice in another case ("Rabbit" for
+    // "rabbit") shows as that choice; one that is no choice at all (typed in
+    // the sheet, or from an import) is kept as an extra option rather than
+    // showing blank, and saved back as it was.
+    function setChoice(select, raw) {
+      const value = raw === null || raw === undefined ? '' : String(raw);
+      select.querySelectorAll('option[data-kept]').forEach((o) => o.remove());
+      const options = Array.from(select.options);
+      const same = options.find((o) => o.value === value)
+        || options.find((o) => o.value.toLowerCase() === value.toLowerCase());
+      if (same) { select.value = same.value; return; }
+      if (value) {
+        const kept = new Option(value, value, true, true);
+        kept.dataset.kept = '';
+        select.add(kept);
+      }
+      select.value = value;
+    }
     const form = dialog && dialog.querySelector('form[data-record-form]');
     if (!form) return;
 
@@ -41,6 +59,7 @@
       if (Object.prototype.hasOwnProperty.call(data, el.name)) {
         const value = data[el.name];
         if (el.type === 'checkbox') el.checked = Boolean(value);
+        else if (el.tagName === 'SELECT') setChoice(el, value);
         else el.value = value === null || value === undefined ? '' : value;
       }
       if (el.type !== 'hidden' && el.tagName !== 'BUTTON') el.disabled = locked;

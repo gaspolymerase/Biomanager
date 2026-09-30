@@ -51,6 +51,19 @@ class RecordLinks(InventoryCase):
         got = self.m.get(f"/notebook/search/{self.abs}?q=12").get_json()["items"]
         self.assertEqual(got[0]["id"], 12)
 
+    def test_many_matches_in_one_database_fill_the_menu(self):
+        stem = uniq("SO-RNA-").replace("_", "")
+        for n in range(6):
+            self.make_item(self.m, self.abs, f"{stem}{n}")
+        got = self.m.get(f"/notebook/search/all?q={stem}").get_json()["items"]
+        self.assertEqual(len([i for i in got if i["type"] == self.abs]), 6)
+
+    def test_ctrl_k_finds_a_lot_number(self):
+        lot = "0" + "".join(ch for ch in uniq("7") if ch.isdigit())[-5:] + "M4817V"
+        item = self.make_item(self.m, self.abs, uniq("anti-actin "), lot=lot)
+        got = self.m.get("/search", query_string={"q": lot[:6]}).get_json()["results"]
+        self.assertIn(one("select number from inventory_items where id=?", item), [r["id"] for r in got][:3])
+
     def test_an_order_is_found_by_part_of_its_catalogue_number(self):
         orders = one("select key from inventory_modules where kind='orders' order by id limit 1")
         digits = "".join(ch for ch in uniq("9") if ch.isdigit())[-5:]

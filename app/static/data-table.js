@@ -109,9 +109,24 @@
       this._labelCells();
       this._applyHidden();
       this._applyResizedWidths();
+      this._restoreSort();
       this.render();
       this._revealHashTarget();
       window.addEventListener('hashchange', () => this._revealHashTarget());
+    }
+
+    _restoreSort() {
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(`dt:${this.id}:sort`) || 'null'); } catch (_) {}
+      if (!Array.isArray(saved) || !this.table) return;
+      const th = Array.from(this.table.querySelectorAll('th.dt-sortable')).find((h) => h.dataset.sortKey === saved[0]);
+      if (!th) return;
+      this.sortKey = saved[0];
+      this.sortDir = saved[1] === -1 ? -1 : 1;
+      th.classList.add(this.sortDir === 1 ? 'dt-sort-asc' : 'dt-sort-desc');
+      const sortBtn = this.card.querySelector('.dt-btn-sort');
+      if (sortBtn) sortBtn.classList.add('is-active');
+      this._applySort();
     }
 
     /* Bring a row into view: switch to the page it is on, first clearing a
@@ -155,6 +170,9 @@
           if (!key) return;
           if (this.sortKey === key) this.sortDir = -this.sortDir;
           else { this.sortKey = key; this.sortDir = 1; }
+          // Kept for this sheet, like its columns: after a reload the rows are
+          // still in the order a pasted list was lined up against.
+          try { localStorage.setItem(`dt:${this.id}:sort`, JSON.stringify([key, this.sortDir])); } catch (_) {}
           this.table.querySelectorAll('th.dt-sortable').forEach((other) => {
             other.classList.remove('dt-sort-asc', 'dt-sort-desc');
           });
@@ -211,13 +229,33 @@
         const spec = chip.dataset.dtFilter || '';
         const at = spec.indexOf(':');
         this.quick = at > 0 ? { attr: spec.slice(0, at), value: spec.slice(at + 1) } : null;
-        if (save) { try { localStorage.setItem(`dt:${this.id}:filter`, spec); } catch (_) {} }
+        if (save) {
+          try { localStorage.setItem(`dt:${this.id}:filter`, spec); } catch (_) {}
+          // And in the address, so a bookmark or a link keeps it (?chip=…).
+          try {
+            const url = new URL(window.location.href);
+            if (spec) url.searchParams.set('chip', spec); else url.searchParams.delete('chip');
+            window.history.replaceState(window.history.state, '', url);
+          } catch (_) { /* an address it can't change */ }
+        }
         this._refilter();
       };
       chips.forEach((chip) => chip.addEventListener('click', () => apply(chip, true)));
       let saved = null;
       try { saved = localStorage.getItem(`dt:${this.id}:filter`); } catch (_) {}
-      const initial = chips.find((c) => (c.dataset.dtFilter || '') === saved)
+      // The address first (?chip=…, or ?scope=mine for the Mine chip), then
+      // this browser's last choice.
+      let asked = null;
+      try {
+        const params = new URL(window.location.href).searchParams;
+        asked = params.get('chip');
+        if (asked === null && params.get('scope') === 'mine') {
+          const mine = chips.find((c) => c.textContent.trim().toLowerCase().startsWith('mine'));
+          if (mine) asked = mine.dataset.dtFilter || '';
+        }
+      } catch (_) { /* no URL API */ }
+      const initial = (asked !== null && chips.find((c) => (c.dataset.dtFilter || '') === asked))
+        || chips.find((c) => (c.dataset.dtFilter || '') === saved)
         || chips.find((c) => c.getAttribute('aria-pressed') === 'true');
       if (initial) apply(initial, false);
     }
@@ -405,6 +443,7 @@
             clear.textContent = 'Original order';
             clear.addEventListener('click', () => {
               this.sortKey = null;
+              try { localStorage.removeItem(`dt:${this.id}:sort`); } catch (_) {}
               this.table.querySelectorAll('th.dt-sortable').forEach((o) => o.classList.remove('dt-sort-asc', 'dt-sort-desc'));
               btn.classList.remove('is-active');
               this._refilter();
