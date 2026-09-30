@@ -241,6 +241,25 @@ class CrossAndCollectionTests(StockCase):
                 (progeny,) = ids_after(self.mid, before)
                 self.assertEqual(unit(progeny)["ready_on"], days_ahead(days))
 
+    def test_a_temperature_not_in_the_table_takes_the_nearest(self):
+        from app import stock_service as svc
+        from app.db import SessionLocal
+        with SessionLocal() as s:
+            mv = svc.view(svc.get_module(s, self.key))
+            self.assertEqual([mv.interval("develop", t) for t in ("22", "21", "30", "RT", "18.0", "abc")],
+                             [13, 13, 8, 13, 19, mv.interval("develop", mv.s["default_temperature"])])
+
+    def test_progeny_moved_to_another_temperature_emerge_on_its_time(self):
+        cross = self.make_cross(self.a, self.key, rack_id=self.rack("25"))
+        before = top(self.mid)
+        self.action(self.a, self.key, cross, "collect")
+        (progeny,) = ids_after(self.mid, before)
+        self.assertEqual(unit(progeny)["ready_on"], days_ahead(10))
+        cold = self.rack("18")
+        r = self.a.post(f"/stocks/{self.key}/units/{progeny}/place", data={"rack_id": cold, "row": 1, "col": 1})
+        self.assertTrue(r.get_json()["ok"])
+        self.assertEqual(unit(progeny)["ready_on"], days_ahead(19))     # all of it still to go, at 18 °C
+
     def test_collecting_from_a_stock_or_discarded_cross_is_refused(self):
         stock = self.make_vial(self.a, self.key, purpose="stock")
         cross = self.make_cross(self.a, self.key)
@@ -1119,8 +1138,8 @@ class SettingsAndModuleTests(StockCase):
         form[f"temp_{i25}_flip"] = 12
         r = self.post(self.a, self.url(key, "/settings"), form)
         self.assertFlash(r, "Saved", "success")
+        key = one("select key from stock_modules where label=?", form["label"])   # its address follows the name
         s = self.stored(key)
-        self.assertEqual(one("select label from stock_modules where key=?", key), form["label"])
         self.assertEqual([p["key"] for p in s["purposes"]], ["stock", "balancer_stock", "experiment"])
         # Cross and progeny drive behaviour, so they stay usable when left out.
         cross = self.make_cross(self.a, key)
@@ -1156,8 +1175,9 @@ class SettingsAndModuleTests(StockCase):
 
     def test_creator_may_change_their_own_databases_settings(self):
         key = self.make_stock_module(self.m, "fly")
+        mid = one("select id from stock_modules where key=?", key)
         self.post(self.m, self.url(key, "/settings"), self.settings_form(key, label="my flies", code_prefix="F"))
-        self.assertEqual(one("select label from stock_modules where key=?", key), "my flies")
+        self.assertEqual(one("select label from stock_modules where id=?", mid), "my flies")
         self.assertFlash(self.create(self.m, key)[0], "Created F1")
 
     def test_delete_needs_the_typed_name_and_the_right_person(self):

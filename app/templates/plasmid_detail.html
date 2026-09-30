@@ -108,7 +108,13 @@
     <form method="post" action="{{ url_for('update_plasmid', row_id=plasmid.row_id) }}" class="modal-grid p-4">
       <input type="hidden" name="box_id_was" value="{{ plasmid.box_id }}">
       <input type="hidden" name="position_was" value="{{ plasmid.position }}">
-      <label>Owner <input name="owner" value="{{ plasmid.owner }}" list="sheet-owners" {% if locked %}disabled{% endif %}></label>
+      <label>Owner <input name="owner" value="{{ plasmid.owner }}" list="sheet-owners" {% if locked or not plasmid.can_manage %}disabled{% endif %}></label>
+      <label>Belongs to
+        <select name="is_shared" {% if locked or not plasmid.can_manage %}disabled{% endif %}>
+          <option value="0" {% if not plasmid.is_shared %}selected{% endif %}>Personal</option>
+          <option value="1" {% if plasmid.is_shared %}selected{% endif %}>Lab common: anyone can edit</option>
+        </select>
+      </label>
       <label>Storage location <input name="location" value="{{ plasmid.location }}" placeholder="−80 freezer, shelf 2 (when not in a box)" {% if locked %}disabled{% endif %}></label>
       <label>Box
         <select name="box_id" {% if locked %}disabled{% endif %}>
@@ -123,8 +129,10 @@
       <label>Position <input name="position" value="{{ plasmid.position }}" class="font-mono"
                              placeholder="{{ 'e.g. ' ~ plasmid.box_span if plasmid.box_span else 'pick a box first' }}"
                              title="Named the way the box names its cells{{ ' (' ~ plasmid.box_span ~ ')' if plasmid.box_span }}" {% if locked %}disabled{% endif %}></label>
+      <label>Concentration (ng/µL) <input name="concentration" value="{{ plasmid.concentration }}" inputmode="decimal" placeholder="e.g. 412" {% if locked %}disabled{% endif %}></label>
+      <label>260/280 <input name="a260_280" value="{{ plasmid.a260_280 }}" inputmode="decimal" placeholder="e.g. 1.86" {% if locked %}disabled{% endif %}></label>
       <label class="col-span-full">Notes
-        <textarea name="notes" rows="4" placeholder="Stock concentration, lot, related orders…" {% if locked %}disabled{% endif %}>{{ plasmid.notes }}</textarea>
+        <textarea name="notes" rows="4" placeholder="Lot, related orders, sequencing…" {% if locked %}disabled{% endif %}>{{ plasmid.notes }}</textarea>
       </label>
       {% if not locked %}<button type="submit">Save storage</button>{% endif %}
     </form>
@@ -153,6 +161,13 @@
         #{{ plasmid.plasmid_id }} shows here.</p>
     {% endif %}
   </article>
+  <article class="card mt-3 max-w-[760px] used-in" data-used-in="plasmid" data-used-in-number="{{ plasmid.plasmid_id }}" hidden>
+    <header class="card-head"><h2>{{ icon('notebook') }} Used in notebook pages</h2></header>
+    <div class="px-4 py-3">
+      <p class="used-in-hint">Link it from a page by typing <code data-used-in-code></code>.</p>
+      <div data-used-in-list></div>
+    </div>
+  </article>
 </section>
 
 {# ============ Properties ============ #}
@@ -168,6 +183,7 @@
   </div>
 </section>
 
+<script src="{{ url_for('static', filename='used-in.js') }}?v={{ asset_version('used-in.js') }}" defer></script>
 {# OVE UMD bundle. Exposes window.createVectorEditor. Loaded BEFORE the
    inline script so the global is in place when we read it. #}
 <script src="{{ url_for('static', filename='notebook-build/plasmid-app.js') }}?v={{ asset_version('notebook-build/plasmid-app.js') }}" defer

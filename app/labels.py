@@ -34,6 +34,7 @@ from flask import render_template
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from .formutil import arg_int
 from .db import SessionLocal
 from .models import CageRecord, InventoryItem, OrgHousing, StockUnit, TankRecord
 from . import access, positions
@@ -97,7 +98,7 @@ def qr_svg():
     if not payload:
         abort(400)
     try:
-        scale = max(1, min(12, int(request.args.get("scale", 4))))
+        scale = max(1, min(12, arg_int("scale", 4)))
     except ValueError:
         scale = 4
     svg = _qr_svg(payload, scale)
@@ -273,26 +274,64 @@ def _inventory_cards(session, key: str) -> dict:
     items = session.scalars(select(InventoryItem).options(selectinload(InventoryItem.rack))
                             .where(InventoryItem.module_id_fk == module.id, InventoryItem.id.in_(ids or [0]))
                             .order_by(InventoryItem.number)).all()
+    # What a label can say, in the order it is printed; the person printing
+    # ticks which (remembered per database), e.g. only the position and the
+    # date on a cryo tube.
+    fields = [("category", mv.category_label), ("lot", "Lot"), ("owner", "Owner"), ("where", "Where"),
+              ("box", "Box"), ("position", "Position"), ("received", "Received"), ("expires", "Expires")]
+    fields += [(f"attr_{f['key']}", f["label"]) for f in mv.fields if f["type"] not in ("source", "textarea")]
+    fields.append(("printed", "Printed on"))
+    chosen = _label_fields(f"inventory/{key}", [k for k, _ in fields],
+                           ["category", "lot", "owner", "where", "received", "expires"])
+    labels = dict(fields)
+    today = date.today().isoformat()
     cards = []
     for item in items:
-        where = item.rack.name + (" · " + isvc.rack_label(item) if isvc.rack_label(item) else "") if item.rack else (item.location_note or "—")
-        rows = [("Owner", item.owner or "—"), ("Where", where)]
-        if item.lot:
-            rows.insert(0, ("Lot", item.lot))
-        if item.category:
-            rows.insert(0, (mv.category_label, item.category))
-        if item.received_on:
-            rows.append(("Received", item.received_on.isoformat()))
-        if item.expires_on:
-            rows.append(("Expires", item.expires_on.isoformat()))
+        place = isvc.rack_label(item)
+        attrs = item.attrs_dict
+        values = {
+            "category": item.category, "lot": item.lot, "owner": item.owner or "—",
+            "where": (item.rack.name + (" · " + place if place else "")) if item.rack else (item.location_note or "—"),
+            "box": item.rack.name if item.rack else "", "position": place,
+            "received": item.received_on.isoformat() if item.received_on else "",
+            "expires": item.expires_on.isoformat() if item.expires_on else "",
+            "printed": today,
+            **{f"attr_{k}": str(v) for k, v in attrs.items() if isinstance(v, (str, int, float)) and str(v).strip()},
+        }
+        # A concentration reads with its unit ("812.4 ng/µL"), in one line.
+        if values.get("attr_concentration") and values.get("attr_conc_unit"):
+            values["attr_concentration"] += " " + values.pop("attr_conc_unit")
         cards.append({
             "title": f"#{item.number} {item.name}".strip(),
             "target": _absolute(url_for("inventory.module", key=key) + f"#item-{item.id}"),
-            "rows": rows,
+            "rows": [(labels[k], values[k]) for k in chosen if values.get(k)],
             "shared": False,
         })
     return {"cards": cards, "heading": f"{module.label} · labels", "size": CARD_SIZES["tube"],
-            "kind": f"inventory/{key}", "back_url": url_for("inventory.module", key=key)}
+            "kind": f"inventory/{key}", "back_url": url_for("inventory.module", key=key),
+            "fields": fields, "chosen": chosen}
+
+
+def _label_fields(kind: str, allowed: list[str], default: list[str]) -> list[str]:
+    """The fields ticked on the labels page (`f`, with `fields_set`), else
+    the ones this person last printed for this kind, else `default`."""
+    remembered = cookie.get("label_fields") or {}
+    if request.values.get("fields_set"):
+        chosen = [k for k in request.values.getlist("f") if k in allowed]
+        cookie["label_fields"] = {**remembered, kind: chosen}
+        return chosen
+    kept = [k for k in remembered.get(kind) or [] if k in allowed]
+    return kept or default
+
+
+def _label_wrap(kind: str) -> bool:
+    """Long names and places on two lines instead of cut short."""
+    remembered = cookie.get("label_wrap") or {}
+    if request.values.get("fields_set") or "wrap" in request.values:
+        wrap = request.values.get("wrap") == "1"
+        cookie["label_wrap"] = {**remembered, kind: wrap}
+        return wrap
+    return bool(remembered.get(kind))
 
 
 # ---- how they come out: a sheet, a label printer's page, or ZPL
@@ -340,8 +379,9 @@ def _qr_modules(payload: str) -> int:
         return 57
 
 
-def to_zpl(cards: list[dict], size: tuple[float, float], dpi: int = 203) -> str:
-    """The labels as ZPL II, one ^XA…^XZ each, for a Zebra of this resolution."""
+def to_zpl(cards: list[dict], size: tuple[float, float], dpi: int = 203, wrap: bool = False) -> str:
+    """The labels as ZPL II, one ^XA…^XZ each, for a Zebra of this resolution;
+    with `wrap`, a long title or value takes two lines instead of one."""
     dots = 12 if dpi >= 300 else 8        # dots a millimetre
     w, h = round(size[0] * dots), round(size[1] * dots)
     f = fit(size)
@@ -358,8 +398,9 @@ def to_zpl(cards: list[dict], size: tuple[float, float], dpi: int = 203) -> str:
             z.append(f"^FO{w - pad - side},{pad}^BQN,2,{mag}^FH_^FDMA,{_zpl_text(card['target'])}^FS")
         text_w = max(40, w - 3 * pad - side)
         y = pad
-        z.append(f"^FO{pad},{y}^A0N,{title},{title}^FB{text_w},1,0,L^FH_^FD{_zpl_text(card['title'])}^FS")
-        y += round(title * 1.15)
+        lines = 2 if wrap else 1
+        z.append(f"^FO{pad},{y}^A0N,{title},{title}^FB{text_w},{lines},0,L^FH_^FD{_zpl_text(card['title'])}^FS")
+        y += round(title * 1.15) * lines
         for key, value in card["rows"][:f["rows"]]:
             if y + row > h - pad:
                 break
@@ -412,21 +453,27 @@ def _page(built: dict):
         printer, dpi = _lab_printer(session)
     if request.args.get("format") == "zpl":
         try:
-            dpi = int(request.args.get("dpi") or dpi)
+            dpi = arg_int("dpi", dpi)
         except ValueError:
             pass
         name = built["kind"].replace("/", "-")
-        return Response(to_zpl(built["cards"], size, dpi), mimetype="text/plain; charset=utf-8",
+        return Response(to_zpl(built["cards"], size, dpi, wrap=_label_wrap(built["kind"])), mimetype="text/plain",
                         headers={"Content-Disposition": f'attachment; filename="{name}-labels.zpl"'})
     cards = built["cards"]
+    wrap = _label_wrap(built["kind"])
     layout = fit(size) if stock != "sheet" else None
+    left_out: set[str] = set()      # rows that didn't fit, to say so
     for card in cards:
         card["qr"] = _qr_svg(card["target"], scale=3) if card.get("target") else ""
         if layout:
-            card["rows"] = card["rows"][:max(1, layout["rows"] - (1 if card.get("shared") else 0))]
+            # A title on two lines takes the room of one row.
+            room = layout["rows"] - (1 if card.get("shared") else 0) - (1 if wrap and layout["rows"] > 1 else 0)
+            left_out.update(key for key, _value in card["rows"][max(1, room):])
+            card["rows"] = card["rows"][:max(1, room)]
     ids = ",".join(str(i) for i in _ids())
     # What the page was asked for, for its own links: the ticked rows as one `ids`.
-    base_args = {k: v for k, v in request.args.items() if k not in ("stock", "format", "dpi", "selected_ids", "ids")}
+    base_args = {k: v for k, v in request.args.items()
+                 if k not in ("stock", "format", "dpi", "selected_ids", "ids", "f", "fields_set", "wrap")}
     if ids:
         base_args["ids"] = ids
     here = url_for(request.endpoint, **(request.view_args or {}), **base_args, stock=stock)
@@ -435,6 +482,8 @@ def _page(built: dict):
         layout=layout, printed_on=date.today().isoformat(), back_url=built["back_url"],
         printer=printer, dpi=dpi, can_set_printer=access.is_admin(), here=here,
         ids=ids, base_args=base_args, kind=built["kind"],
+        fields=built.get("fields"), chosen=built.get("chosen") or [], wrap=wrap,
+        left_out=sorted(left_out),
     )
 
 
@@ -503,7 +552,7 @@ def send():
         return redirect(back)
     try:
         with socket.create_connection(where, timeout=6) as conn:
-            conn.sendall(to_zpl(built["cards"], size, dpi).encode("utf-8"))
+            conn.sendall(to_zpl(built["cards"], size, dpi, wrap=_label_wrap(built["kind"])).encode("utf-8"))
     except OSError as exc:
         flash(f"The label printer at {raw} didn't answer ({exc.strerror or exc}). Check it is on and on the network.", "error")
         return redirect(back)

@@ -9,6 +9,7 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
@@ -16,7 +17,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import create_engine, text
 
-from tests.base import AppTestCase, app, client_for, execute, flash_text, location, make_user, one, uniq
+from tests.base import AppTestCase, app, client_for, execute, flash_text, location, make_user, one, uniq, user_id
 
 INTERNET = {"X-BioManager-Entry": "internet"}
 
@@ -106,6 +107,13 @@ class KeyTests(CopyCase):
         kid = one("select id from lab_copy_keys where label=?", label)
         self.assertEqual(self.m.post(f"/settings/lab-copies/{kid}/revoke").status_code, 404)
 
+    def test_disabling_an_account_revokes_its_keys_for_good(self):
+        admin2 = make_user(uniq("admin"), role="admin")
+        key = self.make_key(client_for(admin2))
+        self.post(self.a, f"/admin/users/{user_id(admin2)}/disable")
+        self.post(self.a, f"/admin/users/{user_id(admin2)}/disable")      # enabled again
+        self.assertEqual(self.api("/api/lab-copy/files", key).status_code, 401)
+
     def test_a_disabled_account_s_keys_stop_working(self):
         admin2 = make_user(uniq("admin"), role="admin")
         key = self.make_key(client_for(admin2))
@@ -191,11 +199,120 @@ class SnapshotTests(CopyCase):
         self.assertEqual(self.api(f"/api/lab-copy/files/{name}", key).get_data(as_text=True), "gel image")
         self.assertEqual(self.api("/api/lab-copy/files/../../app.py", key).status_code, 404)
 
-    def test_wrong_keys_are_throttled(self):
+    def test_wrong_keys_are_throttled_but_the_lab_s_own_keys_still_work(self):
         from app import lab_copy
         for _ in range(lab_copy.key_throttle.limit):
             self.api("/api/lab-copy/files", "bmk_" + "y" * 32)
-        self.assertEqual(self.api("/api/lab-copy/files", self.make_key()).status_code, 429)
+        self.assertEqual(self.api("/api/lab-copy/files", "bmk_" + "z" * 32).status_code, 429)
+        self.assertEqual(self.api("/api/lab-copy/files", self.make_key()).status_code, 200)
+
+    def test_a_guest_may_not_keep_a_copy(self):
+        set_permission(True)
+        guest = make_user(uniq("guest"))
+        execute("update users set expires_at=? where username=?", datetime.utcnow() + timedelta(days=3), guest)
+        self.assertEqual(client_for(guest).post("/settings/lab-copies", data={"label": "Laptop"}).status_code, 403)
+        member = make_user(uniq("member"))
+        key = self.make_key(client_for(member))
+        execute("update users set expires_at=? where username=?", datetime.utcnow() + timedelta(days=3), member)
+        self.assertEqual(self.api("/api/lab-copy/snapshot", key).status_code, 403)
+
+
+# ======================================================================= a member's copy
+
+class MemberCopyTests(CopyCase):
+    """An admin's copy is the whole lab; a member's holds what they can see."""
+
+    def setUp(self):
+        super().setUp()
+        set_permission(True)
+        from app.db import SessionLocal
+        from app.models import (ApiToken, Feedback, InventoryItem, InventoryModule, NotebookPage, NotebookShare,
+                                NotebookTab, NotebookVersion, NotificationRecord)
+        from app.paths import uploads_dir
+        self.secret_file, self.shared_file = f"{uniq('private')}.png", f"{uniq('shared')}.png"
+        for name in (self.secret_file, self.shared_file):
+            (uploads_dir() / name).write_text("image")
+            self.addCleanup((uploads_dir() / name).unlink)
+        self.member_name = make_user(uniq("member"))
+        self.words = {w: uniq(w) for w in ("private", "shared", "own", "personal", "feedback", "note")}
+        with SessionLocal() as s:
+            tab = NotebookTab(owner_username=self.admin, title=uniq("Admin topic "))
+            mine = NotebookTab(owner_username=self.member_name, title=uniq("Member topic "))
+            s.add_all([tab, mine])
+            s.flush()
+            private = NotebookPage(tab_id_fk=tab.id, title=self.words["private"],
+                                   body=f'<img src="/static/uploads/{self.secret_file}">')
+            shared = NotebookPage(tab_id_fk=tab.id, title=self.words["shared"],
+                                  body=f'<img src="/static/uploads/{self.shared_file}">')
+            own = NotebookPage(tab_id_fk=mine.id, title=self.words["own"])
+            s.add_all([private, shared, own])
+            s.flush()
+            s.add(NotebookVersion(page_id_fk=private.id, title=self.words["private"], body="old"))
+            s.add(NotebookShare(page_id_fk=shared.id, username="*", role="view"))
+            module = InventoryModule(key=uniq("admin-personal-"), label="Admin's", private_to=self.admin)
+            s.add(module)
+            s.flush()
+            s.add(InventoryItem(module_id_fk=module.id, name=self.words["personal"]))
+            s.add(Feedback(username=self.admin, text=self.words["feedback"]))
+            s.add(NotificationRecord(recipient_username=self.admin, title=self.words["note"]))
+            s.add(ApiToken(user_id_fk=user_id(self.admin), label="script", token_hash=uniq("hash")))
+            s.commit()
+        self.key = self.make_key(client_for(self.member_name))
+
+    def copy(self, key):
+        r = self.api("/api/lab-copy/snapshot", key)
+        self.assertEqual(r.status_code, 200)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, tmp)
+        path = Path(tmp) / "copy.db"
+        path.write_bytes(r.get_data())
+        return sqlite3.connect(path)
+
+    def test_a_member_s_copy_holds_what_they_see(self):
+        with self.copy(self.key) as con:
+            self.assertEqual(con.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
+            titles = {t for (t,) in con.execute("select title from notebook_pages")}
+            self.assertIn(self.words["own"], titles)
+            self.assertIn(self.words["shared"], titles)
+            self.assertNotIn(self.words["private"], titles)
+            self.assertNotIn(self.words["private"], {t for (t,) in con.execute("select title from notebook_versions")})
+            self.assertEqual({h for (h,) in con.execute("select password_hash from users")}, {""})
+            for table in ("api_tokens", "lab_copy_keys", "guest_passes", "user_identities", "feedback", "audit_log"):
+                self.assertEqual(con.execute(f"select count(*) from {table}").fetchone()[0], 0, table)
+            self.assertNotIn(self.words["personal"], {n for (n,) in con.execute("select name from inventory_items")})
+            self.assertNotIn(self.words["note"], {t for (t,) in con.execute("select title from notifications")})
+            self.assertEqual(con.execute("select count(*) from mice").fetchone()[0], one("select count(*) from mice"))
+
+    def test_an_admin_s_copy_is_the_whole_lab(self):
+        with self.copy(self.make_key()) as con:
+            titles = {t for (t,) in con.execute("select title from notebook_pages")}
+            self.assertTrue({self.words["private"], self.words["shared"], self.words["own"]} <= titles)
+            self.assertIn(self.words["feedback"], {t for (t,) in con.execute("select text from feedback")})
+            self.assertEqual(con.execute("select count(*) from users where password_hash=''").fetchone()[0], 0)
+
+    def test_a_member_gets_only_the_files_their_copy_names(self):
+        listing = {f["path"] for f in self.api("/api/lab-copy/files", self.key).get_json()["files"]}
+        self.assertIn(self.shared_file, listing)
+        self.assertNotIn(self.secret_file, listing)
+        self.assertEqual(self.api(f"/api/lab-copy/files/{self.shared_file}", self.key).status_code, 200)
+        self.assertEqual(self.api(f"/api/lab-copy/files/{self.secret_file}", self.key).status_code, 404)
+        admin = {f["path"] for f in self.api("/api/lab-copy/files", self.make_key()).get_json()["files"]}
+        self.assertIn(self.secret_file, admin)
+
+    def test_every_table_of_someone_s_own_rows_is_decided_for_a_member_s_copy(self):
+        from app import lab_copy
+        from app.db import Base
+        decided = (set(lab_copy.ADMIN_ONLY) | set(lab_copy.OWN_ROWS) | set(lab_copy.PAGE_ROWS)
+                   | set(lab_copy.PERSONAL_DATABASES) | set(lab_copy.MEMBER_SEES_WHOLE))
+        personal = {"user_id_fk", "recipient_username", "owner_username", "private_to", "password_hash", "page_id_fk"}
+        for table in Base.metadata.sorted_tables:
+            names = {c.name for c in table.columns}
+            in_personal_db = any(fk.parent.name == "module_id_fk" and fk.column.table.name in lab_copy.PERSONAL_DATABASES
+                                 for fk in table.foreign_keys)
+            secret = any(isinstance(c.type, __import__("app.models").models.EncryptedText) for c in table.columns)
+            if (names & personal or secret) and not in_personal_db:
+                self.assertIn(table.name, decided, f"{table.name}: decide what a member's copy keeps (app/lab_copy.py)")
 
 
 # ======================================================================= the desktop app

@@ -9,9 +9,10 @@ from functools import wraps
 from flask import Flask, Response, abort, flash, g, get_flashed_messages, has_request_context, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from markupsafe import Markup, escape
 from werkzeug.datastructures import ImmutableMultiDict
-from sqlalchemy import func, select
-from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy import case, func, select
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import SessionLocal
@@ -69,7 +70,9 @@ from .models import (
     UserAccount,
     UserIdentity,
 )
+from .formutil import arg_int, like_pattern
 from .services import (
+    csv_text,
     add_notification,
     breeder_mice,
     is_breeder_purpose,
@@ -90,7 +93,6 @@ from .services import (
     breeder_summary,
     cage_derived_dates,
     cage_is_active,
-    calculate_reagent_requirements,
     current_lab_usernames,
     mouse_is_active,
     apply_status_rules,
@@ -195,6 +197,33 @@ def login_required(view):
     return wrapped_view
 
 
+def next_number_retried(view):
+    """For a save that hands out the next free number (a mouse, a cage, a
+    litter). Two people saving at the same moment both read the same
+    highest number, and the database refuses the second: try that save
+    again, with a fresh number, rather than tell them an ID they never
+    typed "is already used". A number someone typed that is taken is
+    refused as before, after the retries."""
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        import random
+        import time
+        tries = 6
+        for attempt in range(tries):
+            flashes = list(session.get("_flashes") or [])
+            try:
+                return view(*args, **kwargs)
+            except IntegrityError:
+                if attempt == tries - 1:
+                    raise
+                session["_flashes"] = flashes        # the failed try's messages go with it
+                for upload in request.files.values():
+                    upload.stream.seek(0)             # the next try reads the uploaded file again
+                time.sleep(random.uniform(0.02, 0.12) * (attempt + 1))
+
+    return wrapped_view
+
+
 def admin_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
@@ -288,7 +317,8 @@ def load_current_user():
         # So does the end of a temporary account (a guest pass, app/guests.py).
         if (user is None or getattr(user, "disabled", False)
                 or (user.expires_at is not None and user.expires_at <= datetime.utcnow())
-                or not security.session_matches(session.get("auth"), user)):
+                or not security.session_matches(session.get("auth"), user, db_session)
+                or security.signed_out(db_session)):
             session.clear()
             g.user = None
             return
@@ -369,6 +399,76 @@ def handle_forbidden(_error):
     return render_template("error.html", title="You don't have access to that", message=message), 403
 
 
+def _plain_error_page(title: str, message: str) -> str:
+    """error_plain.html rendered straight from the template, without the
+    app's context processors: they read the database, which may be what
+    just failed."""
+    return app.jinja_env.get_template("error_plain.html").render(
+        title=title, message=message, request=request, url_for=url_for)
+
+
+def _wants_json() -> bool:
+    """A background save, the API, or a page script's fetch: answer JSON,
+    never a redirect to a page (which a script reads as a broken reply)."""
+    return (request.headers.get("X-Autosave") == "1" or request.path.startswith("/api/")
+            or request.accept_mimetypes.best == "application/json"
+            or request.headers.get("X-Requested-With") == "fetch")
+
+
+@app.errorhandler(OperationalError)
+def handle_database_unavailable(error: OperationalError):
+    """The database is down, locked by another program for too long, or its
+    disk is full. Nothing was saved; say so and that it's worth retrying,
+    rather than a bare "Internal Server Error"."""
+    detail = str(getattr(error, "orig", error))
+    app.logger.error("database unavailable on %s: %s", request.path, detail)
+    full = "full" in detail.lower()
+    message = ("The server's disk is full, so nothing was saved. Tell whoever runs the server."
+               if full else "The database didn't answer in time, so nothing was saved. Try again in a moment; "
+               "if it keeps happening, tell whoever runs the server.")
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 503
+    return _plain_error_page("The database is not answering", message), 503
+
+
+@app.errorhandler(StaleDataError)
+def handle_stale_data(_error):
+    """The record was removed (an Undo, a colleague) while this save ran."""
+    message = "That record was changed or removed by someone else just now, so nothing was saved. Reload the page."
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 409
+    flash(message, "error")
+    referrer = request.referrer or ""
+    return redirect(referrer if referrer.startswith(request.host_url) else url_for("home_dashboard"))
+
+
+@app.errorhandler(OverflowError)
+def handle_overflow(error: OverflowError):
+    """A number in the address too big for the database or a date."""
+    app.logger.warning("overflow on %s: %s", request.path, error)
+    message = "A number or date in that request is out of range."
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 400
+    return render_template("error.html", title="That's out of range", message=message), 400
+
+
+@app.errorhandler(404)
+def handle_not_found(_error):
+    if _wants_json():
+        return jsonify({"ok": False, "error": "Not found."}), 404
+    return render_template("error.html", title="There's nothing here",
+                           message="That page doesn't exist, or what it showed was deleted."), 404
+
+
+@app.errorhandler(500)
+def handle_server_error(_error):
+    message = "Something went wrong on the server, so that wasn't done. Try again; if it keeps happening, " \
+              "use Send feedback to say what you were doing."
+    if _wants_json():
+        return jsonify({"ok": False, "error": message}), 500
+    return _plain_error_page("Something went wrong", message), 500
+
+
 @app.errorhandler(IntegrityError)
 def handle_integrity_error(error: IntegrityError):
     """A duplicate ID (or similar) is a message for the person, not a 500.
@@ -385,11 +485,13 @@ def handle_integrity_error(error: IntegrityError):
     if match:
         column = match.group(1).split(",")[-1].strip().strip('"').split(".")[-1]
         field = column.replace("_id", " ID").replace("_", " ")
-        message = f"That {field} is already used. Choose another."
+        message = (f"That place in the rack has a cage already (someone may have just put one there), "
+                   f"so nothing was saved." if column in ("rack_col", "rack_row")
+                   else f"That {field} is already used. Choose another.")
     else:
         message = "That change conflicts with an existing record, so it was not saved."
-    app.logger.info("integrity error on %s: %s", request.path, detail)
-    if request.headers.get("X-Autosave") == "1":
+    app.logger.warning("integrity error on %s: %s", request.path, detail)
+    if _wants_json():
         return jsonify({"ok": False, "error": message}), 409
     flash(message, "error")
     referrer = request.referrer or ""
@@ -404,8 +506,8 @@ def handle_data_error(error: DataError):
     size = re.search(r"character varying\((\d+)\)", detail)
     message = (f"One of the values is longer than its field allows ({size.group(1)} characters), so nothing was saved."
                if size else "One of the values is not valid for its field, so nothing was saved.")
-    app.logger.info("data error on %s: %s", request.path, detail)
-    if request.headers.get("X-Autosave") == "1":
+    app.logger.warning("data error on %s: %s", request.path, detail)
+    if _wants_json():
         return jsonify({"ok": False, "error": message}), 409
     flash(message, "error")
     referrer = request.referrer or ""
@@ -477,6 +579,8 @@ NAV_SECTIONS: list[dict] = [
              "endpoint": "calendar", "feature": "calendar"},
             {"key": "notebook", "label": "Notebook", "icon": "notebook", "feature": "notebook",
              "endpoint": "notebook", "match": ("notebook", "notebook_templates")},
+            {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities",
+             "hint": "Bench calculators and reference data"},
         ],
     },
     {
@@ -488,7 +592,7 @@ NAV_SECTIONS: list[dict] = [
             {"key": "zebrafish", "label": "Zebrafish", "short": "Fish", "icon": "fish",
              "endpoint": "zebrafish", "feature": "zebrafish", "match": ("zebrafish", "zebrafish_line_detail")},
             {"key": "plasmids", "label": "Plasmids", "icon": "plasmid", "feature": "plasmids",
-             "endpoint": "plasmids", "match": ("plasmids", "plasmid_detail")},
+             "endpoint": "plasmids", "match": ("plasmids", "plasmid_detail", "plasmid_page")},
             {"key": "new-db", "label": "Add database", "icon": "plus", "needs": "create_db",
              "hint": "Keep another kind of record: an organism, a stock collection or an inventory",
              "endpoint": "organisms.new_module", "match": ("organisms.new_module",)},
@@ -496,22 +600,29 @@ NAV_SECTIONS: list[dict] = [
     },
 ]
 
+# The foot of the sidebar: Settings, and one More menu for the pages not
+# used every day (batch history for everyone; the admin's pages). Help and
+# Feedback are a Help menu in the template. Utilities sits with Workspace.
 NAV_FOOTER: list[dict] = [
-    {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities",
-     "hint": "Bench calculators (dilutions, molarity, recipes) and reference data"},
-    {"key": "admin-colony", "label": "Colony overview", "short": "Overview",
-     "hint": "Every member's mice and cages at a glance",
-     "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True, "feature": "colony"},
-    {"key": "batches", "label": "Batch history", "short": "Batches", "icon": "layers", "endpoint": "batches_view",
-     "hint": "Changes made many records at a time (Add many, bulk edits, imports), each with Undo"},
-    {"key": "audit", "label": "Audit log", "icon": "history", "endpoint": "audit_log_view",
-     "hint": "Who changed what, and when",
-     "admin_only": True},
-    {"key": "lab-setup", "label": "Lab setup", "short": "Setup", "icon": "sliders",
-     "hint": "What the lab keeps, its name, and what members may do",
-     "endpoint": "lab.setup", "admin_only": True},
     {"key": "settings", "label": "Settings", "icon": "settings", "endpoint": "settings",
      "match": ("settings", "admin_users")},
+]
+NAV_MORE: list[dict] = [
+    {"key": "batches", "label": "Batch history", "icon": "layers", "endpoint": "batches_view",
+     "hint": "Changes made many records at a time (Add many, bulk edits, imports), each with Undo"},
+    {"key": "lab-setup", "label": "Lab setup", "icon": "sliders",
+     "hint": "What the lab keeps, its name, and what members may do",
+     "endpoint": "lab.setup", "admin_only": True},
+    {"key": "admin-colony", "label": "Colony overview", "hint": "Every member's mice and cages at a glance",
+     "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True, "feature": "colony"},
+    {"key": "audit", "label": "Audit log", "icon": "history", "endpoint": "audit_log_view",
+     "hint": "Who changed what, and when", "admin_only": True},
+    {"key": "users", "label": "Manage users", "icon": "users", "endpoint": "admin_users", "admin_only": True,
+     "hint": "Approve people, roles, passwords"},
+    {"key": "guests", "label": "Guests", "icon": "user", "endpoint": "guests.admin", "admin_only": True,
+     "hint": "A pass for someone outside the lab"},
+    {"key": "racks", "label": "Racks & boxes", "icon": "box", "endpoint": "admin_racks.index", "admin_only": True,
+     "hint": "Who may change each rack, box and incubator"},
 ]
 
 # Colony sub-views: label, icon and one-line description for the segmented
@@ -687,7 +798,7 @@ def _organism_module_links() -> list[dict]:
 @app.context_processor
 def inject_nav():
     if g.get("user") is None:
-        return {"nav_sections": [], "nav_footer": [], "tab_icon_rules": [],
+        return {"nav_sections": [], "nav_footer": [], "nav_more": [], "tab_icon_rules": [],
                 "colony_view_meta": COLONY_VIEW_META, "db_labels": {}}
 
     active = request.endpoint or ""
@@ -712,9 +823,11 @@ def inject_nav():
         if links:
             sections.append({"label": section["label"], "links": links})
     footer = [r for r in (_resolve_nav_item(i, active) for i in NAV_FOOTER) if r]
+    more = [r for r in (_resolve_nav_item(i, active) for i in NAV_MORE) if r]
     return {
         "nav_sections": sections,
         "nav_footer": footer,
+        "nav_more": more,
         "tab_icon_rules": tab_icon_rules,
         "colony_view_meta": COLONY_VIEW_META,
         "db_labels": g.db_labels,
@@ -832,6 +945,17 @@ def fmt_day(value, with_time: bool = False) -> str:
 
 
 app.jinja_env.filters["day"] = fmt_day
+
+
+@app.template_filter("head")
+def column_head(label) -> Markup:
+    """A column heading, which the sheet writes in capitals: a micro sign
+    kept small (capitalised, "µL" reads "ΜL", as if it were mL)."""
+    text = str(escape(label or ""))
+    if "µ" not in text:
+        return Markup(text)
+    # One span, so a flex heading keeps it as one piece of text.
+    return Markup("<span>" + text.replace("µ", '<span class="normal-case">µ</span>') + "</span>")
 app.jinja_env.filters["day_time"] = lambda value: fmt_day(value, with_time=True)
 
 
@@ -954,12 +1078,29 @@ def future_birth(form, field: str = "date_of_birth", what: str = "A date of birt
     return None
 
 
+def _keep_lines(stored: str | None, sent: str) -> str:
+    """What a one-line cell sends back for a value with line breaks is the
+    value without them (browsers drop them from an <input>): that is the
+    stored value unchanged, not an edit. Saving another cell of the row
+    must not squash a multi-line note into one line."""
+    if stored and ("\n" in stored or "\r" in stored) and sent == re.sub(r"[\r\n]", "", stored).strip():
+        return stored
+    return sent
+
+
 def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owner_on_transfer: bool = True) -> tuple[str | None, str | None]:
+    # A sheet row sends every cell, and with each a "<name>_was" copy of
+    # what the row showed (form_changed): a cell it didn't change is left as
+    # the database has it, so saving one cell of a row open since before a
+    # colleague's edit doesn't quietly undo that edit. Dialogs send no
+    # copies, so everything they show counts.
     original_owner = mouse.owner
     transfer_recipient = None
     litter_code = form.get("litter_id", "").strip()
     dob = parse_date(form.get("date_of_birth"))
-    if litter_code:
+    if not form_changed(form, "litter_id", "date_of_birth"):
+        pass
+    elif litter_code:
         set_mouse_litter(mouse, get_or_create_litter(db_session, litter_code, dob))
     elif dob is not None:
         # A mouse's date of birth lives on its litter. Given a date and no
@@ -972,7 +1113,7 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
 
     # A form that does not carry the cage (a cage card's mouse row, which
     # only shows the mouse's own fields) leaves the mouse where it is.
-    if "cage_id" in form or form.get("auto_new_cage") == "1":
+    if ("cage_id" in form and form_changed(form, "cage_id")) or form.get("auto_new_cage") == "1":
         cage_input = form.get("cage_id", "").strip()
         existing_cage = db_session.scalar(select(CageRecord).where(CageRecord.cage_id == cage_input)) if cage_input else None
         if existing_cage is not None and existing_cage is not mouse.cage and not access.can_edit_cage(existing_cage):
@@ -996,14 +1137,19 @@ def populate_mouse_from_form(db_session, mouse: MouseRecord, form, preserve_owne
             if error:
                 flash(error, "error")
 
-    transgenes = transgene_values_from_form(form)
-    sync_mouse_transgenes(mouse, transgenes)
-    mouse.gender = form.get("gender", "").strip()
+    stored = [mouse.transgene_1, mouse.transgene_2, mouse.transgene_3, mouse.transgene_4]
+    if form_changed(form, *(f"transgene_{n}" for n in range(1, 5))):
+        transgenes = [_keep_lines(old, new) for old, new in zip(stored, transgene_values_from_form(form))]
+        sync_mouse_transgenes(mouse, transgenes)
+    if form_changed(form, "gender"):
+        mouse.gender = form.get("gender", "").strip()
     previous_status = mouse.status
-    mouse.status = form.get("status", "").strip()
-    status_normalized = mouse.status.lower()
-    requested_owner = form.get("owner", "").strip()
-    mouse.note = form.get("note", "").strip()
+    if form_changed(form, "status"):
+        mouse.status = form.get("status", "").strip()
+    status_normalized = (mouse.status or "").lower()
+    requested_owner = form.get("owner", "").strip() if form_changed(form, "owner") else (mouse.owner or "")
+    if form_changed(form, "note"):
+        mouse.note = _keep_lines(mouse.note, form.get("note", "").strip())
     # Absent (a cage card does not show it) or unchanged from its `_was`
     # copy, the stored date stands; the status rules below still stamp or
     # clear it when the status crosses into or out of an end status.
@@ -1601,6 +1747,8 @@ def home_dashboard():
         has_restock = any(m.kind in _inv.RESTOCK_KINDS for m in visible_inventories)
         has_stocks = bool(stock_service.list_modules(db_session))
         setup_needed = g.user.role == "admin" and not lab.setup_done(db_session)
+        if g.user.role == "admin":
+            notify.settle_signups(db_session)
         for_you = [{"id": n.id, "title": n.title, "created_at": n.created_at}
                    for n in notify.recent(db_session, g.user.username, limit=5, unread_only=True)]
 
@@ -1608,6 +1756,11 @@ def home_dashboard():
     # which draw the same work from one agenda.
     zebrafish_due = zebrafish_home_summary()
     with SessionLocal() as db_session:
+        home_cards = home_layouts.get_cards(db_session, g.user.username)
+        offered = home_layouts.offered_cards(lab.request_features(), {
+            "has_orders": has_orders, "has_restock": has_restock, "has_stocks": has_stocks})
+        shown = {c["key"] for c in offered} - set(home_cards["hidden"])
+        extra = _home_extra_cards(db_session, shown, today)
         home_layout = home_layouts.get_layout(db_session, g.user.username)
         layout_view = None
         if home_layout != "classic":
@@ -1624,6 +1777,10 @@ def home_dashboard():
 
     return render_template(
         "home.html",
+        home_cards=home_cards,
+        offered_cards=offered,
+        shown_cards=shown,
+        **extra,
         home_layout=home_layout,
         layout_choices=home_layouts.LAYOUTS,
         layout_view=layout_view,
@@ -1654,6 +1811,56 @@ def home_dashboard():
         restock=restock,
         wean_offset_days=WEAN_OFFSET_DAYS,
     )
+
+
+# Calculators the Home card links to (static/bench-calcs.js ids).
+HOME_CALCULATORS = [("dilution", "Dilution"), ("molarity", "Molarity"), ("a260", "DNA / RNA from A260"),
+                    ("count", "Cell count"), ("seeding", "Seeding plates"), ("rcf", "rpm ↔ × g"),
+                    ("buffer", "Buffer pH"), ("pcrmix", "PCR master mix")]
+
+
+def _home_extra_cards(db_session, shown: set, today: date) -> dict:
+    """What Home's optional cards show, read only when they are on."""
+    me = g.user.username
+    out = {"todos": [], "bookings": [], "recent_pages": [], "home_calculators": HOME_CALCULATORS}
+    if "todos" in shown:
+        rows = db_session.scalars(select(TaskItem).where(
+            TaskItem.owner == me, TaskItem.status != "done",
+            TaskItem.due_date.is_(None) | (TaskItem.due_date <= today + timedelta(days=7)))
+            .order_by(TaskItem.due_date.is_(None), TaskItem.due_date).limit(8)).all()
+        out["todos"] = [{"id": t.id, "title": t.title, "due": t.due_date,
+                         "overdue": bool(t.due_date and t.due_date < today)} for t in rows]
+    if "bookings" in shown:
+        from .models import EquipmentBooking
+        start = datetime.combine(today, datetime.min.time())
+        rows = db_session.scalars(select(EquipmentBooking).options(selectinload(EquipmentBooking.equipment)).where(
+            EquipmentBooking.owner == me, EquipmentBooking.end_at >= start,
+            EquipmentBooking.start_at < start + timedelta(days=8)).order_by(EquipmentBooking.start_at).limit(8)).all()
+        out["bookings"] = [{"what": b.equipment.name, "start": b.start_at, "end": b.end_at, "purpose": b.purpose}
+                           for b in rows]
+    if "notebook" in shown:
+        rows = db_session.scalars(lab_notebook.accessible_filter(
+            select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
+            .order_by(NotebookPage.updated_at.desc()).limit(6)).all()
+        out["recent_pages"] = [{"id": p.id, "tab_id": p.tab_id_fk, "title": p.title or "Untitled page",
+                                "updated_at": p.updated_at} for p in rows]
+    return out
+
+
+@app.route("/home/cards", methods=["POST"])
+@login_required
+def set_home_cards():
+    """Customize Home: which cards show, their order, which are full width."""
+    with SessionLocal() as db_session:
+        if request.form.get("reset") == "1":
+            home_layouts.reset_cards(db_session, g.user.username)
+        else:
+            order = request.form.getlist("order")
+            shown = set(request.form.getlist("show"))
+            home_layouts.set_cards(db_session, g.user.username, order,
+                                   [k for k in order if k not in shown], request.form.getlist("wide"))
+        db_session.commit()
+    return redirect(url_for("home_dashboard"))
 
 
 ALLOWED_LANDING_ENDPOINTS = {"colony", "notebook", "calendar", "orders", "samples", "plasmids"}
@@ -1772,7 +1979,11 @@ def settings():
                 confirm = request.form.get("confirm_password", "")
                 # An account made by signing in with Google or Microsoft has
                 # no password yet; it may set one without a current one.
-                if security.has_password(user) and not security.check_password(user, current):
+                check_key = ("current-password", user.id)
+                if security.password_check_throttle.retry_after(check_key):
+                    flash("Too many wrong passwords. Try again in 15 minutes.", "error")
+                elif security.has_password(user) and not security.check_password(user, current):
+                    security.password_check_throttle.failed(check_key)   # a stolen session can't guess on
                     flash("Current password is incorrect.", "error")
                 elif problem := security.password_problem(new_pw, user.username):
                     flash(problem, "error")
@@ -1844,32 +2055,47 @@ def export_my_data():
             mice = db_session.scalars(
                 select(MouseRecord).where(MouseRecord.owner == username).order_by(MouseRecord.mouse_id)
             ).all()
-            mice_csv = _io.StringIO()
-            writer = _csv.writer(mice_csv)
-            writer.writerow(["mouse_id", "gender", "genotype", "status", "owner", "cage_id", "litter_id", "dob", "dod", "note"])
-            for m in mice:
-                writer.writerow([
-                    m.mouse_id, m.gender, m.genotype, m.status, m.owner,
-                    m.cage.cage_id if m.cage else "",
-                    m.litter.litter_id if m.litter else "",
-                    m.litter.date_of_birth.isoformat() if (m.litter and m.litter.date_of_birth) else "",
-                    m.date_of_death.isoformat() if m.date_of_death else "",
-                    m.note,
-                ])
-            zf.writestr("mice.csv", mice_csv.getvalue())
+            iso = lambda d: d.isoformat() if d else ""
+            zf.writestr("mice.csv", csv_text([
+                ["mouse_id", "gender", "genotype", "status", "owner", "cage_id", "litter_id", "dob", "dod", "note"],
+                *([m.mouse_id, m.gender, m.genotype, m.status, m.owner, m.cage.cage_id if m.cage else "",
+                   m.litter.litter_id if m.litter else "", iso(m.litter.date_of_birth) if m.litter else "",
+                   iso(m.date_of_death), m.note] for m in mice)]))
+
+            cages = db_session.scalars(
+                select(CageRecord).where(CageRecord.owner == username).order_by(CageRecord.cage_id)
+            ).all()
+            zf.writestr("cages.csv", csv_text([
+                ["cage_id", "purpose", "location", "rack", "row", "column", "shared", "litter_born", "notes"],
+                *([c.cage_id, c.purpose, c.cage_location, c.rack.name if c.rack else "", c.rack_row or "",
+                   c.rack_col or "", "yes" if c.is_shared else "no", iso(c.date_give_birth), c.notes]
+                  for c in cages)]))
+
+            weights = db_session.scalars(
+                select(MouseWeight).join(MouseRecord, MouseWeight.mouse_id_fk == MouseRecord.id)
+                .where(MouseRecord.owner == username).order_by(MouseWeight.weigh_date)
+            ).all()
+            zf.writestr("mouse_weights.csv", csv_text([
+                ["mouse_id", "date", "grams", "notes", "recorded_by"],
+                *([w.mouse.mouse_id, iso(w.weigh_date), w.grams, w.notes, w.recorded_by] for w in weights)]))
+
+            experiments = db_session.scalars(
+                select(Experiment).where(Experiment.owner_username == username).order_by(Experiment.id)
+            ).all()
+            zf.writestr("experiments.csv", csv_text([
+                ["name", "status", "start", "end", "database", "description", "treatment_plan", "readout"],
+                *([e.name, e.status, iso(e.start_date), iso(e.end_date), e.db, e.description, e.treatment_plan,
+                   e.readout] for e in experiments)]))
 
             plasmids = db_session.scalars(
                 select(PlasmidRecord).where(PlasmidRecord.owner == username).order_by(PlasmidRecord.plasmid_id)
             ).all()
-            plasmid_csv = _io.StringIO()
-            writer = _csv.writer(plasmid_csv)
-            writer.writerow(["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location", "notes"])
-            for p in plasmids:
-                writer.writerow([
-                    p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance,
-                    p.owner, p.location, p.notes,
-                ])
-            zf.writestr("plasmids.csv", plasmid_csv.getvalue())
+            zf.writestr("plasmids.csv", csv_text([
+                ["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location",
+                 "concentration", "a260_280", "lab_common", "notes"],
+                *([p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance, p.owner, p.location,
+                   p.concentration, p.a260_280, "yes" if p.is_shared else "", p.notes]
+                  for p in plasmids)]))
 
             tabs = db_session.scalars(
                 select(NotebookTab).where(NotebookTab.owner_username == username).order_by(NotebookTab.position, NotebookTab.id)
@@ -1894,6 +2120,9 @@ def export_my_data():
                 "exported_at": datetime.utcnow().isoformat(),
                 "counts": {
                     "mice": len(mice),
+                    "cages": len(cages),
+                    "mouse_weights": len(weights),
+                    "experiments": len(experiments),
                     "plasmids": len(plasmids),
                     "notebook_pages": sum(len(t.pages) for t in tabs),
                 },
@@ -2059,9 +2288,16 @@ def admin_toggle_disabled(user_id: int):
             target.role = "member"
             target.disabled = False
             db_session.commit()
+            notify.settle_signups(db_session)
             flash(f"{target.username} approved. They can sign in now.", "success")
             return redirect(url_for("admin_users"))
         target.disabled = not target.disabled
+        if target.disabled:
+            security.end_sessions(db_session, target)   # enabling it again won't bring them back
+            from .models import LabCopyKey
+            for key in db_session.scalars(select(LabCopyKey).where(LabCopyKey.user_id_fk == target.id,
+                                                                     LabCopyKey.revoked_at.is_(None))):
+                key.revoked_at = datetime.utcnow()      # their computers' copy keys too
         db_session.commit()
         flash(f"{target.username} {'disabled' if target.disabled else 'enabled'}.", "success")
     return redirect(url_for("admin_users"))
@@ -2102,8 +2338,15 @@ def register():
         display_name = request.form.get("display_name", "").strip()
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
+        signup_key = ("signup", request.remote_addr or "")
         if not username or not password:
             flash("Username and password are required.", "error")
+        elif not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,39}", username):
+            # Plain letters and digits: "аlex" in Cyrillic looks like "alex" in the lab's lists.
+            flash("A username is 2–40 letters (a–z), digits, dots, dashes or underscores. Your full name, in "
+                  "any alphabet, goes in Name.", "error")
+        elif not first and security.signup_throttle.retry_after(signup_key):
+            flash("Too many sign-ups from here in the last hour. Try again later, or ask a lab admin.", "error")
         elif needs_code and not security.setup_code_matches(request.form.get("setup_code")):
             flash("That setup code is not right. It is printed in the server log when BioManager starts.", "error")
         elif problem := security.password_problem(password, username):
@@ -2112,7 +2355,8 @@ def register():
             flash("Passwords do not match.", "error")
         else:
             with SessionLocal() as db_session:
-                existing = db_session.scalar(select(UserAccount).where(UserAccount.username == username))
+                existing = db_session.scalar(select(UserAccount).where(
+                    func.lower(UserAccount.username) == username.lower()))
                 if existing is not None:
                     flash("That username already exists.", "error")
                 else:
@@ -2128,11 +2372,13 @@ def register():
                         admins = db_session.scalars(select(UserAccount.username).where(
                             UserAccount.role == "admin", UserAccount.disabled.is_(False))).all()
                         for admin_name in admins:
-                            add_notification(db_session, admin_name, "Account waiting for approval", category="account",
+                            add_notification(db_session, admin_name, notify.SIGNUP_TITLE, category="account",
                                              link=url_for("admin_users"), message=
                                              f"{display_name or username} signed up as {username}. "
                                              "Approve them in Settings → Manage users.")
                     db_session.commit()
+                    if not first:
+                        security.signup_throttle.failed(signup_key)     # counts sign-ups, not failures
                     if first:
                         security.clear_setup_code()
                         flash("Admin account created. You can sign in now.", "success")
@@ -2144,7 +2390,8 @@ def register():
 
 @app.route("/logout", methods=["POST"])
 def logout():
-    session.clear()
+    with SessionLocal() as db_session:
+        security.sign_out(db_session)
     flash("You have been signed out.", "success")
     return redirect(url_for("login"))
 
@@ -2480,6 +2727,7 @@ def mouse_weight_delete(mouse_row_id: int, weight_id: int):
 
 @app.route("/colony/mice/create", methods=["POST"])
 @login_required
+@next_number_retried
 def create_mouse():
     refused = future_birth(request.form)
     if refused:
@@ -2499,6 +2747,7 @@ def create_mouse():
 
 @app.route("/colony/mice/new-record", methods=["POST"])
 @login_required
+@next_number_retried
 def create_blank_mouse():
     with SessionLocal() as db_session:
         mouse = MouseRecord(mouse_id=next_mouse_id(db_session), owner=g.user.username)
@@ -2562,6 +2811,7 @@ def update_mouse(mouse_row_id: int):
 
 @app.route("/colony/mice/<int:mouse_row_id>/duplicate", methods=["POST"])
 @login_required
+@next_number_retried
 def duplicate_mouse(mouse_row_id: int):
     with SessionLocal() as db_session:
         source_mouse = db_session.get(MouseRecord, mouse_row_id)
@@ -2635,7 +2885,9 @@ def bulk_sac_mice():
         for mouse in mice:
             if can_edit_mouse(mouse):
                 mouse.status = "sac"
-                mouse.date_of_death = date.today()
+                # A mouse that died earlier keeps its day; only the living die today.
+                mouse.date_of_death = mouse.date_of_death or date.today()
+                stamp_updated(mouse)
                 done += 1
         batch_row.record_count = done
         db_session.commit()
@@ -2962,8 +3214,11 @@ def _normalise_csv_dates(rows: list[dict]) -> list[str]:
         day_first = day_first or a > 12
         month_first = month_first or b > 12
     guessed = False
+    with SessionLocal() as s:
+        lab_day_first = lab.date_style(s) == "day"      # Lab setup's "26 Sep 2026" decides a 03/04 file
+    read_day_first = (day_first and not month_first) or (lab_day_first and not day_first and not month_first)
     for index, (a, b, year) in parsed.items():
-        month, day = (b, a) if day_first and not month_first else (a, b)
+        month, day = (b, a) if read_day_first else (a, b)
         guessed = guessed or (not day_first and not month_first and a != b)
         try:
             rows[index]["date_of_birth"] = date(year, month, day).isoformat()
@@ -2975,6 +3230,9 @@ def _normalise_csv_dates(rows: list[dict]) -> list[str]:
         rows[index]["date_of_birth"] = ""
     if day_first and month_first:
         warnings.append("The dates of birth mix day-first and month-first; check them.")
+    elif guessed and read_day_first:
+        warnings.append("Dates of birth were read day first (03/04/2026 as 3 April), as Lab setup's date "
+                        "style says. If the file is month first, correct them here.")
     elif guessed:
         warnings.append("Dates of birth were read month first (03/04/2026 as 4 March). If the "
                         "file is day first, correct them here, or save it with YYYY-MM-DD dates.")
@@ -3136,6 +3394,7 @@ def _batch_preview(rows: list[dict], warnings: list[str]):
 
 @app.route("/colony/mice/batch/create", methods=["POST"])
 @login_required
+@next_number_retried
 def batch_mice_create():
     """Write the previewed rows, with one contiguous block of IDs."""
     rows = _rows_from_grid(request.form)
@@ -3232,6 +3491,7 @@ def _free_rack_cells(db_session, rack, count: int, start: tuple[int, int] | None
 
 @app.route("/colony/cages/create", methods=["POST"])
 @login_required
+@next_number_retried
 def create_cage():
     """Create a cage, or several ("How many", 1–20) with consecutive IDs.
     A blank ID takes the next free one(s); a typed ID starts the run. An ID
@@ -3473,7 +3733,13 @@ def place_cage(cage_row_id: int):
         if holder is not None:
             if not can_edit_cage(holder):
                 return jsonify({"ok": False, "error": f"That position holds cage {holder.cage_id}, which you may not move."}), 403
-            holder.rack_id_fk, holder.rack_row, holder.rack_col = cage.rack_id_fk, cage.rack_row, cage.rack_col
+            # A swap, in steps: one cage per place holds at every moment
+            # (the unique index on the place), so the dropped cage leaves first.
+            old = (cage.rack_id_fk, cage.rack_row, cage.rack_col)
+            cage.rack_id_fk = cage.rack_row = cage.rack_col = None
+            db_session.flush()
+            holder.rack_id_fk, holder.rack_row, holder.rack_col = old
+            db_session.flush()
         cage.rack_id_fk, cage.rack_row, cage.rack_col = rack.id, row, col
         db_session.commit()
     return jsonify({"ok": True})
@@ -3778,7 +4044,8 @@ def cage_genotyping(cage_row_id: int):
 @app.route("/colony/cages/<int:cage_row_id>/wean", methods=["POST"])
 @login_required
 def cage_wean(cage_row_id: int):
-    with SessionLocal() as db_session:
+    # A batch, so Batch history can undo it like any other change to many records.
+    with SessionLocal() as db_session, audit.batch(db_session, "update", "wean a cage", "mouse_cages") as batch_row:
         cage = db_session.get(CageRecord, cage_row_id)
         blocked = deny(cage, "cages")
         if blocked:
@@ -3789,6 +4056,7 @@ def cage_wean(cage_row_id: int):
                 flash(young, "error")
                 return _back_to_colony("cages")
             mark_weaned(cage)
+            batch_row.description, batch_row.record_count = f"wean cage {cage.cage_id}"[:200], 1
             db_session.commit()
             flash(f"Cage {cage.cage_id} is weaned.", "success")
     return _back_to_colony("cages")
@@ -3818,6 +4086,7 @@ def _too_young_to_wean(cage) -> str | None:
 
 @app.route("/colony/cages/<int:cage_row_id>/wean-distribute", methods=["POST"])
 @login_required
+@next_number_retried
 def cage_wean_distribute(cage_row_id: int):
     """Wean the source cage and distribute its pups to new or existing cages.
 
@@ -3842,7 +4111,8 @@ def cage_wean_distribute(cage_row_id: int):
     problems: list[str] = []
     source_cage_label = ""
 
-    with SessionLocal() as db_session:
+    with SessionLocal() as db_session, audit.batch(db_session, "update", "wean and distribute a cage",
+                                                   "mouse_cages") as batch_row:
         source_cage = db_session.get(CageRecord, cage_row_id)
         if source_cage is None:
             flash("Cage not found.", "error")
@@ -3906,6 +4176,8 @@ def cage_wean_distribute(cage_row_id: int):
                 moved_count += 1
 
         source_cage.date_give_birth = None
+        batch_row.description = f"wean cage {source_cage_label} ({moved_count} mice moved)"[:200]
+        batch_row.record_count = moved_count + 1
         db_session.commit()
 
     if moved_count:
@@ -3928,6 +4200,7 @@ def _litter_refusal(litter, view: str = "litters"):
 
 @app.route("/colony/litters/create", methods=["POST"])
 @login_required
+@next_number_retried
 def create_litter():
     """Create a litter. A blank ID takes the next free number; an ID that is
     already a litter is refused rather than overwriting that litter."""
@@ -4312,7 +4585,7 @@ def calendar_items(db_session, start: date | None, end: date | None, owner: str 
         if repeat is None:
             items.append(item)
             continue
-        item["raw"]["repeat"] = lab_calendar.repeat_summary(repeat)
+        item["raw"]["repeat"] = lab_calendar.repeat_summary(repeat, e.event_date)
         for day in lab_calendar.occurrences(e.event_date, repeat, start, end):
             shift = timedelta(days=(day - e.event_date).days)
             copy = dict(item, id=f"{item['id']}@{day.isoformat()}",
@@ -4676,9 +4949,24 @@ def calendar_item_create():
                 description=payload.get("body", "") or payload.get("description", ""),
                 owner=owner,
             )
+        # "Change this one only": one date of a repeating event becomes an
+        # event of its own (this one), and the series skips that date.
+        split = payload.get("split_from") if kind != "task" else None
+        if isinstance(split, dict):
+            series = db_session.get(CalendarEvent, lab_calendar._int(split.get("event_id")))
+            day = lab_calendar._date(split.get("date"))
+            repeat = series and db_session.scalar(
+                select(CalendarRepeat).where(CalendarRepeat.event_id_fk == series.id))
+            if repeat is None or day is None:
+                return jsonify({"ok": False, "error": "That event does not repeat."}), 404
+            if not lab_calendar._can_edit(series.owner):
+                return jsonify({"ok": False, "error": "Only the person who added this event can change it."}), 403
+            row.event_type, row.animal_id_fk = series.event_type, series.animal_id_fk
+            skip = {d for d in (repeat.skip or "").split(",") if d} | {day.isoformat()}
+            repeat.skip = ",".join(sorted(skip))
         db_session.add(row)
         db_session.flush()
-        if kind != "task":
+        if kind != "task" and not isinstance(split, dict):
             lab_calendar.save_repeat(db_session, row, payload.get("repeat"))
         db_session.commit()
         if kind == "task":
@@ -4836,8 +5124,8 @@ def _serialize_page(page: NotebookPage) -> dict:
 @app.route("/notebook")
 @login_required
 def notebook():
-    selected_tab_id = request.args.get("tab", type=int)
-    selected_page_id = request.args.get("page", type=int)
+    selected_tab_id = arg_int("tab", None)
+    selected_page_id = arg_int("page", None)
     with SessionLocal() as db_session:
         tabs = db_session.scalars(
             _notebook_owner_filter(select(NotebookTab)).order_by(NotebookTab.position, NotebookTab.id)
@@ -4879,6 +5167,10 @@ def notebook():
                               if selected_page is not None else None)
         selected_tab_id_value = selected_tab.id if selected_tab else None
         me = {"username": g.user.username, "name": g.user.display_name or g.user.username}
+        # Old keys too ("old": the @ menu leaves them out), so a chip written
+        # before a rename still reads as one.
+        mention_types = [{"key": key, "label": m.label, "noun": m.item_noun, **({"old": True} if key != m.key else {})}
+                         for key, m in _mention_modules(db_session, with_old=True).items()]
 
     return render_template(
         "notebook.html",
@@ -4890,6 +5182,8 @@ def notebook():
         kind_icons=lab_notebook.KIND_ICONS,
         statuses=lab_notebook.STATUSES,
         me=me,
+        mention_types=mention_types,
+        lab_zone=lab.clock_zone(),
         starters=[{"key": key, "title": st["title"], "kind": st["kind"], "hint": st["hint"]}
                   for key, st in lab_notebook.STARTERS.items()],
     )
@@ -4998,9 +5292,18 @@ def global_search():
         q = q.lstrip("#").strip()
     if not q:
         return jsonify({"ok": True, "results": []})
-    like = f"%{q}%"
-    is_digit = q.isdigit()
+    # % and _ are what they are, not LIKE's wildcards (they matched everything).
+    like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    is_digit = q.isdigit() and len(q) <= 12        # a 21-digit "number" is text to look for, not an ID
     limit = 5
+    starts = like[1:]                               # "S20%": a name that starts with it
+
+    def by_name(column, *then):
+        """A name that is the search, then one that starts with it, then one
+        that has it, then the rest (a match in the notes): "S20" finds the
+        S20-* tubes before a note that says "S200"."""
+        return (case((func.lower(column) == q.lower(), 0), (column.ilike(starts, escape="\\"), 1),
+                     (column.ilike(like, escape="\\"), 2), else_=3), *then)
     results: list[dict] = []
     with SessionLocal() as db_session:
         mouse_stmt = select(MouseRecord)
@@ -5008,7 +5311,7 @@ def global_search():
             mouse_stmt = mouse_stmt.where(MouseRecord.mouse_id == int(q))
         else:
             mouse_stmt = mouse_stmt.where(
-                MouseRecord.genotype.ilike(like) | MouseRecord.owner.ilike(like) | MouseRecord.note.ilike(like)
+                MouseRecord.genotype.ilike(like, escape="\\") | MouseRecord.owner.ilike(like, escape="\\") | MouseRecord.note.ilike(like, escape="\\")
             )
         for m in db_session.scalars(mouse_stmt.order_by(MouseRecord.mouse_id.desc()).limit(limit)).all():
             results.append({
@@ -5023,9 +5326,9 @@ def global_search():
 
         # The rest of the colony: cages, litters, experiments, strains.
         cage_stmt = select(CageRecord).where(
-            CageRecord.cage_id.ilike(like) | CageRecord.purpose.ilike(like)
-            | CageRecord.genotype_summary.ilike(like) | CageRecord.card_id.ilike(like)
-            | CageRecord.notes.ilike(like) | CageRecord.room.ilike(like))
+            CageRecord.cage_id.ilike(like, escape="\\") | CageRecord.purpose.ilike(like, escape="\\")
+            | CageRecord.genotype_summary.ilike(like, escape="\\") | CageRecord.card_id.ilike(like, escape="\\")
+            | CageRecord.notes.ilike(like, escape="\\") | CageRecord.room.ilike(like, escape="\\"))
         for cage in db_session.scalars(cage_stmt.order_by(CageRecord.cage_id).limit(limit)).all():
             live = sum(1 for mouse in cage.mice if mouse_is_active(mouse))
             results.append({
@@ -5036,8 +5339,8 @@ def global_search():
                 "url": url_for("colony", view="cages", scope="all", q=cage.cage_id),
             })
         litter_stmt = select(LitterRecord).where(
-            LitterRecord.litter_id.ilike(like) | LitterRecord.cohort_name.ilike(like)
-            | LitterRecord.notes.ilike(like))
+            LitterRecord.litter_id.ilike(like, escape="\\") | LitterRecord.cohort_name.ilike(like, escape="\\")
+            | LitterRecord.notes.ilike(like, escape="\\"))
         for litter in db_session.scalars(litter_stmt.order_by(LitterRecord.litter_id).limit(limit)).all():
             results.append({
                 "type": "litter",
@@ -5049,8 +5352,8 @@ def global_search():
                 "url": url_for("colony", view="litters", q=litter.litter_id),
             })
         exp_stmt = select(Experiment).where(
-            Experiment.name.ilike(like) | Experiment.description.ilike(like)
-            | Experiment.treatment_plan.ilike(like))
+            Experiment.name.ilike(like, escape="\\") | Experiment.description.ilike(like, escape="\\")
+            | Experiment.treatment_plan.ilike(like, escape="\\"))
         for exp in db_session.scalars(exp_stmt.order_by(Experiment.created_at.desc()).limit(limit)).all():
             results.append({
                 "type": "experiment",
@@ -5061,8 +5364,8 @@ def global_search():
                 "url": experiment_pages.page_url(exp),
             })
         strain_stmt = select(StrainRecord).where(
-            StrainRecord.strain_name.ilike(like) | StrainRecord.strain_number.ilike(like)
-            | StrainRecord.strain_background.ilike(like) | StrainRecord.description.ilike(like))
+            StrainRecord.strain_name.ilike(like, escape="\\") | StrainRecord.strain_number.ilike(like, escape="\\")
+            | StrainRecord.strain_background.ilike(like, escape="\\") | StrainRecord.description.ilike(like, escape="\\"))
         for strain in db_session.scalars(strain_stmt.order_by(StrainRecord.strain_name).limit(limit)).all():
             results.append({
                 "type": "strain",
@@ -5077,12 +5380,12 @@ def global_search():
             plasmid_stmt = plasmid_stmt.where(PlasmidRecord.plasmid_id == int(q))
         else:
             plasmid_stmt = plasmid_stmt.where(
-                PlasmidRecord.name.ilike(like) | PlasmidRecord.backbone.ilike(like)
-                | PlasmidRecord.insert_seq.ilike(like) | PlasmidRecord.resistance.ilike(like)
-                | PlasmidRecord.owner.ilike(like) | PlasmidRecord.storage_box.ilike(like)
-                | PlasmidRecord.location.ilike(like) | PlasmidRecord.notes.ilike(like)
+                PlasmidRecord.name.ilike(like, escape="\\") | PlasmidRecord.backbone.ilike(like, escape="\\")
+                | PlasmidRecord.insert_seq.ilike(like, escape="\\") | PlasmidRecord.resistance.ilike(like, escape="\\")
+                | PlasmidRecord.owner.ilike(like, escape="\\") | PlasmidRecord.storage_box.ilike(like, escape="\\")
+                | PlasmidRecord.location.ilike(like, escape="\\") | PlasmidRecord.notes.ilike(like, escape="\\")
             )
-        for p in db_session.scalars(plasmid_stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(limit)).all():
+        for p in db_session.scalars(plasmid_stmt.order_by(*by_name(PlasmidRecord.name, PlasmidRecord.plasmid_id.desc())).limit(limit)).all():
             # Where it is, in its box's own position names ("Box A · D7").
             where = _plasmid_where(p, _box_of(db_session, p))
             results.append({
@@ -5091,26 +5394,26 @@ def global_search():
                 "label": f"Plasmid #{p.plasmid_id} · {p.name or '(no name)'}",
                 "sublabel": f"{p.backbone or '?'} · {p.resistance or 'no resistance'} · {p.owner or 'no owner'}"
                             + (f" · {where}" if where else ""),
-                "url": url_for("plasmid_detail", row_id=p.id),
+                "url": url_for("plasmid_page", number=p.plasmid_id),
             })
 
         # Every lab inventory: samples, orders, reagents, antibodies, custom.
         kind_type = {"orders": "order", "samples": "sample", "reagents": "reagent", "antibodies": "antibody",
-                     "viruses": "virus"}
+                     "viruses": "virus", "primers": "primer", "cell_lines": "cell-line"}
         # Only databases this person sees: the lab's and their own (app/lab.py).
         from . import inventory_service as inventories
         modules = {m.id: m for m in inventories.list_modules(db_session)}
-        item_stmt = select(InventoryItem)
+        item_stmt = select(InventoryItem).where(InventoryItem.module_id_fk.in_(list(modules)))
         if is_digit:
             item_stmt = item_stmt.where(InventoryItem.number == int(q))
         else:
             item_stmt = item_stmt.where(
-                InventoryItem.name.ilike(like) | InventoryItem.category.ilike(like)
-                | InventoryItem.vendor.ilike(like) | InventoryItem.catalog_number.ilike(like)
-                | InventoryItem.lot.ilike(like) | InventoryItem.notes.ilike(like)
-                | InventoryItem.attrs.ilike(like)
+                InventoryItem.name.ilike(like, escape="\\") | InventoryItem.category.ilike(like, escape="\\")
+                | InventoryItem.vendor.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
+                | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.notes.ilike(like, escape="\\")
+                | InventoryItem.attrs.ilike(like, escape="\\")
             )
-        for item in db_session.scalars(item_stmt.order_by(InventoryItem.id.desc()).limit(limit * 2)).all():
+        for item in db_session.scalars(item_stmt.order_by(*by_name(InventoryItem.name, InventoryItem.id.desc())).limit(limit * 2)).all():
             module = modules.get(item.module_id_fk)
             if module is None:
                 continue
@@ -5133,8 +5436,8 @@ def global_search():
             unit_stmt = unit_stmt.where(StockUnit.number == int(q))
         else:
             unit_stmt = unit_stmt.where(
-                StockUnit.genotype.ilike(like) | StockUnit.female_genotype.ilike(like)
-                | StockUnit.male_genotype.ilike(like) | StockUnit.notes.ilike(like))
+                StockUnit.genotype.ilike(like, escape="\\") | StockUnit.female_genotype.ilike(like, escape="\\")
+                | StockUnit.male_genotype.ilike(like, escape="\\") | StockUnit.notes.ilike(like, escape="\\"))
         for unit in db_session.scalars(unit_stmt.order_by(StockUnit.id.desc()).limit(limit * 2)).all():
             mv = stock_modules.get(unit.module_id_fk)
             if mv is None:
@@ -5151,8 +5454,8 @@ def global_search():
         # Zebrafish tanks, lines and clutches.
         for t in db_session.scalars(
                 select(TankRecord).options(joinedload(TankRecord.line))
-                .where(TankRecord.tank_id.ilike(like) | TankRecord.card_id.ilike(like)
-                       | TankRecord.owner.ilike(like) | TankRecord.notes.ilike(like))
+                .where(TankRecord.tank_id.ilike(like, escape="\\") | TankRecord.card_id.ilike(like, escape="\\")
+                       | TankRecord.owner.ilike(like, escape="\\") | TankRecord.notes.ilike(like, escape="\\"))
                 .order_by(TankRecord.tank_id).limit(limit)).all():
             results.append({
                 "type": "tank", "id": t.id, "label": f"Tank {t.tank_id}",
@@ -5160,8 +5463,8 @@ def global_search():
                 "url": url_for("zebrafish", view="tanks") + f"#tank-{t.id}",
             })
         for ln in db_session.scalars(
-                select(FishLine).where(FishLine.name.ilike(like) | FishLine.zfin_name.ilike(like)
-                                       | FishLine.allele.ilike(like) | FishLine.transgene_summary.ilike(like))
+                select(FishLine).where(FishLine.name.ilike(like, escape="\\") | FishLine.zfin_name.ilike(like, escape="\\")
+                                       | FishLine.allele.ilike(like, escape="\\") | FishLine.transgene_summary.ilike(like, escape="\\"))
                 .order_by(FishLine.name).limit(limit)).all():
             results.append({
                 "type": "fish-line", "id": ln.id, "label": ln.name,
@@ -5169,7 +5472,7 @@ def global_search():
                 "url": url_for("zebrafish_line_detail", line_id=ln.id),
             })
         for c in db_session.scalars(
-                select(ClutchRecord).where(ClutchRecord.clutch_id.ilike(like) | ClutchRecord.notes.ilike(like))
+                select(ClutchRecord).where(ClutchRecord.clutch_id.ilike(like, escape="\\") | ClutchRecord.notes.ilike(like, escape="\\"))
                 .order_by(ClutchRecord.date_of_fertilization.desc()).limit(limit)).all():
             results.append({
                 "type": "clutch", "id": c.id, "label": f"Clutch {c.clutch_id}",
@@ -5185,8 +5488,8 @@ def global_search():
         page_stmt = (
             lab_notebook.accessible_filter(
                 select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
-            .where(NotebookPage.title.ilike(like) | NotebookPage.body.ilike(like))
-            .order_by(NotebookPage.updated_at.desc())
+            .where(NotebookPage.title.ilike(like, escape="\\") | NotebookPage.body.ilike(like, escape="\\"))
+            .order_by(*by_name(NotebookPage.title, NotebookPage.updated_at.desc()))
             .limit(limit)
         )
         for page in db_session.scalars(page_stmt).all():
@@ -5216,6 +5519,7 @@ def global_search():
 
 @app.route("/import/<entity>", methods=["POST"])
 @login_required
+@next_number_retried
 def csv_import(entity: str):
     """Import a CSV into one of the data tables.
 
@@ -5249,22 +5553,35 @@ def csv_import(entity: str):
     preview: list[dict] = []
     with SessionLocal() as db_session:
         if entity == "mouse":
-            # Reserve one contiguous block up front. Calling next_mouse_id()
-            # per row used to hand every row the same number, so any CSV
-            # without explicit IDs died on the unique index.
-            blank_ids = sum(1 for r in rows if not (r.get("mouse_id") or "").strip())
-            reserved = reserve_mouse_ids(db_session, blank_ids)
-            reserved_iter = iter(reserved)
-
+            # Numbers come from one counter that skips every number already
+            # used, in the database or earlier in this file, and the check
+            # is the same in the dry run: a file whose ID repeats, or takes
+            # a number a blank row was about to get, is caught row by row
+            # instead of failing whole at the end.
+            from .inventory_service import get_setting, set_setting
+            from .services import MOUSE_ID_HIGH
+            taken = set(db_session.scalars(select(MouseRecord.mouse_id)))
+            high = get_setting(db_session, MOUSE_ID_HIGH, "")
+            next_free = max(max(taken, default=0), int(high) if high.isdigit() else 0) + 1
+            typed = {int(v) for r in rows if (v := (r.get("mouse_id") or "").strip()).isdigit()}
+            if not dry_run:
+                batch_ctx = audit.batch(db_session, "create", f"import mice from {upload.filename}"[:200], "mice")
+                batch_ctx.__enter__()
             for idx, row in enumerate(rows, start=2):
                 try:
                     mouse_id_raw = (row.get("mouse_id") or "").strip()
-                    mouse_id_value = (int(mouse_id_raw) if mouse_id_raw
-                                      else next(reserved_iter))
-                    existing = db_session.scalar(select(MouseRecord).where(MouseRecord.mouse_id == mouse_id_value))
-                    if existing is not None:
+                    if mouse_id_raw:
+                        if not mouse_id_raw.isdigit() or int(mouse_id_raw) < 1:
+                            raise ValueError(f"mouse_id “{mouse_id_raw}” is not a whole number above zero")
+                        mouse_id_value = int(mouse_id_raw)
+                    else:
+                        while next_free in taken or next_free in typed:
+                            next_free += 1
+                        mouse_id_value = next_free
+                    if mouse_id_value in taken:
                         errors.append(f"row {idx}: mouse_id {mouse_id_value} already exists")
                         continue
+                    taken.add(mouse_id_value)
                     mouse = MouseRecord(
                         mouse_id=mouse_id_value,
                         gender=(row.get("gender") or "").strip(),
@@ -5279,6 +5596,11 @@ def csv_import(entity: str):
                     created += 1
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"row {idx}: {exc}")
+            if not dry_run:
+                if taken:
+                    set_setting(db_session, MOUSE_ID_HIGH, str(max(taken)))
+                db_session.flush()
+                batch_ctx.__exit__(None, None, None)
         elif entity == "plasmid":
             # Numbers for rows without one come from a counter that skips
             # numbers already used (in the database or earlier in the file);
@@ -5313,6 +5635,8 @@ def csv_import(entity: str):
                         resistance=(row.get("resistance") or "").strip(),
                         owner=(row.get("owner") or g.user.username).strip(),
                         location=(row.get("location") or "").strip(),
+                        concentration=_plasmid_measure(row, "concentration"),
+                        a260_280=_plasmid_measure(row, "a260_280"),
                         notes=(row.get("notes") or "").strip(),
                     )
                     if not dry_run:
@@ -5481,20 +5805,33 @@ def audit_log_view():
     return render_template("audit.html", entries=entries)
 
 
+def _templates_visible(me: str):
+    """Your own templates and the lab's."""
+    return (NotebookTemplate.owner_username == me) | NotebookTemplate.lab.is_(True)
+
+
 @app.route("/notebook/templates")
 @login_required
 def notebook_templates_list():
+    """Your templates, then the lab's, each with its page type."""
+    me = g.user.username
     with SessionLocal() as db_session:
         rows = db_session.scalars(
-            select(NotebookTemplate)
-            .where(NotebookTemplate.owner_username == g.user.username)
-            .order_by(NotebookTemplate.updated_at.desc())
+            select(NotebookTemplate).where(_templates_visible(me))
+            .order_by((NotebookTemplate.owner_username != me), NotebookTemplate.updated_at.desc())
         ).all()
+        names = lab_notebook.display_names(db_session, list({t.owner_username for t in rows}))
         return jsonify({"ok": True, "templates": [
             {
                 "id": t.id,
                 "title": t.title,
                 "icon": t.icon,
+                "kind": t.kind or "note",
+                "kind_label": lab_notebook.KINDS.get(t.kind or "note", "Note"),
+                "lab": bool(t.lab),
+                "mine": t.owner_username == me,
+                "can_delete": t.owner_username == me or (bool(t.lab) and access.is_admin()),
+                "owner_name": names.get(t.owner_username, t.owner_username),
                 "body_preview": (t.body or "")[:160],
                 "updated_at": t.updated_at.isoformat(),
             }
@@ -5507,10 +5844,10 @@ def notebook_templates_list():
 def notebook_template_get(template_id: int):
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or template.owner_username != g.user.username:
+        if template is None or not (template.owner_username == g.user.username or template.lab):
             return jsonify({"ok": False}), 404
-        return jsonify({"ok": True, "template": {"id": template.id, "title": template.title,
-                                                 "icon": template.icon, "body": template.body or ""}})
+        return jsonify({"ok": True, "template": {"id": template.id, "title": template.title, "icon": template.icon,
+                                                 "kind": template.kind or "note", "body": template.body or ""}})
 
 
 @app.route("/notebook/templates/create", methods=["POST"])
@@ -5522,11 +5859,16 @@ def notebook_template_create():
       title (str, required)
       icon  (str, optional — emoji/single-character)
       body  (str, optional)
-      from_page_id (int, optional — if set, copies the page body into the template)
+      kind  (str, optional — the page type pages made from it get)
+      from_page_id (int, optional — copies the page's text and its type)
+      structure_only (1, optional — with from_page_id: headings, steps and
+        table headers, without the results; lab_notebook.structure_only)
+      lab (1, optional — everyone in the lab can start pages from it)
     """
-    title = (request.form.get("title") or "").strip() or "Untitled template"
+    title = (request.form.get("title") or "").strip()[:160] or "Untitled template"
     icon = (request.form.get("icon") or "").strip()
     body = request.form.get("body", "")
+    kind = request.form.get("kind", "")
     from_page_id = request.form.get("from_page_id", type=int)
 
     with SessionLocal() as db_session:
@@ -5535,26 +5877,40 @@ def notebook_template_create():
             if page is None or lab_notebook.role_for(db_session, page) is None:
                 return jsonify({"ok": False, "error": "page not found"}), 404
             body = page.body or body
-        template = NotebookTemplate(
-            owner_username=g.user.username,
-            title=title,
-            icon=icon,
-            body=body,
-        )
-        db_session.add(template)
+            info = lab_notebook.info_for(db_session, page.id)
+            kind = info.kind if info is not None else kind
+            if request.form.get("structure_only") == "1":
+                body = lab_notebook.structure_only(body)
+        # One of theirs by that name already: asked first, then saved over
+        # (replace=1), not a second one of the same name in the list.
+        template = db_session.scalar(select(NotebookTemplate).where(
+            NotebookTemplate.owner_username == g.user.username,
+            func.lower(NotebookTemplate.title) == title.lower()).limit(1))
+        if template is not None and request.form.get("replace") != "1":
+            return jsonify({"ok": False, "exists": True,
+                            "error": f"You already have a template called “{template.title}”."}), 409
+        if template is None:
+            template = NotebookTemplate(owner_username=g.user.username)
+            db_session.add(template)
+        template.title, template.icon, template.body = title, icon, body
+        template.kind = kind if kind in lab_notebook.KINDS and kind != "daily" else "note"
+        template.lab = request.form.get("lab") == "1"
         db_session.commit()
         return jsonify({
             "ok": True,
-            "template": {"id": template.id, "title": template.title, "icon": template.icon},
+            "template": {"id": template.id, "title": template.title, "icon": template.icon,
+                         "kind": template.kind, "lab": template.lab},
         })
 
 
 @app.route("/notebook/templates/<int:template_id>/delete", methods=["POST"])
 @login_required
 def notebook_template_delete(template_id: int):
+    """Its maker's to delete (a lab template also an admin's)."""
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or template.owner_username != g.user.username:
+        if template is None or not (template.owner_username == g.user.username
+                                    or (template.lab and access.is_admin())):
             return jsonify({"ok": False}), 404
         db_session.delete(template)
         db_session.commit()
@@ -5574,7 +5930,7 @@ def notebook_create_page_from_template():
 
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or template.owner_username != g.user.username:
+        if template is None or not (template.owner_username == g.user.username or template.lab):
             return jsonify({"ok": False, "error": "template not found"}), 404
 
         if tab_id:
@@ -5777,6 +6133,72 @@ def notebook_lookup_plasmid(plasmid_id: int):
         )
 
 
+# @links to inventory records: "@antibodies 12" is item #12 of the database
+# whose key is "antibodies". Mice, plasmids and orders keep their own words.
+MENTION_BUILTINS = ("mouse", "plasmid", "order", "all")
+
+
+def _mention_modules(db_session, with_old: bool = False) -> dict[str, InventoryModule]:
+    """The inventories the signed-in person can see and @link, by key; with
+    `with_old`, also by the keys they had before a rename, so "@antibodies 5"
+    written before Antibodies became Primary antibodies still finds it."""
+    from . import database_keys
+    from . import inventory_service as inventories
+    modules = {m.key: m for m in inventories.list_modules(db_session)
+               if m.kind != "orders" and m.key not in MENTION_BUILTINS}
+    if with_old:
+        by_id = {m.id: m for m in modules.values()}
+        for old, module_id in database_keys.aliases_by_key(db_session, "inventory").items():
+            if module_id in by_id and old not in modules and old not in MENTION_BUILTINS:
+                modules[old] = by_id[module_id]
+    return modules
+
+
+def _mention_items(db_session, module: InventoryModule, query: str, limit: int) -> list[InventoryItem]:
+    """Records whose name, catalogue number, lot or vendor holds what was
+    typed; digits also find the record of that number (first)."""
+    stmt = select(InventoryItem).where(InventoryItem.module_id_fk == module.id)
+    if query:
+        like = like_pattern(query)
+        found = (InventoryItem.name.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
+                 | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\"))
+        if query.isdigit():
+            found = found | (InventoryItem.number == int(query))
+            stmt = stmt.where(found).order_by((InventoryItem.number != int(query)))
+        else:
+            stmt = stmt.where(found)
+    return list(db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)))
+
+
+def _mention_label(module: InventoryModule, item: InventoryItem, with_noun: bool = False) -> str:
+    parts = [f"{module.item_noun.capitalize()} #{item.number}" if with_noun else f"#{item.number}",
+             item.name or "(no name)"]
+    parts += [v for v in (item.vendor, item.lot and f"lot {item.lot}") if v]
+    return " · ".join(parts)
+
+
+@app.route("/notebook/lookup/<key>/<int:number>")
+@login_required
+def notebook_lookup_item(key: str, number: int):
+    """What the popover on an @<inventory> <n> chip shows."""
+    from . import inventory_service as inventories
+    with SessionLocal() as db_session:
+        module = _mention_modules(db_session, with_old=True).get(key)
+        item = module and db_session.scalar(select(InventoryItem).where(
+            InventoryItem.module_id_fk == module.id, InventoryItem.number == number))
+        if not item:
+            return jsonify({"ok": False}), 404
+        where = " · ".join(v for v in ((item.rack.name if item.rack else ""), inventories.rack_label(item),
+                                       item.location_note) if v)
+        amount = " ".join(v for v in (item.quantity, item.unit) if v)
+        fields = [("Name", item.name), ("Category", item.category), ("Status", item.status),
+                  ("Owner", "Lab common" if item.is_shared else item.owner), ("Vendor", item.vendor),
+                  ("Catalog #", item.catalog_number), ("Lot", item.lot), ("Amount", amount), ("Where", where),
+                  ("Expires", item.expires_on.isoformat() if item.expires_on else "")]
+        return jsonify({"ok": True, "label": _mention_label(module, item, True), "type_label": module.label,
+                        "name": item.name or "", "fields": [[k, v] for k, v in fields if v]})
+
+
 def _order_items_query(db_session, query: str, limit: int):
     """Orders for @order mentions: items of the first orders inventory,
     where an order's number is what @order <n> refers to."""
@@ -5788,9 +6210,9 @@ def _order_items_query(db_session, query: str, limit: int):
     if query.isdigit():
         stmt = stmt.where(InventoryItem.number == int(query))
     elif query:
-        like = f"%{query}%"
-        stmt = stmt.where(InventoryItem.name.ilike(like) | InventoryItem.vendor.ilike(like)
-                          | InventoryItem.catalog_number.ilike(like))
+        like = like_pattern(query)
+        stmt = stmt.where(InventoryItem.name.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\")
+                          | InventoryItem.catalog_number.ilike(like, escape="\\"))
     return db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)).all()
 
 
@@ -5838,7 +6260,7 @@ def notebook_open_mention(entity_type: str, number: int):
         if entity_type == "plasmid":
             plasmid = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == number))
             if plasmid is not None:
-                return redirect(url_for("plasmid_detail", row_id=plasmid.id))
+                return redirect(url_for("plasmid_page", number=plasmid.plasmid_id))
             flash(f"There is no plasmid #{number}.", "warning")
             return redirect(url_for("plasmids"))
         if entity_type == "order":
@@ -5848,6 +6270,14 @@ def notebook_open_mention(entity_type: str, number: int):
                 return redirect(url_for("inventory.module", key=module.key, open=found[0].id))
             flash(f"There is no order #{number}.", "warning")
             return redirect(url_for("home_dashboard"))
+        module = _mention_modules(db_session, with_old=True).get(entity_type)
+        if module is not None:
+            item = db_session.scalar(select(InventoryItem).where(
+                InventoryItem.module_id_fk == module.id, InventoryItem.number == number))
+            if item is not None:
+                return redirect(url_for("inventory.module", key=module.key, open=item.id))
+            flash(f"There is no {module.item_noun} #{number} in {module.label}.", "warning")
+            return redirect(url_for("inventory.module", key=module.key))
     abort(404)
 
 
@@ -5859,14 +6289,23 @@ def notebook_backlinks(entity_type: str, entity_id: int):
     Scoped to pages the current user may open (theirs and shared). Returns a list of
     {page_id, page_title, tab_id, tab_title, snippet, updated_at}.
     """
-    if entity_type not in ("mouse", "plasmid", "order"):
-        return jsonify({"ok": False, "error": "bad type"}), 400
-    needle = f"@{entity_type} {entity_id}"
     with SessionLocal() as db_session:
+        # An inventory is found by every key it has had: "@antibodies 5" from
+        # before a rename is the same record as "@primary_antibodies 5".
+        keys = [entity_type]
+        if entity_type not in ("mouse", "plasmid", "order"):
+            known = _mention_modules(db_session, with_old=True)
+            if entity_type not in known:
+                return jsonify({"ok": False, "error": "bad type"}), 400
+            keys = [k for k, m in known.items() if m.id == known[entity_type].id]
+        found = None
+        for key in keys:
+            clause = NotebookPage.body.ilike(like_pattern(f"@{key} {entity_id}"), escape="\\")
+            found = clause if found is None else (found | clause)
         stmt = (
             lab_notebook.accessible_filter(
                 select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
-            .where(NotebookPage.body.ilike(f"%{needle}%"))
+            .where(found)
             .order_by(NotebookPage.updated_at.desc())
             .limit(25)
         )
@@ -5874,7 +6313,7 @@ def notebook_backlinks(entity_type: str, entity_id: int):
         items = []
         # Use a word-boundary check to avoid `@mouse 12` matching `@mouse 123`.
         import re
-        pattern = re.compile(rf"@{entity_type}\s+{entity_id}(?!\d)")
+        pattern = re.compile(rf"@(?:{'|'.join(re.escape(k) for k in keys)})\s+{entity_id}(?!\d)")
         for page in rows:
             body = page.body or ""
             m = pattern.search(body)
@@ -5902,14 +6341,14 @@ def notebook_backlinks(entity_type: str, entity_id: int):
 @login_required
 def notebook_search_entity(entity_type: str):
     query = (request.args.get("q") or "").strip()
-    limit = min(int(request.args.get("limit", 8)), 25)
+    limit = max(1, min(arg_int("limit", 8), 25))
     with SessionLocal() as db_session:
         if entity_type == "mouse":
             stmt = select(MouseRecord)
             if query.isdigit():
                 stmt = stmt.where(MouseRecord.mouse_id == int(query))
             elif query:
-                stmt = stmt.where(MouseRecord.genotype.ilike(f"%{query}%") | MouseRecord.owner.ilike(f"%{query}%"))
+                stmt = stmt.where(MouseRecord.genotype.ilike(like_pattern(query), escape="\\") | MouseRecord.owner.ilike(like_pattern(query), escape="\\"))
             stmt = stmt.order_by(MouseRecord.mouse_id.desc()).limit(limit)
             rows = db_session.scalars(stmt).all()
             return jsonify({"ok": True, "items": [
@@ -5921,7 +6360,7 @@ def notebook_search_entity(entity_type: str):
             if query.isdigit():
                 stmt = stmt.where(PlasmidRecord.plasmid_id == int(query))
             elif query:
-                stmt = stmt.where(PlasmidRecord.name.ilike(f"%{query}%") | PlasmidRecord.backbone.ilike(f"%{query}%"))
+                stmt = stmt.where(PlasmidRecord.name.ilike(like_pattern(query), escape="\\") | PlasmidRecord.backbone.ilike(like_pattern(query), escape="\\"))
             stmt = stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(limit)
             rows = db_session.scalars(stmt).all()
             return jsonify({"ok": True, "items": [
@@ -5939,14 +6378,24 @@ def notebook_search_entity(entity_type: str):
             # `type` so the editor can build the right `@<type> <id>` chip.
             per_type_limit = max(2, limit // 3)
             items: list[dict] = []
+            # People first, for "@jordan" and action items ("- [ ] @jordan …"):
+            # a name that starts with what was typed.
+            if query and not query.isdigit():
+                q = query.lower()
+                for person in lab_notebook.people(db_session):
+                    names = [person["username"].lower(), *person["name"].lower().split()]
+                    if not person["guest"] and any(n.startswith(q) for n in names):
+                        items.append({"type": "person", "type_label": "Person", "id": person["username"],
+                                      "label": f"{person['name']} · @{person['username']}"})
+                items = items[:3]
 
             mouse_stmt = select(MouseRecord)
             if query.isdigit():
                 mouse_stmt = mouse_stmt.where(MouseRecord.mouse_id == int(query))
             elif query:
-                like = f"%{query}%"
+                like = like_pattern(query)
                 mouse_stmt = mouse_stmt.where(
-                    MouseRecord.genotype.ilike(like) | MouseRecord.owner.ilike(like)
+                    MouseRecord.genotype.ilike(like, escape="\\") | MouseRecord.owner.ilike(like, escape="\\")
                 )
             mouse_stmt = mouse_stmt.order_by(MouseRecord.mouse_id.desc()).limit(per_type_limit)
             for m in db_session.scalars(mouse_stmt).all():
@@ -5960,9 +6409,9 @@ def notebook_search_entity(entity_type: str):
             if query.isdigit():
                 plasmid_stmt = plasmid_stmt.where(PlasmidRecord.plasmid_id == int(query))
             elif query:
-                like = f"%{query}%"
+                like = like_pattern(query)
                 plasmid_stmt = plasmid_stmt.where(
-                    PlasmidRecord.name.ilike(like) | PlasmidRecord.backbone.ilike(like)
+                    PlasmidRecord.name.ilike(like, escape="\\") | PlasmidRecord.backbone.ilike(like, escape="\\")
                 )
             plasmid_stmt = plasmid_stmt.order_by(PlasmidRecord.plasmid_id.desc()).limit(per_type_limit)
             for p in db_session.scalars(plasmid_stmt).all():
@@ -5979,13 +6428,27 @@ def notebook_search_entity(entity_type: str):
                     "label": f"Order #{o.number} · {o.vendor or '?'} · {o.name or '(no item)'}",
                 })
 
+            # Every other inventory, most recent first; a bare "@" keeps to
+            # the three above so the list stays short.
+            if query:
+                for module in _mention_modules(db_session).values():
+                    for i in _mention_items(db_session, module, query, per_type_limit):
+                        items.append({"type": module.key, "type_label": module.label, "id": i.number,
+                                      "label": _mention_label(module, i, True)})
+
             return jsonify({"ok": True, "items": items[:limit]})
+        module = _mention_modules(db_session, with_old=True).get(entity_type)
+        if module is not None:
+            return jsonify({"ok": True, "items": [
+                {"id": i.number, "label": _mention_label(module, i)}
+                for i in _mention_items(db_session, module, query, limit)]})
         return jsonify({"ok": False, "error": f"Unknown entity type: {entity_type}"}), 400
 
 
 # ---------------------------------------------------------------------------
 # Plasmids: the sheet, box grid and list (/plasmids), the detail page with
-# the sequence editor (/plasmids/<id>), and the writes behind them.
+# the sequence editor (/plasmid/<number>), and the writes behind them
+# (/plasmids/<row id>/…, where the page's own script sends them).
 #
 # Every write checks access.can_edit: a plasmid is its owner's (or anyone's
 # while unowned); admins can change anything. Boxes are PlasmidBox rows
@@ -6060,6 +6523,7 @@ def _plasmid_values(p, box) -> dict:
     return {
         "name": p.name, "backbone": p.backbone, "insert_seq": p.insert_seq,
         "resistance": p.resistance, "owner": p.owner, "location": p.location,
+        "concentration": p.concentration, "a260_280": p.a260_280, "is_shared": "1" if p.is_shared else "0",
         "notes": p.notes, "box_id": str(p.box_id_fk or ""), "storage_box": box.name if box else "",
         "position": pbox.label(p, box),
     }
@@ -6069,7 +6533,7 @@ def _plasmid_payload(p, box, editable: bool) -> dict:
     """The record dialog's view of a plasmid (see static/record-dialog.js)."""
     values = _plasmid_values(p, box)
     return {
-        "id": p.id, "_label": _plasmid_label(p), "_locked": not editable,
+        "id": p.id, "_label": _plasmid_label(p), "_locked": not editable, "_manage": access.can_manage(p),
         "plasmid_id": p.plasmid_id, **values,
         "box_id_was": values["box_id"], "position_was": values["position"],
     }
@@ -6116,8 +6580,24 @@ def _plasmid_back(row_id: int | None = None):
     if referrer.startswith(request.host_url):
         return redirect(referrer)
     if row_id:
-        return redirect(url_for("plasmid_detail", row_id=row_id))
+        return redirect(plasmid_page_url(row_id))
     return redirect(url_for("plasmids"))
+
+
+PLASMID_MEASURES = (("concentration", "Concentration (ng/µL)", 40), ("a260_280", "260/280", 20))
+
+
+def _plasmid_measure(form, field: str) -> str:
+    """A plasmid's concentration or 260/280 as typed, if it is a number
+    ("412", "1.86"); ValueError with the message to show otherwise."""
+    label, limit = next((lb, lim) for key, lb, lim in PLASMID_MEASURES if key == field)
+    value = (form.get(field) or "").strip().replace(",", ".")[:limit]
+    if value:
+        try:
+            float(value)
+        except ValueError:
+            raise ValueError(f"{label} is a number: “{value}” isn't one.") from None
+    return value
 
 
 def _plasmid_int(raw) -> int | None:
@@ -6140,7 +6620,7 @@ def plasmids():
             editable = access.can_edit(p)
             box = box_by_id.get(p.box_id_fk)
             rows.append({
-                "p": p, "box": box, "editable": editable, "mine": p.owner == me,
+                "p": p, "box": box, "editable": editable, "manageable": access.can_manage(p), "mine": p.owner == me,
                 "stored": pbox.is_stored(p), "position": pbox.label(p, box),
                 "where": _plasmid_where(p, box),
                 "length": len(p.full_sequence or ""),
@@ -6155,6 +6635,7 @@ def plasmids():
             "mine": sum(1 for r in rows if r["mine"]),
             "sequence": sum(1 for r in rows if r["length"]),
             "stored": sum(1 for r in rows if r["stored"]),
+            "lab": sum(1 for r in rows if r["p"].is_shared),
         }
         box_list = [{"id": b.id, "name": b.name, "location": b.location or ""} for b in boxes]
         return render_template(
@@ -6296,6 +6777,13 @@ def _make_plasmids(db_session, form, user, count, name, names, requested, parsed
             if not clash:
                 first = requested
         owner = form.get("owner", user).strip()[:120]
+        measures = {}
+        for field, _label, _limit in PLASMID_MEASURES:
+            try:
+                measures[field] = _plasmid_measure(form, field)
+            except ValueError as exc:
+                measures[field] = ""
+                notes.append(f"{exc} It was left empty.")
         made = []
         for i in range(count):
             record = PlasmidRecord(
@@ -6306,6 +6794,8 @@ def _make_plasmids(db_session, form, user, count, name, names, requested, parsed
                 resistance=(form.get("resistance") or "").strip()[:80],
                 owner=owner,
                 location=(form.get("location") or "").strip()[:120],
+                concentration=measures["concentration"], a260_280=measures["a260_280"],
+                is_shared=form.get("is_shared") == "1",
                 notes=(form.get("notes") or "").strip(),
             )
             pbox.put_in(record, box)
@@ -6366,10 +6856,26 @@ def update_plasmid(row_id: int):
             return _plasmid_answer(db_session, p, error=_plasmid_denied(p), status=403)
         if "name" in form and not form["name"].strip() and (p.name or "").strip():
             return _plasmid_answer(db_session, p, error="A plasmid needs a name.", status=400)
+        # Lab common lets anyone edit it; whose it is stays its owner's call.
+        shared = form.get("is_shared") in ("1", "true", "on") if "is_shared" in form else bool(p.is_shared)
+        owner_changes = "owner" in form and (form.get("owner") or "").strip()[:120] != (p.owner or "")
+        if (owner_changes or shared != bool(p.is_shared)) and not access.can_manage(p):
+            owner = (p.owner or "").strip() or "its owner"
+            return _plasmid_answer(db_session, p, status=403, error=(
+                f"Plasmid #{p.plasmid_id} is lab common, so you can edit it, but only {owner} or an admin "
+                "can change whose it is."))
+        p.is_shared = shared
         for field, limit in (("name", 200), ("backbone", 200), ("insert_seq", 200),
                              ("resistance", 80), ("owner", 120), ("location", 120)):
             if field in form:
                 setattr(p, field, (form.get(field) or "").strip()[:limit])
+        for field, _label, _limit in PLASMID_MEASURES:
+            if field in form:
+                try:
+                    setattr(p, field, _plasmid_measure(form, field))
+                except ValueError as exc:
+                    db_session.rollback()
+                    return _plasmid_answer(db_session, p, error=str(exc), status=400)
         if "notes" in form:
             p.notes = (form.get("notes") or "").strip()
 
@@ -6393,6 +6899,10 @@ def update_plasmid(row_id: int):
                     except ValueError as exc:
                         problem = str(exc)
                     else:
+                        if row is None and (current is None or current.id != box.id):
+                            # Into another box with no position: its next free cell.
+                            cells = pbox.free_cells(db_session, box, 1)
+                            row, col = cells[0] if cells else (None, None)
                         problem, _ = pbox.place(db_session, p, box, row, col)
         if problem and request.headers.get("X-Autosave") == "1":
             db_session.rollback()
@@ -6414,8 +6924,10 @@ def delete_plasmid(row_id: int):
         if p is None:
             flash("That plasmid no longer exists.", "error")
             return redirect(url_for("plasmids"))
-        if not access.can_edit(p):
-            flash(_plasmid_denied(p), "error")
+        if not access.can_manage(p):
+            flash(_plasmid_denied(p) if not access.can_edit(p) else
+                  f"Plasmid #{p.plasmid_id} is lab common: only {(p.owner or '').strip() or 'its owner'} or an admin can delete it.",
+                  "error")
             return redirect(url_for("plasmids"))
         label = _plasmid_label(p)
         # A batch of one, so Batch history can bring it back.
@@ -6467,7 +6979,7 @@ def bulk_plasmids():
         if not records:
             flash("Tick the plasmids to change first.", "info")
             return redirect(url_for("plasmids"))
-        if action not in ("owner", "resistance", "move", "delete"):
+        if action not in ("owner", "resistance", "move", "delete", "shared"):
             flash("Unknown batch action.", "error")
             return redirect(url_for("plasmids"))
         target, target_name = None, ""
@@ -6483,7 +6995,10 @@ def bulk_plasmids():
                 target_name = value[:80]
                 target = pbox.by_name(db_session, target_name)
                 target_name = target.name if target else target_name
-        editable = [p for p in records if access.can_edit(p)]
+        # Whose it is, lab common or not, and deleting: the owner's; the rest:
+        # anyone who may edit it.
+        allowed = access.can_manage if action in ("owner", "shared", "delete") else access.can_edit
+        editable = [p for p in records if allowed(p)]
         skipped = len(records) - len(editable)
         done, unplaced = 0, 0
         noun = lambda n: "plasmid" if n == 1 else "plasmids"  # noqa: E731
@@ -6492,6 +7007,7 @@ def bulk_plasmids():
             "resistance": f"set resistance to {value or 'none'} on {len(editable)} {noun(len(editable))}",
             "move": f"move {len(editable)} {noun(len(editable))} to {target_name or 'no box'}",
             "delete": f"delete {len(editable)} {noun(len(editable))}",
+            "shared": f"make {len(editable)} {noun(len(editable))} {'lab common' if value == '1' else 'personal'}",
         }
         with audit.batch(db_session, "delete" if action == "delete" else "update",
                          descriptions[action], "plasmids") as batch_row:
@@ -6503,6 +7019,12 @@ def bulk_plasmids():
                     stamp_updated(p)
                     done += 1
                 message = f"Set {action} on {done} {noun(done)}."
+            elif action == "shared":
+                for p in editable:
+                    p.is_shared = value == "1"
+                    stamp_updated(p)
+                    done += 1
+                message = f"Made {done} {noun(done)} {'lab common' if value == '1' else 'personal'}."
             elif action == "move":
                 box = target
                 if box is None and target_name:
@@ -6632,13 +7154,34 @@ def delete_plasmid_box(box_id: int):
     return _plasmids_page()
 
 
+def plasmid_page_url(row_id: int) -> str:
+    """The page of the plasmid with this row: /plasmid/<its number>, the
+    number the list, the labels and the API use."""
+    with SessionLocal() as db_session:
+        number = db_session.scalar(select(PlasmidRecord.plasmid_id).where(PlasmidRecord.id == row_id))
+    return url_for("plasmid_page", number=number) if number is not None else url_for("plasmids")
+
+
 @app.route("/plasmids/<int:row_id>")
 @login_required
 def plasmid_detail(row_id: int):
+    """Addresses from before the page went by the plasmid's number (saved
+    tabs, bookmarks, old notifications): on to /plasmid/<number>."""
     with SessionLocal() as db_session:
-        p = db_session.get(PlasmidRecord, row_id)
+        number = db_session.scalar(select(PlasmidRecord.plasmid_id).where(PlasmidRecord.id == row_id))
+    if number is None:
+        flash("Plasmid not found.", "error")
+        return redirect(url_for("plasmids"))
+    return redirect(url_for("plasmid_page", number=number), code=301)
+
+
+@app.route("/plasmid/<int:number>")
+@login_required
+def plasmid_page(number: int):
+    with SessionLocal() as db_session:
+        p = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == number))
         if p is None:
-            flash("Plasmid not found.", "error")
+            flash(f"There is no plasmid #{number}.", "error")
             return redirect(url_for("plasmids"))
         try:
             features = json.loads(p.features_json) if p.features_json else []
@@ -6656,6 +7199,8 @@ def plasmid_detail(row_id: int):
             "resistance": p.resistance,
             "owner": p.owner,
             "location": p.location,
+            "concentration": p.concentration, "a260_280": p.a260_280,
+            "is_shared": bool(p.is_shared), "can_manage": access.can_manage(p),
             "notes": p.notes,
             "box_id": p.box_id_fk or "",
             "storage_box": box.name if box else "",
@@ -6699,22 +7244,22 @@ def plasmid_upload_sequence(row_id: int):
             return redirect(url_for("plasmids"))
         if not access.can_edit(p):
             flash(_plasmid_denied(p), "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         parsed, problem = _submitted_sequence("file")
         if problem:
             # Nothing was changed, so a warning (as on create), not an error.
             flash(f"{problem} The sequence was not changed.", "warning")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         if not parsed:
             flash("Choose a file or paste a sequence first.", "info")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         _apply_parsed_sequence(p, parsed)
         if parsed.get("name") and not p.name:
             p.name = parsed["name"]
         stamp_updated(p)
         db_session.commit()
     flash(f"Loaded {parsed['format'].upper()} · {len(parsed['sequence'])} bp · {len(parsed['features'])} features.", "success")
-    return redirect(url_for("plasmid_detail", row_id=row_id))
+    return redirect(plasmid_page_url(row_id))
 
 
 @app.route("/plasmids/<int:row_id>/clear-sequence", methods=["POST"])
@@ -6730,10 +7275,10 @@ def plasmid_clear_sequence(row_id: int):
             return redirect(url_for("plasmids"))
         if not access.can_edit(p):
             flash(_plasmid_denied(p), "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         if request.form.get("confirm") != "1":
             flash("Confirm clearing the sequence first.", "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         p.full_sequence = ""
         p.features_json = "[]"
         p.sequence_format = ""
@@ -6741,7 +7286,7 @@ def plasmid_clear_sequence(row_id: int):
         stamp_updated(p)
         db_session.commit()
         flash(f"Cleared the sequence of plasmid #{p.plasmid_id}. Its audit history keeps the old one.", "success")
-    return redirect(url_for("plasmid_detail", row_id=row_id))
+    return redirect(plasmid_page_url(row_id))
 
 
 @app.route("/plasmids/<int:row_id>/move", methods=["POST"])
@@ -6939,10 +7484,10 @@ def plasmid_edit_sequence(row_id: int):
             return redirect(url_for("plasmids"))
         if not access.can_edit(p):
             flash(_plasmid_denied(p), "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         if not cleaned:
             flash("That leaves no sequence, so nothing was saved. Use Clear sequence to empty it.", "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         p.full_sequence = cleaned
         p.is_circular = new_circular
         try:
@@ -6962,7 +7507,7 @@ def plasmid_edit_sequence(row_id: int):
         stamp_updated(p)
         db_session.commit()
     flash(f"Saved sequence · {len(cleaned)} bp.", "success")
-    return redirect(url_for("plasmid_detail", row_id=row_id))
+    return redirect(plasmid_page_url(row_id))
 
 
 @app.route("/plasmids/<int:row_id>/sequence-save", methods=["POST"])
@@ -7037,18 +7582,15 @@ def plasmid_sequence_json(row_id: int):
         })
 
 
-@app.route("/utilities", methods=["GET", "POST"])
+@app.route("/utilities")
 @login_required
 def utilities():
-    result = None
+    """The bench calculators (static/bench-calcs.js); the lab's own list of
+    molecular weights comes first in their chemical picker."""
     with SessionLocal() as db_session:
-        chemicals = db_session.scalars(select(ChemicalReference).order_by(ChemicalReference.name)).all()
-        if request.method == "POST":
-            mw = float(request.form["molecular_weight"])
-            concentration = float(request.form["target_concentration_mm"])
-            volume = float(request.form["final_volume_ml"])
-            result = calculate_reagent_requirements(mw, concentration, volume)
-    return render_template("utilities.html", chemicals=chemicals, result=result)
+        chemicals = [{"name": c.name, "mw": c.molecular_weight, "notes": c.notes}
+                     for c in db_session.scalars(select(ChemicalReference).order_by(ChemicalReference.name))]
+    return render_template("utilities.html", chemicals=chemicals)
 
 
 # ---------------------------------------------------------------------------

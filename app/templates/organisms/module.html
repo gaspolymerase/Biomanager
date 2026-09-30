@@ -20,7 +20,7 @@
 {# Sortable header cell. #}
 {% macro th(key, label, glyph, width, extra='') %}
   <th class="dt-sortable" data-sort-key="{{ key }}" style="width: {{ width }};" {{ extra }}>
-    <span class="dt-col-head">{{ icon(glyph, 'dt-col-icon') }}{{ label }}<span class="dt-sort-indicator"></span></span>
+    <span class="dt-col-head">{{ icon(glyph, 'dt-col-icon') }}{{ label|head }}<span class="dt-sort-indicator"></span></span>
   </th>
 {% endmacro %}
 
@@ -178,7 +178,7 @@
                 </select>
               </td>
               <td><input type="date" name="birth_on" form="{{ f }}" value="{{ row.birth_on or '' }}" data-empty="{{ '0' if row.birth_on else '1' }}" data-autosave="1" aria-label="Born" {% if locked %}disabled{% endif %}></td>
-              <td class="sheet-num">{{ age_label(module_row, row.birth_on, row.death_on) or '–' }}</td>
+              <td class="sheet-num" {% if module_row.age_unit in ('passages', 'generations') %}title="From its {{ 'Passage' if module_row.age_unit == 'passages' else 'Generation' }} column; days since born when that is empty"{% endif %}>{{ age_label(module_row, row.birth_on, row.death_on, attrs) or '–' }}</td>
               <td><input type="date" name="death_on" form="{{ f }}" value="{{ row.death_on or '' }}" data-empty="{{ '0' if row.death_on else '1' }}" data-autosave="1" data-dead-if-set aria-label="Died or removed" {% if locked %}disabled{% endif %}></td>
               {% if module.has('genotyping') %}
                 <td><input class="ident" name="genotype" form="{{ f }}" value="{{ row.genotype }}" title="{{ row.genotype }}" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
@@ -193,7 +193,7 @@
                   {% endif %}
                 </td>
               {% endif %}
-              {{ F.table_cells(own_fields, attrs) }}
+              {{ F.table_cells(own_fields, attrs, form=f, locked=locked) }}
               <td>{{ sheet_ui.owner_cell(row.owner, f, locked, list_id='org-owners') }}</td>
               <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ row.notes }}" title="{{ row.notes }}" placeholder="Add a note" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
@@ -245,6 +245,7 @@
           <button type="submit" class="btn btn-sm">Move</button>
         </form>
       {% endif %}
+      {{ F.bulk_set_field(own_fields, url_for('organisms.bulk_animals', key=module.key)) }}
       <form method="post" action="{{ url_for('organisms.bulk_animals', key=module.key) }}" class="selbar-group" data-selection-form>
         <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="owner">
         <input name="value" list="org-owners" placeholder="owner" aria-label="Owner" class="w-[110px]">
@@ -429,7 +430,7 @@
               {% endif %}
               <td class="sheet-num">{{ occupancy.get(unit.id, 0) }}</td>
               <td><input type="date" name="last_serviced_on" form="{{ f }}" value="{{ unit.last_serviced_on or '' }}" data-empty="{{ '0' if unit.last_serviced_on else '1' }}" data-autosave="1" aria-label="Last serviced" {% if locked %}disabled{% endif %}></td>
-              {{ F.table_cells(own_fields, attrs) }}
+              {{ F.table_cells(own_fields, attrs, form=f, locked=locked) }}
               <td>{{ sheet_ui.owner_cell(unit.owner, f, locked, list_id='org-owners') }}</td>
               <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ unit.notes }}" title="{{ unit.notes }}" placeholder="Add a note" data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-pin sheet-pin-end">
@@ -471,6 +472,7 @@
 
     <div class="selbar" data-selection-bar hidden>
       <span class="selbar-count" data-selection-count></span>
+      {{ F.bulk_set_field(own_fields, url_for('organisms.bulk_housing', key=module.key)) }}
       <form method="post" action="{{ url_for('organisms.bulk_housing', key=module.key) }}" class="selbar-group" data-selection-form>
         <input type="hidden" name="action" value="set"><input type="hidden" name="field" value="purpose">
         <select name="value" aria-label="Purpose">{{ choice_options(module.housing_purposes, None, '–') }}</select>
@@ -1198,7 +1200,10 @@
               <span class="badge shrink-0">in {{ item.days }}d</span>
             {% endif %}
             {% if item.assigned_to %}{{ item.assigned_to | owner_badge }}{% endif %}
-            <form method="post" action="{{ url_for('organisms.complete_due', key=module.key, due_id=item.id) }}" class="shrink-0">
+            <form method="post" action="{{ url_for('organisms.complete_due', key=module.key, due_id=item.id) }}" class="flex shrink-0 items-center gap-1">
+              {# Done today, or on the day it was really done (it moves the next one with it). #}
+              <input type="date" name="done_on" class="field h-7 w-[132px] text-[12px]" max="{{ today_iso }}" value="{{ today_iso }}"
+                     aria-label="Done on" title="The day it was done" {% if not item.editable %}disabled{% endif %}>
               <button type="submit" class="btn btn-sm" {% if not item.editable %}disabled title="Only the owner or an admin can mark this done"{% endif %}>{{ icon('check') }} Done</button>
             </form>
           </div>
@@ -1695,7 +1700,7 @@
                 {% endfor %}
               </select>
               <span class="field-hint normal-case tracking-normal">
-                Completing a recurring item restarts “last …” dates at today; birth and set-up dates are never changed.
+                Marking a recurring item Done (today, or the day it was done) restarts its “last …” date; when two recurring rules share that date, each counts from its own last Done instead. Birth and set-up dates are never changed.
               </span>
             </label>
             <label class="field-label">Days after<input type="number" name="offset_days" value="14" min="0" required></label>

@@ -92,6 +92,9 @@ services:
 
   backup:
     build: ./backup
+    # The restore service runs this same image, so the scripts it uses are
+    # always the ones the last `up -d --build` built.
+    image: biomanager-backup:local
     restart: unless-stopped
     environment: &backup_env
       PGHOST: db
@@ -122,7 +125,8 @@ services:
   #   docker compose --profile restore run --rm restore /backups/db/<file>.dump /backups/files/<file>.tar.gz
   #   docker compose start app
   restore:
-    build: ./backup
+    image: biomanager-backup:local
+    pull_policy: never
     profiles: [restore]
     entrypoint: ["/usr/local/bin/restore.sh"]
     environment: *backup_env

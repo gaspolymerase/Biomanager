@@ -36,7 +36,10 @@ from .models import (Absence, CalendarEvent, CalendarFeed, CalendarRepeat, Equip
 
 bp = Blueprint("labcal", __name__, url_prefix="/calendar")
 
-FREQS = {"daily": "day", "weekly": "week", "monthly": "month"}
+# nthweekday: every month on the same weekday of the month as the first
+# date ("the first Monday", or "the last Friday" when it is the fifth).
+FREQS = {"daily": "day", "weekly": "week", "monthly": "month", "nthweekday": "month"}
+ORDINALS = ("first", "second", "third", "fourth", "last")
 ABSENCE_KINDS = {"leave": "away", "conference": "at a conference", "other": "away"}
 # Colours of the calendar's layers; items may carry their own.
 COLORS = {"stocks": "#af52de", "supplies": "#ff2d55", "protocols": "#5856d6",
@@ -128,13 +131,26 @@ def _allday(item_id, calendar_id, kind, title, first: date, last: date, color, b
 
 # ---------------------------------------------------------------- repeats
 
+def weekday_of_month(day: date) -> int:
+    """0–3 for the first to fourth such weekday of its month, 4 for a fifth
+    (read as "the last")."""
+    return (day.day - 1) // 7
+
+
 def _nth(first: date, freq: str, k: int) -> date:
     if freq == "daily":
         return first + timedelta(days=k)
-    if freq == "monthly":
+    if freq in ("monthly", "nthweekday"):
         m = first.month - 1 + k
         y, m = first.year + m // 12, m % 12 + 1
-        return date(y, m, min(first.day, monthrange(y, m)[1]))
+        if freq == "monthly":
+            return date(y, m, min(first.day, monthrange(y, m)[1]))
+        n, length = weekday_of_month(first), monthrange(y, m)[1]
+        if n == 4:                                     # the last such weekday
+            last = date(y, m, length)
+            return last - timedelta(days=(last.weekday() - first.weekday()) % 7)
+        day1 = date(y, m, 1)
+        return day1 + timedelta(days=(first.weekday() - day1.weekday()) % 7 + 7 * n)
     return first + timedelta(weeks=k)
 
 
@@ -142,7 +158,7 @@ def occurrences(first: date, repeat: CalendarRepeat, start: date, end: date) -> 
     """The dates of a repeating event between start and end, inclusive."""
     step = max(1, repeat.interval or 1)
     skip = {s for s in (repeat.skip or "").split(",") if s}
-    if repeat.freq == "monthly":
+    if repeat.freq in ("monthly", "nthweekday"):
         months = (start.year - first.year) * 12 + start.month - first.month
         n = max(0, months // step - 1)
     else:
@@ -166,11 +182,13 @@ def repeats_by_event(session, event_ids) -> dict[int, CalendarRepeat]:
         select(CalendarRepeat).where(CalendarRepeat.event_id_fk.in_(list(event_ids))))}
 
 
-def repeat_summary(repeat: CalendarRepeat | None) -> dict | None:
+def repeat_summary(repeat: CalendarRepeat | None, first: date | None = None) -> dict | None:
     if repeat is None:
         return None
     unit = FREQS.get(repeat.freq, "week")
     every = f"Every {unit}" if repeat.interval <= 1 else f"Every {repeat.interval} {unit}s"
+    if repeat.freq == "nthweekday" and first is not None:
+        every += f" on the {ORDINALS[weekday_of_month(first)]} {first:%A}"
     return {"freq": repeat.freq, "interval": repeat.interval,
             "until": repeat.until.isoformat() if repeat.until else "",
             "text": every + (f" until {repeat.until:%d %b %Y}" if repeat.until else "")}
@@ -479,8 +497,44 @@ def retire_equipment(equipment_id: int):
     return jsonify({"ok": True})
 
 
+BOOKING_REPEATS = ("daily", "weekdays", "weekly")
+MAX_REPEATED_BOOKINGS = 60
+
+
+def _repeated_slots(start: datetime, end: datetime, repeat) -> list[tuple[datetime, datetime]] | str:
+    """The slots a new booking takes: itself, and with a repeat
+    ({freq: daily | weekdays | weekly, until: a date}) the same time on each
+    later day up to and including `until`. A message when it can't be done."""
+    if not isinstance(repeat, dict) or repeat.get("freq") not in BOOKING_REPEATS:
+        return [(start, end)]
+    until = _date(repeat.get("until"))
+    if until is None or until < start.date():
+        return "Choose the last day the booking repeats until."
+    step = timedelta(days=7 if repeat["freq"] == "weekly" else 1)
+    if end - start > step:
+        return "A booking that long can't repeat that often: each one would run into the next."
+    slots, at = [], start
+    while at.date() <= until:
+        if repeat["freq"] != "weekdays" or at.weekday() < 5:
+            slots.append((at, at + (end - start)))
+        at += step
+        if len(slots) > MAX_REPEATED_BOOKINGS:
+            return f"That makes more than {MAX_REPEATED_BOOKINGS} bookings. Choose an earlier last day."
+    return slots or "There is no weekday in those dates."
+
+
+def _clash_text(s, eq: Equipment, clash: EquipmentBooking) -> str:
+    who = display_names(s).get(clash.owner, clash.owner)
+    when = f"{clash.start_at:%a %d %b %H:%M}–" + (f"{clash.end_at:%H:%M}" if clash.end_at.date() == clash.start_at.date()
+                                                 else f"{clash.end_at:%a %d %b %H:%M}")
+    return f"{eq.name} is already booked by {who}, {when}."
+
+
 @bp.route("/bookings", methods=["POST"])
 def save_booking():
+    """Make or change a booking. A new one can repeat (every day, weekday or
+    week until a date): each repeat is a booking of its own, changed or
+    cancelled on its own, and if any of them clashes none is made."""
     data = request.get_json(silent=True) or {}
     start, end = _dt(data.get("start")), _dt(data.get("end"))
     if start is None or end is None:
@@ -489,6 +543,9 @@ def save_booking():
         return _refuse("The booking has to end after it starts.")
     if end - start > timedelta(days=14):
         return _refuse("A booking can be at most two weeks long.")
+    slots = [(start, end)] if data.get("id") else _repeated_slots(start, end, data.get("repeat"))
+    if isinstance(slots, str):
+        return _refuse(slots)
     with SessionLocal() as s:
         if data.get("id"):
             booking = s.get(EquipmentBooking, _int(data["id"]))
@@ -501,20 +558,22 @@ def save_booking():
         eq = s.get(Equipment, _int(data.get("equipment_id"), booking.equipment_id_fk or 0))
         if eq is None or not eq.active:
             return _refuse("Choose an instrument to book.")
-        clash = s.scalar(select(EquipmentBooking).where(
-            EquipmentBooking.equipment_id_fk == eq.id, EquipmentBooking.id != (booking.id or 0),
-            EquipmentBooking.start_at < end, EquipmentBooking.end_at > start))
-        if clash is not None:
-            who = display_names(s).get(clash.owner, clash.owner)
-            when = f"{clash.start_at:%a %d %b %H:%M}–" + (f"{clash.end_at:%H:%M}" if clash.end_at.date() == clash.start_at.date()
-                                                         else f"{clash.end_at:%a %d %b %H:%M}")
-            return _refuse(f"{eq.name} is already booked by {who}, {when}.", 409)
+        for slot_start, slot_end in slots:
+            clash = s.scalar(select(EquipmentBooking).where(
+                EquipmentBooking.equipment_id_fk == eq.id, EquipmentBooking.id != (booking.id or 0),
+                EquipmentBooking.start_at < slot_end, EquipmentBooking.end_at > slot_start))
+            if clash is not None:
+                return _refuse(_clash_text(s, eq, clash) + (" Nothing was booked." if len(slots) > 1 else ""), 409)
+        purpose = str(data.get("purpose", "")).strip()[:200]
         booking.equipment_id_fk, booking.start_at, booking.end_at = eq.id, start, end
-        booking.purpose = str(data.get("purpose", "")).strip()[:200]
+        booking.purpose = purpose
         if booking.id is None:
             s.add(booking)
+        for slot_start, slot_end in slots[1:]:
+            s.add(EquipmentBooking(owner=booking.owner, equipment_id_fk=eq.id, start_at=slot_start,
+                                   end_at=slot_end, purpose=purpose))
         s.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "count": len(slots)})
 
 
 @bp.route("/bookings/<int:booking_id>/delete", methods=["POST"])

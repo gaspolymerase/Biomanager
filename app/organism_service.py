@@ -33,13 +33,13 @@ from .models import (
     Organism,
     OrganismModule,
 )
+from .formutil import like_pattern
 from .organisms import (
     AUTO_SEED_PRESETS,
     CAPABILITY_BY_KEY,
     FIELD_TYPE_BY_KEY,
     PRESET_BY_KEY,
     PRESETS,
-    RESERVED_KEYS,
     SERVICE_ANCHORS,
     anchor_allowed,
     default_dead_statuses,
@@ -193,7 +193,12 @@ def list_modules(session, include_disabled: bool = False, everyone: bool = False
 
 
 def get_module(session, key: str) -> OrganismModule | None:
-    return session.scalar(select(OrganismModule).where(OrganismModule.key == key))
+    """By its address, or one it had before a rename (app/database_keys.py)."""
+    module = session.scalar(select(OrganismModule).where(OrganismModule.key == key))
+    if module is None and key:
+        from .database_keys import resolve
+        module = resolve(session, "organisms", key)
+    return module
 
 
 # ---------------------------------------------------------------------------
@@ -207,12 +212,10 @@ def slugify(text: str) -> str:
 
 
 def _key_taken(session, key: str) -> bool:
-    if key in RESERVED_KEYS or get_module(session, key) is not None:
-        return True
-    # Fly and worm databases share the /organisms/<key> namespace through the
-    # redirect for modules that moved to the stock engine.
-    from .models import StockModule
-    return session.scalar(select(StockModule.id).where(StockModule.key == key)) is not None
+    # Reserved words, live keys and old ones, of organisms and of fly and worm
+    # databases (they share /organisms/<key> through its redirect).
+    from .database_keys import taken
+    return taken(session, "organisms", key)
 
 
 def unique_key(session, base: str) -> str:
@@ -504,6 +507,8 @@ def read_attrs_checked(form, field_rows: list[ModuleField], existing: dict | Non
             elif creating and row.default_value:
                 attrs[row.key] = row.default_value.strip().lower() in ("1", "yes", "true", "on", "y")
             continue
+        if name in form and f"{name}_was" in form and (form.get(name) or "").strip() == (form.get(f"{name}_was") or "").strip():
+            continue        # a sheet cell left as it was: a colleague may have changed it since
         if name in form:
             raw = (form.get(name) or "").strip()
         elif creating:
@@ -556,7 +561,12 @@ ENTITY_LETTER = {"organism": "A", "housing": "H", "line": "L", "cohort": "C", "c
 
 
 def code_prefix(module: OrganismModule, entity: str) -> str:
-    stem = re.sub(r"[^A-Z0-9]", "", module.key.upper())[:4] or "ORG"
+    # The first key's stem: a renamed database goes on numbering its codes.
+    from sqlalchemy.orm import object_session
+    from .database_keys import first_key
+    session = object_session(module)
+    key = first_key(session, "organisms", module) if session is not None else module.key
+    stem = re.sub(r"[^A-Z0-9]", "", key.upper())[:4] or "ORG"
     return f"{stem}-{ENTITY_LETTER.get(entity, 'A')}"
 
 
@@ -927,27 +937,40 @@ def due_items(session, module: OrganismModule, horizon_days: int = 14, include_d
     return out
 
 
-def complete_due(session, module: OrganismModule, due_id: int, user: str) -> OrgDue | None:
+def complete_due(session, module: OrganismModule, due_id: int, user: str,
+                 done_on: date | None = None) -> OrgDue | None:
+    """Tick a schedule item off, today or on the day it was really done
+    (never later than today)."""
     row = session.scalar(
         select(OrgDue).where(OrgDue.id == due_id, OrgDue.module_id_fk == module.id)
     )
     if row is None or row.done_on is not None:
         return None
-    row.done_on = date.today()
+    today = date.today()
+    done = min(done_on or today, today)
+    row.done_on = done
     row.done_by = user
 
     # Roll a service anchor ("last flipped", "last refreshed") forward so
     # recurring maintenance restarts its clock. Anchors that are facts about
     # the subject — a birth date, the day a unit was set up — are never
     # rewritten: recompute_due counts those rules from the last completion.
-    rule = view(module).rule(row.rule_key) or {}
+    # Nor is an anchor two recurring rules share (feed every 2 days, split
+    # every 4, both from "last serviced"): feeding would restart the split's
+    # clock, so each of those counts from its own last completion instead.
+    mv = view(module)
+    rule = mv.rule(row.rule_key) or {}
     model = RULE_SUBJECTS.get(row.subject_kind)
     anchor = rule.get("anchor")
-    if (rule.get("recurring") and model is not None and anchor in SERVICE_ANCHORS
+    shared = sum(1 for r in mv.schedule_rules if r.get("recurring") and r.get("anchor") == anchor
+                 and r.get("applies_to") == row.subject_kind) > 1
+    if (rule.get("recurring") and model is not None and anchor in SERVICE_ANCHORS and not shared
             and anchor_allowed(row.subject_kind, anchor)):
         subject = session.get(model, row.subject_id)
         if subject is not None and hasattr(subject, anchor):
-            setattr(subject, anchor, date.today())
+            current = getattr(subject, anchor)
+            if current is None or current < done:          # a backdated Done never moves it back
+                setattr(subject, anchor, done)
 
     log_event(session, module, row.subject_kind, row.subject_id, row.rule_key,
               recorded_by=user, notes=f"{rule.get('label', row.rule_key)} completed")
@@ -1039,20 +1062,31 @@ def census(session, module: OrganismModule) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def age_label(module: OrganismModule, start: date | None, end: date | None = None) -> str:
-    """Age in the unit this organism's community actually uses."""
+# Where a record keeps its count when age is counted in passages or
+# generations: a custom column with one of these keys.
+COUNT_KEYS = {"passages": ("passage", "passages", "passage_number", "p"),
+              "generations": ("generation", "generations", "f")}
+
+
+def age_label(module: OrganismModule, start: date | None, end: date | None = None,
+              attrs: dict | None = None) -> str:
+    """Age in the unit this organism's community actually uses. Counted in
+    passages or generations, it is the record's own count ("P12", "F3")
+    from its Passage / Generation column; days only when it has none."""
+    unit = module.age_unit
+    if unit in COUNT_KEYS and attrs:
+        count = next((str(attrs[k]).strip() for k in COUNT_KEYS[unit] if str(attrs.get(k) or "").strip()), "")
+        if count:
+            return f"{'P' if unit == 'passages' else 'F'}{count.lstrip('PpFf')}"
     if start is None:
         return ""
     days = ((end or date.today()) - start).days
     if days < 0:
         return ""
-    unit = module.age_unit
     if unit == "weeks":
         return f"{days // 7}w"
     if unit == "dpf":
         return f"{days} dpf"
-    if unit in ("generations", "passages"):
-        return f"{days}d"
     return f"{days}d"
 
 
@@ -1183,7 +1217,7 @@ def search(session, q: str, limit: int = 5) -> list[dict]:
     q = (q or "").strip()
     if not q:
         return []
-    like = f"%{q}%"
+    like = like_pattern(q)
     modules = {m.id: m for m in session.scalars(select(OrganismModule))}
     out: list[dict] = []
 
@@ -1195,22 +1229,22 @@ def search(session, q: str, limit: int = 5) -> list[dict]:
         })
 
     for row in session.scalars(select(Organism).where(
-            Organism.code.ilike(like) | Organism.genotype.ilike(like) | Organism.notes.ilike(like)
-            | Organism.attrs.ilike(like)).order_by(Organism.id.desc()).limit(limit)):
+            Organism.code.ilike(like, escape="\\") | Organism.genotype.ilike(like, escape="\\") | Organism.notes.ilike(like, escape="\\")
+            | Organism.attrs.ilike(like, escape="\\")).order_by(Organism.id.desc()).limit(limit)):
         module = modules.get(row.module_id_fk)
         if module is not None:
             add(module, "animals", row.code or f"{module.organism_noun} #{row.id}",
                 [row.status, row.genotype, row.owner], row.id)
     for row in session.scalars(select(OrgHousing).where(
-            OrgHousing.code.ilike(like) | OrgHousing.card_id.ilike(like) | OrgHousing.notes.ilike(like)
-            | OrgHousing.attrs.ilike(like)).order_by(OrgHousing.id.desc()).limit(limit)):
+            OrgHousing.code.ilike(like, escape="\\") | OrgHousing.card_id.ilike(like, escape="\\") | OrgHousing.notes.ilike(like, escape="\\")
+            | OrgHousing.attrs.ilike(like, escape="\\")).order_by(OrgHousing.id.desc()).limit(limit)):
         module = modules.get(row.module_id_fk)
         if module is not None:
             add(module, "housing", f"{module.housing_noun.capitalize()} {row.code}",
                 [row.purpose, row.owner], row.id)
     for row in session.scalars(select(OrgLine).where(
-            OrgLine.code.ilike(like) | OrgLine.name.ilike(like) | OrgLine.genotype.ilike(like)
-            | OrgLine.attrs.ilike(like)).order_by(OrgLine.id.desc()).limit(limit)):
+            OrgLine.code.ilike(like, escape="\\") | OrgLine.name.ilike(like, escape="\\") | OrgLine.genotype.ilike(like, escape="\\")
+            | OrgLine.attrs.ilike(like, escape="\\")).order_by(OrgLine.id.desc()).limit(limit)):
         module = modules.get(row.module_id_fk)
         if module is not None:
             add(module, "lines", f"{row.code}{' · ' + row.name if row.name else ''}",

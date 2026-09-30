@@ -86,6 +86,76 @@ start page (Settings; Home if none), tabs survive navigation (they live in
 click, and switched with `Alt+1…9` / `Alt+←` / `Alt+→` (`Alt+W` closes,
 `Cmd/Ctrl+B` collapses the rail, `Cmd/Ctrl+K` opens search).
 
+The rail's lists are in `app/app.py`: `NAV_SECTIONS` (Workspace, with
+Utilities, and the databases), `NAV_FOOTER` (Settings) and `NAV_MORE`, the
+**More** menu at the rail's foot (Batch history, then the admin pages:
+Lab setup, Colony overview, Audit log, Manage users, Guests, Racks &
+boxes); **Help** holds the guide and Send feedback. `static/shell.js`
+(`setupRailMenus`) moves each `.rail-pop` menu to `<body>` when it opens:
+the rail's `backdrop-filter` makes it the containing block of anything
+fixed inside it. Toasts (`BiomanagerShell.toast`) are a manual popover,
+in the top layer, so they show in front of an open `<dialog>`; a refused
+form's message is copied into the dialog `static/form-memory.js` reopens.
+
+### Home
+
+Classic's cards are `home_layouts.CARDS` (key, label, icon, wide at first,
+the feature or flag it needs). A person's choice is the `home_cards:<user>`
+setting — `order`, `hidden`, `wide`, and `seen` (the keys that existed when
+they saved, so a card added in a later release joins at its place, shown
+unless it is one of `OFF_AT_FIRST`). `get_cards`, `set_cards` and
+`reset_cards` read and write it; `offered_cards` is what this lab can
+show; `POST /home/cards` saves the Customize dialog
+(`templates/home/_customize.html`). `home.html` captures each card with
+`{% set %}` into a dict and draws them in the person's order;
+`_home_extra_cards` loads the four off at first (to-dos, bookings, recent
+pages, calculators).
+
+### Utilities
+
+`static/bench-calcs.js` is the arithmetic and its data (molecular weights,
+buffer pKa, vessels, antibiotics, isotopes): each calculator in `CALCS` is
+a description (`id`, `group`, `title`, `inputs` with units) and a
+`compute(v)` that returns `{lines, table, warnings, notes, solved}`;
+`run(id, raw)` reads the typed numbers (decimal commas too) and converts
+each to its base unit first. It loads in Node too, and
+`tests/js/bench-calcs.check.mjs` checks known answers.
+`static/utilities-page.js` draws the list, the open calculator (from the
+address hash) and the reference tables; the lab's chemicals come from the
+page (`/utilities` passes them) ahead of the built-in list.
+
+### Database addresses
+
+A database's `key` is its address (`/inventory/<key>`, `/stocks/<key>`,
+`/organisms/<key>`) and follows its name: the Configure routes and the setup
+survey call `database_keys.rekey()` after a rename, which gives it the new
+name's slug and keeps the old key in `database_aliases` (revision 0011).
+Each service's `get_module()` falls back to those, so everything that finds
+a database by key still finds it: routes (whose `_module_or_404` sends a
+GET on to the current address; a POST from an older page just saves),
+the API, `Experiment.db` places, import targets, labels. `rekey` rewrites
+the stored exact matches (`Experiment.db`, an order's `stocked_as`, a
+sample's `organism:<key>` source). Notebook `@<key> n` text is never
+rewritten (signed pages can't change): `_mention_modules(with_old=True)`
+knows the old keys, the page's `#nb-mention-types` lists them (`old`), and
+backlinks search every key a database has had. New keys (`free_key`) avoid
+reserved words, live keys and old ones, across organisms and stocks (they
+share `/organisms/<key>`). Organism codes keep the first key's stem
+(`first_key`). Plasmids: the page is `/plasmid/<number>`; `/plasmids/<row
+id>` redirects there, and the writes stay under `/plasmids/<row id>/…`.
+
+### Small shared rules
+
+- Box, rack and freezer lists sort with `positions.place_order()`: numbers
+  as numbers and a leading minus (any dash) as a sign, so −80, −20, 4 °C.
+- `positions.parse()` reads a plain number on a lettered box as its nth
+  place along the rows (imports that mix "A1" and "3").
+- Global search (`global_search`) orders plasmids, inventory records and
+  pages by the name: equal, then starting with the words, then containing
+  them, then the rest.
+- A sheet cell takes a pasted block (`static/sheet.js`, `pasteBlock`): rows
+  and columns as shown, each cell put in and saved as if typed.
+
 ### Styling
 
 `frontend/src/tailwind.css` is the single source of truth: design tokens in
@@ -129,6 +199,11 @@ A module declares:
   See `app/organisms.py`.
 - **Schedule rules** — `anchor date + offset`, optionally varying by rearing
   temperature. One rule covers "flip flies every 14 days at 25 °C, 28 at 18 °C".
+  `complete_due()` takes the day it was done (never later than today) and
+  moves a service anchor (`SERVICE_ANCHORS`, e.g. `last_serviced_on`) to it,
+  unless two recurring rules on that kind of subject count from the same
+  anchor: then the anchor stays and each counts from its own last
+  completion in `recompute_due()`.
 - **Custom fields** — typed per-module columns stored in each row's `attrs`
   JSON, which generate their own form inputs, table columns and validation.
 
@@ -172,6 +247,11 @@ Who may change what lives in one place, `app/access.py`:
   its `is_shared` flag. The whole lab can edit them and pick mice out of them.
 - **Unowned records stay open**, so records predating ownership don't lock
   anyone out.
+- **Lab common** (`is_shared`) on inventory items and plasmids
+  (`plasmids.is_shared`, revision 0010; `access.LAB_COMMON_RECORDS`) lets
+  anyone edit the record; deleting it,
+  changing its owner or making it personal again is `access.can_manage()`:
+  its owner, an admin, or anyone while it is unowned.
 - **Admins can do anything.**
 
 Visibility is deliberately *not* restricted — a census with holes is not a
@@ -241,13 +321,62 @@ pages are in `app/lab_routes.py`.
 - **Order again:** a reagent, antibody or virus row links to
   `/inventory/<orders>?reorder=<key>:<id>`; `_reorder_payload()` builds the
   new-order dialog, taking quantity, price and grant from the last order
-  of the same thing (by `stocked_as`, then catalogue number).
+  of the same thing (by `stocked_as`, then catalogue number). An open order
+  for it (`_same_thing()`: made by Order again from it, the same catalogue
+  number, or the same name when it has none; status in the orders
+  inventory's `open_statuses`) turns the row's cart into **On order**
+  (`_open_orders_of()`) and puts an amber `_warn` hint in the dialog.
+- **Positions and Stored at:** `apply_status()` frees the box cell of an
+  item moving to `GONE_FROM_BOX` (used up, empty, discarded) and writes
+  "was in Box · D7" into an empty location note; `_item_from_form` then
+  doesn't put it back from the dialog's unchanged box fields.
+  `inventory_racks.stored_at` (revision 0007) is where a box is kept; a
+  `before_flush` listener in `inventory_service` (`insert=True`, so it runs
+  before the audit listener and undo restores it) gives any item whose
+  `rack_id_fk` changed that value in its *Stored at* column
+  (`stored_at_field()`: key `storage_temp` or label "Stored at"), whichever
+  path moved it. Saving a box with a new Stored at updates its items.
+  `save_rack` with `count` > 1 makes numbered boxes (`_create_boxes`).
+- **Primers:** the same listener fills a primer's `length`, `gc` and `tm`
+  (`PRIMER_DERIVED`) from `attrs.sequence` in a `primers` inventory
+  (`primer_numbers()`: SantaLucia 1998 nearest-neighbour stacks, 50 mM Na⁺
+  entropy correction, 250 nM primer in excess). The sheet shows them read
+  only and `_row_json` sends them back after a save. `add_primer_pair`
+  makes *name*-F and *name*-R through `_item_from_form`, flushing between
+  them so the second takes the next free cell.
+- **Presets:** `inventory.PRESETS` (and `lab.INVENTORY_CHOICES` for the
+  setup survey) include `primers` and `cell_lines`; Samples has number
+  columns for what was measured (`SAMPLE_MEASURES`), which revision 0008
+  adds to Samples databases made earlier unless a column of that key or
+  name is there. The same revision adds `plasmids.concentration`
+  and `plasmids.a260_280` (typed numbers, checked by `_plasmid_measure`).
+- **Set field:** the selection bar's `action=field` (`bulk_fields()`: the
+  built-in columns the inventory uses, every custom one but *source*, and
+  notes) runs each ticked row through `_item_from_form` with that one
+  column, inside the batch; a refused value leaves that row as it was and
+  is named. Organisms do the same for custom fields (`bulk_animals`,
+  `bulk_housing`, `_set_custom`), and their sheet edits custom cells in
+  place, with `attr_<key>_was` so a stale row doesn't undo a later change
+  (`read_attrs_checked` skips a field whose value equals its `_was`).
 - **Received → stock:** `_offers_stock()` is true when a save moved an
   order to received and it is not stocked yet; autosave and board moves
   answer `offer_stock`, the dialog redirects with `?offer=<id>`.
   `order_to_reagents` redirects to the new record with `?open=<id>`. These
   one-shot parameters are removed from the address on load and from the
   referrer in `_back()`.
+
+## Calendar repeats and bookings
+
+`app/lab_calendar.py`. A repeating event is one `calendar_events` row and a
+`calendar_repeats` row (`freq` daily, weekly, monthly or `nthweekday` —
+every month on the weekday of the first date, "the fifth" read as the
+last; `interval`; `until`; `skip`, the dates taken out), expanded by
+`occurrences()` for the range on screen. *Change this one only* posts a new
+event with `split_from: {event_id, date}`, which adds that date to the
+series' `skip` in the same transaction. A new booking may carry
+`repeat: {freq: daily | weekdays | weekly, until}`: `_repeated_slots()`
+lists the slots (at most `MAX_REPEATED_BOOKINGS`), every one is checked
+for a clash first, and each becomes an `equipment_bookings` row of its own.
 
 ## Copies of the lab on every computer
 
@@ -258,9 +387,17 @@ Bearer <key>` a computer gets `GET /api/lab-copy/snapshot` (the whole
 database written to a SQLite file with the app's own metadata, encrypted
 columns blanked; SHA-256 and row counts in `X-BioManager-*` headers; one
 per key every 2 minutes), `/api/lab-copy/files` (uploads: path and size)
-and `/api/lab-copy/files/<path>`. Wrong keys are throttled; from the
-internet (guest access) the gate refuses them like any request without a
-session. The desktop app (`LOCAL_SETUP`) stores the address and the key
+and `/api/lab-copy/files/<path>`. The snapshot is read in one transaction
+(REPEATABLE READ on PostgreSQL, a read transaction on SQLite), so it is one
+moment. A non-admin's copy is narrowed by `member_view()`: password hashes
+blanked, `ADMIN_ONLY` tables emptied, `OWN_ROWS` kept for them only,
+notebook pages they can't open (and `PAGE_ROWS` hanging off them) and
+other people's personal databases removed; their files are those the copy
+names (`uploads_named_in`). A test fails when a new table holding someone's
+own rows isn't classified there. Guests, pending and disabled accounts may
+not keep copies. Wrong keys are throttled per address (a right key is never
+throttled); from the internet (guest access) the gate refuses them like any
+request without a session. The desktop app (`LOCAL_SETUP`) stores the address and the key
 (encrypted) in `app_settings`, and `start_background()` (from `desktop.py`)
 fetches a copy when the last good one is over 20 hours old: checksum and
 `PRAGMA integrity_check` first, the newest `lab_copy_keep` kept in
@@ -274,7 +411,13 @@ PostgreSQL).
 `app/notify.py`. A `before_flush` listener looks at dirty records (mice,
 cages, tanks, fish, organisms, housing, vials, inventory items) and new
 organism genotype calls, and notes who should hear what: an owner change,
-a move to another cage/tank, a genotype recorded, an order status. Notes are
+a move to another cage/tank, a genotype recorded, an order status. A new
+item in the orders inventory tells every active admin but the requester
+(`_order_request`, category `orders`). An `@name` newly added to a
+record's notes (`NOTE_FIELDS`: inventory items, plasmids, mice, cages,
+tanks, vials, organisms, housing) tells that person with a link to the
+record (`_mentions`, category `notebook`); `_resolve` checks at commit that
+the name is still there and is someone. Notes are
 turned into `notifications` rows in `before_commit`, grouped per recipient,
 category and kind of change (twenty mice moved: one row listing them), never
 to the actor, and dropped on rollback. `send()` respects the
@@ -304,6 +447,37 @@ the rules; the editor is `frontend/src/` and the page around it is
 | `notebook_comments` | comments on a page or a quoted passage, and replies |
 | `notebook_recipes` | the lab's buffer library (the built-in ones are `PRESET_RECIPES`) |
 | `notebook_meeting_series` | a meeting's rotation (`members` in order, `next_index`), day and time |
+| `notebook_templates` | a person's templates: title, Markdown, the page `kind` a page made from it gets, and `lab` (everyone may start from it; revision 0009) |
+
+**Durations and clocks.** `frontend/src/durations.js` finds what gets a
+step timer and leaves time points out (a list of times, "at 24 h", "48 h
+samples"); `tests/js/durations.check.mjs` holds the cases. The page shows
+times in the lab's zone (`lab.clock_zone()`, `labZone` in `#nb-data`),
+the clock the app writes "Started:" lines on. A new page goes in the topic
+open (`open_tab_id`) unless it is an experiment or a meeting.
+
+**Templates.** A name the person already uses answers 409 `exists`, and
+the page asks before sending `replace=1`, which saves over it.
+`Save as template` posts `from_page_id`, and with
+`structure_only=1` the body goes through `lab_notebook.structure_only()`:
+headings, text and table headers stay; ticks are cleared, a table's body
+rows keep only their first cell, uploaded images and files go, and data
+blocks keep their setup (`_empty_block`: a sheet's columns and first
+cells, a plate's roles, a qPCR block's reference and control; results
+emptied).
+
+**Record links.** `@<type> <number>` in a page is a chip
+(`frontend/src/extensions/MentionDecoration.js`), the `@` menu is
+`MentionSuggestion.js`, and the words they know are `mentionTypes.js`:
+`mouse`, `plasmid`, `order`, and every inventory key the page lists in
+`#nb-mention-types` (`app._mention_modules()`: inventories the person can
+see, except orders, which is `@order`). `/notebook/search|lookup|open|
+backlinks/<type>/…` serve each kind; an inventory record's popover is
+`{name, fields: [[label, value]…]}`; the chip shows `name` after the
+number (`data-entity-name`, fetched once per record and cached).
+`static/used-in.js` fills *Used in notebook
+pages* on an inventory record's dialog (from the payload's `_number`) and
+a plasmid's Storage tab.
 
 **Colony experiments in a page.** The `experiment` block
 (`frontend/src/blocks/experiment.js`) keeps only `{"id", "show",
@@ -436,7 +610,24 @@ python scripts/dbtool.py restore <file>
 
 These are for a SQLite database on one machine. A server on PostgreSQL is
 backed up by the backup service in `deploy/` (`deploy/backup/backup.sh`
-runs without Docker too).
+runs without Docker too). `restore` checks the backup is a healthy
+BioManager database and asks that the app be closed first (`--yes` skips
+the question).
+
+**The app won't start on a database it can't trust**: an SQLite file of 0
+bytes (`services.refuse_emptied_database`: it would otherwise start a new
+empty lab over it), or a database whose Alembic revision this version
+doesn't know, i.e. one a newer version made (`upgrade.plan`).
+
+**Failures get the app's own pages.** `OperationalError` (the database
+down, locked, or its disk full) answers 503 with `error_plain.html`, which
+needs nothing from the database; 404, 500, `StaleDataError`, `OverflowError`
+and the integrity and data errors have handlers too, and each answers JSON
+to a background save, a page script (`X-Requested-With: fetch`) or the API
+(`_wants_json`). On SQLite, `lower()` is replaced with Python's, so
+case-insensitive search folds every script as on PostgreSQL; typed search
+text goes through `formutil.like_pattern` with `escape="\\"`, so `%` and
+`_` are literal. `formutil.arg_int` reads numbers from the address.
 
 `relocate` copies, verifies with an integrity check, and only then retires
 the original — then prints the `BIOMANAGER_DATA_DIR` to export. Backups use
@@ -470,7 +661,11 @@ printer's size, which prints one label a page (`@page { size }`, no
 margin) with type sized by `labels.fit()`; the last choice for each kind is
 kept in the session cookie. `?format=zpl&dpi=203|300` returns ZPL II
 (`labels.to_zpl`: `^CI28` UTF-8, text through `^FH_` so `^ ~ _` are hex,
-`^BQN` QR at the largest magnification that fits). An admin sets the lab's
+`^BQN` QR at the largest magnification that fits). For inventories the
+page offers *On each label* (`f=` repeated, with `fields_set=1`; kept per
+kind in the `label_fields` cookie) and *Two lines for long text* (`wrap`,
+`label_wrap`): CSS line-clamp on the page, a two-line `^FB` title in ZPL.
+An admin sets the lab's
 Zebra (`app_settings.label_printer`, host or host:port, and
 `label_printer_dpi`); `POST /labels/send` opens a socket to it on port
 9100. `labels.printer_address` only accepts private, loopback, link-local
@@ -637,8 +832,20 @@ map onto the real columns, unknown columns are ignored, and `mouse_id` should
 be left out entirely so IDs are assigned for you.
 
 The older `/import/<entity>` endpoint still serves plasmid and order imports,
-and also assigns ascending mouse IDs from a single reserved block via
-`services.reserve_mouse_ids()`.
+and numbers mice with one counter that skips every number used in the
+database or earlier in the file, the same in the dry run (so a repeated ID
+is reported per row); a real run is a batch.
+
+**Numbers are handed out once.** `services.reserve_mouse_ids()` counts
+above the highest mouse and above `app_settings.mouse_id_high`, the highest
+ever handed out, so deleting the newest mouse or undoing an Add many never
+gives its number again. Saves that take the next free number (New mouse,
+Add many, New cage, litters, Wean and distribute, the CSV import) are
+wrapped in `next_number_retried`: two people saving at once read the same
+highest number, the database refuses the second, and the save is tried
+again with a fresh one instead of reporting an ID the person never typed.
+One cage per rack place is a unique index (`uq_mouse_cages_place`,
+revision 0006); a swap on the rack grid moves the cages in steps.
 
 > Previously this path was broken: `next_mouse_id()` was called per row, and
 > because the session runs with `autoflush=False` the `max()` query could not
@@ -665,12 +872,28 @@ Undo reverses the recorded changes, newest first:
 It refuses in two cases, loudly rather than silently: a batch already undone,
 and a record **changed again after the batch** — reverting then would discard
 whoever's later edit. That second case offers *Undo anyway*. The undo is
-itself recorded as a batch, so undoing an undo is a redo.
+itself recorded as a batch, so undoing an undo is a redo: the original
+batch is then in force again (its `undone_at` cleared) and can be undone
+again; the batch's own undos and redos don't count as later edits. A batch
+is claimed with a conditional UPDATE before anything is reversed, so two
+people pressing Undo together undo it once. Records the batch created are
+reversed last (after the records that point at them are put back), since
+in log order a redo's re-made cage comes after its mice's moves. Wean and
+Wean and distribute are batches too.
 
 This needed audit entries to carry a machine-readable diff, not just prose:
 `audit_log.changes_json` holds `{"changes": {field: [before, after]}}` for an
 edit and `{"snapshot": {...}}` for a delete. Parsing
 `genotype: ∅ → C57BL/6` back into a value would have been guesswork.
+
+**Stale rows.** A sheet row posts every cell. The mouse row also posts a
+`<name>_was` copy of what each cell showed, and `populate_mouse_from_form`
+writes a field only when `form_changed()` says it differs, so saving one
+cell of a row opened before a colleague's edit keeps that edit.
+`sheet.js` refreshes the copies after each save. A one-line cell can't hold
+a line break (browsers drop them from an `<input>`), so a value sent back
+equal to the stored one without its line breaks counts as unchanged
+(`_keep_lines`).
 
 Two ordering details worth knowing if you touch `app/audit.py`:
 
@@ -902,7 +1125,18 @@ private network such as Tailscale.
 - **Passwords are at least 12 characters.** Ten failed sign-ins in 15 minutes
   lock out that username and that address for the rest of the window.
 - **Changing or resetting a password signs out every other session** of
-  that account — the fix for a lost laptop.
+  that account — the fix for a lost laptop. So does disabling it
+  (`security.end_sessions`), and enabling it again doesn't bring them back.
+- **Sign out ends that session for good.** Each session has an id
+  (`session["sid"]`); Sign out records it in `app_settings`
+  (`signed_out:<id>`, forgotten after the session lifetime), so a copy of the
+  cookie no longer works.
+- **Usernames are plain** (letters, digits, `.`, `-`, `_`, compared without
+  case), so no two look alike. Sign-ups are limited to 5 an hour per address,
+  wrong current passwords in Settings to 10 per 15 minutes, CSP reports to
+  30 a minute per address.
+- **API replies never set the session cookie** (`security._SessionInterface`).
+- **The data folder is the running account's only** (mode 700).
 - **Changes from other websites are refused.** Every POST is checked against
   the browser's `Sec-Fetch-Site`/`Origin` headers, so a malicious page cannot
   make a signed-in member's browser edit records. Sign out is a POST too.

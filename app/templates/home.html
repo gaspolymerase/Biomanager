@@ -32,6 +32,8 @@
               aria-pressed="{{ 'true' if home_layout == key else 'false' }}">{{ icon(icon_name) }}{{ label }}</button>
     {% endfor %}
   </div>
+  <button type="button" class="btn btn-sm ml-auto" data-on-click="open-dialog" data-arg="home-customize"
+          title="Choose which cards Home shows, their order and which are full width">{{ icon('sliders') }} Customize</button>
 </form>
 
 {% if setup_needed %}
@@ -44,9 +46,16 @@
 
 {% include "lab/_getting_started.html" %}
 
-{# ---- For you: unread notifications ------------------------------------- #}
-{% if for_you %}
-  <section class="card mb-3 flex flex-col">
+{# ---- The cards: each person chooses which show, in what order and which
+     are full width (Customize; app/home_layouts.py CARDS). Each card is
+     captured here, then drawn in that order. ---------------------------- #}
+{% set db_links = [] %}
+{% for section in nav_sections if section.label == 'Databases' %}
+  {% for link in section.links %}{% set _ = db_links.append(link) %}{% endfor %}
+{% endfor %}
+{% set cards = {} %}
+{% if for_you %}{% set c %}
+  <section class="card flex flex-col">
     <header class="card-head">
       <h2>{{ icon('bell') }} For you</h2>
       <a class="card-head-link" href="{{ url_for('lab.notifications', show='unread') }}">{{ notification_unread }} unread</a>
@@ -60,21 +69,9 @@
       {% endfor %}
     </div>
   </section>
-{% endif %}
-
-{% if home_layout == 'tracks' %}
-  {% include "home/_tracks.html" %}
-{% elif home_layout == 'freezer' %}
-  {% include "home/_freezer.html" %}
-{% else %}
-
-{# ---- Your databases: the lab's, and your own ---------------------------- #}
-{% set db_links = [] %}
-{% for section in nav_sections if section.label == 'Databases' %}
-  {% for link in section.links %}{% set _ = db_links.append(link) %}{% endfor %}
-{% endfor %}
-{% if db_links %}
-  <section class="home-dbs mb-3" aria-label="Your databases">
+{% endset %}{% set _ = cards.update({"for_you": c}) %}{% endif %}
+{% if db_links %}{% set c %}
+  <section class="home-dbs" aria-label="Your databases">
     {% for link in db_links %}
       <a class="home-db{% if link.key == 'new-db' %} is-add{% endif %}" href="{{ link.url }}">
         {{ icon(link.icon) }}
@@ -83,10 +80,9 @@
       </a>
     {% endfor %}
   </section>
-{% endif %}
-
-{# ---- Stat row ---------------------------------------------------------- #}
-<section class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+{% endset %}{% set _ = cards.update({"databases": c}) %}{% endif %}
+{% if true %}{% set c %}
+  <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
 {% if lab_features.colony %}
   <a class="stat" href="{{ url_for('colony', view='mice') }}">
     <span class="stat-label">Total mice</span>
@@ -119,12 +115,28 @@
   </a>
 {% endif %}
 </section>
-
-{# ---- Two-column body -------------------------------------------------- #}
-<section class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-
-  {% if lab_features.colony %}
-  {# Mice over 30 weeks: candidates to retire or sacrifice #}
+{% endset %}{% set _ = cards.update({"stats": c}) %}{% endif %}
+{% if lab_features.calendar %}{% set c %}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon('list-check') }} Your to-dos</h2>
+      <a class="card-head-link" href="{{ url_for('calendar') }}">Open calendar</a>
+    </header>
+    {% if todos %}
+      <div class="flex flex-col">
+        {% for t in todos %}
+          <a class="row-line" href="{{ url_for('calendar') }}">
+            <span class="w-20 shrink-0 text-[12px] font-semibold {% if t.overdue %}text-danger-700{% else %}text-muted{% endif %}">{{ t.due | relative_day if t.due else 'no date' }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">{{ t.title }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">{{ icon('check') }}<p>Nothing to do in the next week.</p></div>
+    {% endif %}
+  </article>
+{% endset %}{% set _ = cards.update({"todos": c}) %}{% endif %}
+{% if lab_features.colony %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
       <h2>{{ icon('warning') }} Mice older than 30 weeks</h2>
@@ -150,7 +162,8 @@
       </div>
     {% endif %}
   </article>
-
+{% endset %}{% set _ = cards.update({"sac": c}) %}{% endif %}
+{% if lab_features.colony %}{% set c %}
   {# Upcoming weanings #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -183,7 +196,8 @@
       </div>
     {% endif %}
   </article>
-
+{% endset %}{% set _ = cards.update({"weanings": c}) %}{% endif %}
+{% if lab_features.colony %}{% set c %}
   {# Genotyping queue #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -209,9 +223,8 @@
       </div>
     {% endif %}
   </article>
-  {% endif %}
-
-  {% if has_stocks %}
+{% endset %}{% set _ = cards.update({"geno": c}) %}{% endif %}
+{% if has_stocks %}{% set c %}
   {# Fly / worm work due #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -232,9 +245,8 @@
       <div class="empty-state">{{ icon('fly') }}<p>No flips, collections or shifts due in the next two days.</p></div>
     {% endif %}
   </article>
-  {% endif %}
-
-  {% if has_restock %}
+{% endset %}{% set _ = cards.update({"stocks": c}) %}{% endif %}
+{% if has_restock %}{% set c %}
   {# Reagents and antibodies to restock #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -258,11 +270,9 @@
       <div class="empty-state">{{ icon('flask') }}<p>Nothing expiring in the next 30 days or marked low.</p></div>
     {% endif %}
   </article>
-  {% endif %}
-
-  {# Zebrafish: mating tanks due back, tanks waiting on genotyping #}
-  {% if lab_features.zebrafish and zebrafish_due.any %}
-    <article class="card flex flex-col">
+{% endset %}{% set _ = cards.update({"restock": c}) %}{% endif %}
+{% if lab_features.zebrafish and zebrafish_due.any %}{% set c %}
+  <article class="card flex flex-col">
       <header class="card-head">
         <h2>{{ icon('fish') }} Zebrafish</h2>
         <a class="card-head-link" href="{{ url_for('zebrafish', view='tanks') }}">Open tanks</a>
@@ -304,11 +314,9 @@
         <div class="empty-state">{{ icon('fish') }}<p>No mating tanks due back and nothing waiting on genotyping.</p></div>
       {% endif %}
     </article>
-  {% endif %}
-
-  {# Organism databases (configurable engine): schedule items due soon. #}
-  {% if organism_due %}
-    <article class="card flex flex-col">
+{% endset %}{% set _ = cards.update({"zebrafish": c}) %}{% endif %}
+{% if organism_due %}{% set c %}
+  <article class="card flex flex-col">
       <header class="card-head">
         <h2>{{ icon('paw') }} Animal databases: due</h2>
         {% if organism_due_total > organism_due|length %}<span class="badge badge-quiet">{{ organism_due_total }}</span>{% endif %}
@@ -323,9 +331,8 @@
         {% endfor %}
       </div>
     </article>
-  {% endif %}
-
-  {% if lab_features.calendar %}
+{% endset %}{% set _ = cards.update({"organisms": c}) %}{% endif %}
+{% if lab_features.calendar %}{% set c %}
   {# Upcoming events #}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -351,12 +358,61 @@
       </div>
     {% endif %}
   </article>
-  {% endif %}
-</section>
-
-{# ---- Recent orders ---------------------------------------------------- #}
-{% if has_orders %}
-<section class="mt-3">
+{% endset %}{% set _ = cards.update({"calendar": c}) %}{% endif %}
+{% if lab_features.calendar %}{% set c %}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon('calendar-clock') }} Your bookings</h2>
+      <a class="card-head-link" href="{{ url_for('calendar') }}">Book equipment</a>
+    </header>
+    {% if bookings %}
+      <div class="flex flex-col">
+        {% for bk in bookings %}
+          <a class="row-line" href="{{ url_for('calendar') }}">
+            <span class="w-[118px] shrink-0 text-[12px] tabular-nums">{{ bk.start | relative_day }} {{ bk.start.strftime('%H:%M') }}–{{ bk.end.strftime('%H:%M') }}</span>
+            <span class="min-w-0 flex-1 truncate text-ink-soft">{{ bk.what }}{% if bk.purpose %} · {{ bk.purpose }}{% endif %}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">{{ icon('calendar-clock') }}<p>No instrument booked in the next week.</p></div>
+    {% endif %}
+  </article>
+{% endset %}{% set _ = cards.update({"bookings": c}) %}{% endif %}
+{% if lab_features.notebook %}{% set c %}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon('notebook') }} Recent notebook pages</h2>
+      <a class="card-head-link" href="{{ url_for('notebook') }}">Open notebook</a>
+    </header>
+    {% if recent_pages %}
+      <div class="flex flex-col">
+        {% for pg in recent_pages %}
+          <a class="row-line" href="{{ url_for('notebook', tab=pg.tab_id, page=pg.id) }}">
+            <span class="min-w-0 flex-1 truncate text-ink">{{ pg.title }}</span>
+            <span class="shrink-0 text-[11.5px] text-muted">{{ pg.updated_at|when }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">{{ icon('notebook') }}<p>No pages yet.</p></div>
+    {% endif %}
+  </article>
+{% endset %}{% set _ = cards.update({"notebook": c}) %}{% endif %}
+{% if true %}{% set c %}
+  <article class="card flex flex-col">
+    <header class="card-head">
+      <h2>{{ icon('calculator') }} Calculators</h2>
+      <a class="card-head-link" href="{{ url_for('utilities') }}">All utilities</a>
+    </header>
+    <div class="home-calcs">
+      {% for id, label in home_calculators %}
+        <a class="btn btn-sm" href="{{ url_for('utilities') }}#{{ id }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </article>
+{% endset %}{% set _ = cards.update({"utilities": c}) %}{% endif %}
+{% if has_orders %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
       <h2>{{ icon('cart') }} Recent orders</h2>
@@ -381,7 +437,18 @@
       </div>
     {% endif %}
   </article>
-</section>
+{% endset %}{% set _ = cards.update({"orders": c}) %}{% endif %}
+
+{% if home_layout == 'tracks' or home_layout == 'freezer' %}
+  {# The other layouts keep For you above them. #}
+  {% if 'for_you' in cards and 'for_you' in shown_cards %}<div class="mb-3">{{ cards['for_you'] }}</div>{% endif %}
+  {% if home_layout == 'tracks' %}{% include "home/_tracks.html" %}{% else %}{% include "home/_freezer.html" %}{% endif %}
+{% else %}
+  <section class="home-grid">
+    {% for key in home_cards.order if key in cards and key in shown_cards %}
+      <div class="home-card{% if key in home_cards.wide %} is-wide{% endif %}" data-home-card="{{ key }}">{{ cards[key] }}</div>
+    {% endfor %}
+  </section>
 {% endif %}
-{% endif %}{# classic #}
+{% include "home/_customize.html" %}
 {% endblock %}

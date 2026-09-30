@@ -262,6 +262,33 @@ class OrderAgainTests(OrdersCase):
                           payload["attr_account"]), ("antibody", "1", "vial", "420", "R01-99"))
         self.assertIn(f"order #{item(oid)['number']}", payload["_hint"])
 
+    def test_order_again_warns_when_it_is_already_on_order(self):
+        name, cat = uniq("ECL "), uniq("RPN")
+        rid = self.make_item(self.a, self.reagents, name, vendor="Cytiva", catalog_number=cat)
+        page = f"/inventory/{self.orders}?reorder={self.reagents}:{rid}"
+        self.assertNotIn("_warn", payload_of(self.get_ok(self.m, page), "data-reorder-open"))
+        oid = self.order(name=name, vendor="Cytiva", catalog_number=cat, quantity="2", status="ordered")
+        payload = payload_of(self.get_ok(self.m, page), "data-reorder-open")
+        self.assertTrue(payload["_warn"])
+        self.assertIn(f"Already on order: #{item(oid)['number']}, ordered", payload["_hint"])
+        # Received: no longer on order.
+        self.post(self.a, f"/inventory/{self.orders}/items/save",
+                  data={"id": str(oid), "name": name, "vendor": "Cytiva", "catalog_number": cat, "quantity": "2",
+                        "status": "received"})
+        self.assertNotIn("_warn", payload_of(self.get_ok(self.m, page), "data-reorder-open"))
+
+    def test_the_reagent_shows_it_is_on_order(self):
+        name = uniq("Glycine ")
+        rid = self.make_item(self.a, self.reagents, name, vendor="Sigma", catalog_number=uniq("G"))
+        self.a.post(f"/inventory/{self.first_orders()}/items/save", data={
+            "id": "", "name": name, "vendor": "Sigma", "catalog_number": "X-1", "quantity": "1",
+            "notes": f"Reorder of {one('select label from inventory_modules where key=?', self.reagents)} "
+                     f"#{item(rid)['number']}"})
+        html = self.get_ok(self.m, f"/inventory/{self.reagents}")
+        row = html.split(f'value="{self.reagents}:{rid}"', 1)[1][:600]
+        self.assertIn("On order", row)
+        self.assertIn("Already on order: #", row)
+
     def test_order_again_is_placed_like_any_order(self):
         name = uniq("EDTA ")
         rid = self.make_item(self.a, self.reagents, name, vendor="Sigma", catalog_number="E9884")

@@ -103,7 +103,7 @@
     try {
       // A page can say which inventory to import into (window.csvImportModule).
       const target = window.csvImportModule ? `?module=${encodeURIComponent(window.csvImportModule)}` : '';
-      const r = await fetch(`/import/${currentEntity}${target}`, { method: 'POST', body: fd });
+      const r = await fetch(`/import/${currentEntity}${target}`, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'fetch' } });
       const data = await r.json();
       if (!data.ok) {
         result.innerHTML = `<div class="csv-error">${escapeHtml(data.error || 'Import failed')}</div>`;

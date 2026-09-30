@@ -286,6 +286,18 @@ class OneWeaningListTests(AppTestCase):
         r = self.autosave(self.m, f"/colony/cages/{cage_of(col['mice'][0])}/update", {"notes": "x"})
         self.assertEqual(r.get_json()["row"]["values"]["wean_due"], "")
 
+    def test_weaning_and_distributing_can_be_undone(self):
+        col = self.make_colony(self.m, self.member, n_mice=1, dob=days_ago(21), date_give_birth=days_ago(21))
+        before = cage_of(col["mice"][0])
+        self.post(self.m, f"/colony/cages/{col['cage_id']}/wean-distribute", {
+            "mouse_ids[]": [str(mouse_number(col["mice"][0]))], "gender[]": ["F"], "cage_id[]": [""], "card_id[]": [""]})
+        self.assertNotEqual(cage_of(col["mice"][0]), before)
+        batch = one("select id from batches where description like ? order by id desc", f"wean cage {col['cage']}%")
+        self.post(self.m, f"/batches/{batch}/undo")
+        self.assertEqual(cage_of(col["mice"][0]), before)
+        self.assertEqual(one("select date_give_birth from mouse_cages where id=?", col["cage_id"]), days_ago(21))
+        self.assertIsNone(one("select weaned_on from litters where id=?", col["litter_id"]))
+
     def test_young_pups_are_weaned_only_once_confirmed(self):
         cage = self.make_cage(self.m, date_give_birth=days_ago(12))
         r = self.post(self.m, f"/colony/cages/{cage}/wean", {})
@@ -366,6 +378,21 @@ class WhereThingsAreTests(AppTestCase):
         self.make_mouse(self.a, self.admin, cage=code, gender="M")
         return rack, code
 
+    def test_one_cage_per_place_even_when_two_arrive_at_once(self):
+        rack, code = self.placed_cage()
+        rack_id = one("select id from mouse_racks where name=?", rack)
+        other = self.make_cage(self.a, uniq("C"))
+        # What a second drop at the same moment would write: refused by the database.
+        with self.assertRaises(Exception):
+            execute("update mouse_cages set rack_id_fk=?, rack_row=2, rack_col=3 where id=?", rack_id, other)
+        # A drop onto the taken place is a swap, in steps the rule allows.
+        placed = one("select id from mouse_cages where cage_id=?", code)
+        execute("update mouse_cages set rack_id_fk=?, rack_row=1, rack_col=1 where id=?", rack_id, other)
+        r = self.a.post(f"/colony/cages/{other}/place", data={"rack_id": rack_id, "row": 2, "col": 3})
+        self.assertTrue(r.get_json()["ok"])
+        self.assertEqual(row("select rack_row, rack_col from mouse_cages where id=?", placed), (1, 1))
+        self.assertEqual(row("select rack_row, rack_col from mouse_cages where id=?", other), (2, 3))
+
     def test_a_cage_card_says_where_it_goes_and_the_sexes(self):
         rack, code = self.placed_cage()
         html = self.get_ok(self.a, f"/labels/cards/cages?scope=all&ids={one('select id from mouse_cages where cage_id=?', code)}")
@@ -378,6 +405,23 @@ class WhereThingsAreTests(AppTestCase):
         header, *lines = text.splitlines()
         self.assertIn("Cage_ID,Rack,Position,", header)
         self.assertTrue(any(f",{code},{rack},B3," in line for line in lines))
+
+    def test_exports_are_a_real_workbook_and_never_run_a_formula(self):
+        import io
+        from openpyxl import load_workbook
+        col = self.make_colony(self.a, self.admin, n_mice=1)
+        execute("update mice set note=? where id=?", '=HYPERLINK("http://x.test","click")', col["mice"][0])
+        text = self.a.get("/colony/mice/export?format=csv&scope=all").get_data(as_text=True)
+        self.assertTrue(text.startswith("\ufeff"))                    # Excel opens it as UTF-8
+        self.assertIn("'=HYPERLINK", text)
+        r = self.a.get("/colony/mice/export?format=excel&scope=all")
+        self.assertIn("mice_export.xlsx", r.headers["Content-Disposition"])
+        sheet = load_workbook(io.BytesIO(r.get_data())).active
+        cells = [c for row in sheet.iter_rows() for c in row if c.value == '=HYPERLINK("http://x.test","click")']
+        self.assertEqual([c.data_type for c in cells], ["s"])           # text, not a formula
+        token = self.a.post("/import-sheet/mice/upload", data={"file": (io.BytesIO(r.get_data()), "mice_export.xlsx")},
+                            content_type="multipart/form-data")
+        self.assertEqual(token.status_code, 302)                       # Import from Excel reads it back
 
     def test_the_breeders_tab_shows_rack_position_and_sexes(self):
         rack, code = self.placed_cage()

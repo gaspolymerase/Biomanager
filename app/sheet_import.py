@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import csv
 import difflib
+from html import unescape as html_unescape
 import io
 import json
 import re
@@ -97,10 +98,20 @@ def _cell(value) -> str:
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, float):
-        if value.is_integer():
+        if value.is_integer() and abs(value) < 1e15:
             return str(int(value))
-        return format(value, "f").rstrip("0").rstrip(".")
+        # Shortest text that is this number: 0.1+0.2 is 0.3, and 1.5e-07
+        # stays 1.5e-07 (format "f" kept 6 decimals and made it 0).
+        text = "%.15g" % value
+        return text if "e" in text else text.rstrip("0").rstrip(".") if "." in text else text
     return str(value).strip()
+
+
+def _unguard(text: str) -> str:
+    """BioManager's own CSV exports put ' before a value starting with = + -
+    or @ (so a spreadsheet doesn't run it: services.sheet_safe); reading
+    one back, "'+/+" is the genotype +/+ again."""
+    return text[1:] if text[:1] == "'" and text[1:2] in ("=", "+", "-", "@") else text
 
 
 def _trim(rows: list[list[str]]) -> list[list[str]]:
@@ -110,6 +121,60 @@ def _trim(rows: list[list[str]]) -> list[list[str]]:
         rows.pop()
     width = max((max((i for i, c in enumerate(r) if c.strip()), default=-1) for r in rows), default=-1) + 1
     return [(r + [""] * width)[:width] for r in rows]
+
+
+_MERGE = re.compile(rb'<(?:\w+:)?mergeCell\s+ref="([A-Z]+[0-9]+:[A-Z]+[0-9]+)"')
+
+
+def _merged_ranges(data: bytes) -> dict[str, list[tuple[int, int, int, int]]]:
+    """{sheet name: its merged cells as (min_col, min_row, max_col, max_row)}.
+    openpyxl's fast reader doesn't see them, so the sheets' XML is scanned
+    for them (as text: nothing in it is parsed or expanded)."""
+    import zipfile
+    from openpyxl.utils.cell import range_boundaries
+    out: dict[str, list[tuple[int, int, int, int]]] = {}
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            book = z.read("xl/workbook.xml").decode("utf-8", "replace")
+            rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8", "replace")
+            targets = {m.group(1): m.group(2) for m in re.finditer(
+                r'<Relationship\b[^>]*?Id="([^"]+)"[^>]*?Target="([^"]+)"', rels)}
+            targets.update({m.group(2): m.group(1) for m in re.finditer(
+                r'<Relationship\b[^>]*?Target="([^"]+)"[^>]*?Id="([^"]+)"', rels)})
+            for m in re.finditer(r'<(?:\w+:)?sheet\b[^>]*?name="([^"]*)"[^>]*?r:id="([^"]+)"', book):
+                target = targets.get(m.group(2), "")
+                part = target.lstrip("/") if target.startswith("/") else "xl/" + target
+                if part not in z.namelist():
+                    continue
+                refs: set[bytes] = set()
+                with z.open(part) as f:
+                    tail = b""
+                    while chunk := f.read(1 << 20):
+                        block = tail + chunk
+                        refs.update(_MERGE.findall(block))
+                        tail = block[-200:]
+                name = html_unescape(m.group(1))
+                out[name] = [range_boundaries(r.decode()) for r in refs]
+    except Exception:           # a workbook openpyxl opened but this can't read: no merged cells
+        return {}
+    return out
+
+
+def _fill_merged(rows: list[list[str]], ranges) -> None:
+    """A cell merged down over several rows (a Cage # typed once for all
+    its mice) belongs to each of those rows, as the sheet shows it."""
+    for min_col, min_row, _max_col, max_row in ranges:
+        if max_row <= min_row or min_row > len(rows) or min_col > MAX_COLS:
+            continue
+        top = rows[min_row - 1]
+        value = top[min_col - 1] if min_col - 1 < len(top) else ""
+        if not value:
+            continue
+        for r in range(min_row, min(max_row, len(rows))):
+            row = rows[r]
+            row.extend([""] * (min_col - len(row)))
+            if not row[min_col - 1]:
+                row[min_col - 1] = value
 
 
 def _decode(data: bytes) -> str:
@@ -134,12 +199,14 @@ def read_workbook(filename: str, data: bytes) -> dict[str, list[list[str]]]:
             raise ImportProblem(f"That doesn't open as an Excel workbook ({exc.__class__.__name__}). "
                                 "Save it again from Excel as .xlsx, or as CSV.") from exc
         sheets = {}
+        merged = _merged_ranges(data)
         for sheet in book.worksheets:
             rows = []
             for values in sheet.iter_rows(min_row=1, values_only=True):
                 rows.append([_cell(v) for v in values[:MAX_COLS]])
                 if len(rows) > MAX_ROWS + 20:
                     break
+            _fill_merged(rows, merged.get(sheet.title, ()))
             rows = _trim(rows)
             if rows:
                 sheets[sheet.title] = rows
@@ -158,20 +225,20 @@ def read_workbook(filename: str, data: bytes) -> dict[str, list[list[str]]]:
         delimiter = ";"
     else:
         delimiter = ","
-    rows = [[c.strip() for c in r[:MAX_COLS]] for r in csv.reader(io.StringIO(text), delimiter=delimiter)]
+    rows = [[_unguard(c.strip()) for c in r[:MAX_COLS]] for r in csv.reader(io.StringIO(text), delimiter=delimiter)]
     rows = _trim(rows[: MAX_ROWS + 20])
     return {"Sheet 1": rows} if rows else {}
 
 
 def split_header(rows: list[list[str]]) -> tuple[list[str], list[list[str]], int]:
     """(headers, data rows, the sheet's row number of the first). The header
-    is the first row, among the first ten, with two or more filled cells (a
-    title line above it is skipped)."""
-    at = 0
-    for i, row in enumerate(rows[:10]):
-        if sum(1 for c in row if c.strip()) >= min(2, len(row)):
-            at = i
-            break
+    is the first row, among the first ten, filled about as widely as the
+    widest of them: a title line above it ("Colony, March 2026") is
+    skipped, even one of two or three cells."""
+    filled = [sum(1 for c in row if c.strip()) for row in rows[:10]]
+    widest = max(filled, default=0)
+    need = max(min(2, widest), widest - max(1, widest // 5))
+    at = next((i for i, n in enumerate(filled) if n >= need), 0)
     headers, seen = [], {}
     for i, h in enumerate(rows[at] if rows else []):
         h = h.strip() or f"Column {i + 1}"
@@ -220,7 +287,7 @@ _UNITS = {"g", "mg", "ug", "kg", "l", "ml", "ul", "m", "mm", "um", "nm", "cm", "
 # Headers that may mean a place or a position: the values decide.
 _EITHER = {"location", "place", "where", "loc", "storage", "storage location"}
 _POSITION = re.compile(r"^\s*([A-Za-z]{1,2}\s*[-.:/ ]?\s*\d{1,3}|\d{1,3}\s*[-.:/,]\s*\d{1,3}|\d{1,3}\s*[-.:/ ]?\s*[A-Za-z]{1,2})\s*$")
-_DATEISH = re.compile(r"^\s*(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.]\d{1,2}[/.]\d{2,4})(\s.*)?$")
+_DATEISH = re.compile(r"^\s*(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})(\s.*)?$")
 _NUMBER = re.compile(r"^\s*-?\d[\d,]*(\.\d+)?\s*$")
 
 
@@ -235,6 +302,7 @@ class Field:
     choices: dict[str, str] | None = None
     note: str = ""                     # shown beside it on the match page
     custom: bool = False               # one of the database's own columns
+    options: tuple = ()                # (value, label) for the "every row gets" choice
 
     def also(self) -> list[str]:
         """A few other names it's known by, for the upload page."""
@@ -249,13 +317,21 @@ def _shape(values: list[str]) -> str:
     filled = [v for v in values if v.strip()][:40]
     if not filled:
         return ""
-    if sum(1 for v in filled if _DATEISH.match(v)) >= 0.7 * len(filled):
+    if sum(1 for v in filled if _DATEISH.match(v) or _named_month(v)) >= 0.7 * len(filled):
         return "date"
     if sum(1 for v in filled if _NUMBER.match(v)) >= 0.8 * len(filled):
         return "number"
     if sum(1 for v in filled if _POSITION.match(v)) >= 0.7 * len(filled):
         return "position"
     return "text"
+
+
+def _positions(values: list[str]) -> bool:
+    """Values a position column may hold: "A1", "4-7", and plain numbers
+    (a box numbered 1…81), mixed as a lab's sheet mixes them."""
+    filled = [v for v in values if v.strip()][:40]
+    return not filled or sum(1 for v in filled if _POSITION.match(v) or re.fullmatch(r"\s*\d{1,4}\s*", v)) \
+        >= 0.7 * len(filled)
 
 
 def score(header: str, values: list[str], f: Field) -> tuple[float, str]:
@@ -284,7 +360,7 @@ def score(header: str, values: list[str], f: Field) -> tuple[float, str]:
             ratio = difflib.SequenceMatcher(None, h, n).ratio()
             if ratio >= 0.82 and ratio * 0.85 > best:
                 best, why = ratio * 0.85, f"spelled like “{n}”"
-    if best and f.kind == "position" and shape not in ("position", ""):
+    if best and f.kind == "position" and not _positions(values):
         best *= 0.4                       # "Location: Freezer 2" is a note, not a position
     if best and f.kind == "place" and shape == "position" and h in _EITHER:
         best *= 0.5                       # and "Location: A1" is a position, not a note
@@ -322,12 +398,29 @@ _SLASH = re.compile(r"^\s*(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})\s*$")
 SEXES = {"m": "M", "male": "M", "man": "M", "boy": "M", "f": "F", "female": "F", "woman": "F", "girl": "F"}
 
 
-def tidy_dates(values: list[str]) -> tuple[list[str], list[str]]:
+_NAMED_MONTH = ("%d-%b-%y", "%d-%b-%Y", "%d %b %y", "%d %b %Y", "%d-%B-%Y", "%d %B %Y", "%d-%B-%y",
+                "%b %d, %Y", "%b %d %Y", "%B %d, %Y", "%B %d %Y", "%d. %b %Y", "%d.%b.%Y", "%d/%b/%Y", "%d/%b/%y")
+
+
+def _named_month(raw: str) -> date | None:
+    """12-May-26, 12 May 2026, May 12, 2026 and the like."""
+    cleaned = " ".join(raw.replace("Sept", "Sep").split())
+    for fmt in _NAMED_MONTH:
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def tidy_dates(values: list[str], day_first: bool = False) -> tuple[list[str], list[str]]:
     """ISO dates for a column, and what to warn about. 03/04/2026 is read
     day or month first for the whole column: a first number over 12 means
-    day first, a second over 12 month first, neither means month first."""
+    day first, a second over 12 month first; with neither, the lab's own
+    date style decides (`day_first`: Lab setup's "26 Sep 2026")."""
     from .services import parse_date
 
+    lab_day_first = day_first
     out, notes, parsed = list(values), [], {}
     day_first = month_first = False
     for i, raw in enumerate(values):
@@ -345,11 +438,14 @@ def tidy_dates(values: list[str]) -> tuple[list[str], list[str]]:
         if re.match(r"^\d{5}(\.\d+)?$", raw) and 20000 < float(raw) < 80000:
             out[i] = (date(1899, 12, 30) + timedelta(days=int(float(raw)))).isoformat()   # an Excel date number
             continue
-        known = parse_date(raw)
+        # 15-03-26 is a day, a month and a year like 15/03/26, not 2015-03-26:
+        # two-digit groups go to the day-or-month rule below before anything
+        # reads them as a year first.
+        match = _SLASH.match(raw)
+        known = None if match else (parse_date(raw) or _named_month(raw))
         if known:
             out[i] = known.isoformat()
             continue
-        match = _SLASH.match(raw)
         if not match:
             notes.append(f"“{raw}” isn't a date, so it's left blank.")
             out[i] = ""
@@ -359,8 +455,9 @@ def tidy_dates(values: list[str]) -> tuple[list[str], list[str]]:
         day_first = day_first or a > 12
         month_first = month_first or b > 12
     guessed = False
+    read_day_first = (day_first and not month_first) or (lab_day_first and not day_first and not month_first)
     for i, (a, b, y) in parsed.items():
-        month, day = (b, a) if day_first and not month_first else (a, b)
+        month, day = (b, a) if read_day_first else (a, b)
         guessed = guessed or (not day_first and not month_first and a != b)
         try:
             out[i] = date(y, month, day).isoformat()
@@ -369,6 +466,8 @@ def tidy_dates(values: list[str]) -> tuple[list[str], list[str]]:
             out[i] = ""
     if day_first and month_first:
         notes.append("Its dates mix day-first and month-first: check them after importing.")
+    elif guessed and read_day_first:
+        notes.append("Its dates were read day first (03/04/2026 as 3 April), as Lab setup's date style says.")
     elif guessed:
         notes.append("Its dates were read month first (03/04/2026 as 4 March).")
     return out, notes[:5]
@@ -410,6 +509,9 @@ class Target:
     columns_note: str = ""
     module: object = None
     mv: object = None
+    # Columns that are worked out from others (the Mice export's Age), left
+    # out by default: in the notes they would go stale.
+    derived: tuple[str, ...] = ()
 
     def prepare(self, session) -> dict:
         return {}
@@ -463,12 +565,53 @@ MOUSE_STATUSES = {"breeder": "breeder", "breeding": "breeder", "breed": "breeder
 class MiceTarget(Target):
     def prepare(self, session):
         from .models import MouseRecord
+        from .models import CageRecord
+        from .inventory_service import get_setting
+        from .services import MOUSE_ID_HIGH
         taken = set(session.scalars(select(MouseRecord.mouse_id)))
-        return {"people": _people(session), "taken": taken, "next": max(taken, default=0) + 1, "place_cages": {}}
+        high = get_setting(session, MOUSE_ID_HIGH, "")
+        first = max(max(taken, default=0), int(high) if high.isdigit() else 0) + 1
+        return {"people": _people(session), "taken": taken, "next": first, "place_cages": {},
+                "cages_before": set(session.scalars(select(CageRecord.cage_id))), "litter_dates": {}}
+
+    def finish(self, session, ctx):
+        """A cage the import made belongs to its first mouse's owner, not
+        to whoever ran the import: they wean, breed and move it. Set last,
+        so the rest of its mice could still be put in it."""
+        from .inventory_service import get_setting, set_setting
+        from .models import CageRecord
+        from .services import MOUSE_ID_HIGH
+        high = get_setting(session, MOUSE_ID_HIGH, "")
+        top = max(ctx["taken"], default=0)
+        if top > (int(high) if high.isdigit() else 0):
+            set_setting(session, MOUSE_ID_HIGH, str(top))     # never handed out again
+        for code, owner in ctx["carry"].get("cage_owner", {}).items():
+            cage = session.scalar(select(CageRecord).where(CageRecord.cage_id == code))
+            if cage is not None and owner:
+                cage.owner = owner
+        session.flush()
+
+    def _new_cage(self, session, ctx) -> str:
+        """A cage for a rack and position with no cage number: numbered above
+        both the colony's cages and every number the sheet itself uses, so a
+        later row's cage 106 is never this one."""
+        from .models import CageRecord
+        from .services import _cage_number, reserve_cage_ids
+        in_sheet = ctx.get("sheet", {}).get("cage_id", set())
+        highest = max((_cage_number(c) for c in in_sheet), default=0)
+        code = reserve_cage_ids(session, 1)[0]
+        taken = set(session.scalars(select(CageRecord.cage_id)))
+        number = max(int(code), highest + 1)
+        while str(number) in taken or str(number) in in_sheet:
+            number += 1
+        session.add(CageRecord(cage_id=str(number), owner=g.user.username))
+        session.flush()
+        return str(number)
 
     def create(self, session, ctx, v, extras):
-        from .app import new_owned_cage, populate_mouse_from_form
+        from .app import populate_mouse_from_form
         from .models import MouseRecord
+        from .services import parse_date
         warnings: list[str] = []
         typed = v.get("mouse_id", "").strip()
         if typed.isdigit() and int(typed) not in ctx["taken"] and int(typed) > 0:
@@ -487,11 +630,27 @@ class MiceTarget(Target):
         form = {k: v[k] for k in ("gender", "cage_id", "cage_location", "litter_id", "date_of_birth", "status",
                                   "date_of_death") if k in v}
         form["owner"] = owner
+        # Nothing is born tomorrow: a future date is a typo (2062 for 2026).
+        born = parse_date(form.get("date_of_birth", ""))
+        if born is not None and born > date.today():
+            warnings.append(f"The date of birth {born.isoformat()} is in the future, so it's left blank "
+                            "and kept in the notes.")
+            extras.append(("Date of birth in the spreadsheet", v.get("date_of_birth", "")))
+            form["date_of_birth"], born = "", None
+        # One litter, one date of birth: a later row can't re-date the mice before it.
+        litter = form.get("litter_id", "").strip()
+        if litter and born is not None:
+            first = ctx["litter_dates"].setdefault(litter, born)
+            if first != born:
+                warnings.append(f"Litter {litter} was born {first.isoformat()} in an earlier row, so this "
+                                f"mouse is too; {born.isoformat()} is kept in its notes.")
+                extras.append(("Date of birth in the spreadsheet", born.isoformat()))
+                form["date_of_birth"] = first.isoformat()
         # A rack and position with no cage number: one new cage per place.
         if not form.get("cage_id", "").strip() and (v.get("cage_rack") or v.get("cage_position")):
             where = (v.get("cage_rack", ""), v.get("cage_position", ""))
             if where not in ctx["place_cages"]:
-                ctx["place_cages"][where] = new_owned_cage(session).cage_id
+                ctx["place_cages"][where] = self._new_cage(session, ctx)
             form["cage_id"] = ctx["place_cages"][where]
         if v.get("cage_rack") or v.get("cage_position"):
             form["cage_rack"], form["cage_position"] = v.get("cage_rack", ""), v.get("cage_position", "")
@@ -499,10 +658,14 @@ class MiceTarget(Target):
         # A mouse's genotype is its transgenes; an old sheet's genotype
         # column becomes Transgene 1, as Add many does.
         form["transgene_1"] = v.get("genotype", "").strip()
+        for n in (2, 3, 4):                       # the Mice export's own Transgene_2–4 columns
+            form[f"transgene_{n}"] = v.get(f"transgene_{n}", "").strip()
         mouse = MouseRecord(mouse_id=mouse_id, owner=owner)
         before = len(flask_session.get("_flashes") or [])
         populate_mouse_from_form(session, mouse, ImmutableMultiDict(form), preserve_owner_on_transfer=False)
         warnings += _catch_flashes(before)
+        if mouse.cage is not None and mouse.cage.cage_id not in ctx["cages_before"]:
+            ctx["carry"].setdefault("cage_owner", {}).setdefault(mouse.cage.cage_id, owner)   # see finish
         if mouse.cage is None and v.get("cage_location", "").strip():
             # A room belongs to a cage; with no cage it's kept in the notes.
             mouse.note = _extras_note(mouse.note or "", [("Room", v["cage_location"])])
@@ -528,11 +691,15 @@ def mice_target(session) -> Target:
         key="mice", title=f"Mice in {lab.FEATURES['colony'].label}", noun="mouse", nouns="mice",
         back_url=url_for("colony", view="mice"),
         columns_note="The mouse colony's columns are fixed, so any others go into each mouse's notes.",
+        derived=("active", "age week", "age day", "age"),
         fields=[
             Field("mouse_id", "Mouse ID", ("mouse", "id", "mouse number", "ear tag", "tag", "animal id", "animal"),
                   note="Kept when it's a free number; otherwise the next ID, with yours in the notes"),
             Field("gender", "Sex", ("sex", "gender", "m f", "male female"), kind="sex"),
-            Field("genotype", "Genotype", ("genotype", "strain", "line", "transgene", "allele", "cre", "gt")),
+            Field("genotype", "Genotype", ("genotype", "strain", "line", "transgene", "allele", "cre", "gt",
+                                           "transgene 1")),
+            *(Field(f"transgene_{n}", f"Transgene {n}", (f"transgene {n}", f"allele {n}", f"tg {n}"))
+              for n in (2, 3, 4)),
             Field("date_of_birth", "Date of birth", ("dob", "birth date", "birthdate", "born", "birthday",
                                                      "date born", "d o b", "birth"), kind="date"),
             Field("cage_id", "Cage", ("cage", "cage number", "cage id", "cage card")),
@@ -586,6 +753,8 @@ class FishTarget(Target):
                 session.add(line)
                 session.flush()
                 ctx["lines"][line_name.lower()] = line
+                warnings.append(f"There was no line “{line_name}”, so it's made new. If it's a spelling of "
+                                "one you have, change the name in the sheet (or merge them after).")
         tank = ctx["tanks"].get(code.lower())
         if tank is None:
             tank = TankRecord(tank_id=code[:80], owner=owner, purpose="stock", active=True,
@@ -593,6 +762,7 @@ class FishTarget(Target):
             session.add(tank)
             session.flush()
             ctx["tanks"][code.lower()] = tank
+            warnings.append(f"There was no tank {code}, so it's made new.")
             rack = ctx["racks"].get(v.get("rack", "").strip().lower())
             if v.get("rack", "").strip() and rack is None:
                 warnings.append(f"There's no rack called “{v['rack']}”, so tank {code} isn't placed.")
@@ -671,7 +841,15 @@ class PlasmidTarget(Target):
         p = PlasmidRecord(plasmid_id=number, name=name[:200], backbone=v.get("backbone", "")[:200],
                           insert_seq=v.get("insert_seq", "")[:200], resistance=v.get("resistance", "")[:80],
                           owner=_owner(ctx, v.get("owner", ""), warnings, extras),
-                          location=v.get("location", "")[:120])
+                          location=v.get("location", "")[:120], is_shared=v.get("is_shared") == "1")
+        for key, label, limit in (("concentration", "Concentration", 40), ("a260_280", "260/280", 20)):
+            value = v.get(key, "").strip().replace(",", ".")
+            try:
+                float(value) if value else None
+            except ValueError:
+                extras.append((label, value))  # not a number: kept in the notes
+            else:
+                setattr(p, key, value[:limit])
         p.notes = _extras_note(v.get("notes", ""), extras)
         session.add(p)
         session.flush()
@@ -708,8 +886,12 @@ def plasmid_target(session) -> Target:
             Field("position", "Position in the box", ("position", "well", "slot", "pos", "box position"),
                   kind="position"),
             Field("location", "Location", ("location", "freezer", "storage", "where", "fridge"), kind="place"),
+            Field("concentration", "Concentration (ng/µL)", ("concentration", "conc", "conc.", "ng/ul", "ng/µl",
+                                                            "yield", "dna concentration")),
+            Field("a260_280", "260/280", ("260/280", "a260/280", "a260/a280", "purity")),
             Field("owner", "Owner", ("owner", "user", "person", "made by", "maker", "researcher", "depositor"),
                   kind="owner", required=True, fill="me"),
+            shared_field(),
             Field("notes", "Notes", ("note", "comment", "remark", "description", "source", "reference")),
         ])
 
@@ -955,6 +1137,8 @@ class InventoryTarget(Target):
         form = {k: v[k] for k in v if k.startswith("attr_") or k in (
             "name", "category", "quantity", "unit", "vendor", "catalog_number", "lot", "location_note",
             "received_on", "expires_on", "status")}
+        if mv.has("sharing") and v.get("is_shared") in ("0", "1"):
+            form["is_shared"] = v["is_shared"]
         form["owner"] = _owner(ctx, v.get("owner", ""), warnings, extras)
         form["notes"] = _extras_note(v.get("notes", ""), extras)
         if "status" in form and form["status"].strip():
@@ -988,6 +1172,20 @@ class InventoryTarget(Target):
         return f"#{item.number} {(item.name or '')[:40]}", warnings
 
 
+# Personal or lab common, however a sheet says it; the import page offers it
+# for every row when the sheet doesn't.
+SHARED_CHOICES = {"lab common": "1", "lab": "1", "common": "1", "shared": "1", "yes": "1", "y": "1", "true": "1",
+                  "1": "1", "personal": "0", "mine": "0", "private": "0", "own": "0", "no": "0", "n": "0",
+                  "false": "0", "0": "0"}
+
+
+def shared_field() -> Field:
+    return Field("is_shared", "Belongs to", ("belongs to", "lab common", "common", "shared", "lab stock",
+                                             "personal or lab"),
+                 kind="choice", choices=SHARED_CHOICES, required=True, fill="0",
+                 options=(("0", "Personal (its owner's)"), ("1", "Lab common: anyone can edit")))
+
+
 # Other names a lab's sheet uses for a preset's own columns (inventory.py
 # PRESETS fields), by the column's key.
 ATTR_ALIASES = {
@@ -999,6 +1197,9 @@ ATTR_ALIASES = {
     "titer": ("titer", "titre", "gc/ml", "vg/ml", "tu/ml", "ifu/ml", "pfu/ml", "titer (gc/ml)", "titre (vg/ml)"),
     "biosafety": ("biosafety", "bsl", "biosafety level", "containment", "safety level"),
     "made_on": ("made", "date made", "produced", "production date", "prep date", "packaged", "made on"),
+    "price": ("price", "cost", "unit price", "amount paid", "total cost"),
+    "account": ("account", "grant", "fund", "funding", "cost center", "cost centre", "po", "budget"),
+    "url": ("url", "link", "web", "website", "product page"),
 }
 
 
@@ -1008,7 +1209,7 @@ def inventory_target(session, module) -> Target:
     mv = svc.view(module)
     required = set(mv.required)
     fields = [
-        Field("name", mv.name_label, ("name", "item", "item name", "product", "product name", "reagent", "antibody",
+        Field("name", mv.name_label, ("name", "item", "item name", "product", "product name", "reagent", "antibody", "what",
                                "chemical", "sample", "sample name", "title", "compound", "target", "virus", "virus name",
                                "construct"),
               required="name" in required or mv.row.kind == "orders"),
@@ -1034,6 +1235,8 @@ def inventory_target(session, module) -> Target:
               kind="owner", required=True, fill="me"),
         Field("notes", "Notes", ("note", "comment", "remark", "description")),
     ]
+    if mv.has("sharing"):
+        fields.insert(-1, shared_field())
     needs = {"vendor": "supplier", "catalog_number": "supplier", "lot": "supplier", "quantity": "quantity",
              "unit": "quantity", "rack": "storage", "position": "storage", "received_on": "received",
              "expires_on": "expiry"}
@@ -1129,11 +1332,18 @@ def run(target: Target, headers: list[str], rows: list[list[str]], plan: Plan, c
     # Each mapped column, tidied as a whole (dates are read per column).
     columns = {i: [r[i] if i < len(r) else "" for r in rows] for i in range(len(headers))}
     tidy_notes: list[str] = []
+    with SessionLocal() as session:
+        day_first = lab.date_style(session) == "day"
+    unread: dict[int, dict[int, str]] = {}          # date column -> row -> what the sheet had
     for i, key in plan.mapping.items():
         f = fields.get(key)
         if f and f.kind == "date":
-            columns[i], notes = tidy_dates(columns[i])
+            raw = columns[i]
+            columns[i], notes = tidy_dates(raw, day_first)
             tidy_notes += [f"{headers[i]}: {n}" for n in notes]
+            unread[i] = {n: v.strip() for n, v in enumerate(raw) if v.strip() and not columns[i][n]}
+    sheet_values = {key: {v.strip() for v in columns[i] if v.strip()}
+                    for i, key in plan.mapping.items() if key in fields}
     unknown_choices: dict[str, set[str]] = {}
     tidy_notes += [f"Row {n} looks like the sheet's total, so it's left out." for n in totals]
     results = {"created": [], "problems": [], "warnings": [], "added_columns": [], "tidied": tidy_notes,
@@ -1141,7 +1351,8 @@ def run(target: Target, headers: list[str], rows: list[list[str]], plan: Plan, c
     with SessionLocal() as session:
         target = target_for(session, target.key)      # its module, read in this session
         _open_transaction(session)
-        ctx = target.prepare(session)
+        carry: dict = {}                               # what outlives a failed row's ctx
+        ctx = {**target.prepare(session), "sheet": sheet_values, "carry": carry}
         new_columns: dict[int, str] = {}
         if target.can_add_columns:
             for i, key in plan.mapping.items():
@@ -1153,7 +1364,7 @@ def run(target: Target, headers: list[str], rows: list[list[str]], plan: Plan, c
                         new_columns[i] = made
                         results["added_columns"].append(headers[i])
                         if kind == "date":
-                            columns[i], _notes = tidy_dates(columns[i])
+                            columns[i], _notes = tidy_dates(columns[i], day_first)
         batch_cm = audit.batch(session, "create", f"import {len(rows)} {target.nouns} from {filename}"[:200],
                                target.key.split(":")[0]) if commit else None
         batch_row = batch_cm.__enter__() if batch_cm else None
@@ -1180,6 +1391,8 @@ def run(target: Target, headers: list[str], rows: list[list[str]], plan: Plan, c
                         values[new_columns[i]] = value
                     elif key in ("_notes", "_new") and value:
                         extras.append((headers[i], value))
+                    if n in unread.get(i, {}):
+                        extras.append((headers[i], unread[i][n]))    # not a date: kept as the sheet had it
                 savepoint = session.begin_nested()
                 try:
                     label, warnings = target.create(session, ctx, values, extras)
@@ -1188,7 +1401,7 @@ def run(target: Target, headers: list[str], rows: list[list[str]], plan: Plan, c
                     results["warnings"] += [f"Row {where[n]} ({label}): {w}" for w in warnings]
                 except (RowError, Exception) as error:   # one bad row doesn't stop the rest
                     savepoint.rollback()
-                    ctx = target.prepare(session)       # forget what the row made
+                    ctx = {**target.prepare(session), "sheet": sheet_values, "carry": carry}  # forget what the row made
                     message = str(error) if isinstance(error, RowError) else _plain(error)
                     results["problems"].append(f"Row {where[n]}: {message}")
             if results["created"]:
@@ -1308,6 +1521,8 @@ def match(token: str):
         for i, header in enumerate(headers):
             key, strength, why = matched.get(i, ("", 0.0, ""))
             samples = [v for v in columns[i] if v.strip()][:3]
+            if not key and norm(header) in target.derived:
+                key, why = "_skip", "worked out from the other columns"
             if not key:
                 key = "_new" if target.can_add_columns and samples else ("_notes" if samples else "_skip")
             shape = _shape(columns[i])
@@ -1346,14 +1561,17 @@ def _go(token: str, commit: bool):
                 (_dir() / f"{token}.json").unlink()
             except OSError:
                 pass
-            skipped = f" {len(results['problems'])} rows were skipped." if results["problems"] else ""
+            n = len(results["problems"])
+            skipped = (f" {n} row was skipped." if n == 1 else f" {n} rows were skipped.") if n else ""
             flash(Markup(f"Imported {len(results['created'])} {target.nouns if len(results['created']) != 1 else target.noun} "
                          f"from {payload['filename']}.{skipped} "
                          f'<a href="{url_for("batches_view")}">Undo</a>'), "success")
             return redirect(target.back_url)
         flash("Nothing was imported: every row had a problem.", "error")
     labels = {f.key: f.label for f in target.fields}
-    return render_template("sheet_import.html", stage="preview", target=target, target_key=payload["target"],
+    # A fill chosen from a list reads as the list said it ("Lab common", not "1").
+    fill_words = {f.key: dict(f.options) for f in target.fields if f.options}
+    return render_template("sheet_import.html", stage="preview", fill_words=fill_words, target=target, target_key=payload["target"],
                            token=token, payload=payload, sheet=sheet, headers=headers, results=results, plan=plan,
                            labels=labels, form=request.form)
 

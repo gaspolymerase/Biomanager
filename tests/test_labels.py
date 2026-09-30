@@ -8,6 +8,7 @@ import threading
 
 # tests.base first: it points the app at a throwaway database before app is imported.
 from tests.base import AppTestCase, execute, uniq
+from tests.test_inventory import InventoryCase
 from app import labels  # noqa: E402
 
 
@@ -34,7 +35,7 @@ class FakeZebra:
         self.server.close()
 
 
-class Labels(AppTestCase):
+class Labels(InventoryCase):
     def tearDown(self):
         execute("delete from app_settings where key like 'label_printer%'")
         super().tearDown()
@@ -73,6 +74,24 @@ class Labels(AppTestCase):
         self.assertIn(f'id="item-{item}"', self.get_ok(self.a, "/inventory/reagents"))
         tank = self.make_tank(self.a)
         self.assertIn("Tank ", self.get_ok(self.a, f"/labels/cards/tanks?ids={tank}"))
+
+    def test_a_cryo_label_says_what_you_choose_and_can_wrap(self):
+        box = self.make_rack(self.a, "samples", uniq("−80 A R1 B"))
+        item = self.make_item(self.a, "samples", name=uniq("S01-R V-6h rep1 "), rack_id=str(box), position="B1")
+        page = f"/labels/cards/inventory/samples?ids={item}&stock=33x13"
+        html = self.get_ok(self.a, page + "&fields_set=1&f=position&f=printed&wrap=1")
+        body = html.split('class="card-sheet"', 1)[1]
+        self.assertIn(">B1<", body.replace(" ", ""))
+        self.assertNotIn("Owner", body)
+        self.assertIn("-webkit-line-clamp: 2", html)
+        # Remembered for this database next time.
+        again = self.get_ok(self.a, f"/labels/cards/inventory/samples?ids={item}&stock=33x13")
+        self.assertIn('value="position" checked', again)
+        self.assertNotIn('value="owner" checked', again)
+        crowded = self.get_ok(self.a, page + "&fields_set=1&f=box&f=position&f=owner&f=printed&wrap=1")
+        self.assertIn("Not on these labels, for lack of room", crowded)
+        zpl = self.a.get(page + "&format=zpl").get_data(as_text=True)
+        self.assertIn(",2,0,L^FH_^FD#", zpl)                  # the title in a two-line block
 
     def test_only_a_printer_on_the_lab_network(self):
         self.assertEqual(labels.printer_address("192.168.1.50"), ("192.168.1.50", 9100))

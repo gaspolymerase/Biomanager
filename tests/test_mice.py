@@ -7,7 +7,7 @@ import json
 import unittest
 
 from tests.base import *  # noqa: F401,F403
-from tests.base import AppTestCase, T, count, days_ago, one, row, rows, uniq
+from tests.base import AppTestCase, T, count, days_ago, last_batch, one, row, rows, uniq
 
 
 # ---------------------------------------------------------------- helpers
@@ -478,6 +478,78 @@ class MouseBatchEditTests(Case):
         self.assertEqual({(mouse(i)["status"], mouse(i)["date_of_death"]) for i in self.ids}, {("sac", T)})
         batch = newest_batch(self.member)
         self.assertEqual((batch[1], batch[2]), ("mark as sac", 2))
+
+    def csv_import(self, text, dry_run):
+        import io
+        return self.a.post("/import/mouse", data={"file": (io.BytesIO(text.encode()), "mice.csv"),
+                                                  "dry_run": "1" if dry_run else "0"},
+                           content_type="multipart/form-data").get_json()
+
+    def test_a_csv_with_a_repeated_mouse_id_is_caught_in_the_dry_run(self):
+        top = one("select max(mouse_id) from mice")
+        tag = uniq("CSV")
+        text = (f"mouse_id,genotype\n{top + 50},{tag}\n{top + 50},{tag}\n,{tag}\n{top + 51},{tag}\n")
+        dry = self.csv_import(text, True)
+        self.assertEqual(dry["count"], 3)
+        self.assertTrue(any(f"mouse_id {top + 50} already exists" in e for e in dry["errors"]))
+        done = self.csv_import(text, False)
+        self.assertEqual(done["count"], 3)
+        self.assertEqual(count("mice", "genotype=?", tag), 3)
+        self.assertEqual(last_batch()[1], "import mice from mice.csv")   # Batch history can undo it
+
+    def test_new_mouse_numbers_are_never_handed_out_twice(self):
+        top = one("select max(mouse_id) from mice")
+        self.m.post("/colony/mice/new-record")                      # a higher number than the one below
+        top = one("select max(mouse_id) from mice")
+        execute("update mice set created_at=? where id=?",          # a low number, entered last
+                datetime.utcnow() + timedelta(days=1), self.ids[0])
+        self.m.post("/colony/mice/new-record")
+        made = one("select max(mouse_id) from mice")
+        self.assertEqual(made, top + 1)
+        execute("delete from mice where mouse_id=?", made)          # the newest mouse deleted
+        self.m.post("/colony/mice/new-record")
+        self.assertEqual(one("select max(mouse_id) from mice"), top + 2)
+
+    def test_new_mouse_saved_at_the_same_moment_as_another_gets_the_next_number(self):
+        from unittest import mock
+        import app.app as app_module
+        taken = one("select mouse_id from mice where id=?", self.ids[0])
+        real = app_module.next_mouse_id
+        calls = iter([taken])            # the number another save took a moment ago
+        with mock.patch.object(app_module, "next_mouse_id", lambda s: next(calls, None) or real(s)):
+            r = self.m.post("/colony/mice/create", data={"owner": self.member, "status": "experiment",
+                                                         "note": "same moment"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(count("mice", "note=?", "same moment"), 1)
+        self.assertNotIn("already used", " ".join(flash_texts(self.m, "error")))
+
+    def test_a_row_open_since_before_a_colleague_s_edit_does_not_undo_it(self):
+        mid = self.ids[0]
+        shown = sheet_form(mid)
+        opened = {**shown, **{f"{k}_was": v for k, v in shown.items() if k in (
+            "gender", "status", "transgene_1", "owner", "note", "cage_id", "litter_id", "date_of_death")}}
+        self.autosave(self.a, update_url(mid), sheet_form(mid, status="geno"))    # a colleague, meanwhile
+        self.autosave(self.m, update_url(mid), {**opened, "note": "weighed"})     # the open row: only the note
+        self.assertEqual((mouse(mid)["status"], mouse(mid)["note"]), ("geno", "weighed"))
+
+    def test_saving_another_cell_keeps_a_note_s_line_breaks(self):
+        mid = self.ids[0]
+        execute("update mice set note=?, transgene_1=? where id=?", "Healthy\nCoat: black", "Cre\n(het)", mid)
+        # The sheet's one-line cells send the text without its line breaks.
+        self.autosave(self.m, update_url(mid), sheet_form(mid, gender="F", note="HealthyCoat: black",
+                                                          transgene_1="Cre(het)"))
+        self.assertEqual(one("select note from mice where id=?", mid), "Healthy\nCoat: black")
+        self.assertEqual(one("select transgene_1 from mice where id=?", mid), "Cre\n(het)")
+        self.assertEqual(one("select gender from mice where id=?", mid), "F")
+        self.autosave(self.m, update_url(mid), sheet_form(mid, note="Rewritten"))
+        self.assertEqual(one("select note from mice where id=?", mid), "Rewritten")
+
+    def test_batch_sac_keeps_the_day_a_mouse_already_died(self):
+        earlier = date.today() - timedelta(days=3)
+        execute("update mice set status='sac', date_of_death=? where id=?", earlier, self.ids[0])
+        self.m.post("/colony/mice/bulk-sac", data={"selected_ids": self.ids})
+        self.assertEqual(mouse(self.ids[0])["date_of_death"], earlier.isoformat())
+        self.assertEqual(mouse(self.ids[1])["date_of_death"], T)
 
 
 # ---------------------------------------------------------------- lifecycle

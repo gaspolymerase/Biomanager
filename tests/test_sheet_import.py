@@ -9,17 +9,19 @@ import re
 from datetime import datetime
 
 # tests.base first: it points the app at a throwaway database before app is imported.
-from tests.base import AppTestCase, count, flash_text, last_batch, one, row, uniq
+from tests.base import AppTestCase, count, flash_text, last_batch, one, row, rows, uniq
 from app import sheet_import as si  # noqa: E402
 
 
-def xlsx(rows: list[list], sheet: str = "Sheet1", extra: dict | None = None) -> bytes:
+def xlsx(rows: list[list], sheet: str = "Sheet1", extra: dict | None = None, merge: tuple[str, ...] = ()) -> bytes:
     from openpyxl import Workbook
     book = Workbook()
     ws = book.active
     ws.title = sheet
     for r in rows:
         ws.append(r)
+    for cells in merge:
+        ws.merge_cells(cells)
     for name, more in (extra or {}).items():
         other = book.create_sheet(name)
         for r in more:
@@ -58,6 +60,11 @@ class Matching(AppTestCase):
         got = si.auto_match(["Location"], [["Freezer 2, shelf 3", "Cold room"]], fields)
         self.assertEqual(got[0][0], "location")
 
+    def test_a_position_column_may_mix_a1_and_plain_numbers(self):
+        for values in (["A1", "3", "B2", "12", "C4"], ["1", "2", "3", "81"]):
+            got = si.auto_match(["Position"], [values], self.fields())
+            self.assertEqual(got[0][0], "position", values)
+
     def test_near_spellings_match(self):
         got = si.auto_match(["Resistence"], [["Kan"]], self.fields())
         self.assertEqual(got[0][0], "resistance")
@@ -84,6 +91,28 @@ class Tidying(AppTestCase):
         out, notes = si.tidy_dates(["03/04/2026"])
         self.assertEqual(out, ["2026-03-04"])
         self.assertIn("month first", " ".join(notes))
+
+    def test_dashed_two_digit_years_are_day_or_month_first_not_year_first(self):
+        out, _notes = si.tidy_dates(["15-03-26", "31-12-25"])
+        self.assertEqual(out, ["2026-03-15", "2025-12-31"])
+        self.assertEqual(si.tidy_dates(["5 Mar 2026", "12-May-26", "May 12, 2026"])[0],
+                         ["2026-03-05", "2026-05-12", "2026-05-12"])
+
+    def test_a_title_line_of_a_few_cells_is_not_the_header(self):
+        headers, rows, first = si.split_header([["Colony", "March 2026", ""] + [""] * 5,
+                                                ["Ear tag", "Sex", "DOB", "Strain", "Cage", "Room", "Owner", "Notes"],
+                                                ["1", "F", "2026-01-01", "Cre", "10", "B1", "sam", ""]])
+        self.assertEqual((headers[0], first), ("Ear tag", 3))
+        self.assertEqual(si.tidy_dates(["1.5e-07"])[0], [""])   # (numbers are not dates)
+        self.assertEqual(si._cell(1.5e-07), "1.5e-07")
+
+    def test_the_export_s_formula_guard_is_undone_on_import(self):
+        rows = si.read_workbook("mice.csv", "Genotype,Note\n'+/+,'=1+1\n'-/-,it's fine\n".encode())["Sheet 1"]
+        self.assertEqual(rows[1:], [["+/+", "=1+1"], ["-/-", "it's fine"]])
+        headers, _rows, _first = si.split_header([["Colony", "March", "2026", "", ""],
+                                                  ["Ear tag", "Sex", "DOB", "Strain", "Cage"],
+                                                  ["1", "F", "2026-01-01", "Cre", "10"]])
+        self.assertEqual(headers[0], "Ear tag")                  # a title of 3 of 5 cells
 
     def test_excel_date_numbers_and_iso(self):
         out, _ = si.tidy_dates(["46095", "2026-03-14 00:00", "not a date"])
@@ -204,6 +233,66 @@ class Importing(AppTestCase):
         self.assertNotEqual(second[0], n)
         self.assertIn(f"ID in the spreadsheet: {n}", second[1])
 
+    def import_mice(self, data, filename="colony.xlsx", **fills):
+        token, html = self.upload(self.a, "mice", filename, data)
+        form = {**self.chosen(html), "sheet": "Sheet1", **fills}
+        preview = self.a.post(f"/import-sheet/file/{token}/preview", data=form).get_data(as_text=True)
+        self.post(self.a, f"/import-sheet/file/{token}/run", data=form)
+        return preview
+
+    def test_a_cage_merged_down_over_its_mice_holds_each_of_them(self):
+        tag, first, second = uniq("TG"), uniq("M"), uniq("M")
+        data = xlsx([["Cage #", "Sex", "Strain"], [first, "F", tag], [None, "F", tag], [None, "M", tag],
+                     [second, "M", tag], [None, "F", tag]], merge=("A2:A4", "A5:A6"))
+        self.import_mice(data, **{"fill-owner": "me"})
+        cages = [c for (c,) in rows(
+            "select c.cage_id from mice m join mouse_cages c on c.id=m.cage_id_fk where m.transgene_1=? "
+            "order by m.id", tag)]
+        self.assertEqual(cages, [first, first, first, second, second])
+
+    def test_a_new_cage_for_a_rack_place_never_takes_a_number_the_sheet_uses(self):
+        from app.db import SessionLocal
+        from app.services import reserve_cage_ids
+        with SessionLocal() as s:
+            upcoming = reserve_cage_ids(s, 1)[0]
+        tag = uniq("TG")
+        data = xlsx([["Cage #", "Rack", "Position", "Sex", "Strain", "Owner"],
+                     ["", "Rack A", "A1", "F", tag, self.member], [upcoming, "", "", "M", tag, self.member]])
+        self.import_mice(data)
+        placed, typed = [tuple(r) for r in rows(
+            "select c.cage_id, c.owner from mice m join mouse_cages c on c.id=m.cage_id_fk "
+            "where m.transgene_1=? order by m.id", tag)]
+        self.assertNotEqual(placed[0], upcoming)
+        self.assertEqual(count("mice", "cage_id_fk=(select id from mouse_cages where cage_id=?)", upcoming), 1)
+        self.assertEqual((placed[1], typed[1]), (self.member, self.member))   # the mice's owner's, not the importer's
+
+    def test_dates_follow_the_lab_s_style_and_nothing_is_born_tomorrow(self):
+        from app.db import SessionLocal
+        from app.inventory_service import set_setting
+        def style(value):
+            with SessionLocal() as s:
+                set_setting(s, "date_style", value)
+                s.commit()
+        style("day")
+        self.addCleanup(style, "month")
+        tag = uniq("TG")
+        data = (f"Sex,Strain,DOB\nF,{tag},03/04/2026\nM,{tag},12-May-26\nF,{tag},05/06/2099\n").encode()
+        preview = self.import_mice(data, "colony.csv", **{"fill-owner": "me"})
+        self.assertIn("read day first", preview)
+        got = [r for r in rows(
+            "select l.date_of_birth, m.note from mice m left join litters l on l.id=m.litter_id_fk "
+            "where m.transgene_1=? order by m.id", tag)]
+        self.assertEqual([str(d) if d else None for d, _n in got], ["2026-04-03", "2026-05-12", None])
+        self.assertIn("2099-06-05", got[2][1])
+
+    def test_one_litter_keeps_one_date_of_birth(self):
+        tag, litter = uniq("TG"), uniq("L")
+        data = (f"Sex,Strain,Litter,DOB\nF,{tag},{litter},2026-03-01\nM,{tag},{litter},2026-03-09\n").encode()
+        preview = self.import_mice(data, "colony.csv", **{"fill-owner": "me"})
+        self.assertIn("in an earlier row", preview)
+        self.assertEqual(str(one("select date_of_birth from litters where litter_id=?", litter)), "2026-03-01")
+        self.assertIn("2026-03-09", one("select note from mice where transgene_1=? and gender='M'", tag))
+
     def test_plasmids_with_boxes_positions_and_a_location_column(self):
         box = uniq("Box ")
         name = uniq("pImp")
@@ -293,6 +382,25 @@ class Importing(AppTestCase):
                   "where o.module_id_fk=? and o.code='N-1'", mid)
         self.assertEqual(got[:2], ("male", "T-9"))
         self.assertEqual(float(json.loads(got[2])["weight_g"]), 4.5)
+
+    def test_plasmids_can_all_come_in_as_lab_common(self):
+        name = uniq("pCommon")
+        token, html = self.upload(self.a, "plasmids", "p.csv", f"Name\n{name}\n".encode())
+        self.assertIn('name="fill-is_shared"', html)
+        self.post(self.a, f"/import-sheet/file/{token}/run",
+                  data={**self.chosen(html), "sheet": "Sheet 1", "fill-is_shared": "1"})
+        self.assertEqual(one("select is_shared from plasmids where name=?", name), True)
+
+    def test_an_inventory_sheet_says_which_rows_are_lab_common(self):
+        key = self.fresh_inventory()
+        mine, common = uniq("Tris "), uniq("PBS ")
+        data = xlsx([["Name", "Lab common"], [mine, "no"], [common, "yes"]])
+        token, html = self.upload(self.a, f"inventory:{key}", "r.xlsx", data)
+        chosen = self.chosen(html)
+        self.assertEqual(chosen["map-1"], "is_shared")
+        self.post(self.a, f"/import-sheet/file/{token}/run", data={**chosen, "sheet": "Sheet1"})
+        self.assertEqual([one("select is_shared from inventory_items where name=?", n) for n in (mine, common)],
+                         [False, True])
 
     def test_problems_name_the_sheet_s_own_row(self):
         data = xlsx([["Plasmids of the lab"], ["Name", "Vector"], ["pOk", "pUC19"], [], ["", "no name"]])

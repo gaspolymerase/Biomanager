@@ -23,6 +23,9 @@
  *   data-dead-if-set                        alive only while empty (a date of death)
  * and the row's .life-dot follows it.
  *
+ * A block pasted into a cell (a column of readings, a copied range) fills
+ * the cells down and across from it, each saved as if typed.
+ *
  * Events for page-specific rules: "sheet:change" (before saving; detail
  * {input, form, previous}) and "sheet:saved" (detail {form, body}).
  */
@@ -82,6 +85,12 @@
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
       const row = body.row || {};
+      // What was just saved is what the row now shows (the server's own
+      // values below correct it where it changed them).
+      cellsOf(form).forEach((el) => {
+        const was = el.name && el.type !== 'checkbox' && form.querySelector(`[name="${el.name}_was"]`);
+        if (was) was.value = el.value;
+      });
       Object.entries(row.values || {}).forEach(([name, value]) => {
         const was = form.querySelector(`[name="${name}_was"]`);
         if (was) was.value = value == null ? '' : value;
@@ -113,6 +122,7 @@
   }
 
   function wire(card) {
+    card.addEventListener('paste', (event) => pasteBlock(card, event));
     card.querySelectorAll('[data-autosave="1"][form]').forEach((input) => {
       input.dataset.previous = input.value;
       input.addEventListener('input', () => {
@@ -135,6 +145,62 @@
         if (go) queue(input, 0);
       });
     });
+  }
+
+  /* Pasting a block into a cell: a column of Nanodrop readings goes down
+     the rows shown from that cell, a copied range of a spreadsheet across
+     and down, each cell saved as if typed. One value pastes as usual. */
+  function editable(td) {
+    const el = td && td.querySelector('[data-autosave="1"][form]');
+    return el && !el.disabled && !el.readOnly ? el : null;
+  }
+
+  function put(el, value) {
+    if (el.tagName === 'SELECT') {
+      const want = value.trim().toLowerCase();
+      const option = Array.from(el.options).find((o) => o.value.toLowerCase() === want || o.text.trim().toLowerCase() === want);
+      if (!option) return false;
+      el.value = option.value;
+    } else if (el.type === 'date') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return false;
+      el.value = value.trim();
+    } else if (el.type === 'checkbox') {
+      return false;
+    } else {
+      el.value = value.trim();
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function pasteBlock(card, event) {
+    const start = event.target.closest && event.target.closest('[data-autosave="1"][form]');
+    const text = event.clipboardData && event.clipboardData.getData('text/plain');
+    if (!start || !text || !/[\t\n]/.test(text.replace(/\r?\n$/, ''))) return;
+    const td = start.closest('td');
+    const tr = td && td.closest('tr');
+    const body = tr && tr.parentElement;
+    if (!body) return;
+    event.preventDefault();
+    const grid = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map((line) => line.split('\t'));
+    // Rows and columns as shown: a filtered-out row or a hidden column is skipped.
+    const shown = (el) => !el.hidden && el.offsetParent !== null;
+    const rows = Array.from(body.rows).filter(shown);
+    const shownCells = (row) => Array.from(row.cells).filter(shown);
+    const first = rows.indexOf(tr);
+    const column = shownCells(tr).indexOf(td);
+    let skipped = 0;
+    grid.forEach((cells, r) => {
+      const row = rows[first + r];
+      cells.forEach((value, c) => {
+        const el = row && editable(shownCells(row)[column + c]);
+        if (!(el && put(el, value)) && value.trim()) skipped += 1;
+      });
+    });
+    if (skipped && window.BiomanagerShell) {
+      window.BiomanagerShell.toast(`${skipped} pasted value${skipped === 1 ? '' : 's'} had no cell to go in (past the last row, or not a choice there).`);
+    }
   }
 
   window.BioSheet = { refreshDot, save };

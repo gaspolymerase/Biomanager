@@ -121,6 +121,12 @@ def parse(text: str, raw_scheme, rows: int, cols: int) -> tuple[int, int] | None
             return None
         return index // cols + 1, index % cols + 1
 
+    if text.isdigit():
+        # A plain number on a lettered box: the nth place counting along the
+        # rows (box 1…81), as sheets that mix "A1" and "3" mean it.
+        index = int(text) - 1
+        return (index // cols + 1, index % cols + 1) if 0 <= index < rows * cols else None
+
     first, second = (s["rows"], s["cols"]) if s["order"] == "row_col" else (s["cols"], s["rows"])
     token = {"letters": r"([A-Za-z]{1,2})", "numbers": r"(\d{1,3})"}
     # Two letter-groups or two number-groups need a separator to split.
@@ -142,3 +148,21 @@ def parse(text: str, raw_scheme, rows: int, cols: int) -> tuple[int, int] | None
 def example(raw_scheme, rows: int = 8, cols: int = 10) -> str:
     """A worked example for the settings UI: first, a middle cell, last."""
     return " · ".join(label(r, c, raw_scheme, cols) for r, c in ((1, 1), (min(4, rows), min(7, cols)), (rows, cols)))
+
+
+# ---------------------------------------------------------------- lists of boxes
+
+_DASHES = str.maketrans({"−": "-", "‒": "-", "–": "-", "—": "-", " ": " "})
+_PLACE_PARTS = re.compile(r"(?:^|(?<=\s))-\d+(?:\.\d+)?|\d+(?:\.\d+)?|\D+")
+
+
+def place_order(*names: str) -> tuple:
+    """A sort key for freezers, boxes and racks by their names: numbers as
+    numbers, a leading minus as a sign, whichever dash was typed. "−80 A",
+    "-20 B", "4 °C", "Box 2", "Box 10" sort as −80, −20, 4, then Box 2 before
+    Box 10; before, a hyphen and a minus sign split the −20s from the −80s."""
+    key = []
+    for name in names:
+        parts = _PLACE_PARTS.findall((name or "").translate(_DASHES).strip().lower())
+        key.append(tuple((0, float(p), "") if re.fullmatch(r"-?\d+(?:\.\d+)?", p) else (1, 0.0, p) for p in parts))
+    return tuple(key)

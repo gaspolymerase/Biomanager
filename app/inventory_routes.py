@@ -18,16 +18,18 @@ Who may do what (see access.py for the general rule):
 from __future__ import annotations
 
 import json
+import re
 import zlib
 from datetime import date, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from werkzeug.datastructures import ImmutableMultiDict
 from flask import (
     Blueprint, abort, flash, g, jsonify, redirect, render_template, request, url_for,
 )
 from sqlalchemy import select
 
-from . import access, audit, positions
+from . import access, audit, database_keys, positions
 from . import inventory as presets
 from . import inventory_service as svc
 from .db import SessionLocal
@@ -79,6 +81,7 @@ def _module_or_404(session, key: str) -> InventoryModule:
     # person can tell (app/lab.py).
     if module is None or not lab.can_see(module):
         abort(404)
+    database_keys.to_current(module, key)   # an address it had before a rename
     return module
 
 
@@ -193,7 +196,7 @@ def new_module():
 def _item_payload(mv, item: InventoryItem) -> dict:
     attrs = item.attrs_dict
     payload = {
-        "id": item.id, "_label": item.name or f"#{item.number}",
+        "id": item.id, "_number": item.number, "_label": item.name or f"#{item.number}",
         "_locked": not _can_edit(item), "_manage": _can_manage(item),
         "name": item.name, "category": item.category, "status": item.status, "owner": item.owner,
         "is_shared": "1" if item.is_shared else "0", "quantity": item.quantity, "unit": item.unit,
@@ -226,6 +229,12 @@ def _row_json(mv, item: InventoryItem) -> dict:
     the cells above, and a fresh payload for the Open dialog."""
     payload = _item_payload(mv, item)
     row = {"values": {k: payload[k] for k in ROW_VALUES}}
+    # Columns the server works out: a primer's length, GC and Tm, and the
+    # Stored at a box gives.
+    stored = svc.stored_at_field(mv)
+    for key in (*svc.PRIMER_DERIVED, *([stored["key"]] if stored else [])):
+        if f"attr_{key}" in payload:
+            row["values"][f"attr_{key}"] = payload[f"attr_{key}"]
     active = svc.is_available(mv, item.status)
     if active is not None:
         row["active"] = active
@@ -239,7 +248,8 @@ def _grid_payload(mv, racks, items) -> dict:
                    "naming": positions.scheme(r.naming),
                    **({"edit": {"data-record-payload": json.dumps({
                        "id": r.id, "_label": r.name, "name": r.name, "rows": r.rows, "cols": r.cols,
-                       "kind": r.kind, **{f"naming_{k}": v for k, v in positions.scheme(r.naming).items()}})}}
+                       "kind": r.kind, "stored_at": r.stored_at,
+                       **{f"naming_{k}": v for k, v in positions.scheme(r.naming).items()}})}}
                       if _can_manage_rack(r) else {})}
                   for r in racks],
         "items": [{
@@ -252,7 +262,9 @@ def _grid_payload(mv, racks, items) -> dict:
             "search": " ".join(filter(None, [i.name, i.category, i.status, i.owner, i.vendor, i.catalog_number,
                                              *[str(v) for v in i.attrs_dict.values() if isinstance(v, str)]])).lower(),
             "edit": {"data-record-edit": "item-dialog", "data-record-payload": json.dumps(_item_payload(mv, i))},
-        } for i in items],
+        } for i in items
+            # A tube used up or thrown out left its box: not waiting to be placed.
+            if i.rack_id_fk or (i.status or "").lower() not in svc.GONE_FROM_BOX],
         "create": {"attrs": {"data-record-edit": "item-dialog"},
                    "payload": {"owner": g.user.username, "status": mv.statuses[0] if mv.statuses else "",
                                "is_shared": "0"},
@@ -324,8 +336,8 @@ def module(key: str):
             kept = {i.id for i in listed}
             all_items = [i for i in items if i.id in kept or i.rack_id_fk]
             items = listed
-        racks = list(session.scalars(select(InventoryRack).where(InventoryRack.module_id_fk == row.id)
-                                     .order_by(InventoryRack.name)))
+        racks = sorted(session.scalars(select(InventoryRack).where(InventoryRack.module_id_fk == row.id)),
+                       key=lambda r: positions.place_order(r.name))
         me = g.user.username
         source_fields = [f for f in mv.fields if f["type"] == "source"]
         sources = sample_sources(session) if source_fields else []
@@ -370,8 +382,14 @@ def module(key: str):
             "next_number": svc.next_number(session, row.id),
             "stock_targets": stock_targets, "order_module": order_module, "reorder": reorder,
             "stock_links": _order_stock_links(session, row, items),
+            "on_order": ({i: "Already on order: " + "; ".join(_on_order_text(o) for o in found[:3])
+                          for i, found in _open_orders_of(session, row, items).items()}
+                         if row.kind in STOCK_KINDS else {}),
             "remembered": svc.remembered(session, mv, items),
             "can_configure": _can_configure(row), "is_admin": access.is_admin(),
+            "bulk_fields": bulk_fields(mv),
+            "stored_at_field": svc.stored_at_field(mv),
+            "derived_fields": svc.PRIMER_DERIVED if row.kind == "primers" else (),
             "terminal_statuses": sorted(svc.TERMINAL_STATUSES),
             "counts": {
                 "all": len(items),
@@ -384,6 +402,41 @@ def module(key: str):
             },
         }
     return render_template("inventory/module.html", **context)
+
+
+def _same_thing(order: InventoryItem, stock: InventoryItem, source: InventoryModule) -> bool:
+    """An order for this stock item: made from it with Order again, or the
+    same catalog number (the same name when it has none)."""
+    if (order.notes or "").startswith(f"Reorder of {source.label} #{stock.number}"):
+        return True
+    cat = (stock.catalog_number or "").strip().lower()
+    if cat:
+        return (order.catalog_number or "").strip().lower() == cat
+    name = (stock.name or "").strip().lower()
+    return bool(name) and (order.name or "").strip().lower() == name
+
+
+def _open_orders_of(session, source: InventoryModule, stock: list[InventoryItem]) -> dict[int, list[InventoryItem]]:
+    """Stock item id → the orders for it still open (requested, ordered)."""
+    orders = _order_module(session)
+    if orders is None or not stock:
+        return {}
+    omv = svc.view(orders)
+    open_orders = list(session.scalars(select(InventoryItem).where(
+        InventoryItem.module_id_fk == orders.id, InventoryItem.status.in_(omv.open_statuses))
+        .order_by(InventoryItem.number.desc())))
+    found = {}
+    for item in stock:
+        same = [o for o in open_orders if _same_thing(o, item, source)]
+        if same:
+            found[item.id] = same
+    return found
+
+
+def _on_order_text(order: InventoryItem) -> str:
+    """"#14, ordered, asked for by sasha on 28 Sep"."""
+    when = f" on {order.created_at:%d %b}" if order.created_at else ""
+    return f"#{order.number}, {order.status or 'requested'}, asked for by {order.owner or 'someone'}{when}"
 
 
 def _reorder_payload(session, mv, orders: list[InventoryItem], ref: str) -> dict | None:
@@ -413,6 +466,11 @@ def _reorder_payload(session, mv, orders: list[InventoryItem], ref: str) -> dict
             or next((o for o in orders if same(o, "catalog_number")), None)
             or next((o for o in orders if same(o, "name") and not stock.catalog_number), None))
     hint = f"Ordering {stock.name or 'it'} again from {source.label} #{stock.number}."
+    already = [o for o in orders if o.status in mv.open_statuses and _same_thing(o, stock, source)]
+    if already:
+        hint = (f"Already on order: {'; '.join(_on_order_text(o) for o in already[:3])}. "
+                f"Save only if you need more. " + hint)
+        payload["_warn"] = True
     if last is not None:
         payload.update(quantity=last.quantity, unit=last.unit)
         attrs = last.attrs_dict
@@ -515,6 +573,10 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
             if field["type"] == "date" and value:
                 value = _date(value).isoformat()
             if field["type"] == "number" and value:
+                # "2,01" is a decimal comma (kept as 2.01); "1,000" and
+                # "12,500" are thousands, as before.
+                if re.fullmatch(r"-?\d+,\d+", value) and not re.fullmatch(r"-?\d{1,3}(,\d{3})+", value):
+                    value = value.replace(",", ".")
                 try:
                     float(value.replace(",", ""))
                 except ValueError:
@@ -541,10 +603,16 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
         raise Refused(f"{_and(missing)} can’t be left empty.")
 
     # Status last: it may fill the received date or stamp a used-up date.
+    place_was = (str(item.rack_id_fk or ""), svc.rack_label(item))
     if "status" in form and (creating or form_changed(form, "status")):
         problem = svc.apply_status(mv, item, form.get("status"))
         if problem:
             raise Refused(problem)
+    # Used up just freed its cell: the dialog still showing that box and
+    # position is not a request to put it back.
+    freed = place_was[0] and not item.rack_id_fk
+    if freed and (form.get("rack_id", "").strip(), form.get("position", "").strip()) in (place_was, (place_was[0], "")):
+        return None, notes
 
     if mv.has("storage") and "rack_id" in form and form_changed(form, "rack_id", "position"):
         return svc.apply_position(session, item, form.get("rack_id"), form.get("position")), notes
@@ -587,6 +655,13 @@ def save_item(key: str):
         except Refused as refused:
             session.rollback()
             return _done(key, error=str(refused))
+        if error:
+            # A position that can't be taken (another tube is there): nothing
+            # is saved, and the dialog says why and keeps what was typed. It
+            # used to save the record without its box and leave the dialog
+            # open, so pressing Create again made a second one.
+            session.rollback()
+            return _done(key, error=f"Not saved: {error}")
         item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
         if creating and row.kind in STOCK_KINDS and request.form.get("from_order"):
             # Made from a received order's "Add to stock": the order now
@@ -601,8 +676,6 @@ def save_item(key: str):
         label = item.name or f"#{item.number}"
         for note in notes:
             flash(note, "warning")
-        if error:
-            return _done(key, error=f"Saved {label}, but: {error}")
         if not _wants_json() and _offers_stock(session, mv, item, status_was):
             flash(f"Saved {label}.", "success")
             return redirect(_back(key, offer=item.id))
@@ -613,6 +686,51 @@ MAX_AT_ONCE = 50
 
 # Fields a batch of new items does not copy from the dialog as they are.
 MANY_ONLY = ("id", "count", "names", "rack_id", "position")
+
+
+@bp.route("/<key>/items/pair", methods=["POST"])
+def add_primer_pair(key: str):
+    """A primer pair in one go: "<name>-F" and "<name>-R", each with its own
+    sequence and the other as its Pair, sharing everything else the dialog
+    gave (use, target, box, owner). One batch; nothing is made if either
+    is refused."""
+    form = request.form
+    with SessionLocal() as session:
+        row = _module_or_404(session, key)
+        mv = svc.view(row)
+        if row.kind != "primers":
+            abort(404)
+        base = (form.get("name") or "").strip()[:190]
+        seqs = {"F": svc.clean_sequence(form.get("forward")), "R": svc.clean_sequence(form.get("reverse"))}
+        if not base:
+            return _done(key, error="Give the pair a name, e.g. GAPDH qPCR.")
+        if not seqs["F"] or not seqs["R"]:
+            return _done(key, error="Paste both sequences, forward and reverse.")
+        names = {end: f"{base}-{end}" for end in seqs}
+        made = []
+        try:
+            with audit.batch(session, "create", f"add primer pair {base}"[:200], "inventory_items"):
+                for end, mate in (("F", "R"), ("R", "F")):
+                    fields = form.to_dict()
+                    for gone in ("forward", "reverse", "names", "count"):
+                        fields.pop(gone, None)
+                    fields.update({"name": names[end], "attr_sequence": seqs[end],
+                                   "attr_direction": "forward" if end == "F" else "reverse",
+                                   "attr_pair": names[mate]})
+                    item = InventoryItem(module_id_fk=row.id, number=svc.next_number(session, row.id),
+                                         owner=g.user.username, status=mv.statuses[0] if mv.statuses else "")
+                    session.add(item)
+                    error, _notes = _item_from_form(session, mv, item, ImmutableMultiDict(fields), creating=True)
+                    if error:
+                        raise Refused(error)
+                    item.updated_at, item.updated_by = datetime.utcnow(), g.user.username
+                    session.flush()                     # so the reverse takes the next free cell
+                    made.append(item)
+        except Refused as refused:
+            session.rollback()
+            return _done(key, error=f"Not saved: {refused}")
+        session.commit()
+        return _done(key, message=f"Added {names['F']} (#{made[0].number}) and {names['R']} (#{made[1].number}).")
 
 
 def _create_many(session, row: InventoryModule, mv, form):
@@ -978,8 +1096,32 @@ BULK_ACTIONS = {
     "rack": ("edit", "Moved"),
     "owner": ("manage", "Changed the owner of"),
     "shared": ("manage", "Changed who can edit"),
+    "field": ("edit", "Set"),
     "delete": ("manage", "Deleted"),
 }
+
+# Built-in columns "Set field" offers, and the feature each needs.
+BULK_FIELD_NEEDS = {"vendor": "supplier", "catalog_number": "supplier", "lot": "supplier", "quantity": "quantity",
+                    "unit": "quantity", "received_on": "received", "expires_on": "expiry", "location_note": "storage"}
+
+
+def bulk_fields(mv) -> list[dict]:
+    """What the bulk bar's "Set field" can set on the ticked rows: the
+    built-in columns this database uses and every custom one, as the form
+    field the item dialog posts."""
+    out = [{"name": "category", "label": mv.category_label, "type": "text", "options": mv.categories}]
+    labels = {"vendor": "Vendor", "catalog_number": "Catalog number", "lot": "Lot", "quantity": "Quantity",
+              "unit": "Unit", "received_on": "Received", "expires_on": "Expires", "location_note": "Location"}
+    for name, label in labels.items():
+        if mv.has(BULK_FIELD_NEEDS[name]):
+            out.append({"name": name, "label": label, "type": "date" if name.endswith("_on") else "text", "options": []})
+    derived = svc.PRIMER_DERIVED if mv.row.kind == "primers" else ()
+    for field in mv.fields:
+        if field["type"] != "source" and field["key"] not in derived:
+            out.append({"name": f"attr_{field['key']}", "label": field["label"],
+                        "type": field["type"], "options": field.get("options") or []})
+    out.append({"name": "notes", "label": "Notes", "type": "text", "options": []})
+    return out
 
 
 @bp.route("/<key>/items/bulk", methods=["POST"])
@@ -989,6 +1131,8 @@ def bulk(key: str):
     skipped and counted."""
     action = request.form.get("action", "")
     value = (request.form.get("value") or "").strip()
+    if action == "rack" and value == "unplace":     # the Move picker's "Unplace"
+        value = ""
     ids = [int(i) for i in request.form.getlist("selected_ids") if i.isdigit()]
     with SessionLocal() as session:
         row = _module_or_404(session, key)
@@ -1008,7 +1152,15 @@ def bulk(key: str):
             rack = session.get(InventoryRack, int(value)) if value.isdigit() else None
             if rack is None or rack.module_id_fk != row.id:
                 return _done(key, error="That box is not part of this inventory.")
+        field = None
+        if action == "field":
+            field = next((f for f in bulk_fields(mv) if f["name"] == request.form.get("field")), None)
+            if field is None:
+                return _done(key, error="Pick the column to set.")
+            if not value.strip() and request.form.get("clear") != "1":
+                return _done(key, error=f"Type what to set {field['label']} to. (To empty it on those rows, leave it blank and confirm.)")
         need, verb = BULK_ACTIONS[action]
+        refused: list[str] = []
         done = skipped = 0
         notes: list[str] = []
         with audit.batch(session, "delete" if action == "delete" else "update",
@@ -1028,6 +1180,18 @@ def bulk(key: str):
                     item.owner = value[:80]
                 elif action == "shared":
                     item.is_shared = value == "1"
+                elif action == "field":
+                    # Through the dialog's own checks (a number column takes
+                    # numbers, a date a date), one column only.
+                    kept = {c.key: getattr(item, c.key) for c in InventoryItem.__table__.columns}
+                    try:
+                        _item_from_form(session, mv, item, ImmutableMultiDict({field["name"]: value}))
+                    except Refused as problem:
+                        for column, old in kept.items():     # this one stays as it was
+                            setattr(item, column, old)
+                        refused.append(str(problem))
+                        skipped += 1
+                        continue
                 elif action == "rack":
                     if rack is None:
                         item.rack_id_fk = item.rack_row = item.rack_col = None
@@ -1042,7 +1206,12 @@ def bulk(key: str):
                 done += 1
         noun = mv.item_noun if done == 1 else mv.item_noun_plural
         session.commit()
+    if action == "field":
+        verb = f"Set {field['label']} on"
     message = f"{verb} {done} {noun}."
+    if refused:
+        flash(f"Not set on {len(refused)}: {refused[0]}", "error")
+        skipped -= len(refused)
     if skipped:
         message += (f" {skipped} left alone: only their owner or an admin can do that."
                     if need == "manage" else f" {skipped} belong to someone else and were left alone.")
@@ -1084,16 +1253,50 @@ def save_rack(key: str):
                       f"({', '.join(i.name or '#' + str(i.number) for i in outside[:4])}{'…' if n > 4 else ''}). "
                       f"Move them first.", "error")
                 return redirect(url_for("inventory.module", key=key))
+        count = _int(form.get("count"), 1, 1, MAX_BOXES_AT_ONCE) if rack is None else 1
+        if count > 1:
+            return _create_boxes(session, row, mv, form, rows, cols, count)
         if rack is None:
             rack = InventoryRack(module_id_fk=row.id, created_by=g.user.username)
             session.add(rack)
         rack.name = (form.get("name") or "").strip()[:120] or "Box"
         rack.kind = (form.get("kind") or "box").strip()[:40]
+        if "stored_at" in form:
+            stored_at = form.get("stored_at", "").strip()[:40]
+            moved = rack.id is not None and stored_at != (rack.stored_at or "")
+            rack.stored_at = stored_at
+            if moved:  # the box went somewhere else, and its tubes with it
+                for item in session.scalars(select(InventoryItem).where(InventoryItem.rack_id_fk == rack.id)):
+                    svc.follow_box(session, item)
         rack.rows, rack.cols = rows, cols
         rack.naming = json.dumps(positions.scheme_from_form(form))
         session.commit()
         flash(f"Saved {rack.name}.", "success")
     return redirect(url_for("inventory.module", key=key))
+
+
+MAX_BOXES_AT_ONCE = 50
+
+
+def _create_boxes(session, row, mv, form, rows: int, cols: int, count: int):
+    """Several boxes alike at once ("Tower A" × 13 → Tower A 1 … Tower A 13),
+    numbered on from any already named so."""
+    base = (form.get("name") or "").strip()[:110] or "Box"
+    taken = set(session.scalars(select(InventoryRack.name).where(InventoryRack.module_id_fk == row.id)))
+    naming = json.dumps(positions.scheme_from_form(form))
+    made, n = [], 1
+    while len(made) < count:
+        name = f"{base} {n}"
+        n += 1
+        if name in taken:
+            continue
+        session.add(InventoryRack(module_id_fk=row.id, created_by=g.user.username, name=name,
+                                  kind=(form.get("kind") or "box").strip()[:40], rows=rows, cols=cols, naming=naming,
+                                  stored_at=(form.get("stored_at") or "").strip()[:40]))
+        made.append(name)
+    session.commit()
+    flash(f"Made {count} {'boxes' if count > 1 else 'box'}: {made[0]} to {made[-1]}.", "success")
+    return redirect(url_for("inventory.module", key=row.key))
 
 
 @bp.route("/<key>/racks/<int:rack_id>/delete", methods=["POST"])
@@ -1220,9 +1423,12 @@ def configure(key: str):
                         svc.relabel_items(session, row.id, column, plan.relabel)
             else:
                 row.settings = settings
+            moved = database_keys.rekey(session, "inventory", row)    # its address follows its name
             session.commit()
-            flash(f"Saved {row.label}." + (" " + "; ".join(changes) + "." if changes else ""), "success")
-            return redirect(url_for("inventory.module", key=key))
+            flash(f"Saved {row.label}." + (" " + "; ".join(changes) + "." if changes else "")
+                  + (f" Its address is now /inventory/{moved}; links to the old one still work." if moved else ""),
+                  "success")
+            return redirect(url_for("inventory.module", key=row.key))
         mv = svc.view(row)
         return render_template("inventory/configure.html", module=mv, features=presets.FEATURES,
                                field_types=presets.FIELD_TYPES, icons=ICON_CHOICES,

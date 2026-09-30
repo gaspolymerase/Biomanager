@@ -159,7 +159,8 @@ class ConfigureTests(OrganismCase):
         new_label = uniq("Renamed ")
         self.post(self.m, f"/organisms/{key}/configure", {"_full": "1", "label": new_label,
                                                           "capabilities": ["housing"]})
-        self.assertEqual(module_row(key, "label"), new_label)
+        key = one("select key from organism_modules where label=?", new_label)    # its address follows the name
+        self.assertTrue(key)
         self.post(self.m, f"/organisms/{key}/location/save", {"name": "My rack", "rows": "2", "cols": "2"})
         self.assertEqual(count("organism_locations", "module_id_fk=? and name='My rack'",
                                self.organism_module_id(key)), 1)
@@ -526,6 +527,36 @@ class BulkTests(OrganismCase):
         self.assertEqual(count("organisms", "id=?", theirs), 1)
         self.assertEqual(count("organisms", "id=?", mine), 0)
 
+    def custom_field(self, field_type="number", **extra):
+        label = uniq("Passage ")
+        self.post(self.a, f"{self.url}/field/add", {"entity": "organism", "label": label, "field_type": field_type,
+                                                     "show_in_table": "1", **extra})
+        return rows("select key from organism_module_fields where module_id_fk=? and label=?", self.mid, label)[0][0]
+
+    def test_set_field_sets_a_custom_field_on_the_ticked_records_in_one_undoable_batch(self):
+        key = self.custom_field()
+        ids = [self.make_animal(self.a, self.key, owner=self.admin) for _ in range(3)]
+        r = self.post(self.a, f"{self.url}/animals/bulk", {"action": "set", "field": f"attr_{key}", "value": "14",
+                                                           "selected_ids": ids})
+        self.assertIn("on 3 newts", flash_text(r))
+        values = [json.loads(a or "{}").get(key) for (a,) in rows(
+            f"select attrs from organisms where id in ({','.join('?' * 3)}) order by id", *ids)]
+        self.assertEqual(values, [14, 14, 14])
+        r = self.post(self.a, f"{self.url}/animals/bulk", {"action": "set", "field": f"attr_{key}", "value": "lots",
+                                                           "selected_ids": ids})
+        self.assertIn("must be a number", " ".join(errors(r)))
+
+    def test_a_custom_column_is_edited_in_the_sheet_and_a_stale_cell_keeps_a_later_change(self):
+        key = self.custom_field()
+        animal = self.make_animal(self.a, self.key, owner=self.admin, **{f"attr_{key}": "12"})
+        self.assertIn(f'name="attr_{key}" form="row-a-{animal}"', self.page(self.a, "animals"))
+        r = self.autosave(self.a, f"{self.url}/animal/save", {"id": animal, f"attr_{key}": "13", f"attr_{key}_was": "12"})
+        self.assertTrue(r.get_json()["ok"])
+        # A row still showing 12, saving another cell, leaves 13 alone.
+        self.autosave(self.a, f"{self.url}/animal/save", {"id": animal, "notes": "fed", f"attr_{key}": "12",
+                                                           f"attr_{key}_was": "12"})
+        self.assertEqual(json.loads(rows("select attrs from organisms where id=?", animal)[0][0])[key], 13)
+
     def test_bulk_with_nothing_selected_changes_nothing(self):
         r = self.post(self.a, f"{self.url}/animals/bulk", {"action": "delete"})
         self.assertEqual(flashes(r)[0][0], "info")
@@ -843,6 +874,47 @@ class ScheduleTests(OrganismCase):
         self.post(self.a, f"{self.url}/due/{due_id}/done")
         self.assertEqual(one("select last_serviced_on from organism_housing where id=?", unit), T)
         self.assertEqual([d for _, d in self.open_due(key, unit)], [days_ahead(7)])
+
+    def test_two_rules_on_one_date_each_keep_their_own_last_done(self):
+        key = self.make_organism_module(self.a)
+        url = f"/organisms/{key}"
+        mid = self.organism_module_id(key)
+        unit = self.make_housing(self.a, key, owner=self.admin, last_serviced_on=days_ago(5))
+        for label, days in (("Feed", "2"), ("Split", "4")):
+            self.post(self.a, f"{url}/rule/save", {"label": label, "applies_to": "housing", "anchor": "last_serviced_on",
+                                                   "offset_days": days, "recurring": "1"})
+        rules = {r["label"]: r["key"] for r in json.loads(module_row(key, "schedule_rules"))}
+
+        def due(label):
+            return rows("select id, due_on from organism_due where module_id_fk=? and rule_key=? and subject_id=? "
+                        "and done_on is null", mid, rules[label], unit)
+
+        [(feed_id, _)] = due("Feed")
+        [(_split_id, split_due)] = due("Split")
+        # Fed yesterday, ticked today: the next feed is from yesterday, and the split keeps its own date.
+        r = self.post(self.a, f"{url}/due/{feed_id}/done", {"done_on": days_ago(1)})
+        self.assertFlash(r, "Marked done on", "success")
+        self.assertEqual(one("select done_on from organism_due where id=?", feed_id), days_ago(1))
+        self.assertEqual([d for _, d in due("Feed")], [days_ahead(1)])
+        self.assertEqual([d for _, d in due("Split")], [split_due])
+        self.assertEqual(one("select last_serviced_on from organism_housing where id=?", unit), days_ago(5))
+
+    def test_done_cannot_be_in_the_future(self):
+        animal = self.make_animal(self.a, self.key, owner=self.admin, birth_on=days_ago(40))
+        _, label = self.rule(offset_days="10")
+        [(due_id, _)] = self.open_due(self.rule_key(label), animal)
+        r = self.post(self.a, f"{self.url}/due/{due_id}/done", {"done_on": days_ahead(2)})
+        self.assertIn("future", " ".join(errors(r)))
+        self.assertIsNone(one("select done_on from organism_due where id=?", due_id))
+
+    def test_age_counted_in_passages_is_the_passage_number(self):
+        from types import SimpleNamespace
+        from datetime import date, timedelta
+        from app.organism_service import age_label
+        TODAY = date.today()
+        cells = SimpleNamespace(age_unit="passages")
+        self.assertEqual(age_label(cells, TODAY - timedelta(days=9), attrs={"passage": "12"}), "P12")
+        self.assertEqual(age_label(cells, TODAY - timedelta(days=9), attrs={}), "9d")
 
     def test_rule_anchor_must_belong_to_its_subject(self):
         r, label = self.rule(applies_to="cohort", anchor="last_serviced_on")

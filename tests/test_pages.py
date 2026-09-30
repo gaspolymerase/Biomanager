@@ -133,11 +133,16 @@ class PagesRender(AppTestCase):
                 "/inventory/new?preset=antibodies"]
         self.assertAllRender(self.a, urls, ok=lambda code: code == 200)
 
+    def test_utilities_has_the_calculators_and_the_lab_s_chemicals(self):
+        html = self.get_ok(self.m, "/utilities")
+        self.assertIn("bench-calcs.js", html)
+        self.assertIn('"name": "NaCl"', html)          # the lab's list, for the chemical picker
+
     # ------------------------------------------------------------ detail pages
     def test_record_detail_pages_render(self):
         mouse_number = one("select mouse_id from mice where id=?", self.colony["mice"][0])
         plasmid_number = one("select plasmid_id from plasmids where id=?", self.plasmid)
-        urls = [f"/colony/experiments/{self.experiment}", f"/plasmids/{self.plasmid}",
+        urls = [f"/colony/experiments/{self.experiment}", f"/plasmid/{plasmid_number}",
                 f"/plasmids/{self.plasmid}/sequence.json", f"/zebrafish/lines/{self.line}",
                 f"/zebrafish/tanks/{self.tank}/card", "/labels/cards/cages", f"/labels/cards/{self.org}",
                 "/labels/qr.svg?d=hello", f"/notebook/backlinks/mouse/{self.colony['mice'][0]}",
@@ -150,10 +155,56 @@ class PagesRender(AppTestCase):
             self.assertEqual(self.a.get("/search", query_string={"q": q}).status_code, 200, q)
 
     def test_a_missing_record_is_not_a_server_error(self):
-        urls = ["/colony/experiments/987654321", "/plasmids/987654321", "/zebrafish/lines/987654321",
+        urls = ["/colony/experiments/987654321", "/plasmids/987654321", "/plasmid/987654321", "/zebrafish/lines/987654321",
                 "/zebrafish/tanks/987654321/card", "/organisms/no-such-db", "/stocks/no-such-db",
                 "/inventory/no-such-db"]
         self.assertAllRender(self.a, urls, ok=lambda code: code < 500)
+
+    def test_a_database_that_does_not_answer_gets_a_page_not_a_bare_500(self):
+        from unittest import mock
+        from sqlalchemy.exc import OperationalError
+        import app.app as app_module
+        boom = OperationalError("SELECT 1", {}, Exception("database is locked"))
+        with mock.patch.object(app_module, "colony_context", side_effect=boom):
+            r = self.a.get("/colony?view=mice")
+            self.assertEqual(r.status_code, 503)
+            self.assertIn("The database is not answering", r.get_data(as_text=True))
+            r = self.a.get("/colony?view=mice", headers={"X-Autosave": "1"})
+            self.assertEqual((r.status_code, r.get_json()["ok"]), (503, False))
+
+    def test_search_is_case_blind_in_every_script_and_takes_percent_literally(self):
+        tag = uniq("Δ-Cre Café ")
+        self.make_colony(self.a, self.admin, n_mice=1)
+        mid = one("select max(id) from mice")
+        execute("update mice set genotype=?, transgene_1=? where id=?", tag, tag, mid)
+        found = lambda q: [r["label"] for r in self.a.get("/search", query_string={"q": q}).get_json()["results"]]
+        self.assertTrue(found(tag.lower().replace("café", "CAFÉ")))
+        self.assertEqual(found(tag.replace(" ", "%", 1)), [])     # "Δ-Cre%Café" is not "Δ-Cre Café"
+        self.assertEqual(found(tag.replace(" ", "_", 1)), [])
+        self.assertEqual(self.a.get("/search", query_string={"q": "1" * 21}).status_code, 200)
+
+    def test_search_puts_names_that_start_with_it_first(self):
+        tag = uniq("Q")                      # a word nobody else has
+        for n in range(12):                  # a dozen that only mention it, newer than the tubes
+            self.make_item(self.a, "samples", name=uniq("Column "), notes=f"ran on {tag}00")
+        for n in range(2):
+            self.make_item(self.m, "samples", name=f"{tag}-R{n}")
+        for n in range(12):
+            self.make_item(self.a, "samples", name=uniq("Column "), notes=f"ran on {tag}00")
+        labels = [r["label"] for r in self.m.get("/search", query_string={"q": tag}).get_json()["results"]]
+        self.assertTrue(labels and f"{tag}-R" in labels[0] and f"{tag}-R" in labels[1], labels)
+
+    def test_mangled_numbers_in_an_address_are_not_server_errors(self):
+        huge = "9" * 21
+        for url in (f"/notebook?page={huge}", f"/notebook?tab=x", "/notebook/search/mouse?limit=x",
+                    f"/stocks/drosophila?horizon={huge}", "/calendar/events.json?start=0001-01-01&end=0001-02-01",
+                    "/calendar/events.json?start=9999-12-01&end=9999-12-31"):
+            self.assertLess(self.a.get(url).status_code, 500, url)
+
+    def test_a_wrong_address_gets_the_app_s_own_page(self):
+        r = self.a.get("/no/such/page")
+        self.assertEqual(r.status_code, 404)
+        self.assertIn("There&#39;s nothing here", r.get_data(as_text=True))
 
     def test_exports_download_as_files(self):
         r = self.a.get("/colony/mice/export")

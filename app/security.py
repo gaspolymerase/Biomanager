@@ -49,7 +49,7 @@ import os
 import secrets
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from urllib.parse import urlparse
@@ -167,17 +167,87 @@ def decrypt_text(value: str | None) -> str | None:
         return ""
 
 
-def session_stamp(user) -> str:
+GENERATION = "session_generation:{}"     # app_settings: bumped to end every session of an account
+SIGNED_OUT = "signed_out:"               # app_settings: a session ended by Sign out, and when
+
+
+def _generation(user, db=None) -> str:
+    from .inventory_service import get_setting
+    if db is not None:
+        return get_setting(db, GENERATION.format(user.id), "")
+    from .db import SessionLocal
+    with SessionLocal() as s:
+        return get_setting(s, GENERATION.format(user.id), "")
+
+
+def session_stamp(user, db=None) -> str:
     """Ties a session to the password it was signed in with: the stored hash
-    changes with every password change, so older sessions stop matching."""
-    return hmac.new(current_app.secret_key.encode(), user.password_hash.encode(), sha256).hexdigest()[:24]
+    changes with every password change, so older sessions stop matching.
+    Disabling an account moves its generation on (end_sessions), so
+    enabling it again doesn't bring its old sessions back."""
+    generation = _generation(user, db)
+    material = user.password_hash + (f":{generation}" if generation else "")
+    return hmac.new(current_app.secret_key.encode(), material.encode(), sha256).hexdigest()[:24]
 
 
-def session_matches(stored: str | None, user) -> bool:
-    return bool(stored) and hmac.compare_digest(stored, session_stamp(user))
+def session_matches(stored: str | None, user, db=None) -> bool:
+    return bool(stored) and hmac.compare_digest(stored, session_stamp(user, db))
+
+
+def end_sessions(db, user) -> None:
+    """Every session this account has, on every browser, stops working."""
+    from .inventory_service import get_setting, set_setting
+    key = GENERATION.format(user.id)
+    current = get_setting(db, key, "0")
+    set_setting(db, key, str(int(current) + 1 if current.isdigit() else 1))
+
+
+def sign_out(db) -> None:
+    """End this browser's session for good: a copy of its cookie (a shared
+    computer, a stolen laptop) no longer signs anyone in. Kept as long as a
+    session could last, then forgotten."""
+    from flask import session
+    from sqlalchemy import delete
+
+    from .inventory_service import set_setting
+    from .models import AppSetting
+    sid = session.get("sid")
+    now = datetime.utcnow()
+    if sid:
+        set_setting(db, SIGNED_OUT + sid, now.isoformat(timespec="seconds"))
+    forget = (now - current_app.permanent_session_lifetime - timedelta(days=1)).isoformat(timespec="seconds")
+    db.execute(delete(AppSetting).where(AppSetting.key.like(SIGNED_OUT + "%"), AppSetting.value < forget))
+    db.commit()
+    session.clear()
+
+
+def signed_out(db) -> bool:
+    """Was this session ended by Sign out? A session from before sessions
+    had an id gets one now, so it can be."""
+    from flask import session
+
+    from .models import AppSetting
+    sid = session.get("sid")
+    if not sid:
+        session["sid"] = secrets.token_urlsafe(18)
+        return False
+    return db.get(AppSetting, SIGNED_OUT + sid) is not None
 
 
 # ---------------------------------------------------------------- set-up
+
+from flask.sessions import SecureCookieSessionInterface  # noqa: E402
+
+
+class _SessionInterface(SecureCookieSessionInterface):
+    """The API is signed in by its token alone (app/api.py): its replies
+    never set or refresh the browser's session cookie."""
+
+    def should_set_cookie(self, app, session) -> bool:
+        if request.path == "/api/v1" or request.path.startswith("/api/"):
+            return False
+        return super().should_set_cookie(app, session)
+
 
 def init_app(app) -> None:
     """Configure cookies, limits and the request checks. Call after the
@@ -189,6 +259,7 @@ def init_app(app) -> None:
         PERMANENT_SESSION_LIFETIME=timedelta(days=_int("BIOMANAGER_SESSION_DAYS", 7)),
         MAX_CONTENT_LENGTH=_int("BIOMANAGER_MAX_UPLOAD_MB", 64) * 1024 * 1024,
     )
+    app.session_interface = _SessionInterface()
     hops = _int("BIOMANAGER_PROXY_HOPS", 0)
     if hops:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops, x_host=hops, x_port=hops)
@@ -293,14 +364,20 @@ def content_security_policy() -> str:
 
 def csp_report():
     """Browsers post here what the policy blocked. Logged, nothing stored."""
+    # Anyone can post here, so: a few a minute per address, and each value
+    # one short line (a newline in a field wrote a fake log line).
+    if report_throttle.retry_after(("csp", request.remote_addr or "")):
+        return "", 204
+    report_throttle.failed(("csp", request.remote_addr or ""))
     raw = request.get_data(cache=False, as_text=True)[:8192]
+    one_line = lambda v: repr(str(v or "")[:200])
     try:
         import json
         body = json.loads(raw or "{}")
         report = body.get("csp-report", body)
-        log.warning("CSP blocked %s on %s (%s)", report.get("blocked-uri") or report.get("blockedURL"),
-                    report.get("document-uri") or report.get("documentURL"),
-                    report.get("violated-directive") or report.get("effectiveDirective"))
+        log.warning("CSP blocked %s on %s (%s)", one_line(report.get("blocked-uri") or report.get("blockedURL")),
+                    one_line(report.get("document-uri") or report.get("documentURL")),
+                    one_line(report.get("violated-directive") or report.get("effectiveDirective")))
     except (ValueError, AttributeError):
         log.warning("CSP report that could not be read: %r", raw[:300])
     return "", 204
@@ -404,6 +481,7 @@ def start_session(user) -> None:
     session.permanent = True
     session["user_id"] = user.id
     session["auth"] = session_stamp(user)
+    session["sid"] = secrets.token_urlsafe(18)
 
 
 class LoginThrottle:
@@ -455,6 +533,11 @@ class LoginThrottle:
 
 
 login_throttle = LoginThrottle()
+# Sign-ups per address (each notifies every admin), wrong current passwords
+# in Settings per account, and CSP reports per address.
+signup_throttle = LoginThrottle(limit=5, window=60 * 60)
+password_check_throttle = LoginThrottle(limit=10, window=15 * 60)
+report_throttle = LoginThrottle(limit=30, window=60)
 
 
 def login_keys(username: str) -> tuple:

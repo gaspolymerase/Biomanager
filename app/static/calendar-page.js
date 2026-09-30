@@ -259,12 +259,16 @@
     });
 
     calendar.on('selectDateTime', (sel) => {
-      openItem({
-        kind: 'event',
-        start: toLocalInput(tuiToDate(sel.start)),
-        end: toLocalInput(tuiToDate(sel.end || sel.start)),
-        isAllday: !!sel.isAllday,
-      });
+      const start = tuiToDate(sel.start);
+      const end = tuiToDate(sel.end || sel.start);
+      // One day picked in Month view (a double-click): a timed event that
+      // day, 09:00–10:00, like New event. Several days dragged: all day.
+      if (sel.isAllday && ymd(start) === ymd(end)) {
+        const day = ymd(start);
+        openItem({ kind: 'event', start: `${day}T09:00`, end: `${day}T10:00`, isAllday: false });
+      } else {
+        openItem({ kind: 'event', start: toLocalInput(start), end: toLocalInput(end), isAllday: !!sel.isAllday });
+      }
       try { calendar.clearGridSelections(); } catch (_) {}
     });
 
@@ -297,7 +301,15 @@
         return;
       }
       const item = findItem(event.id);
-      if (item) openFromItem(item);
+      if (item) openOnce(item);
+    });
+    // Month view: one click opens an item. The calendar's own click there
+    // only came on a double-click; this and it open it once between them.
+    tuiHost.addEventListener('click', (e) => {
+      if (currentView !== 'month' || e.target.closest('.biocal-task-cb')) return;
+      const chipEl = e.target.closest('.cal-chip[data-item-id]');
+      const item = chipEl && findItem(chipEl.dataset.itemId);
+      if (item) openOnce(item);
     });
 
     let savedView = null;
@@ -644,7 +656,8 @@
       return openItem(Object.assign({ kind, bookingStart: toLocalInput(start), bookingEnd: toLocalInput(new Date(start.getTime() + 3600000)) }, extra || {}));
     }
     if (kind === 'away') return openItem({ kind, awayStart: day, awayEnd: day, awayOwner: DATA.me });
-    return openItem({ kind, start: `${day}T09:00`, end: `${day}T10:00`, isAllday: true });
+    // Timed, as the times it shows say: typed times were dropped when All day was ticked by default.
+    return openItem({ kind, start: `${day}T09:00`, end: `${day}T10:00`, isAllday: false });
   }
 
   $('#cal-side-toggle').addEventListener('click', () => {
@@ -654,6 +667,14 @@
   });
 
   // ================================================================ opening an item
+
+  let lastOpened = { id: '', at: 0 };
+  function openOnce(item) {
+    const now = Date.now();
+    if (lastOpened.id === item.id && now - lastOpened.at < 800) return undefined;
+    lastOpened = { id: item.id, at: now };
+    return openFromItem(item);
+  }
 
   function openFromItem(item) {
     const raw = item.raw || {};
@@ -690,9 +711,18 @@
 
   const modal = $('#biocal-modal');
   const form = $('#biocal-form');
+  // Changing a start or end time means a timed event.
+  ['start', 'end'].forEach((name) => form.elements[name].addEventListener('input', () => {
+    const v = form.elements[name].value;
+    if (v && v.slice(11, 16) !== '00:00') form.elements.isAllday.checked = false;
+  }));
+
   const formError = $('#cal-form-error');
   const delBtn = $('#biocal-delete');
   const delOneBtn = $('#cal-delete-one');
+  const dupBtn = $('#cal-duplicate');
+  const changeOneBtn = $('#cal-change-one');
+  const ORDINALS = ['first', 'second', 'third', 'fourth', 'last'];
   const repeatFreq = $('#cal-repeat-freq');
   const dueCustom = $('#biocal-due-custom');
   const duePresets = $$('.biocal-due-btn', form);
@@ -750,7 +780,7 @@
     form.elements.title.value = item.title || '';
     form.elements.start.value = kind === 'event' ? (item.start || '') : '';
     form.elements.end.value = kind === 'event' ? (item.end || '') : '';
-    form.elements.isAllday.checked = item.isAllday !== false;
+    form.elements.isAllday.checked = !!item.isAllday;
     const day = (item.start || '').slice(0, 10) || ymd(new Date());
     dueCustom.value = day;
     selectDuePreset(presetForDate(day));
@@ -780,16 +810,48 @@
     delBtn.hidden = !editing;
     delBtn.innerHTML = `${svgIcon('trash')} ${rep ? 'Delete all' : kind === 'booking' ? 'Cancel booking' : 'Delete'}`;
     delOneBtn.hidden = !(editing && rep && item.occurrence);
+    changeOneBtn.hidden = !(editing && rep && item.occurrence && kind === 'event');
+    dupBtn.hidden = !(editing && kind === 'booking');
+    $('#cal-booking-repeat').hidden = editing;
+    syncBookingRepeat();
     setKind(kind, editing);
     modal.showModal();
     setTimeout(() => { const t = form.elements.title; if (!t.closest('[hidden]')) t.focus(); }, 30);
   }
 
+  function syncBookingRepeat() {
+    const f = form.elements;
+    $('#cal-booking-until').hidden = !f.booking_repeat.value;
+    if (f.booking_repeat.value && !f.booking_until.value && f.booking_start.value) {
+      const d = new Date(`${f.booking_start.value.slice(0, 10)}T12:00`);
+      d.setDate(d.getDate() + (f.booking_repeat.value === 'weekly' ? 28 : 4));
+      f.booking_until.value = ymd(d);
+    }
+  }
+  form.elements.booking_repeat.addEventListener('change', syncBookingRepeat);
+  form.elements.start.addEventListener('change', syncRepeat);
+
+  /* Duplicate: the same instrument, times and purpose as a new booking, to
+     move to another day (or repeat) before saving. */
+  dupBtn.addEventListener('click', () => {
+    form.elements.id.value = '';
+    dupBtn.hidden = true;
+    delBtn.hidden = true;
+    $('#cal-booking-repeat').hidden = false;
+    setKind('booking', false);
+    form.elements.booking_start.focus();
+  });
+
   function syncRepeat() {
     const freq = repeatFreq.value;
     $('#cal-repeat-more').hidden = !freq;
     const n = Number(form.elements.repeat_interval.value) || 1;
-    const unit = { daily: 'day', weekly: 'week', monthly: 'month' }[freq] || 'week';
+    const unit = { daily: 'day', weekly: 'week', monthly: 'month', nthweekday: 'month' }[freq] || 'week';
+    // "Every month on the same weekday" says which: "the first Monday".
+    const first = form.elements.start.value ? new Date(`${form.elements.start.value.slice(0, 10)}T12:00`) : null;
+    $('#cal-repeat-nth').textContent = first
+      ? `Every month on the ${ORDINALS[Math.min(4, Math.floor((first.getDate() - 1) / 7))]} ${first.toLocaleDateString(undefined, { weekday: 'long' })}`
+      : 'Every month on the same weekday';
     $('#cal-repeat-unit').textContent = n === 1 ? unit : unit + 's';
   }
   repeatFreq.addEventListener('change', syncRepeat);
@@ -843,7 +905,8 @@
     let request;
     if (kind === 'booking') {
       request = postJson('/calendar/bookings', { id: id || null, equipment_id: f.equipment_id.value,
-        start: f.booking_start.value, end: f.booking_end.value, purpose: f.purpose.value });
+        start: f.booking_start.value, end: f.booking_end.value, purpose: f.purpose.value,
+        repeat: !id && f.booking_repeat.value ? { freq: f.booking_repeat.value, until: f.booking_until.value } : null });
     } else if (kind === 'away') {
       request = postJson('/calendar/away', { id: id || null, owner: f.away_owner.value, start: f.away_start.value,
         end: f.away_end.value || f.away_start.value, kind: f.away_kind.value, note: f.away_note.value, cover: f.away_cover.value });
@@ -880,24 +943,47 @@
 
   /* Ends follows Starts: moving the start keeps the event's length, so an
      event can't be made to end before it begins by forgetting the end. */
-  (function () {
-    const f = form.elements;
-    if (!f.start || !f.end) return;
+  /* The same for a booking's From and To, so moving a duplicated booking to
+     another day is one change. */
+  function endFollowsStart(startEl, endEl) {
+    if (!startEl || !endEl) return;
     let length = null;
     const ms = (v) => (v ? new Date(v.length === 10 ? `${v}T00:00` : v).getTime() : NaN);
-    const remember = () => { const d = ms(f.end.value) - ms(f.start.value); length = Number.isFinite(d) && d >= 0 ? d : null; };
-    f.start.addEventListener('focus', remember);
-    f.end.addEventListener('change', remember);
-    f.start.addEventListener('change', () => {
-      const start = ms(f.start.value);
+    const remember = () => { const d = ms(endEl.value) - ms(startEl.value); length = Number.isFinite(d) && d >= 0 ? d : null; };
+    startEl.addEventListener('focus', remember);
+    endEl.addEventListener('change', remember);
+    startEl.addEventListener('change', () => {
+      const start = ms(startEl.value);
       if (!Number.isFinite(start)) return;
-      if (length === null && Number.isFinite(ms(f.end.value)) && ms(f.end.value) >= start) return;
+      if (length === null && Number.isFinite(ms(endEl.value)) && ms(endEl.value) >= start) return;
       const end = new Date(start + (length ?? 60 * 60 * 1000));
       const pad = (n) => String(n).padStart(2, '0');
       const date = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
-      f.end.value = f.end.type === 'date' ? date : `${date}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
+      endEl.value = endEl.type === 'date' ? date : `${date}T${pad(end.getHours())}:${pad(end.getMinutes())}`;
     });
-  })();
+  }
+  endFollowsStart(form.elements.start, form.elements.end);
+  endFollowsStart(form.elements.booking_start, form.elements.booking_end);
+
+  /* Change this one only: this date becomes an event of its own with what
+     the dialog now says, and the series leaves the date out. */
+  changeOneBtn.addEventListener('click', () => {
+    const f = form.elements;
+    if (!f.title.value.trim()) return showError(formError, 'Give it a title.');
+    if (!f.start.value) return showError(formError, 'Choose when it starts.');
+    const start = f.start.value.length === 16 ? f.start.value + ':00' : f.start.value;
+    const end = f.end.value ? (f.end.value.length === 16 ? f.end.value + ':00' : f.end.value) : start;
+    postJson('/calendar/items', {
+      kind: 'event', title: f.title.value, start, end, isAllday: f.isAllday.checked,
+      backgroundColor: f.color.value, body: f.body.value,
+      split_from: { event_id: Number(String(f.id.value).split('-')[1]), date: f.occurrence.value },
+    }).then((j) => {
+      if (!j.ok) return showError(formError, j.error || "Couldn't save that.");
+      modal.close();
+      fetchAndRender();
+      return undefined;
+    });
+  });
 
   delBtn.addEventListener('click', async () => {
     const f = form.elements;
@@ -1118,16 +1204,38 @@
 
   const equipModal = $('#cal-equip-modal');
   const equipForm = $('#cal-equip-form');
-  $('#cal-equip-manage').addEventListener('click', () => { renderEquipManage(); showError($('#cal-equip-error'), ''); equipModal.showModal(); });
+  $('#cal-equip-manage').addEventListener('click', () => { renderEquipManage(); editEquipment(null); showError($('#cal-equip-error'), ''); equipModal.showModal(); });
 
   function renderEquipManage() {
     $('#cal-equip-manage-list').innerHTML = (DATA.equipment || []).map((e) => `
       <li><span class="cal-dot" style="background:${e.color}"></span>
         <span class="cal-equip-name">${escapeHtml(e.name)}${e.location ? `<small>${escapeHtml(e.location)}</small>` : ''}</span>
-        ${e.editable ? `<button type="button" class="btn btn-sm" data-retire="${e.id}">Remove</button>` : ''}</li>`).join('')
+        ${e.editable ? `<button type="button" class="btn btn-sm btn-ghost" data-equip-edit="${e.id}">Edit</button>
+          <button type="button" class="btn btn-sm" data-retire="${e.id}">Remove</button>` : ''}</li>`).join('')
       || '<li class="cal-muted">No instruments yet. Add the first below.</li>';
   }
+  // Edit: the form below takes the instrument's name, place and colour, and
+  // Save changes it (a new name keeps its bookings).
+  const equipSubmit = $('#cal-equip-submit');
+  const addLabel = equipSubmit.innerHTML;
+  function editEquipment(eq) {
+    const f = equipForm.elements;
+    f.id.value = eq ? eq.id : '';
+    f.name.value = eq ? eq.name : '';
+    f.location.value = eq ? eq.location || '' : '';
+    if (eq && eq.color) f.color.value = eq.color;
+    if (eq) equipSubmit.textContent = 'Save changes';
+    else equipSubmit.innerHTML = addLabel;
+    $('#cal-equip-cancel-edit').hidden = !eq;
+    if (eq) f.name.focus();
+  }
+  $('#cal-equip-cancel-edit').addEventListener('click', () => { equipForm.reset(); editEquipment(null); });
   $('#cal-equip-manage-list').addEventListener('click', async (e) => {
+    const edit = e.target.closest('[data-equip-edit]');
+    if (edit) {
+      editEquipment((DATA.equipment || []).find((x) => x.id === Number(edit.dataset.equipEdit)));
+      return;
+    }
     const btn = e.target.closest('[data-retire]');
     if (!btn || !(await BioDialog.confirm('Remove this instrument? Its past bookings stay on the calendar.', { danger: true }))) return;
     postJson(`/calendar/equipment/${btn.dataset.retire}/delete`, {}).then((j) => {
@@ -1141,14 +1249,17 @@
   equipForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const f = equipForm.elements;
-    postJson('/calendar/equipment', { name: f.name.value, location: f.location.value, color: f.color.value }).then((j) => {
-      if (!j.ok) return showError($('#cal-equip-error'), j.error || "Couldn't add it.");
+    const renamed = !!f.id.value;
+    postJson('/calendar/equipment', { id: f.id.value || undefined, name: f.name.value, location: f.location.value, color: f.color.value }).then((j) => {
+      if (!j.ok) return showError($('#cal-equip-error'), j.error || "Couldn't save it.");
       DATA.equipment = (DATA.equipment || []).filter((x) => x.id !== j.equipment.id).concat([j.equipment])
         .sort((a, b) => a.name.localeCompare(b.name));
       equipForm.reset();
+      editEquipment(null);
       showError($('#cal-equip-error'), '');
       renderEquipManage();
       renderEquipment();
+      if (renamed && calendar) fetchAndRender();   // its bookings, under the new name
       return undefined;
     });
   });

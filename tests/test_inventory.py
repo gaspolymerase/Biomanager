@@ -11,6 +11,7 @@ import io
 import json
 import re
 import unittest
+from html import escape as html_escape
 
 from tests.base import *  # noqa: F401,F403
 from tests.base import (AppTestCase, GRID_NAMING, T, client_for, count, days_ago, days_ahead, errors,
@@ -256,6 +257,23 @@ class BoxTests(InventoryCase):
         bid = self.make_rack(self.m, self.key)
         self.assertEqual(one("select created_by from inventory_racks where id=?", bid), self.member)
 
+    def test_several_boxes_at_once_are_numbered_on(self):
+        base = uniq("Tower ")
+        self.make_rack(self.m, self.key, f"{base} 1")
+        r = self.post(self.m, f"/inventory/{self.key}/racks/save", data={
+            "id": "", "name": base, "rows": "9", "cols": "9", "kind": "box", "count": "3", **GRID_NAMING})
+        self.assertFlash(r, f"Made 3 boxes: {base} 2 to {base} 4", "success")
+        names = [n for (n,) in rows("select name from inventory_racks where name like ? order by id", f"{base}%")]
+        self.assertEqual(names, [f"{base} {i}" for i in (1, 2, 3, 4)])
+
+    def test_boxes_list_coldest_first_whichever_dash_was_typed(self):
+        key = self.new_module(self.a, "reagents")
+        for name in ("Box 10", "\u221280 A", "-20 B", "4 \u00b0C shelf", "Box 2", "\u221220 A"):
+            self.make_rack(self.a, key, name)
+        html = self.get_ok(self.a, f"/inventory/{key}")
+        wanted = ["\u221280 A", "\u221220 A", "-20 B", "4 \u00b0C shelf", "Box 2", "Box 10"]
+        self.assertEqual(sorted(wanted, key=lambda n: html.index(f" {html_escape(n)}</button>")), wanted)
+
     def test_member_cannot_rename_or_resize_someone_elses_box(self):
         name = uniq("AdminBox")
         bid = self.make_rack(self.a, self.key, name)
@@ -360,15 +378,21 @@ class BoxTests(InventoryCase):
         self.assertEqual((item(holder)["rack_row"], item(holder)["rack_col"]), (1, 1))
         self.assertIsNone(item(loose)["rack_id_fk"])
 
-    def test_saving_into_a_taken_position_saves_the_rest_and_reports_it(self):
+    def test_a_new_item_at_a_taken_position_is_not_saved_and_says_why(self):
         bid = self.make_rack(self.a, self.key)
         self.make_item(self.a, self.key, uniq("R"), rack_id=str(bid), position="D7")
         name = uniq("R")
         r = self.post(self.a, f"/inventory/{self.key}/items/save",
                       data={"id": "", "name": name, "rack_id": str(bid), "position": "D7"})
+        self.assertFlash(r, "Not saved:", "error")
         self.assertFlash(r, "already holds", "error")
-        [rid] = items_named(self.key, name)
-        self.assertIsNone(item(rid)["rack_row"])
+        self.assertEqual(items_named(self.key, name), [])      # no half-saved record to duplicate
+
+    def test_into_a_box_with_no_position_takes_the_next_free_one(self):
+        bid = self.make_rack(self.a, self.key)
+        self.make_item(self.a, self.key, uniq("R"), rack_id=str(bid), position="A1")
+        rid = self.make_item(self.a, self.key, uniq("R"), rack_id=str(bid), position="")
+        self.assertEqual((item(rid)["rack_id_fk"], item(rid)["rack_row"], item(rid)["rack_col"]), (bid, 1, 2))
 
     def test_an_inline_position_outside_the_box_is_refused(self):
         bid = self.make_rack(self.a, self.key, rows=3, cols=3)
@@ -705,8 +729,9 @@ class ConfigureTests(InventoryCase):
         key = self.new_module(self.m, "custom")
         self.get_ok(self.m, f"/inventory/{key}/configure")
         new_label = uniq("Renamed ")
+        mid = one("select id from inventory_modules where key=?", key)
         self.post(self.m, f"/inventory/{key}/configure", data=self.configure_form(key, label=new_label))
-        self.assertEqual(one("select label from inventory_modules where key=?", key), new_label)
+        self.assertEqual(one("select label from inventory_modules where id=?", mid), new_label)
 
     def test_configure_can_turn_on_a_board_for_a_custom_list(self):
         key = self.new_module(self.a, "custom")
@@ -909,6 +934,22 @@ class CsvImportTests(InventoryCase):
 
 # ======================================================================= bulk, duplicate
 
+class SampleMeasureTests(InventoryCase):
+    def test_new_samples_have_number_columns_for_what_was_measured(self):
+        key = self.new_module(self.a, "samples")
+        fields = {f["key"]: f["type"] for f in settings_of(key)["fields"]}
+        for k in ("concentration", "a260_280", "a260_230", "volume_ul"):
+            self.assertEqual(fields[k], "number", k)
+        r = self.post(self.m, f"/inventory/{key}/items/save",
+                      data={"id": "", "name": uniq("RNA "), "attr_concentration": "about 200"})
+        self.assertFlash(r, "is a number column", "error")
+        comma = self.make_item(self.m, key, uniq("RNA "), attr_a260_280="2,01")
+        self.assertEqual(attrs_of(comma)["a260_280"], "2.01")
+        rid = self.make_item(self.m, key, uniq("RNA "), attr_concentration="212.4", attr_conc_unit="ng/µL",
+                             attr_a260_280="2.05")
+        self.assertEqual((attrs_of(rid)["concentration"], attrs_of(rid)["a260_280"]), ("212.4", "2.05"))
+
+
 class BulkTests(InventoryCase):
     """Ticked rows: one batch; rows the user may not change are skipped."""
 
@@ -940,6 +981,77 @@ class BulkTests(InventoryCase):
         self.bulk(self.a, "status", [rid], "EMPTY")
         self.assertEqual(item(rid)["status"], "empty")
         self.assertEqual(attrs_of(rid).get("used_up_on"), T)
+
+    def test_set_field_with_nothing_typed_clears_only_when_confirmed(self):
+        ids = self.reagents(2, lot="L-9")
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "lot", "value": "", "selected_ids": [str(i) for i in ids]})
+        self.assertFlash(r, "Type what to set Lot to", "error")
+        self.assertEqual({item(i)["lot"] for i in ids}, {"L-9"})
+        self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "lot", "value": "", "clear": "1", "selected_ids": [str(i) for i in ids]})
+        self.assertEqual({item(i)["lot"] for i in ids}, {""})
+
+    def test_move_to_unplace(self):
+        bid = self.make_rack(self.a, self.key)
+        ids = self.reagents(1, rack_id=str(bid))
+        self.bulk(self.a, "rack", ids, "unplace")
+        self.assertIsNone(item(ids[0])["rack_id_fk"])
+
+    def test_used_up_frees_the_box_position_and_notes_where_it_was(self):
+        bid = self.make_rack(self.a, self.key, rows=3, cols=3)
+        box = one("select name from inventory_racks where id=?", bid)
+        ids = self.reagents(2, rack_id=str(bid))
+        self.bulk(self.a, "status", ids, "empty")
+        self.assertEqual({item(i)["rack_id_fk"] for i in ids}, {None})
+        self.assertEqual(one("select location_note from inventory_items where id=?", ids[0]), f"was in {box} · A1")
+        # The dialog still shows the old box and position: that doesn't put it back.
+        [rid] = self.reagents(1, rack_id=str(bid), position="C3")
+        self.post(self.a, f"/inventory/{self.key}/items/save", data={
+            "id": str(rid), "name": item(rid)["name"], "status": "discarded", "rack_id": str(bid), "position": "C3"})
+        self.assertEqual(item(rid)["rack_id_fk"], None)
+        # Low stock stays where it is.
+        [low] = self.reagents(1, rack_id=str(bid))
+        self.bulk(self.a, "status", [low], "low")
+        self.assertEqual(item(low)["rack_id_fk"], bid)
+
+    def test_what_goes_in_a_box_takes_the_box_s_stored_at(self):
+        minus80 = self.make_rack(self.a, self.key, stored_at="−80 °C")
+        ln2 = self.make_rack(self.a, self.key, stored_at="LN₂")
+        ids = self.reagents(2, rack_id=str(minus80))
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"−80 °C"})
+        self.bulk(self.a, "rack", ids, str(ln2))                         # Move to box
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"LN₂"})
+        batch_id, _description, _ = newest_batch(self.admin)
+        self.post(self.a, f"/batches/{batch_id}/undo")                  # undo puts both back
+        self.assertEqual({(item(i)["rack_id_fk"], attrs_of(i).get("storage_temp")) for i in ids}, {(minus80, "−80 °C")})
+        # Moving the box itself moves what is in it.
+        name = one("select name from inventory_racks where id=?", minus80)
+        self.post(self.a, f"/inventory/{self.key}/racks/save", data={
+            "id": str(minus80), "name": name, "rows": "9", "cols": "9", "stored_at": "−20 °C", **GRID_NAMING})
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"−20 °C"})
+
+    def test_set_field_sets_any_column_on_the_ticked_rows(self):
+        ids = self.reagents(3)
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "attr_storage_temp", "value": "−80 °C", "selected_ids": [str(i) for i in ids]})
+        self.assertFlash(r, "Set Stored at on 3 reagents", "success")
+        self.assertEqual({attrs_of(i).get("storage_temp") for i in ids}, {"−80 °C"})
+        self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "lot", "value": "L2231", "selected_ids": [str(i) for i in ids]})
+        self.assertEqual({item(i)["lot"] for i in ids}, {"L2231"})
+        batch_id, _description, _ = newest_batch(self.admin)
+        self.post(self.a, f"/batches/{batch_id}/undo")                  # one batch, undoable
+        self.assertEqual({item(i)["lot"] for i in ids}, {""})
+
+    def test_set_field_refuses_a_value_the_column_doesnt_take(self):
+        ids = self.reagents(1)
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "expires_on", "value": "someday", "selected_ids": [str(i) for i in ids]})
+        self.assertIsNone(item(ids[0])["expires_on"])
+        r = self.post(self.a, f"/inventory/{self.key}/items/bulk", data={
+            "action": "field", "field": "no_such_column", "value": "x", "selected_ids": [str(i) for i in ids]})
+        self.assertFlash(r, "Pick the column to set", "error")
 
     def test_bulk_refuses_an_unknown_status(self):
         ids = self.reagents(1)

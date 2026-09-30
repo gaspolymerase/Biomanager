@@ -17,6 +17,8 @@ The undo is itself audited, as its own batch, so the history stays honest.
 """
 from __future__ import annotations
 
+import re
+
 import json
 from datetime import datetime
 
@@ -72,27 +74,47 @@ def blockers(session, batch: BatchRecord) -> list[str]:
         problems.append("No recorded changes to reverse.")
         return problems
 
-    touched_since = 0
     for entry in entries:
         if entry.table_name not in UNDOABLE_TABLES:
             problems.append(f"Table {entry.table_name} cannot be reversed automatically.")
             break
+    late = _changed_since(session, batch, entries)
+    if late:
+        problems.append(late)
+    return problems
+
+
+def _changed_since(session, batch: BatchRecord, entries=None) -> str:
+    """Why reverting would throw away a later edit, or ""."""
+    if entries is None:
+        entries = session.scalars(select(AuditEntry).where(AuditEntry.batch_id_fk == batch.id)).all()
+    # Its own undos and redos ("undo of batch #N", and undos of those) are
+    # not someone's later edit: a redone batch can be undone again.
+    chain, frontier = {batch.id}, {batch.id}
+    while frontier:
+        found = set(session.scalars(select(BatchRecord.id).where(
+            BatchRecord.description.in_([f"undo of batch #{n}" for n in frontier])))) - chain
+        chain |= found
+        frontier = found
+    touched_since = 0
+    for entry in entries:
+        if entry.table_name not in UNDOABLE_TABLES:
+            continue
         later = session.scalar(
             select(AuditEntry.id).where(
                 AuditEntry.table_name == entry.table_name,
                 AuditEntry.record_id == entry.record_id,
                 AuditEntry.id > entry.id,
                 or_(AuditEntry.batch_id_fk.is_(None),
-                    AuditEntry.batch_id_fk != batch.id),
+                    AuditEntry.batch_id_fk.not_in(chain)),
             ).limit(1)
         )
         if later is not None:
             touched_since += 1
     if touched_since:
-        problems.append(
-            f"{touched_since} record(s) changed after this batch — reverting "
-            "would throw those later edits away.")
-    return problems
+        return (f"{touched_since} record(s) changed after this batch — reverting "
+                "would throw those later edits away.")
+    return ""
 
 
 def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
@@ -102,12 +124,38 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
         return {"ok": False, "problems": problems, "reverted": 0}
     if batch.is_undone:
         return {"ok": False, "problems": ["Already undone."], "reverted": 0}
+    # Claim the batch first, in the database: of two people pressing Undo at
+    # the same moment, only one gets it (the other's UPDATE finds it taken).
+    from sqlalchemy import update
+    claimed = session.execute(update(BatchRecord).where(BatchRecord.id == batch.id, BatchRecord.undone_at.is_(None))
+                              .values(undone_at=datetime.utcnow(), undone_by=actor)).rowcount
+    if not claimed:
+        return {"ok": False, "problems": ["Already undone."], "reverted": 0}
+    session.refresh(batch)
+    if not force:
+        # Lock what it will change (PostgreSQL; SQLite has one writer at a
+        # time anyway), then look again: an edit saved between the check
+        # above and now would otherwise be overwritten without a word.
+        for entry in session.scalars(select(AuditEntry).where(AuditEntry.batch_id_fk == batch.id)):
+            model = _model_for(entry.table_name)
+            if model is not None and entry.action != "delete":
+                session.get(model, entry.record_id, with_for_update=True, populate_existing=True)
+        late = _changed_since(session, batch)
+        if late:
+            session.rollback()
+            return {"ok": False, "problems": [late], "reverted": 0}
 
     entries = session.scalars(
         select(AuditEntry)
         .where(AuditEntry.batch_id_fk == batch.id)
         .order_by(AuditEntry.id.desc())
     ).all()
+    # Newest first, but every record the batch created goes last: first the
+    # records that point at it are put back as they were. In the log order
+    # alone a redo's re-made cage comes after its mice's moves (inserts are
+    # logged after the flush, updates before it), so undoing that redo would
+    # delete the cage while its mice still pointed at it, and lose them.
+    entries = sorted(entries, key=lambda e: e.action == "create")
 
     reverted = skipped = 0
     notes: list[str] = []
@@ -139,6 +187,7 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
                 # database; deleting it before their restored cage is
                 # flushed would let the ORM null that restored value.
                 session.flush()
+                session.expire(row)        # its collections, as the database now has them
                 held = _unlink_references(session, model, row)
                 if held:
                     skipped += 1
@@ -196,6 +245,13 @@ def undo(session, batch: BatchRecord, actor: str, force: bool = False) -> dict:
         batch.undone_at = datetime.utcnow()
         batch.undone_by = actor
         undo_row.record_count = reverted
+        # Undoing an undo is a redo: the batch it undid is in force again,
+        # and Batch history says so (and offers its Undo again).
+        redone = re.match(r"undo of batch #(\d+)$", batch.description or "")
+        if redone:
+            original = session.get(BatchRecord, int(redone.group(1)))
+            if original is not None:
+                original.undone_at, original.undone_by = None, ""
 
     return {"ok": True, "reverted": reverted, "skipped": skipped,
             "problems": problems if force else [], "notes": notes}

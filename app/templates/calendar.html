@@ -147,7 +147,7 @@
       <div class="record-group" data-for="event">
         <label>Starts <input type="datetime-local" name="start"></label>
         <label>Ends <input type="datetime-local" name="end"></label>
-        <label class="cal-check record-wide"><input type="checkbox" name="isAllday" checked> All day</label>
+        <label class="cal-check record-wide"><input type="checkbox" name="isAllday"> All day</label>
       </div>
       <fieldset class="cal-repeat" data-for="event">
         <legend>Repeats</legend>
@@ -157,6 +157,7 @@
             <option value="daily">Every day</option>
             <option value="weekly">Every week</option>
             <option value="monthly">Every month</option>
+            <option value="nthweekday" id="cal-repeat-nth">Every month on the same weekday</option>
           </select>
           <span class="cal-repeat-more" id="cal-repeat-more" hidden>
             <span>every</span>
@@ -166,7 +167,7 @@
             <input type="date" name="repeat_until" aria-label="Until">
           </span>
         </div>
-        <p class="cal-hint" id="cal-repeat-hint" hidden>Changes apply to every repeat. To take out one date, use Delete this one.</p>
+        <p class="cal-hint" id="cal-repeat-hint" hidden>Save changes every repeat. To change only this date, use Change this one only; to take it out, Delete this one.</p>
       </fieldset>
 
       {# To-do: a due day from presets or a date. #}
@@ -189,6 +190,18 @@
         <label>From <input type="datetime-local" name="booking_start"></label>
         <label>To <input type="datetime-local" name="booking_end"></label>
         <label class="record-wide">What for <input name="purpose" autocomplete="off" placeholder="e.g. Slice imaging, PV-Cre;Ai14"></label>
+        {# A new booking can repeat; each repeat is then a booking of its own. #}
+        <div class="record-wide cal-repeat-row" id="cal-booking-repeat">
+          <select name="booking_repeat" aria-label="Repeats">
+            <option value="">Doesn't repeat</option>
+            <option value="daily">Every day</option>
+            <option value="weekdays">Every weekday</option>
+            <option value="weekly">Every week</option>
+          </select>
+          <span class="cal-repeat-more" id="cal-booking-until" hidden>
+            <span>until</span> <input type="date" name="booking_until" aria-label="Until">
+          </span>
+        </div>
       </div>
       <p class="cal-hint" data-for="booking" id="cal-no-equipment" hidden>No instruments yet. Add one under Equipment → Manage.</p>
 
@@ -228,6 +241,8 @@
     <footer class="record-dialog-foot">
       <button type="button" class="btn btn-danger" id="biocal-delete" hidden>{{ icon('trash') }} Delete</button>
       <button type="button" class="btn" id="cal-delete-one" hidden>Delete this one</button>
+      <button type="button" class="btn" id="cal-change-one" hidden title="Save what the dialog says for this date only; the other repeats stay as they are">Change this one only</button>
+      <button type="button" class="btn" id="cal-duplicate" hidden title="A new booking like this one: change the day or time, then Save">{{ icon('copy') }} Duplicate</button>
       <span class="mr-auto"></span>
       <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="biocal-modal">Cancel</button>
       <button type="submit" class="btn btn-primary">Save</button>
@@ -332,6 +347,7 @@
     <div class="record-dialog-body">
       <ul class="cal-equip-manage" id="cal-equip-manage-list"></ul>
       <div class="record-group">
+        <input type="hidden" name="id" value="">
         <label>Name <input name="name" placeholder="e.g. Confocal (LSM 900)" autocomplete="off"></label>
         <label>Where <input name="location" placeholder="e.g. Room 4.12" autocomplete="off"></label>
         <label class="cal-check">Colour <input type="color" name="color" value="#30b0c7"></label>
@@ -340,8 +356,9 @@
     </div>
     <footer class="record-dialog-foot">
       <span class="mr-auto"></span>
+      <button type="button" class="btn" id="cal-equip-cancel-edit" hidden>Cancel edit</button>
       <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-equip-modal">Close</button>
-      <button type="submit" class="btn btn-primary">{{ icon('plus') }} Add instrument</button>
+      <button type="submit" class="btn btn-primary" id="cal-equip-submit">{{ icon('plus') }} Add instrument</button>
     </footer>
   </form>
 </dialog>

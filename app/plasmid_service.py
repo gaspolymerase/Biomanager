@@ -25,8 +25,8 @@ MAX_BATCH = 50                # "How many" on the New plasmid dialog
 
 def all_boxes(session) -> list[PlasmidBox]:
     """Boxes grouped by freezer (location), then by name."""
-    return list(session.scalars(select(PlasmidBox).order_by(
-        func.lower(PlasmidBox.location), func.lower(PlasmidBox.name))))
+    return sorted(session.scalars(select(PlasmidBox)),
+                  key=lambda b: positions.place_order(b.location, b.name))
 
 
 def label(p, box) -> str:

@@ -1,7 +1,7 @@
 """Batch history: every database's batch actions land in one batch that
 Batch history can undo, and the undo rules themselves."""
 from tests.base import *  # noqa: F401,F403
-from tests.base import AppTestCase, batch_of, client_for, make_user, one, uniq
+from tests.base import AppTestCase, batch_of, client_for, last_batch, make_user, one, uniq
 
 import unittest
 
@@ -20,6 +20,30 @@ class EachDatabaseBatchCanBeUndone(AppTestCase):
         self.assertEqual({one("select status from mice where id=?", m) for m in colony["mice"]}, {"breeder"})
         self.undo(batch_of("mice", colony["mice"][0], "update"))
         self.assertEqual({one("select status from mice where id=?", m) for m in colony["mice"]}, {"experiment"})
+
+    def test_undo_redo_undo_puts_mice_back_in_their_cages(self):
+        colony = self.make_colony(self.a, self.admin, n_mice=2)
+        cage = lambda: [one("select cage_id_fk from mice where id=?", m) for m in colony["mice"]]
+        start = cage()
+        self.a.post("/colony/mice/bulk-update", data={"field": "cage_id", "value": "new",
+                                                      "selected_ids": colony["mice"]})
+        moved = cage()
+        self.assertNotEqual(moved, start)
+        for expected in (start, moved, start):          # undo, undo the undo, undo again
+            self.undo(last_batch()[0])
+            self.assertEqual(cage(), expected)
+
+    def test_undoing_an_undo_puts_the_batch_back_in_force(self):
+        colony = self.make_colony(self.a, self.admin, n_mice=1)
+        self.a.post("/colony/mice/bulk-update", data={"field": "status", "value": "breeder",
+                                                      "selected_ids": colony["mice"]})
+        original = last_batch()[0]
+        self.undo(original)
+        self.assertIsNotNone(one("select undone_at from batches where id=?", original))
+        self.undo(last_batch()[0])                       # the redo
+        self.assertIsNone(one("select undone_at from batches where id=?", original))
+        self.undo(original)                              # and it can be undone again
+        self.assertEqual(one("select status from mice where id=?", colony["mice"][0]), "experiment")
 
     def test_cages_bulk_purpose(self):
         cages = [self.make_cage(self.a, purpose="Holding") for _ in range(2)]

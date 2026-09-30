@@ -266,8 +266,10 @@ Nothing is deleted. The database being replaced is renamed
 `biomanager_before_<time>`, and the files being replaced are moved into
 `.before-restore-<time>/` on the volume. Drop those once you are sure.
 
-From the off-site copy, first `restic restore latest --target /somewhere`
-with the same repository and password, then restore from those files.
+From the off-site copy, first `restic snapshots` to pick the copy by its
+time, then `restic restore <ID> --target /somewhere` with the same
+repository and password, and restore from those files (RUNBOOK: The server
+is lost).
 
 ## Alerts
 

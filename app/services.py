@@ -8,6 +8,7 @@ import secrets
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
@@ -83,6 +84,21 @@ def parse_date(raw_value: str | None) -> date | None:
     return None
 
 
+def refuse_emptied_database() -> None:
+    """A lab's SQLite file that exists but holds nothing (0 bytes: a failed
+    copy, a sync tool, a full disk) is not a new lab. Starting on it would
+    make a new empty lab with a new setup code, and the next save would
+    bury the chance of getting the old one back. Stop and say so."""
+    if engine.dialect.name != "sqlite" or not engine.url.database or engine.url.database == ":memory:":
+        return
+    path = Path(engine.url.database)
+    if path.exists() and path.stat().st_size == 0:
+        raise SystemExit(
+            f"BioManager won't start: the lab's database {path} is an empty file (0 bytes), so its records "
+            "are not in it. Put back a backup (deploy/RUNBOOK.md, or scripts/dbtool.py restore), or delete "
+            "the empty file to start a new lab.")
+
+
 def init_database() -> None:
     # A new installation starts empty: the first admin's setup survey decides
     # which databases exist (app/lab.py). BIOMANAGER_SEED_DEFAULTS=1 keeps
@@ -91,6 +107,7 @@ def init_database() -> None:
     # Opening a database an older version made changes it: copy it first
     # (app/upgrade.py), then the frozen start-up steps, then Alembic.
     from . import upgrade
+    refuse_emptied_database()
     the_plan = upgrade.plan(engine)
     if the_plan.changes:
         upgrade.backup_before(engine, the_plan)
@@ -634,21 +651,6 @@ def dashboard_counts() -> dict[str, int]:
         }
 
 
-def calculate_reagent_requirements(
-    molecular_weight: float,
-    target_concentration_mm: float,
-    final_volume_ml: float,
-) -> dict[str, float]:
-    molar_concentration = target_concentration_mm / 1000.0
-    volume_l = final_volume_ml / 1000.0
-    grams_needed = molecular_weight * molar_concentration * volume_l
-    return {
-        "grams": grams_needed,
-        "milligrams": grams_needed * 1000.0,
-        "volume_ml": final_volume_ml,
-    }
-
-
 def upload_name(original: str) -> str:
     """A stored name nobody can guess and no two uploads share: before this,
     two files with the same name uploaded in the same second overwrote each
@@ -691,37 +693,36 @@ def latest_mouse_record(session) -> MouseRecord | None:
 
 
 def next_mouse_id(session) -> int:
-    """The next free mouse ID.
+    """The next free mouse ID (see reserve_mouse_ids).
 
     Flushes first because the session is created with autoflush=False: a
     caller in a loop (CSV import, batch create) has rows pending that the
-    max() below would otherwise not see, and every row would be handed the
-    same ID. Use reserve_mouse_ids() when creating several at once — this
-    is correct in a loop but costs a round trip per call.
+    max() would otherwise not see, and every row would be handed the same
+    ID. Use reserve_mouse_ids() when creating several at once.
     """
-    session.flush()
-    latest = latest_mouse_record(session)
-    if latest is not None and latest.mouse_id is not None:
-        return latest.mouse_id + 1
-    current_max = session.scalar(select(func.max(MouseRecord.mouse_id)))
-    return (current_max or 0) + 1
+    return reserve_mouse_ids(session, 1)[0]
+
+
+MOUSE_ID_HIGH = "mouse_id_high"      # app_settings: the highest mouse ID ever handed out
 
 
 def reserve_mouse_ids(session, count: int) -> list[int]:
-    """Allocate `count` consecutive mouse IDs in one go.
-
-    Batch creation must not call next_mouse_id() per row: that is a query
-    each time, and without a flush between rows every row collides on the
-    unique index. One high-water read, one contiguous block.
-    """
+    """Allocate `count` consecutive mouse IDs in one go, above the highest
+    mouse there is and above any ever handed out: a number is never given
+    twice, even after its mouse was deleted or an Add many undone. (Before,
+    the newest mouse by date decided, so importing an old #5 made every
+    New mouse ask for #6 again, and be refused.)"""
     if count <= 0:
         return []
+    from .inventory_service import get_setting, set_setting
     session.flush()
     highest = session.scalar(select(func.max(MouseRecord.mouse_id))) or 0
-    latest = latest_mouse_record(session)
-    if latest is not None and latest.mouse_id is not None:
-        highest = max(highest, latest.mouse_id)
-    return [highest + offset for offset in range(1, count + 1)]
+    stored = get_setting(session, MOUSE_ID_HIGH, "")
+    if stored.isdigit():
+        highest = max(highest, int(stored))
+    ids = [highest + offset for offset in range(1, count + 1)]
+    set_setting(session, MOUSE_ID_HIGH, str(ids[-1]))
+    return ids
 
 
 def _cage_number(code: str | None) -> int:
@@ -1253,11 +1254,55 @@ def generate_litter_id(session, cage: CageRecord | None) -> str:
     return next_litter_id(session)
 
 
-def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -> tuple[str, str, str]:
+_PLAIN_NUMBER = re.compile(r"^-?\d+(?:[.,]\d+)?$")
+XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def sheet_safe(value):
+    """A cell a spreadsheet shows as text rather than runs: someone's note
+    that starts with = + - @ (=HYPERLINK(…), say) would otherwise be a
+    formula when the export is opened in Excel. A plain number stays one."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r") and not _PLAIN_NUMBER.match(value):
+        return "'" + value
+    return value
+
+
+def csv_text(rows) -> str:
+    """Rows as CSV that Excel opens as UTF-8 (a byte-order mark) with no
+    cell taken for a formula (sheet_safe)."""
     output = io.StringIO()
-    delimiter = "," if export_format == "csv" else "\t"
-    writer = csv.writer(output, delimiter=delimiter)
-    writer.writerow(
+    writer = csv.writer(output)
+    for row in rows:
+        writer.writerow([sheet_safe(v) for v in row])
+    return "\ufeff" + output.getvalue()
+
+
+def xlsx_bytes(sheets) -> bytes:
+    """[(title, rows)] as an .xlsx workbook, header rows bold, every text
+    cell kept as text (never a formula)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    book = Workbook()
+    for i, (title, rows) in enumerate(sheets):
+        sheet = book.active if i == 0 else book.create_sheet()
+        sheet.title = title[:31]
+        for row in rows:
+            sheet.append(row)
+            for cell in sheet[sheet.max_row]:
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    cell.data_type = "s"
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        sheet.freeze_panes = "A2"
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -> tuple[str | bytes, str, str]:
+    """The Mice sheet as CSV, or as an Excel workbook (.xlsx) that Import
+    from Excel reads back."""
+    table = [
         [
             "Mouse_ID",
             "Active",
@@ -1279,9 +1324,9 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
             "Date_of_Death",
             "Note",
         ]
-    )
+    ]
     for row in mouse_rows:
-        writer.writerow(
+        table.append(
             [
                 row["mouse_id"],
                 "Yes" if row["active"] else "No",
@@ -1304,9 +1349,9 @@ def export_mouse_rows(mouse_rows: list[dict[str, object]], export_format: str) -
                 row["note"],
             ]
         )
-    filename = "mice_export.csv" if export_format == "csv" else "mice_export.xls"
-    mimetype = "text/csv" if export_format == "csv" else "application/vnd.ms-excel"
-    return output.getvalue(), filename, mimetype
+    if export_format == "csv":
+        return csv_text(table), "mice_export.csv", "text/csv"
+    return xlsx_bytes([("Mice", table)]), "mice_export.xlsx", XLSX_MIMETYPE
 
 
 # ---------------------------------------------------------------------------
@@ -1438,7 +1483,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
                 title=f"Genotype - {location_label}",
                 color="#fcb77e",  # apricot
                 day=geno, body=body, source="cage",
-                href=f"/colony?cage_id={cage.id}",
+                href=f"/colony?view=cages&scope=all&q={quote(str(cage.cage_id))}",
             ))
 
     # ----- Weaning at P21: cages with a litter-born date, and litters not
@@ -1495,7 +1540,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
             day=threshold_day,
             body=f"{SAC_THRESHOLD_WEEKS} weeks since litter DOB ({dob.isoformat()})",
             source="mouse",
-            href=f"/mice/{m.id}",
+            href=f"/colony?view=mice&scope=all&q={m.mouse_id}",
         ))
 
     # ----- Experiment start + end --------------------------------------
@@ -1513,7 +1558,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
                 day=ex.start_date,
                 body=(ex.description or "")[:200],
                 source="experiment",
-                href=f"/experiments/{ex.id}",
+                href=f"/colony/experiments/{ex.id}",
             ))
         if ex.end_date and _in_window(ex.end_date):
             items.append(_auto_item(
@@ -1523,7 +1568,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
                 day=ex.end_date,
                 body=(ex.description or "")[:200],
                 source="experiment",
-                href=f"/experiments/{ex.id}",
+                href=f"/colony/experiments/{ex.id}",
             ))
 
     # ----- Zebrafish: clutches → tank-up / fin-clip / adult -------------

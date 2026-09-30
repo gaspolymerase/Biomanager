@@ -2,6 +2,8 @@
  *
  *   BioDialog.confirm('Delete V12?', { danger: true }).then((ok) => …)
  *   BioDialog.prompt('Name this version:', '').then((text) => …)   // null when cancelled
+ *   BioDialog.prompt('Name', '', { checks: [{ name: 'lab', label: 'Share' }] })
+ *     .then((answer) => …)   // { value, checks: { lab: true } }, or null
  *   BioDialog.alert('The picture could not be uploaded.')
  *
  * The browser's own dialogs look like the browser, not the app; they can't
@@ -57,6 +59,20 @@
         label.appendChild(input);
         body.appendChild(label);
       }
+      // Ticks under a prompt ({ checks: [{ name, label, checked }] }): the
+      // answer is then { value, checks: { name: true|false } }.
+      var boxes = (o.kind === "prompt" && o.checks) || [];
+      boxes.forEach(function (c) {
+        var row = el("label", "record-wide bio-dialog-check");
+        var box = el("input");
+        box.type = "checkbox";
+        box.name = c.name;
+        box.checked = !!c.checked;
+        row.appendChild(box);
+        row.appendChild(el("span", null, c.label));
+        if (c.hint) row.appendChild(el("small", "bio-dialog-hint", c.hint));
+        body.appendChild(row);
+      });
       var foot = el("footer", "record-dialog-foot");
       var cancel = null;
       if (o.kind !== "alert") {
@@ -87,7 +103,11 @@
       }
       form.addEventListener("submit", function (event) {
         event.preventDefault();
-        finish(o.kind === "prompt" ? input.value : true);
+        if (o.kind === "prompt" && boxes.length) {
+          var checks = {};
+          boxes.forEach(function (c) { checks[c.name] = form.elements[c.name].checked; });
+          finish({ value: input.value, checks: checks });
+        } else finish(o.kind === "prompt" ? input.value : true);
       });
       if (cancel) cancel.addEventListener("click", function () { finish(o.kind === "prompt" ? null : false); });
       // Esc, or the dialog closed some other way, is "Cancel".

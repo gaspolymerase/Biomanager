@@ -71,6 +71,8 @@ INVENTORY_CHOICES = {
     "reagents": ("Reagents", "Chemicals and kits, with lots, expiry and low-stock warnings.", "flask"),
     "antibodies": ("Antibodies", "Antibodies with host, target and dilution.", "antibody"),
     "viruses": ("Viruses", "AAV, lentivirus and other vectors: titer, serotype, the plasmid each came from.", "virus"),
+    "primers": ("Primers & oligos", "Primers and probes by sequence, with length, GC and Tm worked out.", "dna"),
+    "cell_lines": ("Cell lines", "Frozen vials of each line: passage, mycoplasma tests, LN₂ boxes.", "petri"),
 }
 
 # Member permissions (app_settings), with their defaults.
@@ -360,6 +362,15 @@ def server_timezone() -> str:
     return time.tzname[0] or "UTC"
 
 
+def clock_zone() -> str:
+    """The zone the app's clock runs on now, by name, so a page shows times
+    on the same clock as the lines the app writes ("Started: 16:00"), not the
+    browser's. Blank on Windows, where the app runs on the computer's zone."""
+    if not hasattr(time, "tzset"):
+        return ""
+    return os.environ.get("TZ") or server_timezone()
+
+
 def timezone_names() -> list[str]:
     """Region/City names to pick from (Lab setup's list)."""
     try:
@@ -401,7 +412,7 @@ def apply_survey(session, form, actor: str) -> list[str]:
     """Save the survey. Returns the labels of databases and functions it
     switched on that were off, for telling the lab. Nothing is deleted:
     a database the lab stops using is only switched off."""
-    from . import inventory_service, stock_service
+    from . import database_keys, inventory_service, stock_service
     _, set_setting = _settings()
     before = survey_state(session)
     switched_on: list[str] = []
@@ -432,6 +443,7 @@ def apply_survey(session, form, actor: str) -> list[str]:
             module.enabled = wanted
             if wanted and name:
                 module.label = name
+                database_keys.rekey(session, "stocks", module)
 
     for kind, (label, _blurb, _icon) in INVENTORY_CHOICES.items():
         wanted = form.get(f"inventory:{kind}") == "1"
@@ -446,6 +458,7 @@ def apply_survey(session, form, actor: str) -> list[str]:
             module.enabled = wanted
             if wanted and name:
                 module.label = name
+                database_keys.rekey(session, "inventory", module)
 
     for key in MEMBER_PERMISSIONS:
         _set_flag(session, key, form.get(key) == "1")

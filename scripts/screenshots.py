@@ -35,6 +35,7 @@ DESKTOP = [
     ("reagents", "/inventory/reagents", "light", None),
     ("calendar", "/calendar", "light", None),
     ("new-database", "/organisms/new", "light", None),
+    ("utilities", "/utilities#pcrmix", "light", None),
     ("cage-cards", "/labels/cards/cages", "light", None),
 ]
 PHONE = [

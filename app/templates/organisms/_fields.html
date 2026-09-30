@@ -104,13 +104,56 @@
 {% macro table_headers(fields) %}
   {% for field in fields if field.show_in_table %}
     <th class="dt-sortable" data-sort-key="attr_{{ field.key }}" data-sort-type="{{ {'number': 'number', 'date': 'date', 'checkbox': 'number'}.get(field.field_type, 'text') }}" style="width: 130px;">
-      <span class="dt-col-head">{{ icon(field_icon(field), 'dt-col-icon') }}{{ field.label }}<span class="dt-sort-indicator"></span></span>
+      <span class="dt-col-head">{{ icon(field_icon(field), 'dt-col-icon') }}{{ field.label|head }}<span class="dt-sort-indicator"></span></span>
     </th>
   {% endfor %}
 {% endmacro %}
 
-{% macro table_cells(fields, attrs) %}
+{# With a row form (`form`) and the row not locked, a custom column is
+   edited in the cell like the built-in ones (it autosaves), with a _was
+   copy so a stale row leaves a colleague's change alone. Yes/no, person
+   and line fields stay as shown: change them in the dialog. #}
+{% set INLINE_TYPES = ('text', 'mono', 'url', 'textarea', 'number', 'date', 'select') %}
+{% macro table_cells(fields, attrs, form='', locked=true) %}
   {% for field in fields if field.show_in_table %}
-    <td data-sort-for="attr_{{ field.key }}" data-sort-value="{{ sort_value(field, attrs) | trim }}">{{ field_cell(field, attrs) }}</td>
+    {% set value = attrs.get(field.key) %}
+    {% set name = 'attr_' ~ field.key %}
+    <td data-sort-for="{{ name }}" data-sort-value="{{ sort_value(field, attrs) | trim }}">
+      {%- if form and not locked and field.field_type in INLINE_TYPES -%}
+        {%- set shown = '' if value is none else value -%}
+        {%- if field.field_type == 'select' -%}
+          <select name="{{ name }}" form="{{ form }}" data-autosave="1" aria-label="{{ field.label }}">
+            <option value="">–</option>
+            {%- for option in field.options_list %}<option value="{{ option }}"{% if shown|string == option %} selected{% endif %}>{{ option }}</option>{% endfor -%}
+          </select>
+        {%- else -%}
+          <input name="{{ name }}" form="{{ form }}" value="{{ shown }}" data-autosave="1" aria-label="{{ field.label }}"
+                 {%- if field.field_type == 'number' %} type="number" step="any" class="sheet-num"
+                 {%- elif field.field_type == 'date' %} type="date" data-empty="{{ '0' if shown else '1' }}"
+                 {%- elif field.field_type == 'mono' %} class="ident"{% endif %} title="{{ shown }}">
+        {%- endif -%}
+        <input type="hidden" name="{{ name }}_was" form="{{ form }}" value="{{ shown }}">
+      {%- else -%}
+        {{ field_cell(field, attrs) }}
+      {%- endif -%}
+    </td>
   {% endfor %}
+{% endmacro %}
+
+
+{# The bulk bar's "Set field" for this entity's custom fields (the ones a
+   single value can set: not yes/no, person or line). #}
+{% macro bulk_set_field(fields, action_url) %}
+  {% set settable = fields | selectattr('field_type', 'in', INLINE_TYPES) | list %}
+  {% if settable %}
+    <form method="post" action="{{ action_url }}" class="selbar-group" data-selection-form>
+      <input type="hidden" name="action" value="set">
+      <select name="field" aria-label="Field to set" data-bulk-field>
+        {% for field in settable %}<option value="attr_{{ field.key }}" data-type="{{ field.field_type }}"{% if field.options_list %} data-options="{{ field.options_list|join('\n') }}"{% endif %}>{{ field.label }}</option>{% endfor %}
+      </select>
+      <input name="value" aria-label="Value" placeholder="value" list="org-bulk-field-options-{{ action_url|replace('/', '-') }}" data-bulk-value class="w-[110px]">
+      <datalist id="org-bulk-field-options-{{ action_url|replace('/', '-') }}"></datalist>
+      <button type="submit" class="btn btn-sm">Set field</button>
+    </form>
+  {% endif %}
 {% endmacro %}

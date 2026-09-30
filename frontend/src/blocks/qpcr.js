@@ -5,6 +5,9 @@
 // reference, ΔΔCt against the control, fold change 2^−ΔΔCt with the range
 // from the propagated SD. Replicates more than 0.5 cycles apart are
 // flagged. The fold changes are plotted per target, one bar per sample.
+// No-template and no-RT wells (by the export's Task/Content column, or a
+// sample named NTC, no-RT, NRT…) are controls, not samples: they are
+// checked on their own (they should not amplify) and left out of ΔΔCt.
 
 import { ask, debounce, el, escapeHtml, fmt, isNum, parseDelimited, toNumber } from '../util.js';
 import { mean, sd, summary, compare } from './stats.js';
@@ -19,7 +22,17 @@ const HEADERS = {
   sample: /^(sample( ?name)?|name)$/i,
   target: /^(target( ?name)?|detector|gene|assay)$/i,
   ct: /^(c[tq]|ct mean|cq mean|c[tq] value|crt)$/i,
+  task: /^(task|content|well ?type|sample ?type|type)$/i,
 };
+
+// A control well: the instrument's task, or the usual names for it.
+const CONTROL_TASK = /^(ntc|no ?template( control)?|nrt|no ?rt|-rt|nac|neg(ative)?( control)?)$/i;
+const CONTROL_NAME = /^(ntc|nrt|no[ -]?rt|-rt|nac|no[ -]?template|h2o|water|blank)(\b|[ _-]|\d|$)/i;
+export function isControlWell(r) {
+  return CONTROL_TASK.test((r.task || '').trim()) || CONTROL_NAME.test((r.sample || '').trim());
+}
+// Below this a control well has amplified (contamination or genomic DNA).
+const CONTROL_CT_LIMIT = 35;
 
 export function parseExport(text) {
   const grid = parseDelimited(text).map((r) => r.map((v) => v.trim()));
@@ -30,7 +43,7 @@ export function parseExport(text) {
   for (let i = 0; i < Math.min(grid.length, 60); i++) {
     const found = {};
     grid[i].forEach((h, j) => {
-      for (const [key, re] of Object.entries(HEADERS)) if (found[key] === undefined && re.test(h)) found[key] = j;
+      for (const [key, re] of Object.entries(HEADERS)) if (found[key] === undefined && re.test(h)) { found[key] = j; break; }
     });
     if (found.sample !== undefined && found.target !== undefined && found.ct !== undefined) { headerAt = i; idx = found; break; }
   }
@@ -43,12 +56,14 @@ export function parseExport(text) {
   }
   return grid.slice(headerAt + 1).filter((r) => r[idx.sample] && r[idx.target]).map((r) => ({
     well: idx.well !== undefined ? r[idx.well] : '', sample: r[idx.sample], target: r[idx.target],
-    ct: isNum(r[idx.ct]) ? r[idx.ct] : '',
+    ct: isNum(r[idx.ct]) ? r[idx.ct] : '', task: idx.task !== undefined ? r[idx.task] : '',
   }));
 }
 
 export function analyse(data) {
-  const rows = (data.rows || []).filter((r) => r.sample && r.target);
+  const all = (data.rows || []).filter((r) => r.sample && r.target);
+  const controlRows = all.filter(isControlWell);
+  const rows = all.filter((r) => !isControlWell(r));
   const samples = [...new Set(rows.map((r) => r.sample))];
   const targets = [...new Set(rows.map((r) => r.target))];
   const cell = new Map();
@@ -89,7 +104,15 @@ export function analyse(data) {
     if (st.n > 1 && Math.max(...st.cts) - Math.min(...st.cts) > 0.5) flags.push(`${s} · ${t}: replicates span ${fmt(Math.max(...st.cts) - Math.min(...st.cts), 2)} cycles`);
     if (st.n === 0) flags.push(`${s} · ${t}: no Ct (undetermined)`);
   }
-  return { samples, targets, stat, results, ref, ctrl, flags };
+  // Controls: fine when undetermined or late; a flag when they amplified.
+  const controls = [];
+  for (const r of controlRows) {
+    const v = toNumber(r.ct);
+    const amplified = Number.isFinite(v) && v < CONTROL_CT_LIMIT;
+    controls.push({ sample: r.sample, target: r.target, ct: Number.isFinite(v) ? v : null, amplified });
+    if (amplified) flags.unshift(`${r.sample} · ${r.target}: control well amplified (Ct ${fmt(v, 1)}); check for contamination or genomic DNA`);
+  }
+  return { samples, targets, stat, results, ref, ctrl, flags, controls };
 }
 
 export function mountQpcr(host, ctx) {
@@ -121,6 +144,7 @@ export function mountQpcr(host, ctx) {
         ${editable ? `<div class="nb-plate-paste"><textarea rows="3" placeholder="Paste the export from the instrument (with its Sample, Target and Ct/Cq columns), or three columns: sample, target, Ct."></textarea><button type="button" class="nb-mini" data-act="paste">Read</button>${(data.rows || []).length ? '<button type="button" class="nb-mini" data-act="clear">Clear</button>' : ''}</div>` : ''}
         ${(data.rows || []).length ? `<div class="nb-sheet-scroll nb-qpcr-raw"><table class="nb-stats-table"><thead><tr><th>Well</th><th>Sample</th><th>Target</th><th>Ct</th></tr></thead><tbody>${data.rows.map((r, i) => `<tr data-i="${i}"><td>${escapeHtml(r.well || '')}</td><td><input data-r="sample" value="${escapeHtml(r.sample)}"${dis}></td><td><input data-r="target" value="${escapeHtml(r.target)}"${dis}></td><td><input data-r="ct" value="${escapeHtml(r.ct)}" size="6"${dis}></td></tr>`).join('')}</tbody></table></div>` : ''}` : ''}
       ${a.flags.length ? `<ul class="nb-qpcr-flags">${a.flags.slice(0, 8).map((f) => `<li class="nb-warn">${escapeHtml(f)}</li>`).join('')}${a.flags.length > 8 ? `<li class="nb-muted">and ${a.flags.length - 8} more</li>` : ''}</ul>` : ''}
+      ${a.controls.length ? `<p class="nb-muted nb-qpcr-controls">${a.controls.length} control well${a.controls.length === 1 ? '' : 's'} (no-template / no-RT) checked and left out of ΔΔCt: ${a.controls.filter((c) => c.amplified).length ? `<b>${a.controls.filter((c) => c.amplified).length} amplified</b>` : 'none amplified'}.</p>` : ''}
       ${a.results.length ? `
         <div class="nb-sheet-scroll"><table class="nb-stats-table"><thead><tr><th>Target</th><th>Sample</th><th>Ct</th><th>${escapeHtml(a.ref)} Ct</th><th>ΔCt</th><th>ΔΔCt</th><th>Fold change</th><th>range (±SD)</th></tr></thead>
         <tbody>${a.results.map((r) => `<tr><td>${escapeHtml(r.target)}</td><th>${escapeHtml(r.sample)}${r.sample === a.ctrl ? ' <span class="nb-muted">(control)</span>' : ''}</th><td>${fmt(r.ct)}</td><td>${fmt(r.refCt)}</td><td>${fmt(r.dCt)}</td><td>${fmt(r.ddCt)}</td><td><b>${fmt(r.fold)}</b></td><td>${fmt(r.lo)} – ${fmt(r.hi)}</td></tr>`).join('')}</tbody></table></div>

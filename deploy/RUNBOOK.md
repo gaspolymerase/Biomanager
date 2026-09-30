@@ -91,9 +91,10 @@ files in `/data/.before-restore-<time>/`. When you are sure:
 docker compose exec db psql -U biomanager -d postgres -c 'DROP DATABASE "biomanager_before_<time>"'
 ```
 
-To look at an old backup without replacing anything, run a restore test on
-it: `docker compose exec backup restore-test.sh` restores the newest into a
-scratch database, checks it and drops it again.
+To check a backup without replacing anything, run a restore test on it:
+`docker compose exec backup restore-test.sh /backups/db/<file>.dump` restores
+that one (with no file named, the newest) into a scratch database, checks it
+and drops it again.
 
 ## The server is lost
 
@@ -132,11 +133,17 @@ the backups that was not on it: off-site, or an admin's Mac.
    `AWS_SECRET_ACCESS_KEY` and `RESTIC_PASSWORD` (from your password
    manager) in the new `.env`, then:
 
+   Pick the copy by its time, not "latest": `restic snapshots` lists them
+   with the time each was taken. Take the newest one from **before** the
+   old server was lost. (A server with no accounts yet sends nothing
+   off-site, but a copy made by the new server after someone signed up on
+   it would be newer than the one you want.)
+
    ```bash
    # server
    docker compose up -d --force-recreate backup
-   docker compose exec backup restic snapshots                 # the copies there
-   docker compose exec backup restic restore latest --tag biomanager --target /backups/from-offsite
+   docker compose exec backup restic snapshots --tag biomanager   # ID, time and files of each copy
+   docker compose exec backup restic restore <ID> --target /backups/from-offsite
    docker compose exec backup sh -c 'ls /backups/from-offsite/backups/db /backups/from-offsite/backups/files'
    docker compose stop app
    docker compose --profile restore run --rm restore \
@@ -180,7 +187,10 @@ and stop the old app (`docker compose stop app`) so nobody writes to it meanwhil
 ## Someone leaves
 
 1. **Settings → Manage users** → **Disable**. They are signed out at once.
-2. **Colony overview** (`/admin/colony`): reassign their cages and animals.
+2. Hand their records to someone: on the **Mice** and **Cages** sheets, show
+   everyone's, filter by their name, tick them and use **Set → Owner** (the
+   **Colony overview**, `/admin/colony`, shows who holds what). Do the same
+   in the other databases they used.
 3. Take away their network access: revoke the Tailscale share (or remove
    them from the tailnet), or ask IT to.
 4. If they were an admin, check who else is. Keep at least two.
@@ -199,10 +209,12 @@ certificates are not in it, so they are kept):
 ```bash
 tar -xzf biomanager-server.tar.gz -C /opt/biomanager
 host/load-image.sh
-docker compose up -d
+docker compose up -d --build
 ```
 
 With a **checkout**: `git pull`, then `docker compose up -d --build`.
+(`--build` rebuilds the backup service, so updated backup and restore
+scripts are used; it takes no second backup while the one above is fresh.)
 
 Then check it: `curl -fsS https://DOMAIN/healthz` answers `ok`, and
 `docker compose logs app` shows it started. Start-up brings the database
@@ -211,7 +223,9 @@ schema up to date by itself; when it does, the log says
 
 ### Updating went wrong
 
-The backup taken just before is the newest in `/backups/db`. Put the
+The backup taken just before is the newest in `/backups/db` (the backup
+service takes none of its own at start while one from the last 12 hours is
+there). Put the
 previous version back: unpack the previous release's bundle and run
 `host/load-image.sh`, or `git checkout` the previous tag, then
 `docker compose up -d` (`--build` for a checkout).
@@ -261,7 +275,7 @@ What a guest adds stays, under their `guest-…` account.
 | Institution sign-in secret | IT issues a new one; update `.env`, `docker compose up -d` | nothing, if done before the old one stops working |
 | ntfy topic | edit `/etc/biomanager/watchdog.env` on the server, subscribe to the new topic | nothing |
 | Off-site storage key | create a new key (this bucket, read and write), **server** `sudo host/offsite-setup.sh` again with it, then delete the old key | nothing |
-| Backup password | not rotated in place: it encrypts every stored copy. To change it, `docker compose exec backup restic key add`, then `restic key remove` the old one, and update `.env` and your password manager | nothing |
+| Backup password | not rotated in place: it encrypts every stored copy. To change it: `docker compose exec backup restic key add` (it asks for the new one), put the new one in `.env` and your password manager, `docker compose up -d`, then `docker compose exec backup restic key list` and `restic key remove <ID>` the old one (restic won't remove the key it is using) | nothing |
 | An admin's SSH key | make a new key, put its `.pub` in the server's `~/.ssh/authorized_keys`, remove the old line | nothing |
 
 ## Checking on it by hand

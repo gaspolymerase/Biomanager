@@ -17,7 +17,7 @@
     <span class="badge">{{ boxes|length }} {{ 'box' if boxes|length == 1 else 'boxes' }}</span>
     <span class="ml-1.5">
       {% if current_user.role == 'admin' %}Admin — you can edit anything.
-      {% else %}Plasmids owned by other people are read-only.{% endif %}
+      {% else %}Plasmids owned by other people are read-only, unless they are lab common.{% endif %}
     </span>
   </div>
 {% endblock %}
@@ -42,7 +42,7 @@
   {% for location in boxes | map(attribute='location') | unique %}{% if location %}<option value="{{ location }}"></option>{% endif %}{% endfor %}
 </datalist>
 
-<section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v4" data-noun="plasmid" id="plasmids-section"
+<section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v5" data-noun="plasmid" id="plasmids-section"
          data-autosave-sheet data-export-name="plasmids"
          data-selection-scope data-selection-noun="plasmid" data-selection-noun-plural="plasmids">
   <div class="dt-toolbar">
@@ -58,6 +58,7 @@
     <div class="dt-chips" role="group" aria-label="Show">
       <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">All <span class="dt-chip-count">{{ counts.all }}</span></button>
       <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">Mine <span class="dt-chip-count">{{ counts.mine }}</span></button>
+      <button type="button" class="dt-chip" data-dt-filter="shared:true" aria-pressed="false">Lab common <span class="dt-chip-count">{{ counts.lab }}</span></button>
       <button type="button" class="dt-chip" data-dt-filter="seq:true" aria-pressed="false">Has sequence <span class="dt-chip-count">{{ counts.sequence }}</span></button>
       <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false">In a box <span class="dt-chip-count">{{ counts.stored }}</span></button>
     </div>
@@ -97,6 +98,9 @@
             <th class="dt-sortable" data-sort-key="resistance" style="width: 112px;">
               <span class="dt-col-head">{{ icon('resistance', 'dt-col-icon') }}Resistance<span class="dt-sort-indicator"></span></span>
             </th>
+            <th class="dt-sortable" data-sort-key="shared" style="width: 112px;" title="Lab common: anyone in the lab can edit it">
+              <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Belongs to<span class="dt-sort-indicator"></span></span>
+            </th>
             <th class="dt-sortable" data-sort-key="owner" style="width: 88px;">
               <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
             </th>
@@ -108,6 +112,12 @@
             </th>
             <th class="dt-sortable" data-sort-key="location" style="width: 150px;" title="Where the tube is when it is not in a box: freezer, shelf…">
               <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="concentration" style="width: 92px;" title="DNA concentration of the tube, ng/µL">
+              <span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}{{ 'ng/µL'|head }}<span class="dt-sort-indicator"></span></span>
+            </th>
+            <th class="dt-sortable" data-sort-key="a260_280" style="width: 80px;" title="Purity: A260/A280 (about 1.8 for clean DNA)">
+              <span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}260/280<span class="dt-sort-indicator"></span></span>
             </th>
             <th class="dt-sortable" data-sort-key="length" style="width: 116px;" title="Sequence length and topology; edit it on the plasmid's page">
               <span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Sequence<span class="dt-sort-indicator"></span></span>
@@ -125,13 +135,14 @@
             {% set locked = not r.editable %}
             <tr data-id="{{ p.id }}" data-pid="{{ p.plasmid_id }}" data-length="{{ r.length }}"
                 data-mine="{{ 'true' if r.mine else 'false' }}" data-seq="{{ 'true' if r.length else 'false' }}"
+                data-shared="{{ 'true' if p.is_shared else 'false' }}"
                 data-active="{{ 'true' if r.stored else 'false' }}"
                 class="{% if locked %}is-locked{% endif %}">
               <td class="sheet-pin sheet-pin-0">
                 <input type="checkbox" data-select-row value="{{ p.id }}" aria-label="Select plasmid {{ p.plasmid_id }}">
               </td>
               <td class="sheet-pin sheet-pin-1">
-                <a href="{{ url_for('plasmid_detail', row_id=p.id) }}" class="sheet-link" title="Open the page of plasmid #{{ p.plasmid_id }} (sequence map)">
+                <a href="{{ url_for('plasmid_page', number=p.plasmid_id) }}" class="sheet-link" title="Open the page of plasmid #{{ p.plasmid_id }} (sequence map)">
                   {{ sheet_ui.id_cell('#' ~ p.plasmid_id, alive=r.stored, locked=locked, owner=p.owner, noun='plasmid',
                                       alive_title='In a box', dead_title='Not stored') }}
                 </a>
@@ -140,7 +151,14 @@
               <td><input form="{{ f }}" name="backbone" value="{{ p.backbone }}" data-autosave="1" aria-label="Backbone" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="insert_seq" value="{{ p.insert_seq }}" title="{{ p.insert_seq }}" data-autosave="1" aria-label="Insert" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1" aria-label="Resistance" {% if locked %}disabled{% endif %}></td>
-              <td>{{ sheet_ui.owner_cell(p.owner, f, locked) }}</td>
+              <td>
+                <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ 'lab' if p.is_shared else 'mine' }}" data-autosave="1"
+                        aria-label="Belongs to" {% if not r.manageable %}disabled {% if not locked %}title="Only {{ p.owner or 'its owner' }} or an admin can change whose it is"{% endif %}{% endif %}>
+                  <option value="0" {% if not p.is_shared %}selected{% endif %}>Personal</option>
+                  <option value="1" {% if p.is_shared %}selected{% endif %}>Lab common</option>
+                </select>
+              </td>
+              <td {% if not r.manageable and not locked %}title="Lab common: only {{ p.owner or 'its owner' }} or an admin can change whose it is"{% endif %}>{{ sheet_ui.owner_cell(p.owner, f, not r.manageable) }}</td>
               <td>
                 <select form="{{ f }}" name="box_id" data-autosave="1" data-dead-values="" aria-label="Box" {% if locked %}disabled{% endif %}>
                   {{ box_options(p.box_id_fk, '–') }}
@@ -150,6 +168,10 @@
                          placeholder="{{ '–' if not r.box else 'no cell' }}"
                          data-autosave="1" data-dead-values="" aria-label="Position in the box" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="location" value="{{ p.location }}" title="{{ p.location }}" data-autosave="1" aria-label="Location" {% if locked %}disabled{% endif %}></td>
+              <td><input class="sheet-num" form="{{ f }}" name="concentration" value="{{ p.concentration }}" inputmode="decimal"
+                         data-autosave="1" aria-label="Concentration, ng/µL" {% if locked %}disabled{% endif %}></td>
+              <td><input class="sheet-num" form="{{ f }}" name="a260_280" value="{{ p.a260_280 }}" inputmode="decimal"
+                         data-autosave="1" aria-label="260/280" {% if locked %}disabled{% endif %}></td>
               <td class="sheet-num">
                 {% if r.length %}{{ '{:,}'.format(r.length) }}<span class="sheet-unit">bp</span><span class="sheet-unit">{{ 'circ' if p.is_circular else 'lin' }}</span>
                 {% else %}<span class="sheet-empty">–</span>{% endif %}
@@ -165,8 +187,9 @@
                   </form>
                   <form method="post" action="{{ url_for('delete_plasmid', row_id=p.id) }}"
                         data-confirm="Delete plasmid #{{ p.plasmid_id }}? You can undo it from Batch history.">
-                    <button type="submit" class="row-icon-btn danger-button" title="Delete plasmid #{{ p.plasmid_id }}"
-                            {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
+                    <button type="submit" class="row-icon-btn danger-button"
+                            title="{{ 'Delete plasmid #' ~ p.plasmid_id if r.manageable else 'Only ' ~ (p.owner or 'its owner') ~ ' or an admin can delete it' }}"
+                            {% if not r.manageable %}disabled{% endif %}>{{ icon('trash') }}</button>
                   </form>
                 </div>
               </td>
@@ -208,7 +231,7 @@
         {% for r in rows %}
           {% set p = r.p %}
           <li class="plasmid-list-row" data-search="{{ ((p.name or '') + ' ' + (p.backbone or '') + ' ' + (p.resistance or '') + ' ' + (p.owner or '') + ' ' + r.where)|lower }}">
-            <a href="{{ url_for('plasmid_detail', row_id=p.id) }}">
+            <a href="{{ url_for('plasmid_page', number=p.plasmid_id) }}">
               <span class="plasmid-list-id">#{{ p.plasmid_id }}</span>
               <span class="plasmid-list-name">{{ p.name or 'Unnamed' }}</span>
               <span class="plasmid-list-meta">
@@ -253,6 +276,11 @@
       <input type="hidden" name="action" value="owner">
       <input name="value" list="sheet-owners" placeholder="owner" aria-label="New owner">
       <button type="submit" class="btn btn-sm">Set owner</button>
+    </form>
+    <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
+      <input type="hidden" name="action" value="shared">
+      <select name="value" aria-label="Belongs to"><option value="1">Lab common</option><option value="0">Personal</option></select>
+      <button type="submit" class="btn btn-sm">Set</button>
     </form>
     <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
       <input type="hidden" name="action" value="resistance">
@@ -312,6 +340,9 @@
         <label>Insert <input name="insert_seq" placeholder="What is cloned in"></label>
         <label>Resistance <input name="resistance" list="plasmid-resistance"></label>
         <label>Owner <input name="owner" list="sheet-owners"></label>
+        <label>Belongs to
+          <select name="is_shared"><option value="0">Personal: only the owner (and admins) can edit</option><option value="1">Lab common: anyone can edit</option></select>
+        </label>
       </fieldset>
       <fieldset class="record-group">
         <legend>Storage</legend>
@@ -319,6 +350,8 @@
         <label>Position <input name="position" class="font-mono" placeholder="blank = next free" autocomplete="off"
                                title="Named the way the box names its cells, e.g. D7"></label>
         <label class="record-wide">Location <input name="location" placeholder="e.g. −80 freezer, shelf 2 (when not in a box)"></label>
+        <label>Concentration (ng/µL) <input name="concentration" inputmode="decimal" autocomplete="off" placeholder="e.g. 412"></label>
+        <label>260/280 <input name="a260_280" inputmode="decimal" autocomplete="off" placeholder="e.g. 1.86"></label>
       </fieldset>
       <fieldset class="record-group" data-new-only>
         <legend>Sequence (optional)</legend>
@@ -358,6 +391,11 @@
 
 {% block body_end %}
 <script nonce="{{ csp_nonce() }}">
+  /* The Belongs to pill takes its colour from what it says. */
+  document.addEventListener('change', (e) => {
+    const pill = e.target.closest && e.target.closest('.plasmid-sheet .scope-pill');
+    if (pill) pill.dataset.scope = pill.value === '1' ? 'lab' : 'mine';
+  });
   /* Open a given box (after saving one, the server sends ?box=<id>): the
      rack grid reads its remembered box when it starts, which is after this. */
   (function () {
@@ -422,11 +460,19 @@
         syncMany();
       } else {
         const link = document.createElement('a');
-        link.href = `/plasmids/${data.id}`;
+        link.href = `/plasmid/${data.plasmid_id}`;
         link.textContent = 'Open its page (sequence map)';
         sub.appendChild(link);
       }
       if (hint) hint.textContent = (!isNew && data._locked) ? `${data.owner || 'Someone else'}’s plasmid: read only` : '';
+      // Lab common lets anyone edit it; whose it is stays with its owner.
+      const fixed = !isNew && !data._locked && data._manage === false;
+      ['owner', 'is_shared'].forEach((name) => {
+        const el = form.elements[name];
+        if (!el) return;
+        el.disabled = Boolean(data._locked) || fixed;
+        el.title = fixed ? `Lab common: only ${data.owner || 'its owner'} or an admin can change whose it is` : '';
+      });
     });
   })();
 

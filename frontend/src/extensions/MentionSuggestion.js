@@ -1,12 +1,13 @@
 // `@` trigger for entity suggestions. Two modes:
 //
-//   1. Typed:   "@mouse 123" / "@plasmid kan" / "@order 5"
+//   1. Typed:   "@mouse 123" / "@plasmid kan" / "@order 5" / "@antibodies gfp"
 //                — fetches /notebook/search/<type>?q=<q> and shows results
 //                  for just that type. Picker keeps the explicit type.
 //
 //   2. Unified: "@" / "@123" / "@DBH-Cre"
 //                — fetches /notebook/search/all?q=<q> which merges mouse +
-//                  plasmid + order results. Each item carries its own
+//                  plasmid + order results (and, once something is typed,
+//                  every inventory's). Each item carries its own
 //                  `type`. Picker inserts `@<type> <id>` so the
 //                  MentionDecoration plugin still styles the chip.
 //
@@ -16,7 +17,8 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 
-const TYPED_TRIGGER_RE = /@(mouse|plasmid|order)\s+([\w-]*)$/;
+import { mentionTypes, styleOf, typedTriggerRe } from './mentionTypes.js';
+
 // Unified trigger: `@` followed by a single word-token (no space). Stops at
 // punctuation/whitespace so the menu closes naturally when the user types
 // past the entity reference.
@@ -61,8 +63,8 @@ class SuggestionMenu {
       // already clear.
       if (item.type) {
         const tag = document.createElement('span');
-        tag.className = `entity-suggestion-tag entity-suggestion-tag-${item.type}`;
-        tag.textContent = item.type;
+        tag.className = `entity-suggestion-tag entity-suggestion-tag-${styleOf(item.type)}`;
+        tag.textContent = item.type_label || mentionTypes().labels[item.type] || item.type;
         row.appendChild(tag);
       }
       const label = document.createElement('span');
@@ -108,7 +110,7 @@ export const MentionSuggestion = Extension.create({
       const textBefore = $from.parent.textBetween(0, $from.parentOffset, '\n', '\0');
       // Try the typed form first. If the user has written "@mouse foo" we
       // want to show only mouse results, not unified ones.
-      const typedMatch = textBefore.match(TYPED_TRIGGER_RE);
+      const typedMatch = textBefore.match(typedTriggerRe());
       if (typedMatch) {
         return {
           mode: 'typed',
@@ -175,11 +177,10 @@ export const MentionSuggestion = Extension.create({
                     // already wrote; in unified mode each item carries it.
                     const insertType = ctx.mode === 'typed' ? ctx.type : item.type;
                     if (!insertType) return;
-                    const tr = view.state.tr.insertText(
-                      `@${insertType} ${item.id} `,
-                      ctx.triggerStart,
-                      ctx.triggerEnd,
-                    );
+                    // A person is "@jordan" (action items and mentions); a
+                    // record is "@<type> <number>", which becomes a chip.
+                    const text = insertType === 'person' ? `@${item.id} ` : `@${insertType} ${item.id} `;
+                    const tr = view.state.tr.insertText(text, ctx.triggerStart, ctx.triggerEnd);
                     view.dispatch(tr);
                     closeMenu();
                     view.focus();

@@ -157,6 +157,8 @@
                 <button type="button" data-more="print">{{ icon('print') }} Print / PDF</button>
                 <button type="button" data-more="template">{{ icon('template') }} Save as template</button>
                 {% if can_edit %}<button type="button" data-more="version">{{ icon('success') }} Save a named version</button>{% endif %}
+                {# Any page, not only meeting notes: a task line naming @someone becomes their to-do. #}
+                {% if can_edit and p.kind != 'meeting' %}<button type="button" data-action="action-items" title="Each open task that names @someone becomes their to-do on the calendar">{{ icon('list-check') }} Send @name tasks as to-dos</button>{% endif %}
                 {% if p.real_role == 'owner' and not p.signed %}<button type="button" data-more="delete" class="is-danger">{{ icon('trash') }} Delete page</button>{% endif %}
               </div>
             </div>
@@ -287,9 +289,13 @@
         <form id="notebook-template-form">
           <label>Title <input name="title" required placeholder="e.g. PCR protocol"></label>
           <label>Icon <input name="icon" maxlength="4" placeholder="Optional, one character"></label>
+          <label>Page type
+            <select name="kind">{% for k, label in kinds.items() if k != 'daily' %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select>
+          </label>
           <label>Body (Markdown)
             <textarea name="body" rows="6" placeholder="# Goal&#10;&#10;## Materials&#10;&#10;## Steps&#10;1. ..."></textarea>
           </label>
+          <label class="cal-check"><input type="checkbox" name="lab" value="1"> Share it with the lab</label>
           <div class="notebook-template-form-actions"><button type="submit" class="btn btn-primary">Save template</button></div>
         </form>
       </details>
@@ -304,6 +310,7 @@
   'kinds': kinds,
   'statuses': statuses,
   'selectedTab': selected_tab_id,
+  'labZone': lab_zone,
 } | tojson }}</script>
 
 <script nonce="{{ csp_nonce() }}">
@@ -340,6 +347,8 @@ async function createPage(tabId) {
 }
 BioActions.register({ createPage: createPage, createTab: createTab, renameTab: renameTab });
 </script>
+{# The inventories a page can @link ("@antibodies 12"), for the editor's @ menu and chips. #}
+<script type="application/json" id="nb-mention-types">{{ mention_types | tojson }}</script>
 <script src="{{ url_for('static', filename='notebook-page.js') }}?v={{ asset_version('notebook-page.js') }}" defer></script>
 <script src="{{ url_for('static', filename='notebook-build/notebook-app.js') }}?v={{ asset_version('notebook-build/notebook-app.js') }}" defer data-missing-flag="__notebookBundleMissing"></script>
 {% endblock %}

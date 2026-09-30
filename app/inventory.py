@@ -40,6 +40,16 @@ FEATURES = {
 }
 
 STORAGE_TEMPS = ["RT", "4 °C", "−20 °C", "−80 °C", "LN₂"]
+CONC_UNITS = ["ng/µL", "µg/mL", "mg/mL", "nM", "µM", "cells/mL"]
+# What a Nanodrop, Qubit or BCA reading gives, as numbers a sheet can sort
+# and sum (revision 0008 adds them to Samples made before they were here).
+SAMPLE_MEASURES = [
+    {"key": "concentration", "label": "Conc.", "type": "number", "icon": "amount", "width": 92},
+    {"key": "conc_unit", "label": "Conc. unit", "type": "select", "options": CONC_UNITS, "icon": "amount", "width": 100},
+    {"key": "a260_280", "label": "260/280", "type": "number", "icon": "amount", "width": 84},
+    {"key": "a260_230", "label": "260/230", "type": "number", "icon": "amount", "width": 84},
+    {"key": "volume_ul", "label": "Volume (µL)", "type": "number", "icon": "droplet", "width": 100},
+]
 
 PRESETS: dict[str, dict] = {
     "samples": {
@@ -55,6 +65,7 @@ PRESETS: dict[str, dict] = {
             {"key": "source", "label": "Source", "type": "source", "icon": "signpost", "width": 190},
             {"key": "collected_on", "label": "Collected", "type": "date", "icon": "calendar", "width": 136},
             {"key": "amount", "label": "Amount", "type": "text", "icon": "amount", "width": 100},
+            *SAMPLE_MEASURES,
             {"key": "storage_temp", "label": "Stored at", "type": "select", "options": STORAGE_TEMPS, "icon": "snowflake", "width": 104},
         ],
     },
@@ -135,6 +146,56 @@ PRESETS: dict[str, dict] = {
             {"key": "biosafety", "label": "Biosafety", "type": "select",
              "options": ["BSL-1", "BSL-2", "BSL-2+", "BSL-3"], "icon": "warning", "width": 100},
             {"key": "made_on", "label": "Made", "type": "date", "icon": "calendar", "width": 130},
+        ],
+    },
+    "primers": {
+        "label": "Primers & oligos",
+        "icon": "dna",
+        "item_noun": "primer", "item_noun_plural": "primers",
+        "blurb": "Primers, probes and guide oligos by sequence: length, GC and Tm are worked out from it, "
+                 "and Add primer pair makes the forward and reverse at once.",
+        "features": ["storage", "sharing", "quantity", "supplier", "received"],
+        "category_label": "Use",
+        "categories": ["PCR", "qPCR", "sequencing", "cloning", "genotyping", "mutagenesis", "probe", "gRNA", "other"],
+        "statuses": ["ordered", "in stock", "low", "used up", "discarded"],
+        "fields": [
+            {"key": "sequence", "label": "Sequence (5′→3′)", "type": "text", "icon": "dna", "width": 240},
+            {"key": "direction", "label": "Direction", "type": "select", "options": ["forward", "reverse", "probe"],
+             "icon": "signpost", "width": 96},
+            {"key": "target", "label": "Target", "type": "text", "icon": "target", "width": 110},
+            {"key": "pair", "label": "Pair", "type": "text", "icon": "link", "width": 120},
+            {"key": "length", "label": "Length", "type": "number", "icon": "count", "width": 76},
+            {"key": "gc", "label": "GC %", "type": "number", "icon": "gauge", "width": 72},
+            {"key": "tm", "label": "Tm (°C)", "type": "number", "icon": "temperature", "width": 80},
+            {"key": "modification", "label": "Modification", "type": "text", "icon": "sparkle", "width": 110, "in_table": False},
+            {"key": "stock_um", "label": "Stock (µM)", "type": "number", "icon": "amount", "width": 90},
+            {"key": "purification", "label": "Purification", "type": "select",
+             "options": ["desalted", "cartridge", "HPLC", "PAGE"], "icon": "flask", "width": 104, "in_table": False},
+        ],
+    },
+    "cell_lines": {
+        "label": "Cell lines",
+        "icon": "petri",
+        "item_noun": "vial", "item_noun_plural": "vials",
+        "blurb": "Frozen vials of each line and clone: passage, freeze date, cells per vial, mycoplasma tests, "
+                 "and where each vial sits in the LN₂ boxes.",
+        "features": ["storage", "sharing", "supplier", "received"],
+        "category_label": "Type",
+        "categories": ["line", "primary", "iPSC", "stable pool", "clone", "hybridoma", "other"],
+        "statuses": ["in stock", "thawed", "used up", "discarded"],
+        "fields": [
+            {"key": "species", "label": "Species", "type": "select",
+             "options": ["human", "mouse", "rat", "hamster", "monkey", "insect", "other"], "icon": "paw", "width": 96},
+            {"key": "parent", "label": "Parent / made from", "type": "text", "icon": "sitemap", "width": 140},
+            {"key": "passage", "label": "Passage", "type": "number", "icon": "count", "width": 80},
+            {"key": "frozen_on", "label": "Frozen", "type": "date", "icon": "calendar", "width": 130},
+            {"key": "cells_per_vial", "label": "Cells / vial", "type": "text", "icon": "amount", "width": 100},
+            {"key": "medium", "label": "Medium", "type": "text", "icon": "flask", "width": 130, "in_table": False},
+            {"key": "selection", "label": "Selection", "type": "text", "icon": "resistance", "width": 110, "in_table": False},
+            {"key": "mycoplasma", "label": "Mycoplasma", "type": "select", "options": ["not tested", "negative", "positive"],
+             "icon": "warning", "width": 104},
+            {"key": "myco_tested_on", "label": "Myco tested", "type": "date", "icon": "calendar", "width": 130, "in_table": False},
+            {"key": "storage_temp", "label": "Stored at", "type": "select", "options": STORAGE_TEMPS, "icon": "snowflake", "width": 104},
         ],
     },
     "custom": {

@@ -16,7 +16,7 @@ from flask import (
 )
 from sqlalchemy import func, select
 
-from . import access, audit, positions
+from . import access, audit, database_keys, positions
 from . import stock_service as svc
 from . import stocks as presets
 from .db import SessionLocal
@@ -59,6 +59,7 @@ def _module_or_404(session, key: str) -> StockModule:
     # person can tell (app/lab.py).
     if module is None or not lab.can_see(module):
         abort(404)
+    database_keys.to_current(module, key)   # an address it had before a rename
     return module
 
 
@@ -270,7 +271,7 @@ def module(key: str):
             units = [u for u in units if u.active or not u.discarded_on or u.discarded_on >= cutoff]
         genotypes = list(session.scalars(select(StockGenotype).where(StockGenotype.module_id_fk == row.id)
                                          .order_by(StockGenotype.genotype)))
-        schedule = svc.schedule(session, mv, today, horizon=_int(request.args.get("horizon"), 14))
+        schedule = svc.schedule(session, mv, today, horizon=max(1, min(_int(request.args.get("horizon"), 14), 366)))
         me = g.user.username
         rows = []
         for u in units:
@@ -362,7 +363,11 @@ def _unit_from_form(session, mv, unit: StockUnit, form, placing: bool = True, us
     for text in (unit.genotype, unit.female_genotype, unit.male_genotype):
         svc.remember_genotype(session, mv.id, text or "", user)
     if placing and "rack_id" in form and form_changed(form, "rack_id", "position"):
-        return svc.apply_position(session, unit, form.get("rack_id"), form.get("position"))
+        before = unit.rack
+        problem = svc.apply_position(session, unit, form.get("rack_id"), form.get("position"))
+        after = session.get(StockRack, unit.rack_id_fk) if unit.rack_id_fk else None
+        svc.follow_temperature(mv, unit, before, after)
+        return problem
     return None
 
 
@@ -517,6 +522,7 @@ def place_unit(key: str, unit_id: int):
             if unit.rack_row is None:
                 return jsonify({"ok": False, "error": "That cell is taken. Drop it on an empty cell."}), 409
             holder.rack_id_fk, holder.rack_row, holder.rack_col = unit.rack_id_fk, unit.rack_row, unit.rack_col
+        svc.follow_temperature(svc.view(row), unit, unit.rack, rack)
         unit.rack_id_fk, unit.rack_row, unit.rack_col = rack.id, r, c
         session.commit()
     return jsonify({"ok": True})
@@ -1083,8 +1089,10 @@ def save_settings(key: str):
             s["default_temperature"] = listed[0]
         s["frozen"] = "1" in form.getlist("frozen")
         row.settings = json.dumps(s)
+        moved = database_keys.rekey(session, "stocks", row)    # its address follows its name
         session.commit()
-        return _back(key, view="settings", message=f"Saved {row.label}.")
+        return _back(row.key, view="settings", message=f"Saved {row.label}." + (
+            f" Its address is now /stocks/{moved}; links to the old one still work." if moved else ""))
 
 
 @bp.route("/<key>/delete", methods=["POST"])

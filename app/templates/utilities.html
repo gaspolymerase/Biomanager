@@ -2,76 +2,32 @@
 
 {% block page_title %}Utilities{% endblock %}
 {% block page_heading %}Utilities{% endblock %}
-{% block page_subtitle %}Bench calculators and reference data{% endblock %}
+{% block page_subtitle %}Bench calculators and reference tables: solutions, DNA, protein, cells, microbes and more{% endblock %}
 
 {% block content %}
-<div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+{# Every calculator is data in static/bench-calcs.js, drawn by static/utilities-page.js;
+   the answers change as you type, and each remembers what you last typed in it. #}
+<div class="util" data-util>
+  <nav class="util-nav card" aria-label="Calculators">
+    <div class="util-search">
+      {{ icon('search') }}
+      <input type="search" placeholder="Find a calculator…" aria-label="Find a calculator" data-util-search autocomplete="off">
+    </div>
+    <div class="util-list" data-util-list></div>
+  </nav>
 
-  <article class="card self-start">
-    <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calculator"></use></svg> Mass from concentration</h2>
-    </header>
-    <form method="post" class="flex flex-col gap-3.5 p-4">
-      <label class="field-label">Molecular weight (g/mol)
-        <input type="number" step="0.0001" name="molecular_weight" required
-               value="{{ request.form.get('molecular_weight', '') }}">
-      </label>
-      <label class="field-label">Target concentration (mM)
-        <input type="number" step="0.0001" name="target_concentration_mm" required
-               value="{{ request.form.get('target_concentration_mm', '') }}">
-      </label>
-      <label class="field-label">Final volume (mL)
-        <input type="number" step="0.0001" name="final_volume_ml" required
-               value="{{ request.form.get('final_volume_ml', '') }}">
-      </label>
-      <button type="submit" class="btn btn-primary">Calculate</button>
+  <section class="util-main">
+    <article class="card util-card" data-util-card aria-live="polite"></article>
 
-      {% if result %}
-        <div class="inset flex flex-col gap-0.5">
-          <span class="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-sand-400">Weigh out</span>
-          <span class="text-[22px] font-semibold leading-tight tracking-[-0.02em] text-brand-700">
-            {{ "%.3f"|format(result.milligrams) }} mg
-          </span>
-          <span class="text-[12px] text-muted">
-            {{ "%.6f"|format(result.grams) }} g for {{ result.volume_ml }} mL
-          </span>
-        </div>
-      {% endif %}
-    </form>
-  </article>
-
-  <article class="card">
-    <header class="card-head">
-      <h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#flask"></use></svg> Chemical reference</h2>
-      <span class="badge badge-quiet">{{ chemicals|length }}</span>
-    </header>
-    {% if chemicals %}
-      <div class="dt-scroll">
-        <table class="dt">
-          <thead>
-            <tr>
-              <th style="width: 220px;">Name</th>
-              <th style="width: 130px;">MW (g/mol)</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for chemical in chemicals %}
-              <tr>
-                <td><span class="font-medium text-ink">{{ chemical.name }}</span></td>
-                <td><span class="ident">{{ chemical.molecular_weight }}</span></td>
-                <td class="text-muted">{{ chemical.notes }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="empty-state">
-        <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#flask"></use></svg>
-        <p>No reference chemicals stored yet.</p>
-      </div>
-    {% endif %}
-  </article>
+    <details class="card util-refs" id="reference">
+      <summary class="card-head"><h2>{{ icon('flask') }} Reference tables</h2></summary>
+      <div class="util-refs-body" data-util-refs></div>
+    </details>
+  </section>
 </div>
+
+<datalist id="util-chemicals"></datalist>
+<script type="application/json" id="util-lab-chemicals">{{ chemicals | tojson }}</script>
+<script src="{{ url_for('static', filename='bench-calcs.js') }}?v={{ asset_version('bench-calcs.js') }}" defer></script>
+<script src="{{ url_for('static', filename='utilities-page.js') }}?v={{ asset_version('utilities-page.js') }}" defer></script>
 {% endblock %}

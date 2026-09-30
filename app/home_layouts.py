@@ -58,6 +58,83 @@ def set_layout(session, username: str, value: str) -> str:
     return value
 
 
+# ---------------------------------------------------------------- the cards
+
+# Classic's cards, in their first order: key, name, icon, whether it starts
+# full width, and what the lab must keep for it to be offered (a feature,
+# or one of the has_* flags home_dashboard works out).
+CARDS = [
+    ("for_you", "For you (unread notices)", "bell", True, None),
+    ("databases", "Your databases", "database", True, None),
+    ("stats", "Counts", "chart", True, None),
+    ("todos", "Your to-dos", "list-check", False, "calendar"),
+    ("sac", "Mice older than 30 weeks", "warning", False, "colony"),
+    ("weanings", "Upcoming weanings", "baby", False, "colony"),
+    ("geno", "Genotyping queue", "microscope", False, "colony"),
+    ("stocks", "Flies & worms: due", "fly", False, "has_stocks"),
+    ("restock", "Expiring & low stock", "flask", False, "has_restock"),
+    ("zebrafish", "Zebrafish", "fish", False, "zebrafish"),
+    ("organisms", "Animal databases: due", "paw", False, None),
+    ("calendar", "Next 14 days", "calendar", False, "calendar"),
+    ("bookings", "Your bookings", "calendar-clock", False, "calendar"),
+    ("notebook", "Recent notebook pages", "notebook", False, "notebook"),
+    ("utilities", "Calculators", "calculator", False, None),
+    ("orders", "Recent orders", "cart", True, "has_orders"),
+]
+CARD_KEYS = [c[0] for c in CARDS]
+# Cards a new person doesn't see until they add them in Customize.
+OFF_AT_FIRST = {"todos", "bookings", "notebook", "utilities"}
+
+
+def _cards_key(username: str) -> str:
+    return f"home_cards:{username}"
+
+
+def get_cards(session, username: str) -> dict:
+    """{"order": [...every key...], "hidden": [...], "wide": [...]}, as this
+    person arranged Home (kept in app_settings, like the layout); a card
+    added to the app since goes in its usual place, off if OFF_AT_FIRST."""
+    import json
+    try:
+        saved = json.loads(inventory_service.get_setting(session, _cards_key(username), "") or "{}")
+    except ValueError:
+        saved = {}
+    order = [k for k in saved.get("order", []) if k in CARD_KEYS]
+    known = set(order)
+    for i, key in enumerate(CARD_KEYS):          # new cards: after the one before them
+        if key not in known:
+            before = next((CARD_KEYS[j] for j in range(i - 1, -1, -1) if CARD_KEYS[j] in order), None)
+            order.insert(order.index(before) + 1 if before else 0, key)
+            known.add(key)
+    seen = set(saved.get("seen", [])) if saved else set()
+    hidden = [k for k in saved.get("hidden", []) if k in CARD_KEYS] if saved else []
+    hidden += [k for k in OFF_AT_FIRST if k not in seen and k not in hidden]
+    wide = [k for k in saved.get("wide", []) if k in CARD_KEYS] if "wide" in saved else [c[0] for c in CARDS if c[3]]
+    return {"order": order, "hidden": hidden, "wide": wide}
+
+
+def set_cards(session, username: str, order, hidden, wide) -> dict:
+    import json
+    clean = lambda keys: [k for k in dict.fromkeys(keys) if k in CARD_KEYS]  # noqa: E731
+    value = {"order": clean(order), "hidden": clean(hidden), "wide": clean(wide), "seen": CARD_KEYS}
+    inventory_service.set_setting(session, _cards_key(username), json.dumps(value))
+    return get_cards(session, username)
+
+
+def reset_cards(session, username: str) -> None:
+    inventory_service.set_setting(session, _cards_key(username), "")
+
+
+def offered_cards(features: dict, flags: dict) -> list[dict]:
+    """The cards this lab can show, for Customize."""
+    out = []
+    for key, label, icon, _wide, needs in CARDS:
+        if needs and not (flags.get(needs) if needs.startswith("has_") else features.get(needs, True)):
+            continue
+        out.append({"key": key, "label": label, "icon": icon})
+    return out
+
+
 def span_arg(raw) -> int:
     try:
         value = int(raw)

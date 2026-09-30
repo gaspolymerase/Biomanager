@@ -295,6 +295,28 @@ class PageKindTests(Notebook):
         self.assertIn("```calc", body)
         self.assertEqual(one("select t.title from notebook_tabs t join notebook_pages p on p.tab_id_fk=t.id where p.id=?", page), "Experiments")
 
+    def test_a_page_started_with_a_topic_open_goes_in_that_topic(self):
+        user = make_user()
+        c = client_for(user)
+        self.new_page(c)                                         # makes the Inbox
+        c.post("/notebook/tabs/create", data={"title": "SOPs"})
+        sops = one("select id from notebook_tabs where owner_username=? and title='SOPs'", user)
+        topic = lambda page: one("select t.title from notebook_tabs t join notebook_pages p on p.tab_id_fk=t.id "
+                                 "where p.id=?", page)
+        self.assertEqual(topic(self.new_page(c, starter="blank", open_tab_id=sops)), "SOPs")
+        self.assertEqual(topic(self.new_page(c, starter="protocol", open_tab_id=sops)), "SOPs")
+        # Experiments and meetings keep their own topics; someone else's topic is no place.
+        self.assertEqual(topic(self.new_page(c, starter="experiment", open_tab_id=sops)), "Experiments")
+        self.assertNotEqual(topic(self.new_page(self.m, starter="blank", open_tab_id=sops)), "SOPs")
+
+    def test_the_page_shows_times_on_the_lab_s_clock(self):
+        from unittest import mock
+        from app import lab
+        page = self.new_page(self.m, starter="experiment")
+        with mock.patch.object(lab, "clock_zone", return_value="America/New_York"):
+            html = self.m.get(f"/notebook?page={page}").get_data(as_text=True)
+        self.assertIn('"labZone": "America/New_York"', html)
+
     def test_the_notebook_page_renders_every_kind(self):
         for starter in ("blank", "experiment", "protocol", "meeting", "seminar", "daily", "cloning", "western"):
             page = self.new_page(self.m, starter=starter)
@@ -534,8 +556,107 @@ class MentionLinkTests(AppTestCase):
         pid = self.make_plasmid(self.m)
         number = one("select plasmid_id from plasmids where id=?", pid)
         r = self.m.get(f"/notebook/open/plasmid/{number}")
-        self.assertTrue(r.headers["Location"].endswith(f"/plasmids/{pid}"), r.headers["Location"])
+        self.assertTrue(r.headers["Location"].endswith(f"/plasmid/{number}"), r.headers["Location"])
 
     def test_an_unknown_number_says_so(self):
         r = self.m.get("/notebook/open/mouse/987654", follow_redirects=True)
         self.assertIn("no mouse #987654", r.get_data(as_text=True))
+
+
+class TemplateTests(Notebook):
+    BODY = """## Samples
+
+| Lane | Sample | µg |
+| --- | --- | --- |
+| 1 | Ladder | 5 |
+| 2 | WT lysate | 30 |
+
+- [x] Lyse 30 min on ice
+- [ ] Run gel
+
+![blot](/static/uploads/abc/blot.png)
+
+```sheet
+{"columns":[{"name":"Group","type":"text"},{"name":"OD","type":"number"}],"rows":[["WT","0.41"],["KO","0.12"]]}
+```
+
+```plate
+{"format":96,"values":{"A1":"0.5"},"roles":{"A1":"standard"}}
+```
+
+## Observations
+
+Ponceau even; lane 7 slightly low.
+
+### Conclusion
+
+p21 up about 6x at 10 uM.
+
+## Next time
+
+Use fresh ECL.
+"""
+
+    def template_from(self, client, page_id, **extra):
+        r = client.post("/notebook/templates/create", data={"title": uniq("Western "), "from_page_id": str(page_id), **extra})
+        self.assertTrue(r.get_json()["ok"], r.get_data(as_text=True))
+        return r.get_json()["template"]["id"]
+
+    def test_a_taken_template_name_is_asked_about_then_replaced(self):
+        name = uniq("Miniprep ")
+        first = self.m.post("/notebook/templates/create", data={"title": name, "body": "one"}).get_json()
+        again = self.m.post("/notebook/templates/create", data={"title": name.upper(), "body": "two"})
+        self.assertEqual((again.status_code, again.get_json()["exists"]), (409, True))
+        self.assertEqual(count("notebook_templates", "owner_username=? and lower(title)=lower(?)", self.member, name), 1)
+        replaced = self.m.post("/notebook/templates/create", data={"title": name, "body": "two", "replace": "1"}).get_json()
+        self.assertEqual(replaced["template"]["id"], first["template"]["id"])
+        self.assertEqual(one("select body from notebook_templates where id=?", first["template"]["id"]), "two")
+        # Someone else may have one of the same name.
+        other = client_for(make_user())
+        self.assertTrue(other.post("/notebook/templates/create", data={"title": name, "body": "x"}).get_json()["ok"])
+
+    def test_an_experiment_template_makes_experiments(self):
+        page = self.new_page(self.m, starter="western")
+        tid = self.template_from(self.m, page)
+        self.assertEqual(one("select kind from notebook_templates where id=?", tid), "experiment")
+        new = self.post_json(self.m, "/notebook/api/pages/new", {"template_id": tid}).get_json()["page_id"]
+        self.assertEqual(one("select kind from notebook_page_info where page_id_fk=?", new), "experiment")
+
+    def test_structure_only_keeps_the_steps_and_leaves_out_the_results(self):
+        page = self.new_page(self.m, title=uniq("Blot "))
+        self.save(self.m, page, body=self.BODY)
+        tid = self.template_from(self.m, page, structure_only="1")
+        body = one("select body from notebook_templates where id=?", tid)
+        self.assertIn("| Lane | Sample | µg |", body)
+        self.assertIn("| 1 |  |  |", body)
+        self.assertNotIn("WT lysate", body)
+        self.assertIn("- [ ] Lyse 30 min on ice", body)
+        self.assertNotIn("[x]", body)
+        self.assertNotIn("blot.png", body)
+        sheet = json.loads(body.split("```sheet\n", 1)[1].split("\n```", 1)[0])
+        self.assertEqual(sheet["rows"], [["WT", ""], ["KO", ""]])
+        self.assertEqual(sheet["columns"][1]["name"], "OD")
+        plate = json.loads(body.split("```plate\n", 1)[1].split("\n```", 1)[0])
+        self.assertEqual((plate["values"], plate["roles"]), ({}, {"A1": "standard"}))
+        self.assertIn("## Observations", body)
+        self.assertIn("### Conclusion", body)
+        self.assertNotIn("Ponceau", body)
+        self.assertNotIn("p21 up", body)
+        self.assertIn("Use fresh ECL.", body)                       # a later section is kept
+        # Without the tick, everything is kept as it was.
+        full = one("select body from notebook_templates where id=?", self.template_from(self.m, page))
+        self.assertIn("WT lysate", full)
+
+    def test_a_lab_template_is_everyones_to_use_but_only_its_maker_s_to_delete(self):
+        page = self.new_page(self.m, title=uniq("Miniprep "))
+        mine = self.template_from(self.m, page, lab="1")
+        private = self.template_from(self.m, page)
+        other = client_for(make_user())
+        listed = {t["id"]: t for t in other.get("/notebook/templates").get_json()["templates"]}
+        self.assertIn(mine, listed)
+        self.assertNotIn(private, listed)
+        self.assertFalse(listed[mine]["can_delete"])
+        self.assertTrue(self.post_json(other, "/notebook/api/pages/new", {"template_id": mine}).get_json()["ok"])
+        self.assertEqual(self.post_json(other, "/notebook/api/pages/new", {"template_id": private}).status_code, 404)
+        self.assertEqual(other.post(f"/notebook/templates/{mine}/delete").status_code, 404)
+        self.assertEqual(one("select count(*) from notebook_templates where id=?", mine), 1)

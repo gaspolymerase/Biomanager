@@ -59,7 +59,18 @@ def data_dir() -> Path:
     else:
         target = user_data_root() / "data"
     target.mkdir(parents=True, exist_ok=True)
+    _owner_only(target)
     return target
+
+
+def _owner_only(folder: Path) -> None:
+    """The lab's database, uploads and keys are for the account that runs
+    BioManager: other accounts on the same computer can't read them."""
+    try:
+        if os.name == "posix" and folder.stat().st_uid == os.getuid() and folder.stat().st_mode & 0o077:
+            folder.chmod(0o700)
+    except OSError:
+        pass
 
 
 # Folder names that indicate a cloud-sync client is managing this path.

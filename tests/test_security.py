@@ -1,6 +1,8 @@
 """Running on a network: cross-site requests, sign-in, sign-up approval,
 sessions, uploads, the signing key and the production entry points
 (app/security.py)."""
+import html as html_lib
+
 from tests.base import *  # noqa: F401,F403
 from tests.base import AUTOSAVE, AppTestCase, count, flashes, location, make_user, one, uniq, user_id
 
@@ -178,6 +180,50 @@ class SessionsFollowThePassword(AppTestCase):
                   data={"new_password": "reset by the admin"})
         self.assertEqual(theirs.get("/settings").status_code, 302)
 
+    def test_sign_out_ends_the_session_even_for_a_copy_of_its_cookie(self):
+        c, _ = sign_in(make_user_with_password())
+        with c.session_transaction() as sess:
+            copied = dict(sess)
+        c.post("/logout")
+        thief = app.test_client()
+        with thief.session_transaction() as sess:
+            sess.update(copied)
+        self.assertEqual(thief.get("/settings").status_code, 302)
+
+    def test_disabling_then_enabling_does_not_bring_old_sessions_back(self):
+        username = make_user_with_password()
+        theirs, _ = sign_in(username)
+        self.post(self.a, f"/admin/users/{user_id(username)}/disable")
+        self.post(self.a, f"/admin/users/{user_id(username)}/disable")
+        self.assertEqual(theirs.get("/settings").status_code, 302)
+        again, _ = sign_in(username)
+        self.assertEqual(again.get("/settings").status_code, 200)
+
+    def register(self, username, password="a long enough passphrase"):
+        c = app.test_client()
+        r = c.post("/register", data={"username": username, "password": password, "confirm_password": password},
+                   follow_redirects=True)
+        return html_lib.unescape(r.get_data(as_text=True))
+
+    def test_look_alike_usernames_are_refused(self):
+        self.assertIn("A username is 2", self.register("аlex" + uniq("")))            # Cyrillic а
+        self.assertIn("A username is 2", self.register("*"))
+        self.assertIn("already exists", self.register(self.member.upper()))
+
+    def test_sign_ups_from_one_address_are_limited(self):
+        for _ in range(5):
+            self.assertIn("needs to approve", self.register(uniq("joiner")))
+        self.assertIn("Too many sign-ups", self.register(uniq("joiner")))
+
+    def test_guessing_the_current_password_in_settings_is_limited(self):
+        c, _ = sign_in(make_user_with_password())
+        wrong = {"action": "password", "current_password": "not it at all", "new_password": "x" * 12,
+                 "confirm_password": "x" * 12}
+        for _ in range(10):
+            c.post("/settings", data=wrong)
+        r = c.post("/settings", data={**wrong, "current_password": PASSWORD}, follow_redirects=True)
+        self.assertIn("Too many wrong passwords", r.get_data(as_text=True))
+
     def test_a_session_without_the_stamp_is_not_accepted(self):
         c = app.test_client()
         with c.session_transaction() as sess:
@@ -225,6 +271,19 @@ class SignUp(AppTestCase):
         self.assertFlash(r, "approved", "success")
         self.assertEqual(one("select role from users where username=?", username), "member")
         self.assertEqual(sign_in(username)[1].status_code, 302)
+
+    def test_approving_settles_the_admins_notices(self):
+        waiting, _ = self.register()
+        approved, _ = self.register()
+        unread = lambda name: count("notifications", "recipient_username=? and is_read=? and message like ?",
+                                    self.admin, False, f"% as {name}. %")
+        self.assertEqual((unread(waiting), unread(approved)), (1, 1))
+        self.post(self.a, f"/admin/users/{user_id(approved)}/disable")
+        self.assertEqual((unread(waiting), unread(approved)), (1, 0))
+        # One approved some other way (or before this): Home settles it.
+        execute("update users set role='member', disabled=? where username=?", False, waiting)
+        self.get_ok(self.a, "/home")
+        self.assertEqual(unread(waiting), 0)
 
     def test_the_admin_page_offers_approve(self):
         username, _ = self.register()

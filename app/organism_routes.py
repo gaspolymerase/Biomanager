@@ -48,7 +48,7 @@ from .models import (
     OrganismModule,
 )
 from . import access
-from . import audit
+from . import audit, database_keys
 from . import organism_service as svc
 from . import inventory as inventory_presets
 from . import stocks as stock_presets
@@ -151,6 +151,7 @@ def _module_or_404(session, key: str) -> OrganismModule:
     # person can tell (app/lab.py).
     if module is None or not lab.can_see(module):
         abort(404)
+    database_keys.to_current(module, key)   # an address it had before a rename
     return module
 
 
@@ -266,7 +267,8 @@ def index():
         # see the lab's and their own (app/lab.py).
         everyone = access.is_admin()
         stock_modules = stocks.list_modules(session, include_disabled=True, everyone=everyone)
-        moved = {m.key for m in stock_modules}
+        # (by any key a stock database has had: a renamed Drosophila too)
+        moved = {m.key for m in stock_modules} | set(database_keys.aliases_by_key(session, "stocks"))
         # Old fly/worm modules that moved to the stock pages are not listed.
         modules = [m for m in svc.list_modules(session, include_disabled=True, everyone=everyone)
                    if m.enabled or m.key not in moved]
@@ -614,13 +616,13 @@ def module(key: str):
         elif active == "schedule":
             svc.recompute_due(session, row)
             session.commit()
-            due = svc.due_items(session, row, horizon_days=_int(request.args.get("horizon"), 21))
+            due = svc.due_items(session, row, horizon_days=max(1, min(_int(request.args.get("horizon"), 21), 366)))
             for item in due:
                 subject = svc.RULE_SUBJECTS.get(item["subject_kind"])
                 subject_row = session.get(subject, item["subject_id"]) if subject else None
                 item["editable"] = access.can_edit(subject_row) if subject_row is not None else False
             ctx["due"] = due
-            ctx["horizon"] = _int(request.args.get("horizon"), 21)
+            ctx["horizon"] = max(1, min(_int(request.args.get("horizon"), 21), 366))
 
         elif active == "environment":
             ctx["locations"] = svc.location_tree(session, row.id)
@@ -641,6 +643,7 @@ def module(key: str):
                 "-80 °C", "liquid nitrogen", "sperm", "embryo"
             ]
 
+        ctx["today_iso"] = date.today().isoformat()
         return render_template("organisms/module.html", **ctx)
 
 
@@ -1685,11 +1688,21 @@ def complete_due(key: str, due_id: int):
         subject = svc.due_subject(session, due)
         if subject is not None and not access.can_edit(subject):
             return _fail(key, "schedule", access.reason_denied(subject), 403)
-        row = svc.complete_due(session, module, due_id, g.user.username)
+        done_on = None
+        raw = (request.form.get("done_on") or "").strip()
+        if raw:
+            try:
+                done_on = date.fromisoformat(raw)
+            except ValueError:
+                return _fail(key, "schedule", f"“{raw}” is not a date.", 400)
+            if done_on > date.today():
+                return _fail(key, "schedule", "It can't be done in the future: pick today or an earlier day.", 400)
+        row = svc.complete_due(session, module, due_id, g.user.username, done_on=done_on)
         session.flush()
         svc.recompute_due(session, module)
         session.commit()
-        flash("Marked done." if row else "Already done.", "success" if row else "info")
+        when = "" if not done_on or done_on == date.today() else f" on {done_on:%a %d %b}"
+        flash(f"Marked done{when}." if row else "Already done.", "success" if row else "info")
         return _redirect_back(key, "schedule")
 
 
@@ -1815,6 +1828,23 @@ def _selected(session, model, module) -> list:
         model.module_id_fk == module.id, model.id.in_(ids)).order_by(model.id)))
 
 
+def _custom_field(session, module, entity: str, field: str):
+    """The custom field a bulk "attr_<key>" names, for this entity."""
+    if not field.startswith("attr_"):
+        return None
+    return next((f for f in svc.fields_for(session, module.id, entity) if f"attr_{f.key}" == field), None)
+
+
+def _set_custom(row, custom, value: str) -> str | None:
+    """One custom field's value on one record, checked as the dialog checks
+    it; the problem in words when it can't be taken."""
+    attrs, errors = svc.read_attrs_checked({f"attr_{custom.key}": value}, [custom], svc.load_dict(row.attrs))
+    if errors:
+        return errors[0] + " Nothing was changed."
+    row.attrs = json.dumps(attrs)
+    return None
+
+
 @bp.route("/<key>/animals/bulk", methods=["POST"])
 def bulk_animals(key: str):
     """Set status, housing or owner on the ticked records, or delete them.
@@ -1832,8 +1862,11 @@ def bulk_animals(key: str):
         editable = [r for r in rows if access.can_edit(r)]
         skipped = len(rows) - len(editable)
         noun = lambda n: mv.organism_noun if n == 1 else mv.organism_noun_plural
-        if action == "set" and field not in ("status", "housing_id_fk", "owner"):
+        custom = _custom_field(session, module, "organism", field) if action == "set" else None
+        if action == "set" and field not in ("status", "housing_id_fk", "owner") and custom is None:
             return _fail(key, "animals", "Pick what to set.")
+        if custom is not None and not value and request.form.get("clear") != "1":
+            return _fail(key, "animals", f"Type what to set {custom.label} to. (To empty it on those rows, leave it blank and confirm.)")
         if action not in ("set", "delete"):
             return _fail(key, "animals", "Unknown action.")
         housing_id = None
@@ -1854,6 +1887,10 @@ def bulk_animals(key: str):
                     svc.apply_status_rules(mv, row, previous)
                 elif field == "housing_id_fk":
                     row.housing_id_fk = housing_id
+                elif custom is not None:
+                    problem = _set_custom(row, custom, value)
+                    if problem:
+                        return _fail(key, "animals", problem)
                 else:
                     row.owner = value
                 row.updated_at, row.updated_by = datetime.utcnow(), g.user.username
@@ -1866,7 +1903,8 @@ def bulk_animals(key: str):
         if action == "delete":
             message = f"Deleted {n} {noun(n)}."
         else:
-            label = {"status": "status", "housing_id_fk": mv.housing_noun, "owner": "owner"}[field]
+            label = custom.label if custom is not None else {"status": "status", "housing_id_fk": mv.housing_noun,
+                                                              "owner": "owner"}[field]
             message = f"Set {label} on {n} {noun(n)}."
         if skipped:
             message += f" {skipped} belong to someone else and were left alone."
@@ -1891,8 +1929,11 @@ def bulk_housing(key: str):
         editable = [u for u in units if access.can_edit(u)]
         skipped = len(units) - len(editable)
         noun = lambda n: mv.housing_noun if n == 1 else mv.housing_noun_plural
-        if action == "set" and field not in ("purpose", "owner", "location_id_fk"):
+        custom = _custom_field(session, module, "housing", field) if action == "set" else None
+        if action == "set" and field not in ("purpose", "owner", "location_id_fk") and custom is None:
             return _fail(key, "housing", "Pick what to set.")
+        if custom is not None and not value and request.form.get("clear") != "1":
+            return _fail(key, "housing", f"Type what to set {custom.label} to. (To empty it on those rows, leave it blank and confirm.)")
         if action not in ("set", "delete"):
             return _fail(key, "housing", "Unknown action.")
         location_id = None
@@ -1913,6 +1954,10 @@ def bulk_housing(key: str):
                     if unit.location_id_fk != location_id:
                         unit.location_id_fk = location_id
                         unit.row = unit.col = None
+                elif custom is not None:
+                    problem = _set_custom(unit, custom, value)
+                    if problem:
+                        return _fail(key, "housing", problem)
                 else:
                     setattr(unit, field, value)
                 unit.updated_at, unit.updated_by = datetime.utcnow(), g.user.username
@@ -1931,7 +1976,7 @@ def bulk_housing(key: str):
             message = (f"Moved {n} {noun(n)}. They are unplaced there: drag them onto the "
                        f"{mv.container_noun} grid to give them a position.")
         else:
-            message = f"Set {field} on {n} {noun(n)}."
+            message = f"Set {custom.label if custom is not None else field} on {n} {noun(n)}."
         if skipped:
             message += f" {skipped} belong to someone else and were left alone."
     flash(message, "success" if editable else "error")
@@ -1999,9 +2044,11 @@ def configure(key: str):
             module.enabled = not form.get("disabled")
         session.flush()
         svc.recompute_due(session, module)
+        moved = database_keys.rekey(session, "organisms", module)    # its address follows its name
         session.commit()
-        flash("Configuration saved.", "success")
-        return _redirect_back(key, "settings")
+        flash("Configuration saved." + (
+            f" Its address is now /organisms/{moved}; links to the old one still work." if moved else ""), "success")
+        return _redirect_back(module.key, "settings")
 
 
 @bp.route("/<key>/field/add", methods=["POST"])

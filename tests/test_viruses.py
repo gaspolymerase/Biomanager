@@ -67,19 +67,19 @@ class PlasmidColumnTests(VirusCase):
         number, name, row_id = self.plasmid()
         self.make_item(self.a, self.viruses, uniq("AAV-"), attr_plasmid=str(number))
         html = self.get_ok(self.a, f"/inventory/{self.viruses}")
-        self.assertIn(f'href="/plasmids/{row_id}"', html)
+        self.assertIn(f'href="/plasmid/{number}"', html)
         self.assertIn(f'<option value="{number}">#{number} · {name}</option>', html)
 
     def test_the_plasmid_page_lists_what_was_made_from_it(self):
         number, _name, row_id = self.plasmid()
         virus = uniq("AAV-PHP.eB-")
         vid = self.make_item(self.a, self.viruses, virus, attr_plasmid=str(number))
-        html = self.get_ok(self.a, f"/plasmids/{row_id}")
+        html = self.get_ok(self.a, f"/plasmid/{number}")
         self.assertIn("Made from this plasmid", html)
         self.assertIn(virus, html)
         self.assertIn(f"/inventory/{self.viruses}?open={vid}", html)
         other_number, _n, other_row = self.plasmid()
-        self.assertNotIn(virus, self.get_ok(self.a, f"/plasmids/{other_row}"))
+        self.assertNotIn(virus, self.get_ok(self.a, f"/plasmid/{other_number}"))
 
     def test_any_inventory_can_have_a_plasmid_column(self):
         self.assertIn("plasmid", inventory.FIELD_TYPES)

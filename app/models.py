@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -257,6 +258,9 @@ class MouseRack(Base):
 
 class CageRecord(Base):
     __tablename__ = "mouse_cages"
+    # One cage per place in a rack, even when two people drop cages on the
+    # same place at once (migrations/versions/0006_one_cage_per_place.py).
+    __table_args__ = (Index("uq_mouse_cages_place", "rack_id_fk", "rack_row", "rack_col", unique=True),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     cage_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
@@ -446,6 +450,14 @@ class PlasmidRecord(Base):
     resistance: Mapped[str] = mapped_column(String(80), default="")
     owner: Mapped[str] = mapped_column(String(120), default="")
     location: Mapped[str] = mapped_column(String(120), default="")
+    # The tube's DNA after a miniprep: ng/µL and A260/280, as typed numbers.
+    # A server default like their revisions' (0008), so an insert that
+    # doesn't name them still works.
+    concentration: Mapped[str] = mapped_column(String(40), default="", server_default="")
+    a260_280: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Lab common: anyone may edit it; deleting it or changing its owner is
+    # still the owner's (or an admin's), as for lab common stock.
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false(), index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     # ---- Sequence design (the "working" side of the plasmid record) ------
     # full_sequence: raw nucleotide string (uppercase ACGT/N), no newlines
@@ -545,6 +557,10 @@ class NotebookTemplate(Base):
     title: Mapped[str] = mapped_column(String(160), default="Untitled template")
     body: Mapped[str] = mapped_column(Text, default="")
     icon: Mapped[str] = mapped_column(String(40), default="")
+    # The page type a page made from it gets (note, experiment, protocol…);
+    # empty: a note. Lab: everyone in the lab can start pages from it.
+    kind: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    lab: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -1376,6 +1392,22 @@ class BatchRecord(Base):
         return self.undone_at is not None
 
 
+class DatabaseAlias(Base):
+    """An address a database had before it was renamed (app/database_keys.py):
+    /inventory/<old_key> and the rest still find it, so printed QR labels,
+    bookmarks, @old_key mentions in notebook pages and scripts keep working.
+    `kind` is inventory, stocks or organisms; `module_id` that kind's row."""
+
+    __tablename__ = "database_aliases"
+    __table_args__ = (UniqueConstraint("kind", "old_key", name="uq_database_aliases_kind_old_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    old_key: Mapped[str] = mapped_column(String(80))
+    module_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # ---------------------------------------------------------------------------
 # Lab inventories: samples, orders, reagents, antibodies and custom lists.
 #
@@ -1419,6 +1451,9 @@ class InventoryRack(Base):
     cols: Mapped[int] = mapped_column(Integer, default=9)
     naming: Mapped[str] = mapped_column(Text, default="{}")
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Where the box is kept ("−80 °C", "LN₂"): what goes in takes it as its
+    # "Stored at" (inventory_service.follow_box). Empty: not said.
+    stored_at: Mapped[str] = mapped_column(String(40), default="", server_default="")
     created_by: Mapped[str] = mapped_column(String(80), default="")   # may resize or delete it (and admins)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

@@ -11,8 +11,15 @@ set -euo pipefail
 dump=${1:?usage: restore.sh DUMP [FILES_TARBALL]}
 files=${2:-}
 stamp=$(date -u +%Y%m%d%H%M%S)
-[ -f "$dump" ] || { echo "no such dump: $dump"; exit 1; }
-pg_restore --list "$dump" > /dev/null
+# Both backups are checked before anything changes: a mistyped files path
+# found only after the database was replaced left the app with no files
+# (and a new signing key).
+[ -f "$dump" ] || { echo "no such dump: $dump — nothing was changed"; exit 1; }
+pg_restore --list "$dump" > /dev/null || { echo "$dump is not a readable backup — nothing was changed"; exit 1; }
+if [ -n "$files" ]; then
+  [ -f "$files" ] || { echo "no such files archive: $files — nothing was changed"; exit 1; }
+  tar -tzf "$files" > /dev/null || { echo "$files is not a readable archive — nothing was changed"; exit 1; }
+fi
 
 others=$(psql -XAtd postgres -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$PGDATABASE' AND pid <> pg_backend_pid()")
 if [ "$others" != "0" ]; then
@@ -35,7 +42,12 @@ if [ -n "$files" ]; then
   aside="$APPDATA_DIR/.before-restore-$stamp"
   mkdir -p "$aside"
   find "$APPDATA_DIR" -mindepth 1 -maxdepth 1 ! -name '.before-restore-*' -exec mv -t "$aside" {} +
-  tar -C "$APPDATA_DIR" -xzf "$files"
+  if ! tar -C "$APPDATA_DIR" -xzf "$files"; then
+    echo "Unpacking the files failed; putting the previous ones back (the database restore stands)."
+    find "$APPDATA_DIR" -mindepth 1 -maxdepth 1 ! -name '.before-restore-*' -exec rm -rf {} +
+    find "$aside" -mindepth 1 -maxdepth 1 -exec mv -t "$APPDATA_DIR" {} +
+    exit 1
+  fi
   echo "files restored from $(basename "$files"); the previous ones are in $aside"
 fi
 echo "Start the app again: docker compose start app"

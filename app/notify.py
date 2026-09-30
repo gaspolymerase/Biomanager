@@ -7,8 +7,11 @@ What tells whom (the category decides the Settings switch that silences it):
   picked      someone took a mouse of yours from a breeder cage
   genotyping  a genotype was recorded for your animal, or it was marked for
               genotyping, by someone else; once a day, what of yours waits
-  orders      an order you placed was ordered, received or cancelled
+  orders      an order you placed was ordered, received or cancelled; for
+              admins, a new order request (so nobody has to look for them)
   lab         a database or function was added or switched on for the lab
+  notebook    pages shared with you, comments, and @you in a page or in the
+              notes of any record (a plasmid "for @rowan", an order's note)
   account     sign-ups waiting for approval (admins)
 
 Changes are noticed where the change history notices them, at the flush,
@@ -26,17 +29,20 @@ from flask import g, has_request_context, url_for
 from sqlalchemy import event, func, inspect as sa_inspect, select
 from sqlalchemy.orm import Session
 
+import re
+
 from .models import (CageRecord, FishRecord, InventoryItem, InventoryModule, MouseRecord, NotificationRecord,
-                     OrgGenotype, OrgHousing, Organism, OrganismModule, StockModule, StockUnit, TankRecord,
-                     UserAccount)
+                     OrgGenotype, OrgHousing, Organism, OrganismModule, PlasmidRecord, StockModule, StockUnit,
+                     TankRecord, UserAccount)
 
 CATEGORIES = {
     "transfer": ("Transfers", "Your animals, cages, tanks or vials moved or given by someone else"),
     "picked": ("Picked from breeders", "Someone took one of your mice from a breeder cage"),
     "genotyping": ("Genotyping", "Genotypes recorded or requested for your animals, and what is waiting"),
-    "orders": ("Orders", "Your orders placed, received or cancelled"),
+    "orders": ("Orders", "Your orders placed, received or cancelled; for admins, new requests"),
     "lab": ("Lab news", "Databases or functions added for the lab"),
-    "notebook": ("Notebook", "Pages shared with you, comments and @mentions, meeting notes and action items"),
+    "notebook": ("Notebook and @mentions", "Pages shared with you, comments and @mentions (in pages and in records' notes), "
+                             "meeting notes and action items"),
     "experiments": ("Experiments", "Once a day: manipulations and readouts due in your experiments"),
 }
 MAX_LISTED = 5
@@ -243,6 +249,57 @@ def _genotype_call(obj: OrgGenotype, actor: str) -> list[dict]:
                   subject=(obj.subject_kind, obj.subject_id), skip=(actor,))]
 
 
+MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_.-]{0,79})")
+# Where a record keeps its notes, and how a mention in them links back.
+NOTE_FIELDS = {InventoryItem: ("notes", lambda o: ("inventory-item", o.id), lambda o: o.name or f"#{o.number}"),
+               PlasmidRecord: ("notes", lambda o: ("plasmid", o.id), lambda o: o.name or f"plasmid #{o.plasmid_id}"),
+               MouseRecord: ("note", lambda o: ("mouse", o.id), lambda o: f"mouse #{o.mouse_id}"),
+               CageRecord: ("notes", lambda o: ("cage", o.id), lambda o: f"cage {o.cage_id}"),
+               TankRecord: ("notes", lambda o: ("tank", o.id), lambda o: f"tank {o.tank_id}"),
+               StockUnit: ("notes", lambda o: ("stock", o.module_id_fk), lambda o: f"#{o.number}"),
+               Organism: ("notes", lambda o: ("organism", o.module_id_fk), lambda o: o.code or f"#{o.id}"),
+               OrgHousing: ("notes", lambda o: ("organism", o.module_id_fk), lambda o: o.code or f"#{o.id}")}
+
+
+def mentioned(text: str | None) -> set[str]:
+    return {m.group(1).rstrip(".") for m in MENTION_RE.finditer(text or "")}
+
+
+def _mentions(obj, actor: str, new: bool) -> list[dict]:
+    """@someone written into a record's notes: they are told, once (only
+    names that weren't there before count)."""
+    field, target, label = NOTE_FIELDS[type(obj)]
+    if new:
+        before, after = "", getattr(obj, field, "") or ""
+    else:
+        change = _change(obj, field)
+        if not change:
+            return []
+        before, after = change[0] or "", change[1] or ""
+    names = mentioned(after) - mentioned(before) - {actor}
+    if not names:
+        return []
+    # A new record has no id before its INSERT; its link is resolved at commit.
+    return [_note(name, "notebook", ("mention", actor, type(obj).__name__, id(obj)), label(obj),
+                  f"{actor} mentioned you on {label(obj)}", f"{actor} mentioned you on {{n}} records: {{items}}",
+                  "", mention_obj=obj, mention_target=target, mention_text=after[:300]) for name in names]
+
+
+def _order_request(session, obj: InventoryItem, actor: str) -> list[dict]:
+    """A new order request: every admin who hasn't switched order notices
+    off is told (one message listing several at once)."""
+    with session.no_autoflush:
+        module = session.get(InventoryModule, obj.module_id_fk) if obj.module_id_fk else None
+        if module is None or module.kind != "orders":
+            return []
+        admins = session.scalars(select(UserAccount.username).where(
+            UserAccount.role == "admin", UserAccount.disabled.is_(False), UserAccount.username != actor)).all()
+    label = obj.name or "an order"
+    return [_note(admin, "orders", ("order-request", actor, obj.module_id_fk), label,
+                  f"{actor} asked for {label}", f"{actor} asked for {{n}} orders: {{items}}",
+                  ("inventory", obj.module_id_fk), orders_module=obj.module_id_fk) for admin in admins]
+
+
 @event.listens_for(Session, "before_flush")
 def _notice(session, flush_context, instances):
     actor = _actor()
@@ -253,9 +310,15 @@ def _notice(session, flush_context, instances):
         rule = DIRTY_RULES.get(type(obj))
         if rule and session.is_modified(obj, include_collections=False):
             notes.extend(rule(obj, actor))
+        if type(obj) in NOTE_FIELDS and session.is_modified(obj, include_collections=False):
+            notes.extend(_mentions(obj, actor, new=False))
     for obj in list(session.new):
         if isinstance(obj, OrgGenotype):
             notes.extend(_genotype_call(obj, actor))
+        if type(obj) in NOTE_FIELDS:
+            notes.extend(_mentions(obj, actor, new=True))
+        if isinstance(obj, InventoryItem):
+            notes.extend(_order_request(session, obj, actor))
 
 
 @event.listens_for(Session, "after_rollback")
@@ -297,6 +360,17 @@ def _resolve(session, note: dict) -> dict | None:
         module = session.get(InventoryModule, note["orders_module"])
         if module is None or module.kind != "orders":
             return None
+    if "mention_obj" in note:
+        obj = note.pop("mention_obj")
+        target = note.pop("mention_target")(obj)
+        note["one_link"] = note["link"] = target
+        # Still in the text as it was saved (a mention typed and taken out
+        # again in the same save isn't one).
+        if note["recipient"] not in mentioned(note.pop("mention_text")):
+            return None
+        exists = session.scalar(select(UserAccount.id).where(UserAccount.username == note["recipient"]))
+        if exists is None:
+            return None
     if "subject" in note:
         kind, subject_id = note["subject"]
         model = {"organism": Organism, "housing": OrgHousing}.get(kind)
@@ -326,6 +400,9 @@ def _link(session, target) -> str:
         if kind == "inventory":
             module = session.get(InventoryModule, ident)
             return url_for("inventory.module", key=module.key) if module else ""
+        if kind == "plasmid":
+            plasmid = session.get(PlasmidRecord, ident)
+            return url_for("plasmid_page", number=plasmid.plasmid_id) if plasmid else ""
         if kind == "inventory-item":
             # The order itself, opened in its dialog (?open=, inventory_routes).
             item = session.get(InventoryItem, ident)
@@ -390,6 +467,31 @@ def tell_lab(session, actor: str, title: str, message: str = "", link: str = "")
 
 
 # ---------------------------------------------------------------- reading
+
+SIGNUP_TITLE = "Account waiting for approval"
+_SIGNUP_NAME = re.compile(r"\bas (\S+)\. Approve")
+
+
+def settle_signups(session) -> int:
+    """Mark read every "Account waiting for approval" whose account no
+    longer waits (approved, or removed), for every admin: one admin's
+    approval settles the others' notices too. Commits if it changed any."""
+    notes = session.scalars(select(NotificationRecord).where(
+        NotificationRecord.category == "account", NotificationRecord.title == SIGNUP_TITLE,
+        NotificationRecord.is_read.is_(False))).all()
+    if not notes:
+        return 0
+    waiting = set(session.scalars(select(UserAccount.username).where(UserAccount.role == "pending")))
+    settled = 0
+    for n in notes:
+        m = _SIGNUP_NAME.search(n.message or "")
+        if m and m.group(1) not in waiting:
+            n.is_read = True
+            settled += 1
+    if settled:
+        session.commit()
+    return settled
+
 
 def unread_count(session, username: str) -> int:
     return session.scalar(select(func.count(NotificationRecord.id)).where(

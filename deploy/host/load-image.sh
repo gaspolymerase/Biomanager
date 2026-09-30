@@ -32,4 +32,4 @@ else
 fi
 
 docker load -i "$file"
-echo "Loaded. Start or update with: cd $here && docker compose up -d"
+echo "Loaded. Start or update with: cd $here && docker compose up -d --build"

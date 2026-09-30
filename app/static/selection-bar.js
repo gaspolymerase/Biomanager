@@ -131,8 +131,54 @@
     refresh();
   }
 
+  // "Set field": the value box follows the column chosen (a date picker
+  // for a date, the column's own choices offered for a choice column).
+  function wireFieldPicker(select) {
+    const form = select.form;
+    const input = form.querySelector('[data-bulk-value]');
+    const list = input && input.list;
+    const sync = () => {
+      const opt = select.selectedOptions[0];
+      if (!opt || !input) return;
+      input.type = opt.dataset.type === 'date' ? 'date' : 'text';
+      input.inputMode = opt.dataset.type === 'number' ? 'decimal' : '';
+      if (list) {
+        list.innerHTML = '';
+        (opt.dataset.options || '').split('\n').filter(Boolean).forEach((o) => {
+          const el = document.createElement('option');
+          el.value = o;
+          list.appendChild(el);
+        });
+      }
+    };
+    select.addEventListener('change', sync);
+    sync();
+    // An empty value clears the column on every ticked row: ask first, and
+    // tell the server it was meant (clear=1), so a slip never wipes it.
+    let clear = form.querySelector('input[name="clear"]');
+    if (!clear) {
+      clear = document.createElement('input');
+      clear.type = 'hidden';
+      clear.name = 'clear';
+      form.appendChild(clear);
+    }
+    const guard = (edited) => {
+      const empty = !input || !input.value.trim();
+      const label = (select.selectedOptions[0] || {}).textContent || 'this column';
+      clear.value = empty ? '1' : '';
+      if (empty) form.dataset.confirm = `Clear ${label.trim()} on {n} rows?`;
+      else delete form.dataset.confirm;
+      if (edited) delete form.dataset.confirmed;      // a new question for a new value
+    };
+    if (input) input.addEventListener('input', () => guard(true));
+    select.addEventListener('change', () => guard(true));
+    form.addEventListener('submit', () => guard(false), true);   // before the bar's own handler reads it
+    guard(true);
+  }
+
   function init() {
     document.querySelectorAll('[data-selection-scope]').forEach(setup);
+    document.querySelectorAll('[data-bulk-field]').forEach(wireFieldPicker);
   }
 
   if (document.readyState === 'loading') {

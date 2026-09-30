@@ -51,6 +51,35 @@ class RepeatTests(Calendar):
         got = occurrences(date(2026, 1, 31), rep, date(2026, 1, 1), date(2026, 4, 30))
         self.assertEqual(got, [date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31), date(2026, 4, 30)])
 
+    def test_the_first_monday_of_every_month_and_the_last_friday(self):
+        rep = SimpleNamespace(freq="nthweekday", interval=1, until=None, skip="")
+        got = occurrences(date(2026, 1, 5), rep, date(2026, 1, 1), date(2026, 5, 31))    # a first Monday
+        self.assertEqual(got, [date(2026, 1, 5), date(2026, 2, 2), date(2026, 3, 2), date(2026, 4, 6), date(2026, 5, 4)])
+        got = occurrences(date(2026, 1, 30), rep, date(2026, 1, 1), date(2026, 4, 30))   # a fifth, so the last Friday
+        self.assertEqual(got, [date(2026, 1, 30), date(2026, 2, 27), date(2026, 3, 27), date(2026, 4, 24)])
+        from app.lab_calendar import repeat_summary
+        self.assertEqual(repeat_summary(rep, date(2026, 1, 5))["text"], "Every month on the first Monday")
+
+    def test_change_this_one_only_moves_one_date_and_leaves_the_series(self):
+        title = uniq("Group meeting")
+        row = self.new_event(self.m, title, TODAY, {"freq": "weekly", "interval": 1, "until": ""})
+        moved_from = TODAY + timedelta(weeks=1)
+        moved_to = moved_from + timedelta(days=1)
+        r = self.post_json(self.m, "/calendar/items", {
+            "kind": "event", "title": title + " (moved)", "start": f"{iso(moved_to)}T14:00:00",
+            "end": f"{iso(moved_to)}T15:00:00", "isAllday": False,
+            "split_from": {"event_id": row, "date": iso(moved_from)}})
+        self.assertTrue(r.get_json()["ok"], r.get_data(as_text=True))
+        days = [i["start"][:10] for i in self.titled(self.m, title, start=TODAY, end=TODAY + timedelta(days=20))]
+        self.assertNotIn(iso(moved_from), days)
+        self.assertEqual(len(days), 2)
+        moved = self.titled(self.m, title + " (moved)", start=TODAY, end=TODAY + timedelta(days=20))
+        self.assertEqual([(i["start"][:16], i["raw"].get("repeat")) for i in moved], [(f"{iso(moved_to)}T14:00", None)])
+        # Someone else can't split your series.
+        r = self.post_json(self.o, "/calendar/items", {"kind": "event", "title": "x", "start": f"{iso(TODAY)}T09:00:00",
+                                                        "split_from": {"event_id": row, "date": iso(TODAY)}})
+        self.assertEqual(r.status_code, 403)
+
     def test_a_long_running_daily_repeat_still_reaches_the_window(self):
         rep = SimpleNamespace(freq="daily", interval=1, until=None, skip="")
         got = occurrences(date(2020, 1, 1), rep, date(2026, 6, 1), date(2026, 6, 3))
@@ -99,6 +128,22 @@ class EverythingWithADateTests(Calendar):
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["calendarId"], "supplies")
         self.assertEqual(found[0]["start"][:10], days_ahead(5))
+
+
+class AutoItemLinkTests(Calendar):
+    def test_every_item_the_colony_puts_on_the_calendar_opens_a_page(self):
+        from tests.base import execute
+        colony = self.make_colony(self.a, self.admin, n_mice=1, dob=(TODAY - timedelta(days=30 * 7 - 5)).isoformat())
+        execute("update mouse_cages set date_give_birth=? where id=?", TODAY - timedelta(days=20), colony["cage_id"])
+        execute("update litters set date_of_birth=? where id=?", TODAY - timedelta(days=30 * 7 - 5), colony["litter_id"])
+        name = uniq("Exp ")
+        self.a.post("/colony/experiments/create", data={"name": name, "from_cage_id": colony["cage"]})
+        execute("update experiments set start_date=? where name=?", TODAY + timedelta(days=2), name)
+        auto = [i for i in self.items(self.a)["items"] if i["kind"] == "auto" and i["raw"].get("href")]
+        sources = {i["raw"]["source"] for i in auto}
+        self.assertTrue({"cage", "mouse", "experiment"} <= sources, sources)
+        broken = [(i["title"], i["raw"]["href"], self.a.get(i["raw"]["href"]).status_code) for i in auto]
+        self.assertEqual([b for b in broken if b[2] != 200], [])
 
 
 class ProtocolTests(Calendar):
@@ -157,6 +202,18 @@ class BookingTests(Calendar):
     def book(self, client, eq, start, end, **extra):
         return self.post_json(client, "/calendar/bookings", {"equipment_id": eq["id"], "start": start, "end": end, **extra})
 
+    def test_an_instrument_is_renamed_and_keeps_its_bookings(self):
+        eq = self.instrument()
+        day = days_ahead(4)
+        self.assertTrue(self.book(self.m, eq, f"{day}T09:00", f"{day}T10:00").get_json()["ok"])
+        name = uniq("Confocal LSM 980 ")
+        r = self.post_json(self.m, "/calendar/equipment", {"id": eq["id"], "name": name, "location": "4.14"})
+        self.assertEqual((r.get_json()["equipment"]["id"], r.get_json()["equipment"]["name"]), (eq["id"], name))
+        titles = [i["title"] for i in self.items(self.m)["items"] if i["kind"] == "booking"]
+        self.assertTrue(any(t.startswith(name) for t in titles), titles)
+        # Someone else's instrument is theirs to rename.
+        self.assertEqual(self.post_json(self.o, "/calendar/equipment", {"id": eq["id"], "name": "Mine"}).status_code, 403)
+
     def test_overlapping_bookings_are_refused_with_who_has_it(self):
         eq = self.instrument()
         day = days_ahead(3)
@@ -183,6 +240,41 @@ class BookingTests(Calendar):
         bid = mine["raw"]["bookingId"]
         self.assertEqual(self.post_json(self.o, f"/calendar/bookings/{bid}/delete").status_code, 403)
         self.assertTrue(self.post_json(self.m, f"/calendar/bookings/{bid}/delete").get_json()["ok"])
+
+    def test_a_repeating_booking_makes_one_booking_per_day_each_its_own(self):
+        eq = self.instrument()
+        first = TODAY + timedelta(days=(7 - TODAY.weekday()) % 7 or 7)  # next Monday
+        r = self.book(self.m, eq, f"{iso(first)}T09:00", f"{iso(first)}T10:00", purpose="His prep",
+                      repeat={"freq": "weekdays", "until": iso(first + timedelta(days=13))})
+        self.assertEqual(r.get_json()["count"], 10)
+        count = lambda: one("select count(*) from equipment_bookings where equipment_id_fk=?", eq["id"])  # noqa: E731
+        self.assertEqual(count(), 10)
+        self.assertEqual(one("select count(*) from equipment_bookings where equipment_id_fk=? and purpose='His prep'",
+                             eq["id"]), 10)
+        weekly = self.book(self.m, eq, f"{iso(first)}T14:00", f"{iso(first)}T15:00",
+                           repeat={"freq": "weekly", "until": iso(first + timedelta(days=21))})
+        self.assertEqual(weekly.get_json()["count"], 4)
+
+    def test_a_repeat_that_clashes_once_books_nothing_and_says_when(self):
+        eq = self.instrument()
+        day = TODAY + timedelta(days=20)
+        self.book(self.o, eq, f"{iso(day + timedelta(days=2))}T09:30", f"{iso(day + timedelta(days=2))}T10:30")
+        before = one("select count(*) from equipment_bookings where equipment_id_fk=?", eq["id"])
+        r = self.book(self.m, eq, f"{iso(day)}T09:00", f"{iso(day)}T10:00",
+                      repeat={"freq": "daily", "until": iso(day + timedelta(days=4))})
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("Nothing was booked", r.get_json()["error"])
+        self.assertEqual(one("select count(*) from equipment_bookings where equipment_id_fk=?", eq["id"]), before)
+
+    def test_a_repeat_needs_a_last_day_and_has_a_limit(self):
+        eq = self.instrument()
+        day = days_ahead(6)
+        self.assertIn("last day", self.book(self.m, eq, f"{day}T09:00", f"{day}T10:00",
+                                            repeat={"freq": "daily"}).get_json()["error"])
+        r = self.book(self.m, eq, f"{day}T09:00", f"{day}T10:00", repeat={"freq": "daily", "until": days_ahead(200)})
+        self.assertIn("more than", r.get_json()["error"])
+        r = self.book(self.m, eq, f"{day}T09:00", f"{days_ahead(8)}T10:00", repeat={"freq": "daily", "until": days_ahead(12)})
+        self.assertIn("run into the next", r.get_json()["error"])
 
 
 class AwayTests(Calendar):

@@ -44,6 +44,9 @@ class Tokens(Base):
         self.assertNotIn("Set-Cookie", r.headers)
         self.assertEqual(self.bare.get("/api/v1/me").status_code, 401)
         self.assertEqual(self.m.get("/api/v1/me").status_code, 401)            # a session cookie is not enough
+        r = self.m.get("/api/v1/me", headers={"Authorization": f"Bearer {tok}"})    # token and cookie
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn("Set-Cookie", r.headers)                             # the cookie isn't refreshed
         self.assertEqual(self.call("get", "/me", tok[:-2] + "xx").status_code, 401)
         self.assertEqual(one("select token_hash from api_tokens where token_hash=?", api.token_hash(tok)),
                          api.token_hash(tok))                                     # only the hash is kept

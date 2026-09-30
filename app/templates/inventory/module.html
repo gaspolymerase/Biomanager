@@ -43,13 +43,18 @@
     <span class="plasmid-cell">
       <input class="ident" name="{{ name }}" form="{{ form_id }}" value="{{ value }}" list="inv-plasmid-options" placeholder="#"
              data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
-      {% if plasmid %}<a class="plasmid-cell-link" href="{{ url_for('plasmid_detail', row_id=plasmid.row_id) }}"
+      {% if plasmid %}<a class="plasmid-cell-link" href="{{ url_for('plasmid_page', number=plasmid.number) }}"
          title="Open plasmid #{{ plasmid.number }}">{{ plasmid.name or ('#' ~ plasmid.number) }}</a>{% endif %}
     </span>
   {% elif field.type == 'url' and value %}
     <a class="sheet-link font-normal" href="{{ value }}" target="_blank" rel="noopener">{{ value|replace('https://', '')|truncate(28) }}</a>
+  {% elif field.key in derived_fields %}
+    {# Worked out from another column (a primer's sequence); the server fills it in. #}
+    <input name="{{ name }}" form="{{ form_id }}" value="{{ value }}" readonly tabindex="-1" class="sheet-derived"
+           title="Worked out from the sequence" aria-label="{{ field.label }}">
   {% else %}
     <input name="{{ name }}" form="{{ form_id }}" value="{{ value }}" {% if field.type == 'number' %}inputmode="decimal"{% endif %}
+           {% if field.key == 'sequence' %}class="font-mono" spellcheck="false"{% endif %}
            {% if field.type == 'user' %}list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}
            data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
   {% endif %}
@@ -145,6 +150,10 @@
         <a class="dt-toolbar-btn" href="{{ sheet_import_url('inventory:' ~ key) }}" title="Bring in the Excel or CSV sheet you kept your {{ m.item_noun_plural }} in">{{ icon('import') }} Import from Excel</a>
         <button type="button" class="dt-toolbar-btn" data-record-edit="item-dialog" data-record-payload='{{ dict(new_payload, count=10) | tojson }}'
                 title="Several {{ m.item_noun_plural }} at once: identical copies, or one per pasted name">{{ icon('plus') }} Add many</button>
+        {% if m.kind == 'primers' %}
+          <button type="button" class="dt-toolbar-btn" data-on-click="open-dialog" data-arg="primer-pair-dialog"
+                  title="A forward and a reverse primer at once, each named after the pair and linked to the other">{{ icon('dna') }} Add primer pair</button>
+        {% endif %}
         <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                 data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
           {{ icon('plus') }} New {{ m.item_noun }}
@@ -175,7 +184,7 @@
               {% endif %}
               {% for f in m.table_fields %}
                 <th class="dt-sortable" data-sort-key="attr_{{ f.key }}" style="width: {{ f.width }}px;">
-                  <span class="dt-col-head">{{ icon(f.icon or 'type', 'dt-col-icon') }}{{ f.label }}<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon(f.icon or 'type', 'dt-col-icon') }}{{ f.label|head }}<span class="dt-sort-indicator"></span></span>
                 </th>
               {% endfor %}
               {% if m.has('sharing') %}
@@ -313,7 +322,11 @@
                       {# A button like its neighbours (a form that only opens a page), not a link. #}
                       <form method="get" action="{{ url_for('inventory.module', key=order_module.key) }}">
                         <input type="hidden" name="reorder" value="{{ key }}:{{ i.id }}">
-                        <button type="submit" class="row-icon-btn" title="Order again: a new order in {{ order_module.label }} with these details">{{ icon('cart') }}</button>
+                        {% if on_order.get(i.id) %}
+                          <button type="submit" class="row-stock-btn row-stock-link" title="{{ on_order[i.id] }}. Order again anyway?">{{ icon('cart') }}On order</button>
+                        {% else %}
+                          <button type="submit" class="row-icon-btn" title="Order again: a new order in {{ order_module.label }} with these details">{{ icon('cart') }}</button>
+                        {% endif %}
                       </form>
                     {% endif %}
                     <button type="button" class="row-icon-btn" title="Open" data-record-edit="item-dialog" data-open-item
@@ -375,13 +388,24 @@
         {% if m.has('storage') %}
           <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form>
             <input type="hidden" name="action" value="rack">
-            <select name="value" aria-label="Box">
+            <select name="value" aria-label="Box" required>
+              <option value="" disabled selected>Choose a box…</option>
               {% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}
-              <option value="">Unplace</option>
+              <option value="unplace">Unplace</option>
             </select>
             <button type="submit" class="btn btn-sm">Move</button>
           </form>
         {% endif %}
+        {# Any column, custom ones too: a titer on 10 aliquots, "on hold" on a lot, a myco date on every line. #}
+        <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form>
+          <input type="hidden" name="action" value="field">
+          <select name="field" aria-label="Column to set" data-bulk-field>
+            {% for f in bulk_fields %}<option value="{{ f.name }}" data-type="{{ f.type }}"{% if f.options %} data-options="{{ f.options|join('\n') }}"{% endif %}>{{ f.label }}</option>{% endfor %}
+          </select>
+          <input name="value" aria-label="Value" placeholder="value" list="inv-bulk-field-options" data-bulk-value>
+          <datalist id="inv-bulk-field-options"></datalist>
+          <button type="submit" class="btn btn-sm">Set field</button>
+        </form>
         <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form
               title="Only for {{ m.item_noun_plural }} you own (admins: any)">
           <input type="hidden" name="action" value="owner">
@@ -489,7 +513,7 @@
         <legend>{{ m.item_noun|capitalize }}</legend>
         <label><span>{{ m.category_label }}{{ star('category') }}</span>
           {% if m.categories %}
-            <select name="category"{{ req('category') }}><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c[:1]|upper ~ c[1:] }}</option>{% endfor %}</select>
+            <select name="category"{{ req('category') }}><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
           {% else %}<input name="category"{{ req('category') }}{{ rem('category') }}>{% endif %}
         </label>
         {% if m.statuses %}
@@ -538,7 +562,11 @@
             {% elif fd.type == 'textarea' %}
               <label class="col-span-full"><span>{{ fd.label }}{{ star(name) }}</span> <textarea name="{{ name }}" rows="2"{{ req(name) }}></textarea></label>
             {% else %}
-              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}" {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% elif fd.type == 'number' %}type="number" step="any"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
+              {% if fd.key in derived_fields %}
+                <label><span>{{ fd.label }}</span> <input name="{{ name }}" readonly tabindex="-1" placeholder="from the sequence, on save" title="Worked out from the sequence when you save"></label>
+              {% else %}
+              <label><span>{{ fd.label }}{{ star(name) }}</span> <input name="{{ name }}"{% if fd.key == 'sequence' %} class="font-mono" spellcheck="false" autocomplete="off"{% endif %} {% if fd.type == 'date' %}type="date"{% elif fd.type == 'url' %}type="url"{% elif fd.type == 'number' %}type="number" step="any"{% endif %}{% if fd.type == 'user' %} list="inv-owner-options"{% else %}{{ rem(name) }}{% endif %}{{ req(name) }}></label>
+              {% endif %}
             {% endif %}
           {% endfor %}
         </fieldset>
@@ -554,6 +582,13 @@
         {% if m.has('expiry') %}<label><span>Expires{{ star('expires_on') }}</span> <input type="date" name="expires_on"{{ req('expires_on') }}></label>{% endif %}
       </fieldset>
       <label class="record-wide">Notes <textarea name="notes" rows="3"></textarea></label>
+      {% if m.kind != 'orders' %}
+        <section class="record-wide used-in" data-used-in="{{ key }}" hidden>
+          <h4>Used in notebook pages</h4>
+          <p class="used-in-hint">Link it from a page by typing <code data-used-in-code></code>.</p>
+          <div data-used-in-list></div>
+        </section>
+      {% endif %}
     </div>
     <footer class="record-dialog-foot">
       <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
@@ -561,6 +596,44 @@
     </footer>
   </form>
 </dialog>
+
+{% if m.kind == 'primers' %}
+<dialog id="primer-pair-dialog" class="record-dialog" aria-labelledby="primer-pair-title">
+  <form method="post" action="{{ url_for('inventory.add_primer_pair', key=key) }}">
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="primer-pair-title">Add primer pair</h3>
+        <p class="record-dialog-sub">Two {{ m.item_noun_plural }}, <i>name</i>-F and <i>name</i>-R, each with the other as its Pair.
+          Length, GC and Tm are worked out from each sequence.</p>
+      </div>
+      <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body">
+      <label class="record-wide">Name of the pair <input name="name" required autocomplete="off" placeholder="e.g. GAPDH qPCR"></label>
+      <label class="record-wide">Forward (5′→3′) <input name="forward" required class="font-mono" spellcheck="false" autocomplete="off"></label>
+      <label class="record-wide">Reverse (5′→3′) <input name="reverse" required class="font-mono" spellcheck="false" autocomplete="off"></label>
+      <label>{{ m.category_label }}
+        {% if m.categories %}<select name="category"><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
+        {% else %}<input name="category">{% endif %}
+      </label>
+      {% if 'target' in m.fields|map(attribute='key')|list %}<label>Target <input name="attr_target" autocomplete="off" placeholder="gene or amplicon"></label>{% endif %}
+      {% if m.statuses %}<label>Status <select name="status">{% for st in m.statuses %}<option value="{{ st }}">{{ st|capitalize }}</option>{% endfor %}</select></label>{% endif %}
+      {% if m.has('supplier') %}<label>Vendor <input name="vendor" autocomplete="off"></label>{% endif %}
+      {% if m.has('sharing') %}
+        <label>Belongs to <select name="is_shared"><option value="0">Personal</option><option value="1">Lab common</option></select></label>
+      {% endif %}
+      {% if m.has('storage') %}
+        <label>Box <select name="rack_id"><option value="">Not in a box</option>{% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select></label>
+        <p class="record-wide text-[12px] text-muted">In a box, the pair takes the next two free positions.</p>
+      {% endif %}
+    </div>
+    <footer class="record-dialog-foot">
+      <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
+      <button type="submit" class="btn btn-primary">Add the pair</button>
+    </footer>
+  </form>
+</dialog>
+{% endif %}
 
 {% if reorder %}
   {# "Order again" from a reagent or antibody: the new-order dialog opens with it on load. #}
@@ -609,11 +682,36 @@
         {% for kind in ['box', 'rack', 'shelf', 'drawer', 'freezer'] %}<option value="{{ kind }}">{{ kind|capitalize }}</option>{% endfor %}
       </select>
     </label>
+    <label data-box-count>How many
+      <input type="number" name="count" min="1" max="50" value="1"
+             title="Several boxes alike, named after this one: Tower A 1, Tower A 2…">
+    </label>
+    {% if stored_at_field %}
+      <label class="col-span-full">{{ stored_at_field.label }}
+        <select name="stored_at">
+          <option value="">Not said</option>
+          {% for o in stored_at_field.options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+        </select>
+        <span class="text-[12px] text-muted">What goes in this box takes it as its {{ stored_at_field.label }}.</span>
+      </label>
+    {% endif %}
   {% endcall %}
 {% endif %}
 {% endblock %}
 
 {% block body_end %}
+<script src="{{ url_for('static', filename='used-in.js') }}?v={{ asset_version('used-in.js') }}" defer></script>
+<script nonce="{{ csp_nonce() }}">
+  /* "How many" is for a new box only. */
+  (function () {
+    const dialog = document.getElementById('inv-rack-dialog');
+    if (!dialog) return;
+    dialog.addEventListener('record-dialog:open', (event) => {
+      const isNew = Boolean(event.detail && event.detail.isNew);
+      dialog.querySelectorAll('[data-box-count]').forEach((el) => { el.hidden = !isNew; });
+    });
+  })();
+</script>
 <script type="application/json" id="inv-page-data">{{ {"isAdmin": is_admin, "me": current_user.username,
                                                         "openStatuses": m.open_statuses | map('lower') | list} | tojson }}</script>
 <script type="application/json" id="inv-fill-data">{{ remembered.fill | tojson }}</script>
@@ -876,7 +974,7 @@
         ? label.firstElementChild : label;
       return ((head && head.firstChild && head.firstChild.textContent) || el.name).trim();
     };
-    const say = (text) => { hint.textContent = text; hint.hidden = !text; };
+    const say = (text, warn) => { hint.textContent = text; hint.hidden = !text; hint.classList.toggle('is-warning', Boolean(warn)); };
     function fillFrom(input) {
       if (!isNew) return;
       const found = (fills[input.dataset.fillKey] || {})[input.value.trim().toLowerCase()];
@@ -904,7 +1002,7 @@
       const { data, isNew: fresh } = event.detail || {};
       isNew = Boolean(fresh);
       form.querySelectorAll('.is-filled').forEach((el) => el.classList.remove('is-filled'));
-      say((data && data._hint) || '');
+      say((data && data._hint) || '', data && data._warn);
     });
   })();
 

@@ -57,6 +57,15 @@ if engine.dialect.name == "sqlite":
         cursor.execute(f"PRAGMA foreign_keys={'ON' if FOREIGN_KEYS_ENFORCED else 'OFF'}")
         cursor.close()
 
+    # SQLite's own lower() folds A-Z only, so a case-insensitive search
+    # (ilike is lower(x) LIKE lower(y) there) missed "Δ-Cre" for "δ-cre"
+    # and "Café" for "CAFÉ", which PostgreSQL finds. Python's lower() folds
+    # every script, as PostgreSQL's does.
+    @event.listens_for(engine, "connect")
+    def _sqlite_unicode_lower(dbapi_connection, connection_record) -> None:
+        dbapi_connection.create_function(
+            "lower", 1, lambda value: value.lower() if isinstance(value, str) else value, deterministic=True)
+
     # A commit refused by a deferred foreign-key check leaves pysqlite's
     # transaction open (SQLite keeps the transaction when COMMIT fails), and
     # a session closed without an explicit rollback hands that connection

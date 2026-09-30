@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
-# Prove the newest backup can be restored: load it into a scratch database,
-# check the tables have rows, check the files archive reads, then drop the
-# scratch copy. An untested backup is a hope, not a backup.
+# Prove a backup can be restored: load it into a scratch database, check the
+# tables have rows, check the files archive reads, then drop the scratch
+# copy. An untested backup is a hope, not a backup.
+#
+#   restore-test.sh                          the newest backup
+#   restore-test.sh /backups/db/<file>.dump  that one (and its files archive)
 set -euo pipefail
 : "${BACKUP_ROOT:=/backups}"
 log() { echo "[$(date -Is)] $*"; }
 
-dump=$(ls -1t "$BACKUP_ROOT"/db/biomanager-*.dump | head -n 1)
-files=$(ls -1t "$BACKUP_ROOT"/files/biomanager-files-*.tar.gz | head -n 1)
+if [ -n "${1:-}" ]; then
+  dump=$1
+  [ -f "$dump" ] || { log "no such dump: $dump"; exit 1; }
+  stamp=$(basename "$dump" .dump); stamp=${stamp#biomanager-}
+  files="$BACKUP_ROOT/files/biomanager-files-$stamp.tar.gz"
+else
+  dump=$(ls -1t "$BACKUP_ROOT"/db/biomanager-*.dump | head -n 1)
+  files=$(ls -1t "$BACKUP_ROOT"/files/biomanager-files-*.tar.gz | head -n 1)
+fi
 scratch="biomanager_restore_test"
 
 dropdb --if-exists "$scratch"

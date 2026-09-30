@@ -4,10 +4,13 @@ their routes and the rest of the app share. Presets live in inventory.py."""
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import get_history
 
 from . import inventory as presets
 from . import positions
@@ -53,7 +56,8 @@ class ModuleView:
 
     @property
     def name_label(self) -> str:
-        return {"samples": "Sample ID", "orders": "Item", "antibodies": "Target", "viruses": "Virus"}.get(self.row.kind, "Name")
+        return {"samples": "Sample ID", "orders": "Item", "antibodies": "Target", "viruses": "Virus",
+                "cell_lines": "Cell line"}.get(self.row.kind, "Name")
 
     @property
     def requirable(self) -> list[tuple[str, str]]:
@@ -109,7 +113,12 @@ def list_modules(session, include_disabled: bool = False, everyone: bool = False
 
 
 def get_module(session, key: str) -> InventoryModule | None:
-    return session.scalar(select(InventoryModule).where(InventoryModule.key == key))
+    """By its address, or one it had before a rename (app/database_keys.py)."""
+    module = session.scalar(select(InventoryModule).where(InventoryModule.key == key))
+    if module is None and key:
+        from .database_keys import resolve
+        module = resolve(session, "inventory", key)
+    return module
 
 
 def first_of_kind(session, kind: str) -> InventoryModule | None:
@@ -120,12 +129,8 @@ def first_of_kind(session, kind: str) -> InventoryModule | None:
 
 
 def unique_key(session, label: str) -> str:
-    from .organism_service import slugify
-    base = slugify(label) or "inventory"
-    key, n = base, 2
-    while get_module(session, key) is not None:
-        key, n = f"{base}_{n}", n + 1
-    return key
+    from .database_keys import free_key
+    return free_key(session, "inventory", label)
 
 
 def create_module(session, preset_key: str, label: str = "", created_by: str = "") -> InventoryModule:
@@ -214,6 +219,9 @@ def expiry_state(item: InventoryItem, today: date | None = None) -> str:
 # Statuses after which an item is gone: used up, emptied, thrown out,
 # cancelled. Moving into one stamps the day in attrs[ENDED_ATTR].
 TERMINAL_STATUSES = {"used up", "empty", "discarded", "cancelled"}
+# Of those, the ones that leave the box: the tube's cell is freed for the
+# next one, and its location note says where it was.
+GONE_FROM_BOX = {"used up", "empty", "discarded"}
 # Stock that runs out or expires: Home's "Expiring & low stock", and what a
 # received order can be added to (inventory_routes.STOCK_KINDS).
 RESTOCK_KINDS = ("reagents", "antibodies", "viruses")
@@ -226,6 +234,8 @@ AVAILABLE_BY_KIND = {
     "reagents": {"in stock", "low"},
     "antibodies": {"in stock", "low"},
     "viruses": {"in stock", "low"},
+    "primers": {"in stock", "low"},
+    "cell_lines": {"in stock"},
     "orders": {"requested", "ordered"},
 }
 
@@ -260,7 +270,9 @@ def apply_status(mv, item: InventoryItem, new_status, today: date | None = None)
     An item keeps a status the list no longer has as long as it is not
     changed. Changing to "received" fills an empty received date; changing
     to a terminal status (used up, empty, discarded, cancelled) records the
-    day in attrs, and reviving the item clears it again."""
+    day in attrs, and reviving the item clears it again. Used up, empty or
+    discarded also frees its box position (the location note, if empty,
+    keeps where it was)."""
     new = str(new_status or "").strip()[:40]
     old = item.status or ""
     if mv.statuses:
@@ -282,6 +294,12 @@ def apply_status(mv, item: InventoryItem, new_status, today: date | None = None)
         attrs.setdefault(ENDED_ATTR, today.isoformat())
     else:
         attrs.pop(ENDED_ATTR, None)
+    if new.lower() in GONE_FROM_BOX and item.rack is not None:
+        where = " · ".join(filter(None, [item.rack.name, rack_label(item)]))
+        if not (item.location_note or "").strip():
+            item.location_note = f"was in {where}"[:200]
+        item.rack_id_fk = item.rack_row = item.rack_col = None
+        item.rack = None
     if attrs != before:
         item.attrs = json.dumps(attrs)
     return None
@@ -426,6 +444,119 @@ def open_order_count(session) -> int:
     return total
 
 
+def stored_at_field(mv) -> dict | None:
+    """The inventory's "Stored at" column (−80 °C, LN₂…), if it has one."""
+    return next((f for f in mv.fields if f["key"] == "storage_temp"
+                 or f["label"].strip().lower() == "stored at"), None)
+
+
+def follow_box(session, item: InventoryItem) -> None:
+    """A tube put in a box whose place is known takes it as its "Stored at"."""
+    rack = item.rack if item.rack is not None and item.rack.id == item.rack_id_fk else (
+        session.get(InventoryRack, item.rack_id_fk) if item.rack_id_fk else None)
+    if rack is None or not rack.stored_at:
+        return
+    module = session.get(InventoryModule, item.module_id_fk)
+    field = module and stored_at_field(view(module))
+    if field is None:
+        return
+    attrs = item.attrs_dict
+    if attrs.get(field["key"]) != rack.stored_at:
+        attrs[field["key"]] = rack.stored_at
+        item.attrs = json.dumps(attrs)
+
+
+# ---------------------------------------------------------------------------
+# Primers: length, GC and Tm worked out from the sequence
+# ---------------------------------------------------------------------------
+
+# Nearest-neighbour stacks (SantaLucia 1998): ΔH kcal/mol, ΔS cal/(K·mol).
+_NN = {"AA": (-7.9, -22.2), "AT": (-7.2, -20.4), "TA": (-7.2, -21.3), "CA": (-8.5, -22.7),
+       "GT": (-8.4, -22.4), "CT": (-7.8, -21.0), "GA": (-8.2, -22.2), "CG": (-10.6, -27.2),
+       "GC": (-9.8, -24.4), "GG": (-8.0, -19.9)}
+_PAIR = str.maketrans("ACGT", "TGCA")
+PRIMER_SALT_M, PRIMER_CONC_M = 0.05, 250e-9   # 50 mM Na⁺, 250 nM oligo (as most calculators)
+PRIMER_DERIVED = ("length", "gc", "tm")
+
+
+def clean_sequence(raw) -> str:
+    """"5'-ACG tgc-3'" → "ACGTGC": bases only, upper case."""
+    text = str(raw or "").upper().replace("5'", "").replace("3'", "")
+    return "".join(ch for ch in text if ch.isalpha())
+
+
+def primer_tm(seq: str) -> float | None:
+    """Melting temperature in °C by nearest neighbours, or None for a
+    sequence with other than A, C, G, T or shorter than 8 bases."""
+    if len(seq) < 8 or set(seq) - set("ACGT"):
+        return None
+    dh = ds = 0.0
+    for end in (seq[0], seq[-1]):                       # initiation, by terminal pair
+        h, e = (0.1, -2.8) if end in "GC" else (2.3, 4.1)
+        dh, ds = dh + h, ds + e
+    for i in range(len(seq) - 1):
+        step = seq[i:i + 2]
+        h, e = _NN.get(step) or _NN[step.translate(_PAIR)[::-1]]
+        dh, ds = dh + h, ds + e
+    self_comp = seq == seq.translate(_PAIR)[::-1]
+    if self_comp:
+        ds += -1.4
+    ds += 0.368 * (len(seq) - 1) * math.log(PRIMER_SALT_M)
+    # The primer is in excess over its template in a PCR, so its own
+    # concentration counts (as Biopython's Tm_NN with no second strand).
+    ct = PRIMER_CONC_M
+    return dh * 1000 / (ds + 1.987 * math.log(ct)) - 273.15
+
+
+def primer_numbers(raw) -> dict[str, str]:
+    """{"length": "20", "gc": "55.0", "tm": "58.4"} for a primer sequence
+    (Tm left out when it can't be worked out); {} with no sequence."""
+    seq = clean_sequence(raw)
+    if not seq:
+        return {}
+    gc = sum(seq.count(b) for b in "GCS") / len(seq) * 100
+    out = {"length": str(len(seq)), "gc": f"{gc:.1f}"}
+    tm = primer_tm(seq)
+    if tm is not None:
+        out["tm"] = f"{tm:.1f}"
+    return out
+
+
+def derive_primer(session, item: InventoryItem) -> None:
+    """A primer's Length, GC % and Tm follow its sequence."""
+    module = session.get(InventoryModule, item.module_id_fk)
+    if module is None or module.kind != "primers":
+        return
+    keys = {f["key"] for f in view(module).fields}
+    if "sequence" not in keys:
+        return
+    attrs = item.attrs_dict
+    numbers = primer_numbers(attrs.get("sequence"))
+    changed = False
+    for key in PRIMER_DERIVED:
+        if key in keys and attrs.get(key, "") != numbers.get(key, "") and (numbers or attrs.get("sequence") == ""):
+            attrs[key] = numbers.get(key, "")
+            changed = True
+    if changed:
+        item.attrs = json.dumps(attrs)
+
+
+@event.listens_for(Session, "before_flush", insert=True)
+def _items_follow_their_box(session, _context, _instances) -> None:
+    """Whichever way an item changed box (dialog, sheet, grid drag, Move,
+    Add many, import), its "Stored at" follows; whichever way a primer's
+    sequence changed, so do its length, GC and Tm. Runs before the audit
+    listener, so undoing the change puts the old values back too."""
+    for obj in list(session.new) + list(session.dirty):
+        if not isinstance(obj, InventoryItem):
+            continue
+        new = obj in session.new
+        if obj.rack_id_fk and (new or get_history(obj, "rack_id_fk").has_changes()):
+            follow_box(session, obj)
+        if new or get_history(obj, "attrs").has_changes():
+            derive_primer(session, obj)
+
+
 def apply_position(session, item: InventoryItem, rack_raw, position_raw) -> str | None:
     """Place an item from a typed rack + position ("D7" under that box's
     naming scheme); an error message instead of a guess."""
@@ -438,7 +569,11 @@ def apply_position(session, item: InventoryItem, rack_raw, position_raw) -> str 
     if rack is None or rack.module_id_fk != item.module_id_fk:
         return "That box is not part of this inventory."
     if not position_raw:
-        item.rack_id_fk, item.rack_row, item.rack_col = rack.id, None, None
+        # Into a box with no position given: the next free one, as Add many
+        # and Move do (a delivery otherwise sat "unplaced" in its box). One
+        # already in this box whose position is cleared on purpose stays so.
+        cells = free_cells(session, rack, 1) if item.rack_id_fk != rack.id else []
+        item.rack_id_fk, (item.rack_row, item.rack_col) = rack.id, (cells[0] if cells else (None, None))
         return None
     cell = positions.parse(position_raw, rack.naming, rack.rows, rack.cols)
     if cell is None:

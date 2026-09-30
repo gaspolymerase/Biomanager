@@ -34,7 +34,8 @@ def current_user():
 ROLES = {
     "member": ("Member", "Changes their own records, and the lab's shared ones."),
     "care": ("Animal care", "Technicians and vets: may change any lab's animals, cages, tanks and vials "
-                            "(weights, moves, flips, health), but not experiments, notebooks or settings."),
+                            "(weights, moves, flips, health). Other people's experiments and notebook pages, "
+                            "and settings, stay theirs; they keep their own like a member."),
     "facility": ("Facility manager", "Animal care, plus the facility's racks, rooms, incubators, water systems "
                                      "and databases' settings. Not accounts."),
     "admin": ("Admin", "Everything, including accounts and Lab setup."),
@@ -42,6 +43,8 @@ ROLES = {
 # Records animal care staff look after, whoever owns them.
 CARE_RECORDS = {"MouseRecord", "CageRecord", "TankRecord", "FishRecord", "StockUnit", "Organism", "OrgHousing",
                 "OrgCohort", "ClutchRecord", "LitterRecord"}
+# Records with a Lab common switch (is_shared) that any member may edit.
+LAB_COMMON_RECORDS = {"PlasmidRecord"}
 
 
 def is_admin(user=None) -> bool:
@@ -95,7 +98,16 @@ def can_edit(record, user=None, shared: bool = False) -> bool:
         return True
     if type(record).__name__ in CARE_RECORDS and is_care(user):
         return True
+    if type(record).__name__ in LAB_COMMON_RECORDS and getattr(record, "is_shared", False):
+        return True
     return owns(record, user) or is_unowned(record)
+
+
+def can_manage(record, user=None) -> bool:
+    """Delete it, give it to someone else, make it personal or lab common:
+    its owner or an admin (anyone, while it is unowned), even when lab
+    common lets everyone edit it."""
+    return record is not None and (is_admin(user) or owns(record, user) or is_unowned(record))
 
 
 def can_edit_cage(cage, user=None) -> bool:

@@ -426,6 +426,7 @@
   .flash-success { @apply border-ok-200 bg-ok-50 text-ok-700; }
   .flash-error   { @apply border-danger-200 bg-danger-50 text-danger-700; }
   .flash-warning { @apply border-warn-200 bg-warn-50 text-warn-700; }
+  .dialog-refusal { @apply mb-3; }
   .flash-info    { @apply border-info-200 bg-info-50 text-info-600; }
 }
 
@@ -508,14 +509,26 @@
   }
   body[data-rail="closed"] .rail-item[data-label]:hover::after { @apply opacity-100; }
 
+  /* The logo and, beside it, Hide sidebar (above it when collapsed). */
+  .rail-top { @apply mb-2 flex shrink-0 items-center justify-between gap-1; }
+  .rail-top .rail-brand { @apply mb-0 min-w-0; }
+  body[data-rail="closed"] .rail-top { @apply flex-col gap-1; }
   .rail-toggle {
-    @apply flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2
-           text-[12px] text-muted transition-colors duration-75;
+    @apply flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md
+           text-muted transition-colors duration-75;
   }
   .rail-toggle:hover { @apply bg-sand-300/45 text-ink; }
-  .rail-toggle .icon { @apply size-[14px] transition-transform duration-200; }
+  .rail-toggle .icon { @apply size-[13px] transition-transform duration-200; }
   body[data-rail="open"] .rail-toggle .icon { @apply rotate-180; }
-  body[data-rail="closed"] .rail-toggle { @apply justify-center px-0; }
+
+  /* More and Help: a button that opens its menu beside the sidebar
+     (placed by static/shell.js, as the sidebar scrolls and clips). */
+  .rail-menu { @apply relative flex shrink-0 flex-col; }
+  .rail-item .rail-chev { @apply ml-auto size-[10px] text-muted; }
+  body[data-rail="closed"] .rail-item .rail-chev { @apply hidden; }
+  .menu.rail-pop { @apply fixed right-auto top-auto w-56; }
+  .rail-pop-head { @apply px-2.5 pb-0.5 pt-1 text-[11px] font-semibold text-muted; }
+  .menu-item.is-current { @apply font-semibold; }
 
   /* --- Main column ------------------------------------------------------ */
 
@@ -1254,7 +1267,67 @@
   .record-fill-hint {
     @apply -mt-2 rounded-lg border border-brand-100 bg-brand-50 px-2.5 py-1.5 text-[12px] leading-snug text-brand-800;
   }
+  .record-fill-hint.is-warning { @apply border-amber-200 bg-amber-50 text-amber-900; }
   .record-dialog-body label > .is-filled { @apply border-brand-200 bg-brand-50/60; }
+  /* A tick under a BioDialog prompt (static/dialogs.js). */
+  .bio-dialog-check { @apply flex flex-wrap items-center gap-x-2 text-[13px] text-ink; }
+  .bio-dialog-check > input { @apply h-4 w-4; }
+  .bio-dialog-hint { @apply basis-full pl-6 text-[12px] text-muted; }
+  /* Utilities (templates/utilities.html, static/utilities-page.js). */
+  .util { @apply grid grid-cols-1 items-start gap-3 lg:grid-cols-[250px_minmax(0,1fr)]; }
+  .util-nav { @apply flex max-h-[40vh] flex-col gap-1 overflow-y-auto p-2 lg:sticky lg:top-2 lg:max-h-[calc(100vh-150px)]; }
+  .util-answers > div.is-wide { @apply sm:col-span-2; }
+  .util-search { @apply mb-1 flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2; }
+  .util-search .icon { @apply size-3.5 shrink-0 text-muted; }
+  .util-search input { @apply h-8 w-full border-0 bg-transparent p-0 text-[13px] outline-none focus:ring-0; }
+  .util-list { @apply flex flex-col gap-2; }
+  .util-group { @apply flex flex-col; }
+  .util-group[hidden], .util-link[hidden] { display: none; }
+  .util-group-label { @apply px-2 pb-0.5 pt-1 text-[11px] font-semibold text-muted; }
+  .util-link { @apply rounded-md px-2 py-1 text-[13px] leading-snug text-ink no-underline hover:bg-sand-100 hover:no-underline; }
+  .util-link.is-active { @apply bg-brand-600 font-medium text-white hover:bg-brand-700; }
+  .util-link-ref { @apply mt-1 border-t border-hairline pt-2 text-muted; }
+  .util-main { @apply flex min-w-0 flex-col gap-3; }
+  .util-head { @apply items-start; }
+  .util-head h2 { @apply text-[15px]; }
+  .util-blurb { @apply mt-0.5 text-[12.5px] font-normal text-muted; }
+  .util-form { @apply grid grid-cols-1 gap-3 px-4 pb-2 pt-3 sm:grid-cols-2 xl:grid-cols-3; }
+  .util-field { @apply flex min-w-0 flex-col gap-1 text-[12.5px] text-muted; }
+  .util-field.is-wide { @apply sm:col-span-2 xl:col-span-3; }
+  .util-field > span:first-child { @apply font-medium; }
+  .util-field input, .util-field select, .util-field textarea { @apply field w-full min-w-0 text-[13px] text-ink; }
+  .util-field textarea { @apply h-auto py-1.5 font-mono text-[12.5px]; }
+  .util-input { @apply flex min-w-0 gap-1; }
+  .util-input select { @apply w-auto shrink-0; }
+  .util-field.is-solved input { @apply border-brand-300 bg-brand-50; }
+  .util-hint { @apply text-[11.5px] font-normal text-muted; }
+  .util-results { @apply flex flex-col gap-2 border-t border-hairline px-4 py-3; }
+  .util-answers { @apply grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2; }
+  .util-answers > div { @apply flex items-baseline justify-between gap-3 border-b border-sand-100 py-1; }
+  .util-answers dt { @apply text-[12.5px] text-muted; }
+  .util-answers dd { @apply text-right text-[13.5px] tabular-nums text-ink; }
+  .util-answers .is-main dd { @apply text-[16px] font-semibold text-brand-700; }
+  .util-error { @apply rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-[12.5px] text-danger-700; }
+  .util-warn { @apply rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900; }
+  .util-note, .util-muted { @apply text-[12.5px] text-muted; }
+  .util-table-wrap { @apply overflow-x-auto; }
+  .util-table { @apply w-full border-collapse text-[12.5px]; }
+  .util-table th { @apply border-b border-hairline px-2 py-1 text-left font-semibold text-muted; }
+  .util-table td { @apply border-b border-sand-100 px-2 py-1 tabular-nums text-ink; }
+  .util-refs > summary { @apply cursor-pointer list-none; }
+  .util-refs-body { @apply grid grid-cols-1 gap-4 p-4 xl:grid-cols-2; }
+  .util-ref h3 { @apply mb-1 text-[13px] font-semibold text-ink; }
+
+  /* A sheet cell the server works out (a primer's length, GC, Tm). */
+  .sheet-derived { @apply cursor-default text-muted; }
+  /* "Used in notebook pages" (static/used-in.js). */
+  .used-in h4 { @apply mb-1 text-[12.5px] font-semibold text-ink; }
+  .used-in-hint { @apply mb-1.5 text-[12px] text-muted; }
+  .used-in-hint code { @apply rounded bg-sand-100 px-1 font-mono text-[11.5px] text-ink; }
+  .used-in [data-used-in-list] { @apply flex flex-col text-[12.5px] text-muted; }
+  .used-in-row { @apply flex items-baseline gap-2 rounded-md px-1.5 py-1 no-underline hover:bg-sand-50; }
+  .used-in-title { @apply min-w-0 flex-1 truncate font-medium text-ink; }
+  .used-in-when { @apply shrink-0 text-[12px] text-muted; }
 }
 
 /* ===========================================================================
@@ -2014,6 +2087,7 @@
     @apply pointer-events-none fixed bottom-5 left-1/2 z-100 flex -translate-x-1/2
            flex-col items-center gap-2;
   }
+  .toast-host[popover] { @apply top-auto right-auto m-0 overflow-visible border-0 bg-transparent p-0; }
 
   .toast {
     @apply pointer-events-auto max-w-[min(420px,calc(100vw-2rem))] translate-y-2 rounded-xl
@@ -2892,6 +2966,20 @@
 
   /* The databases row on the home page. */
   .home-dbs { @apply flex gap-2 overflow-x-auto pb-1; scrollbar-width: none; }
+  /* Home's cards, in each person's order (templates/home.html). */
+  .home-grid { @apply grid grid-cols-1 gap-3 lg:grid-cols-2; }
+  .home-card { @apply flex min-w-0 flex-col; }
+  .home-card > .card { @apply h-full; }
+  .home-card.is-wide { @apply lg:col-span-2; }
+  .home-calcs { @apply flex flex-wrap gap-1.5 px-4 py-3; }
+  .home-cust-list { @apply flex flex-col gap-1; }
+  .home-cust-row { @apply flex items-center gap-2 rounded-lg border border-hairline bg-surface px-2 py-1.5 text-[13px]; }
+  .home-cust-row.is-dragging { @apply opacity-50; }
+  .home-cust-grip { @apply cursor-grab select-none text-muted; }
+  .home-cust-show { @apply flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-ink; }
+  .home-cust-show .icon { @apply size-3.5 shrink-0 text-muted; }
+  .home-cust-wide { @apply flex shrink-0 cursor-pointer items-center gap-1 text-[12px] text-muted; }
+  .home-cust-move { @apply flex shrink-0; }
   .home-db {
     @apply inline-flex shrink-0 items-center gap-2 rounded-xl border border-hairline bg-surface px-3.5 py-2.5
            text-[13px] font-medium text-ink no-underline shadow-xs;

@@ -1,4 +1,4 @@
-// Inline @mouse 123 / @plasmid 4 / @order 7 → styled chip via ProseMirror
+// Inline @mouse 123 / @plasmid 4 / @order 7 / @antibodies 12 → styled chip via ProseMirror
 // decorations. The text stays as plain markdown source — only visual styling
 // is added on matching ranges. Click → navigate, hover → custom rich popover
 // fetched from /notebook/lookup/<type>/<id>. No schema changes, no markdown
@@ -8,23 +8,13 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-// Adding a new entity type: extend the regex alternatives and add a NAVIGATION
-// entry. The backend must also expose /notebook/lookup/<type>/<id> and
-// /notebook/search/<type> for hover info and the suggestion dropdown to work.
-const MENTION_RE = /@(mouse|plasmid|order)\s+(\d+)/g;
+// The types are mouse, plasmid, order and every inventory (mentionTypes.js).
+// The backend exposes /notebook/lookup/<type>/<id> and /notebook/search/<type>
+// for hover info and the suggestion dropdown, for each of them.
+import { mentionRe, mentionTypes, styleOf } from './mentionTypes.js';
 
 // The record itself (app.py notebook_open_mention redirects to its page).
-const NAVIGATION = {
-  mouse: (id) => `/notebook/open/mouse/${id}`,
-  plasmid: (id) => `/notebook/open/plasmid/${id}`,
-  order: (id) => `/notebook/open/order/${id}`,
-};
-
-const TYPE_LABELS = {
-  mouse: 'Mouse',
-  plasmid: 'Plasmid',
-  order: 'Order',
-};
+const navigation = (type, id) => `/notebook/open/${type}/${id}`;
 
 // Per-page cache so multiple hovers on the same chip skip the network.
 const lookupCache = new Map(); // key: `${type}:${id}` -> data
@@ -92,13 +82,14 @@ function positionPopover(chip) {
 
 function renderPopover(type, id, data, errorMsg) {
   const el = ensurePopover();
-  const navUrl = NAVIGATION[type] ? NAVIGATION[type](id) : '#';
-  const typeLabel = TYPE_LABELS[type] || type;
+  const navUrl = navigation(type, id);
+  const typeLabel = mentionTypes().labels[type] || type;
+  const tag = styleOf(type);
 
   if (errorMsg) {
     el.innerHTML = `
       <div class="entity-popover-head">
-        <span class="entity-popover-tag entity-popover-tag-${type}">${typeLabel}</span>
+        <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
         <span class="entity-popover-id">#${id}</span>
       </div>
       <div class="entity-popover-body">${errorMsg}</div>
@@ -109,7 +100,7 @@ function renderPopover(type, id, data, errorMsg) {
   if (!data) {
     el.innerHTML = `
       <div class="entity-popover-head">
-        <span class="entity-popover-tag entity-popover-tag-${type}">${typeLabel}</span>
+        <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
         <span class="entity-popover-id">#${id}</span>
       </div>
       <div class="entity-popover-body entity-popover-loading">Loading…</div>
@@ -149,11 +140,14 @@ function renderPopover(type, id, data, errorMsg) {
       ['Requester', data.requester_name],
     ];
     rows = fields.filter(([_, v]) => v).map(([k, v]) => row(k, v)).join('');
+  } else if (Array.isArray(data.fields)) {
+    // An inventory record: the server sends the fields worth showing.
+    rows = data.fields.map(([k, v]) => row(k, v)).join('');
   }
 
   el.innerHTML = `
     <div class="entity-popover-head">
-      <span class="entity-popover-tag entity-popover-tag-${type}">${typeLabel}</span>
+      <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
       <span class="entity-popover-id">#${escapeHtml(String(id))}</span>
       <a href="${escapeAttr(navUrl)}" class="entity-popover-open" title="Open in a new tab">↗</a>
     </div>
@@ -284,21 +278,63 @@ function showPopoverFor(chip) {
     });
 }
 
+/* A chip reads "@antibodies 6 · Anti-p53 (DO-1)": the record's name after
+   its number, from the same lookup as the popover. The page's text stays
+   "@antibodies 6"; the name is only shown (styles.css, ::after). */
+const nameCache = new Map(); // `${type}:${id}` -> name ('' when it has none)
+const nameWaiting = new Set();
+
+function nameOf(type, data) {
+  if (!data) return '';
+  if (type === 'plasmid') return data.name || '';
+  if (type === 'order') return data.item_name || '';
+  return data.name || '';
+}
+
+function fetchNames(doc, view, key) {
+  const wanted = [];
+  doc.descendants((node) => {
+    if (!node.isText || !node.text) return;
+    const re = mentionRe();
+    let match;
+    while ((match = re.exec(node.text)) !== null) {
+      const k = `${match[1]}:${match[2]}`;
+      if (match[1] !== 'mouse' && !nameCache.has(k) && !nameWaiting.has(k)) wanted.push([match[1], match[2], k]);
+    }
+  });
+  wanted.slice(0, 40).forEach(([type, id, k]) => {
+    nameWaiting.add(k);
+    fetch(`/notebook/lookup/${type}/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        nameCache.set(k, data && data.ok ? nameOf(type, data) : '');
+        if (data && data.ok) lookupCache.set(k, { data });
+      })
+      .catch(() => nameCache.set(k, ''))
+      .finally(() => {
+        nameWaiting.delete(k);
+        if (nameCache.get(k) && !view.isDestroyed) view.dispatch(view.state.tr.setMeta(key, 'names'));
+      });
+  });
+}
+
 function buildDecorations(doc) {
   const decos = [];
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return;
     const text = node.text;
-    const re = new RegExp(MENTION_RE.source, 'g');
+    const re = mentionRe();
     let match;
     while ((match = re.exec(text)) !== null) {
       const from = pos + match.index;
       const to = from + match[0].length;
+      const name = nameCache.get(`${match[1]}:${match[2]}`);
       decos.push(
         Decoration.inline(from, to, {
-          class: `entity-mention entity-mention-${match[1]}`,
+          class: `entity-mention entity-mention-${styleOf(match[1])}`,
           'data-entity-type': match[1],
           'data-entity-id': match[2],
+          ...(name ? { 'data-entity-name': name.length > 40 ? `${name.slice(0, 39)}…` : name } : {}),
         })
       );
     }
@@ -319,8 +355,16 @@ export const MentionDecoration = Extension.create({
             return buildDecorations(doc);
           },
           apply(tr, old) {
-            return tr.docChanged ? buildDecorations(tr.doc) : old;
+            return tr.docChanged || tr.getMeta(key) === 'names' ? buildDecorations(tr.doc) : old;
           },
+        },
+        view(editorView) {
+          fetchNames(editorView.state.doc, editorView, key);
+          return {
+            update(view, prev) {
+              if (!view.state.doc.eq(prev.doc)) fetchNames(view.state.doc, view, key);
+            },
+          };
         },
         props: {
           decorations(state) {
@@ -332,14 +376,9 @@ export const MentionDecoration = Extension.create({
             const chip = target.closest('.entity-mention');
             if (!chip) return false;
             if (!(event.metaKey || event.ctrlKey)) return false;
-            const type = chip.getAttribute('data-entity-type');
-            const url = NAVIGATION[type] && NAVIGATION[type](chip.getAttribute('data-entity-id'));
-            if (url) {
-              openInAppTab(url);
-              event.preventDefault();
-              return true;
-            }
-            return false;
+            openInAppTab(navigation(chip.getAttribute('data-entity-type'), chip.getAttribute('data-entity-id')));
+            event.preventDefault();
+            return true;
           },
           handleDOMEvents: {
             mouseover(_view, event) {

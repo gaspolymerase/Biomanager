@@ -17,7 +17,7 @@ from typing import Callable
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from sqlalchemy import func, select
 
-from . import access, audit
+from . import access, audit, positions
 from .db import SessionLocal
 from .models import (
     CageRecord, FishRack, InventoryItem, InventoryModule, InventoryRack, MouseRack, OrganismModule, OrgHousing,
@@ -115,7 +115,7 @@ def index():
         groups = []
         for kind in CONTAINERS:
             rows = []
-            for row in session.scalars(select(kind.model).order_by(kind.model.name)):
+            for row in sorted(session.scalars(select(kind.model)), key=lambda r: positions.place_order(r.name)):
                 rows.append({"id": row.id, "name": row.name, "database": kind.database(session, row),
                              "where": kind.where(session, row), "count": kind.count(session, row),
                              "creator": (row.created_by or "").strip()})

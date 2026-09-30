@@ -36,6 +36,18 @@ function rampColor(t) {
   return { bg: `rgb(${c.join(',')})`, fg: lum > 0.55 ? '#1d1d1f' : '#ffffff' };
 }
 
+/* The series runs along the selection's longer side, its replicates
+   across the shorter one: A9:G10 is seven standards down the rows in
+   side-by-side duplicates (A9 = A10, then B9 = B10…); A1:H2 is eight
+   across the columns in stacked duplicates. */
+export function seriesOrder(wells) {
+  const pos = wells.map(wellPos);
+  const rows = new Set(pos.map(([r]) => r)).size;
+  const cols = new Set(pos.map(([, c]) => c)).size;
+  return wells.map((w, i) => [w, pos[i]]).sort(([, [ra, ca]], [, [rb, cb]]) => (
+    cols <= rows ? ra - rb || ca - cb : ca - cb || ra - rb)).map(([w]) => w);
+}
+
 // Readings pasted from a plate reader: a grid (optionally with row letters
 // and column numbers) or a list of "well  value" lines.
 export function parseReadings(text, format) {
@@ -225,11 +237,7 @@ export function mountPlate(host, ctx) {
     const factor = toNumber(await ask.prompt('Divide by this at each step', '2', { okLabel: 'Next' }));
     if (!Number.isFinite(factor) || factor <= 1) return;
     const reps = Math.max(1, Math.round(toNumber(await ask.prompt('Replicates of each standard (next to each other in the selection)', '2', { okLabel: 'Make the series' })) || 1));
-    const wells = [...selected].sort((a, b) => {
-      const [ra, ca] = wellPos(a);
-      const [rb, cb] = wellPos(b);
-      return ca - cb || ra - rb; // down each column, then across
-    });
+    const wells = seriesOrder([...selected]);
     data.roles = data.roles || {};
     wells.forEach((w, i) => { data.roles[w] = { t: 'std', conc: String(Number((top / factor ** Math.floor(i / reps)).toPrecision(6))) }; });
     commit(); render();
