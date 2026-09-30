@@ -242,10 +242,14 @@ def write_snapshot(path: Path, user: UserAccount | None = None) -> dict[str, int
 # is named here, or in MEMBER_SEES_WHOLE, so a new one is decided on.
 ADMIN_ONLY = ("api_tokens", "lab_copy_keys", "guest_passes", "user_identities", "feedback", "audit_log")
 OWN_ROWS = {"notifications": "recipient_username", "calendar_subscriptions": "owner",
-            "google_calendar_links": "owner", "calendar_feeds": "owner", "notebook_templates": "owner_username"}
+            "google_calendar_links": "owner", "calendar_feeds": "owner", "notebook_templates": "owner_username",
+            # Batch history: a member's own, as the Batches page shows them
+            # (a description can name someone's personal database or file).
+            "batches": "actor"}
 PAGE_ROWS = ("notebook_comments", "notebook_page_info", "notebook_presence", "notebook_shares",
              "notebook_sync_updates", "notebook_versions", "record_signatures")
 PERSONAL_DATABASES = ("inventory_modules", "stock_modules", "organism_modules")
+ALIAS_KIND = {"inventory_modules": "inventory", "stock_modules": "stocks", "organism_modules": "organisms"}
 MEMBER_SEES_WHOLE = ("users", "experiments", "notebook_tabs", "notebook_pages")
 
 
@@ -275,6 +279,8 @@ def member_view(out, username: str) -> None:
         for table in Base.metadata.sorted_tables:
             if any(fk.parent.name == "module_id_fk" and fk.column.table.name == modules for fk in table.foreign_keys):
                 run(f"DELETE FROM {table.name} WHERE module_id_fk IN ({hidden})")
+        # The addresses it had before a rename (app/database_keys.py) too.
+        run(f"DELETE FROM database_aliases WHERE kind = :kind AND module_id IN ({hidden})", kind=ALIAS_KIND[modules])
         run(f"DELETE FROM {modules} WHERE id IN ({hidden})")
 
 

@@ -712,7 +712,6 @@ def page_import():
 
 # ---------------------------------------------------------------- templates
 
-_FENCE = re.compile(r"^(`{3,})([a-z]+)[ \t]*\n(.*?)\n\1[ \t]*$", re.M | re.S)
 _TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{3,}")
 # Sections whose writing is that run's own: kept as headings only.
 _RESULT_HEADING = re.compile(r"^#{1,6}\s+(results?|observations?|conclusions?|outcomes?|findings|discussion|"
@@ -744,6 +743,46 @@ def _empty_block(kind: str, raw: str) -> str:
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
 
+_FENCE_OPEN = re.compile(r"(`{3,})([a-z]+)[ \t]*")
+_FENCE_CLOSE = re.compile(r"(`{3,})[ \t]*")
+
+
+def _swap_fences(body: str, keep) -> str:
+    """Each ```kind … ``` block handed to `keep` (a match-like object with
+    the fence, the kind and the text inside), in one pass over the lines:
+    a page of unclosed fences costs no more than its length (a regex that
+    looked ahead from each one grew with its square)."""
+    import bisect
+
+    class Found:
+        def __init__(self, *groups):
+            self._groups = groups
+
+        def group(self, n):
+            return self._groups[n - 1]
+
+    lines = body.split("\n")
+    closes: dict[str, list[int]] = {}
+    for i, line in enumerate(lines):
+        m = _FENCE_CLOSE.fullmatch(line)
+        if m:
+            closes.setdefault(m.group(1), []).append(i)
+    out, i = [], 0
+    while i < len(lines):
+        m = _FENCE_OPEN.fullmatch(lines[i])
+        if m:
+            ends = closes.get(m.group(1), [])
+            k = bisect.bisect_right(ends, i)
+            if k < len(ends):
+                j = ends[k]
+                out.append(keep(Found(m.group(1), m.group(2), "\n".join(lines[i + 1:j]))))
+                i = j + 1
+                continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 def structure_only(body: str) -> str:
     """A page as a template for the next run: its headings, text, steps and
     table headers stay; ticks are cleared, each table row keeps only its
@@ -756,7 +795,7 @@ def structure_only(body: str) -> str:
         blocks.append(f"{match.group(1)}{match.group(2)}\n{_empty_block(match.group(2), match.group(3))}\n{match.group(1)}")
         return f"\x00{len(blocks) - 1}\x00"
 
-    text = _FENCE.sub(keep, body or "")
+    text = _swap_fences(body or "", keep)
     out, in_table, results_level = [], 0, 0
     for line in text.split("\n"):
         stripped = line.strip()

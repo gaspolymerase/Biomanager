@@ -654,6 +654,16 @@ Use fresh ECL.
         other = client_for(make_user())
         self.assertTrue(other.post("/notebook/templates/create", data={"title": name, "body": "x"}).get_json()["ok"])
 
+    def test_structure_only_takes_a_page_s_length_even_with_unclosed_fences(self):
+        import time
+        from app import lab_notebook
+        start = time.monotonic()
+        lab_notebook.structure_only("\n".join("```a" for _ in range(20000)))
+        self.assertLess(time.monotonic() - start, 1.0)
+        kept = lab_notebook.structure_only("## Steps\n\n```calc\nx = 1\n```\n\n```a\nnever closed")
+        self.assertIn("```calc", kept)
+        self.assertIn("never closed", kept)
+
     def test_an_experiment_template_makes_experiments(self):
         page = self.new_page(self.m, starter="western")
         tid = self.template_from(self.m, page)

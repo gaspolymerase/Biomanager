@@ -86,13 +86,14 @@ function renderPopover(type, id, data, errorMsg) {
   const typeLabel = mentionTypes().labels[type] || type;
   const tag = styleOf(type);
 
+  // A database's name is the lab's own words: text, never markup.
   if (errorMsg) {
     el.innerHTML = `
       <div class="entity-popover-head">
-        <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
-        <span class="entity-popover-id">#${id}</span>
+        <span class="entity-popover-tag entity-popover-tag-${tag}">${escapeHtml(typeLabel)}</span>
+        <span class="entity-popover-id">#${escapeHtml(String(id))}</span>
       </div>
-      <div class="entity-popover-body">${errorMsg}</div>
+      <div class="entity-popover-body">${escapeHtml(errorMsg)}</div>
     `;
     return;
   }
@@ -100,8 +101,8 @@ function renderPopover(type, id, data, errorMsg) {
   if (!data) {
     el.innerHTML = `
       <div class="entity-popover-head">
-        <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
-        <span class="entity-popover-id">#${id}</span>
+        <span class="entity-popover-tag entity-popover-tag-${tag}">${escapeHtml(typeLabel)}</span>
+        <span class="entity-popover-id">#${escapeHtml(String(id))}</span>
       </div>
       <div class="entity-popover-body entity-popover-loading">Loading…</div>
     `;
@@ -147,7 +148,7 @@ function renderPopover(type, id, data, errorMsg) {
 
   el.innerHTML = `
     <div class="entity-popover-head">
-      <span class="entity-popover-tag entity-popover-tag-${tag}">${typeLabel}</span>
+      <span class="entity-popover-tag entity-popover-tag-${tag}">${escapeHtml(typeLabel)}</span>
       <span class="entity-popover-id">#${escapeHtml(String(id))}</span>
       <a href="${escapeAttr(navUrl)}" class="entity-popover-open" title="Open in a new tab">↗</a>
     </div>
