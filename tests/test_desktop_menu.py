@@ -23,6 +23,13 @@ class Versions(unittest.TestCase):
         self.assertFalse(du.is_newer("0.4.2", "0.5.0"))
         self.assertFalse(du.is_newer("nonsense", "0.5.0"))
 
+    def test_a_release_candidate_comes_before_its_release(self):
+        self.assertTrue(du.is_newer("1.0.0", "1.0.0-rc.1"))       # an app on the candidate is offered 1.0.0
+        self.assertTrue(du.is_newer("1.0.0-rc.2", "1.0.0-rc.1"))
+        self.assertFalse(du.is_newer("1.0.0-rc.1", "1.0.0"))
+        self.assertTrue(du.is_newer("1.0.0-rc.1", "0.10.2"))
+        self.assertFalse(du.is_newer("1.0.0", "1.0.0+dev"))
+
     def test_a_build_reads_its_version_file(self):
         import tempfile
         from pathlib import Path

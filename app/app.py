@@ -174,6 +174,13 @@ if is_frozen() or os.environ.get("BIOMANAGER_UPLOADS_DIR", "").strip():
         return send_from_directory(_uploads_dir(), filename)
 
 
+@app.route("/favicon.ico")
+def favicon():
+    """Browsers ask for this on pages that name no icon (a JSON answer, a
+    download); the app's icon, rather than a 404 in the server's log."""
+    return app.send_static_file("icon-192.png"), 200, {"Cache-Control": "public, max-age=604800"}
+
+
 @app.route("/healthz")
 def healthz():
     """For a load balancer or container health check: is the app up and
