@@ -130,6 +130,22 @@ class EverythingWithADateTests(Calendar):
         self.assertEqual(found[0]["start"][:10], days_ahead(5))
 
 
+class AutoItemLinkTests(Calendar):
+    def test_every_item_the_colony_puts_on_the_calendar_opens_a_page(self):
+        from tests.base import execute
+        colony = self.make_colony(self.a, self.admin, n_mice=1, dob=(TODAY - timedelta(days=30 * 7 - 5)).isoformat())
+        execute("update mouse_cages set date_give_birth=? where id=?", TODAY - timedelta(days=20), colony["cage_id"])
+        execute("update litters set date_of_birth=? where id=?", TODAY - timedelta(days=30 * 7 - 5), colony["litter_id"])
+        name = uniq("Exp ")
+        self.a.post("/colony/experiments/create", data={"name": name, "from_cage_id": colony["cage"]})
+        execute("update experiments set start_date=? where name=?", TODAY + timedelta(days=2), name)
+        auto = [i for i in self.items(self.a)["items"] if i["kind"] == "auto" and i["raw"].get("href")]
+        sources = {i["raw"]["source"] for i in auto}
+        self.assertTrue({"cage", "mouse", "experiment"} <= sources, sources)
+        broken = [(i["title"], i["raw"]["href"], self.a.get(i["raw"]["href"]).status_code) for i in auto]
+        self.assertEqual([b for b in broken if b[2] != 200], [])
+
+
 class ProtocolTests(Calendar):
     def template(self, client, steps=None):
         r = self.post_json(client, "/calendar/protocols/templates", {

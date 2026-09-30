@@ -8,6 +8,7 @@ import secrets
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
@@ -1482,7 +1483,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
                 title=f"Genotype - {location_label}",
                 color="#fcb77e",  # apricot
                 day=geno, body=body, source="cage",
-                href=f"/colony?cage_id={cage.id}",
+                href=f"/colony?view=cages&scope=all&q={quote(str(cage.cage_id))}",
             ))
 
     # ----- Weaning at P21: cages with a litter-born date, and litters not
@@ -1539,7 +1540,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
             day=threshold_day,
             body=f"{SAC_THRESHOLD_WEEKS} weeks since litter DOB ({dob.isoformat()})",
             source="mouse",
-            href=f"/mice/{m.id}",
+            href=f"/colony?view=mice&scope=all&q={m.mouse_id}",
         ))
 
     # ----- Experiment start + end --------------------------------------
@@ -1557,7 +1558,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
                 day=ex.start_date,
                 body=(ex.description or "")[:200],
                 source="experiment",
-                href=f"/experiments/{ex.id}",
+                href=f"/colony/experiments/{ex.id}",
             ))
         if ex.end_date and _in_window(ex.end_date):
             items.append(_auto_item(
@@ -1567,7 +1568,7 @@ def derive_auto_calendar_items(session, start_dt=None, end_dt=None) -> list[dict
                 day=ex.end_date,
                 body=(ex.description or "")[:200],
                 source="experiment",
-                href=f"/experiments/{ex.id}",
+                href=f"/colony/experiments/{ex.id}",
             ))
 
     # ----- Zebrafish: clutches → tank-up / fin-clip / adult -------------
