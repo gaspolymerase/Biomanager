@@ -308,6 +308,7 @@ stock**, and statuses and categories can be renamed without losing items.
     are refused, saying who has it. A booking can repeat every day, weekday
     or week until a date (if one repeat clashes, none is made), and
     **Duplicate** books the same instrument and times on another day.
+    Instruments are added, renamed and removed under **Manage**.
   - **Time away**: leave and conferences, with what falls due while you
     are away and who covers it (they are told).
   - **On your phone**: a private link that Apple, Google or Outlook
@@ -315,8 +316,8 @@ stock**, and statuses and categories can be renamed without losing items.
 - **Lab notebook** — pages in topics, written like a document and saved as
   Markdown. A page links to mice, plasmids, orders and any inventory record
   (`@mouse 12`, `@antibodies 5`): type **@** and a name, catalogue number
-  or lot (or a colleague's name, for `@jordan`), and the record's popover
-  shows its lot and place. The record's
+  or lot (or a colleague's name, for `@jordan`); the chip shows the
+  record's name after its number, and its popover shows its lot and place. The record's
   dialog lists the pages that link it (**Used in notebook pages**), so the
   record and the notes point at each other. Type **/** on a new line for
   everything below.
@@ -394,8 +395,22 @@ stock**, and statuses and categories can be renamed without losing items.
     line with the page now, and any version can be restored.
   - **Tags and search** across every page you own or that is shared with
     you, by words, kind, status, tag and date.
-- **Utilities** — molecular-weight reference data and a
-  concentration-to-mass calculator.
+- **Utilities** — 41 bench calculators, answering as you type:
+  solutions and buffers (molarity, dilutions, serial dilutions, percent and
+  ×-fold stocks, buffer pH, osmolarity, another salt or hydrate), DNA and
+  RNA (A₂₆₀, moles and copies, oligo Tm, ligation, HiFi/Gibson assembly,
+  master mixes, qPCR efficiency, ΔΔCt, transformation efficiency), protein
+  (A₂₈₀, MW/ε/pI from the sequence, BCA or Bradford standard curves,
+  SDS-PAGE recipes, µg per lane), cells (counts, seeding, doubling time,
+  transfection, MOI, lentivirus titer, freezing down, drug and vehicle),
+  bacteria (OD₆₀₀, time to an OD, antibiotics), rpm ↔ × g, doses by body
+  weight, agarose gels, radioactive decay, statistics, group sizes and a
+  unit converter. Reference tables for culture vessels, buffers,
+  antibiotics, gels, isotopes and molecular weights (the lab's own first).
+
+<p align="center">
+  <img src="docs/screenshots/utilities.webp" alt="Utilities: the list of calculators and a PCR master mix worked out for 12 reactions" width="100%">
+</p>
 
 <p align="center">
   <img src="docs/screenshots/calendar.webp" alt="A month calendar with experiments, meetings, weaning and genotyping dates" width="100%">
@@ -415,6 +430,9 @@ stock**, and statuses and categories can be renamed without losing items.
       <b>Classic</b> cards, <b>Tracks</b> (the coming weeks on one day
       ruler, a track per kind of work) and <b>Freezer</b> (your racks from
       above, with a pull list in the order you'd walk the room).
+      <b>Customize</b> chooses which cards Classic shows, in what order
+      and how wide, with your to-dos, bookings, recent pages and
+      calculators to add.
     </td>
     <td width="50%" valign="top">
       <h4>📊 Spreadsheet-style editing</h4>
@@ -432,7 +450,8 @@ stock**, and statuses and categories can be renamed without losing items.
       or upload a CSV from the template (Excel's dates are read as
       written). You check an editable preview — IDs included — before
       anything is saved. <b>Fill down</b> (<kbd>Ctrl</kbd> + <kbd>D</kbd>)
-      works as in a spreadsheet.
+      works as in a spreadsheet, and a column of readings pasted into a
+      sheet cell fills the cells below.
     </td>
     <td valign="top">
       <h4>↩️ Batch actions with undo</h4>
@@ -471,7 +490,7 @@ stock**, and statuses and categories can be renamed without losing items.
   <tr>
     <td valign="top">
       <h4>💬 Feedback, kept in the lab</h4>
-      <b>Feedback</b>, under Help: say what went wrong, an idea or a
+      <b>Send feedback</b>, under Help in the sidebar: say what went wrong, an idea or a
       question, from the page you're on. The lab's admins read it and mark
       it done; <b>Open as a GitHub issue</b> sends it on to BioManager's
       makers, only if you choose.
@@ -785,7 +804,7 @@ notebook** puts all of it in a notebook page.
 <details>
 <summary><b>↩️ When you make a mistake</b></summary>
 
-Open **Batches** in the sidebar and undo the bulk action. For a single
+Open **More → Batch history** at the foot of the sidebar and undo the bulk action. For a single
 edit, the change history shows what the value used to be.
 </details>
 
@@ -856,7 +875,7 @@ track.
   account that stops working when the pass ends, and nothing they can do
   to Lab setup or other people's records. From the internet, someone not
   signed in only ever sees the page for entering a code.
-- **When someone leaves,** the admin's **Overview** shows every cage by
+- **When someone leaves,** the admin's **Colony overview** (under **More**) shows every cage by
   owner, idle cages and living mice without a cage, and **Racks & boxes**
   hands their racks to someone else.
 - **An API for scripts and instruments.** **Settings → API tokens**

@@ -86,6 +86,56 @@ start page (Settings; Home if none), tabs survive navigation (they live in
 click, and switched with `Alt+1…9` / `Alt+←` / `Alt+→` (`Alt+W` closes,
 `Cmd/Ctrl+B` collapses the rail, `Cmd/Ctrl+K` opens search).
 
+The rail's lists are in `app/app.py`: `NAV_SECTIONS` (Workspace, with
+Utilities, and the databases), `NAV_FOOTER` (Settings) and `NAV_MORE`, the
+**More** menu at the rail's foot (Batch history, then the admin pages:
+Lab setup, Colony overview, Audit log, Manage users, Guests, Racks &
+boxes); **Help** holds the guide and Send feedback. `static/shell.js`
+(`setupRailMenus`) moves each `.rail-pop` menu to `<body>` when it opens:
+the rail's `backdrop-filter` makes it the containing block of anything
+fixed inside it. Toasts (`BiomanagerShell.toast`) are a manual popover,
+in the top layer, so they show in front of an open `<dialog>`; a refused
+form's message is copied into the dialog `static/form-memory.js` reopens.
+
+### Home
+
+Classic's cards are `home_layouts.CARDS` (key, label, icon, wide at first,
+the feature or flag it needs). A person's choice is the `home_cards:<user>`
+setting — `order`, `hidden`, `wide`, and `seen` (the keys that existed when
+they saved, so a card added in a later release joins at its place, shown
+unless it is one of `OFF_AT_FIRST`). `get_cards`, `set_cards` and
+`reset_cards` read and write it; `offered_cards` is what this lab can
+show; `POST /home/cards` saves the Customize dialog
+(`templates/home/_customize.html`). `home.html` captures each card with
+`{% set %}` into a dict and draws them in the person's order;
+`_home_extra_cards` loads the four off at first (to-dos, bookings, recent
+pages, calculators).
+
+### Utilities
+
+`static/bench-calcs.js` is the arithmetic and its data (molecular weights,
+buffer pKa, vessels, antibiotics, isotopes): each calculator in `CALCS` is
+a description (`id`, `group`, `title`, `inputs` with units) and a
+`compute(v)` that returns `{lines, table, warnings, notes, solved}`;
+`run(id, raw)` reads the typed numbers (decimal commas too) and converts
+each to its base unit first. It loads in Node too, and
+`tests/js/bench-calcs.check.mjs` checks known answers.
+`static/utilities-page.js` draws the list, the open calculator (from the
+address hash) and the reference tables; the lab's chemicals come from the
+page (`/utilities` passes them) ahead of the built-in list.
+
+### Small shared rules
+
+- Box, rack and freezer lists sort with `positions.place_order()`: numbers
+  as numbers and a leading minus (any dash) as a sign, so −80, −20, 4 °C.
+- `positions.parse()` reads a plain number on a lettered box as its nth
+  place along the rows (imports that mix "A1" and "3").
+- Global search (`global_search`) orders plasmids, inventory records and
+  pages by the name: equal, then starting with the words, then containing
+  them, then the rest.
+- A sheet cell takes a pasted block (`static/sheet.js`, `pasteBlock`): rows
+  and columns as shown, each cell put in and saved as if typed.
+
 ### Styling
 
 `frontend/src/tailwind.css` is the single source of truth: design tokens in
@@ -379,7 +429,16 @@ the rules; the editor is `frontend/src/` and the page around it is
 | `notebook_meeting_series` | a meeting's rotation (`members` in order, `next_index`), day and time |
 | `notebook_templates` | a person's templates: title, Markdown, the page `kind` a page made from it gets, and `lab` (everyone may start from it; revision 0009) |
 
-**Templates.** `Save as template` posts `from_page_id`, and with
+**Durations and clocks.** `frontend/src/durations.js` finds what gets a
+step timer and leaves time points out (a list of times, "at 24 h", "48 h
+samples"); `tests/js/durations.check.mjs` holds the cases. The page shows
+times in the lab's zone (`lab.clock_zone()`, `labZone` in `#nb-data`),
+the clock the app writes "Started:" lines on. A new page goes in the topic
+open (`open_tab_id`) unless it is an experiment or a meeting.
+
+**Templates.** A name the person already uses answers 409 `exists`, and
+the page asks before sending `replace=1`, which saves over it.
+`Save as template` posts `from_page_id`, and with
 `structure_only=1` the body goes through `lab_notebook.structure_only()`:
 headings, text and table headers stay; ticks are cleared, a table's body
 rows keep only their first cell, uploaded images and files go, and data
@@ -394,7 +453,9 @@ emptied).
 `#nb-mention-types` (`app._mention_modules()`: inventories the person can
 see, except orders, which is `@order`). `/notebook/search|lookup|open|
 backlinks/<type>/…` serve each kind; an inventory record's popover is
-`{fields: [[label, value]…]}`. `static/used-in.js` fills *Used in notebook
+`{name, fields: [[label, value]…]}`; the chip shows `name` after the
+number (`data-entity-name`, fetched once per record and cached).
+`static/used-in.js` fills *Used in notebook
 pages* on an inventory record's dialog (from the payload's `_number`) and
 a plasmid's Storage tab.
 

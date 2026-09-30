@@ -117,6 +117,8 @@
           earlier item fills in its vendor, catalogue number and price.</td></tr>
         <tr><th>Fill down, copy a row</th><td>In the mice's <b>Add many</b> preview, click a cell and <b>Fill down</b> (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>D</kbd>)
           copies it to the rows below. <b>Duplicate</b> copies any record.</td></tr>
+        <tr><th>Paste a column</th><td>Copy a column of readings (a Nanodrop export, say) or a block of cells, click the first cell in the
+          sheet and paste: the values go down the rows as shown, and across if you copied several columns, each saved as if typed.</td></tr>
         <tr><th>Formulas for age, wean and flip dates</th><td>Worked out for you: ages, P21 weaning, genotyping dates, flip schedules that follow
           the incubator's temperature.</td></tr>
         <tr><th>Conditional formatting</th><td>Status pills, a green dot for what is alive or in use, expired stock in red — and the
@@ -124,7 +126,7 @@
         <tr><th>VLOOKUP between sheets</th><td>Real links: a mouse is in a cage on a rack; a sample came from that mouse; an order became
           that reagent. Click through.</td></tr>
         <tr><th>Version history, "who changed this?"</th><td>The <b>Audit log</b> records every edit, who made it and what it was before;
-          <b>Batches</b> undoes any bulk change.</td></tr>
+          <b>Batch history</b> undoes any bulk change.</td></tr>
         <tr><th>Mail-merge for cage labels</th><td><b>Cage cards</b> sized for card stock, each with a QR code that opens the cage on a phone.</td></tr>
         <tr><th>Your old workbook</th><td><b>Import from Excel</b> on every database reads it as it is, whatever its columns are called.</td></tr>
         <tr><th>Save As CSV</th><td><b>Export</b> on every sheet (CSV; for mice also Excel and PDF). Your data is never locked in.</td></tr>
@@ -231,6 +233,11 @@
         <dd>Your racks seen from above, lit where something is due, with a <b>Pull list</b> of the next three days' jobs in walking order,
           to take into the room. A cage's cap colour shows its owner.</dd>
       </dl>
+      <p><b>Customize</b>, beside the layout chips, arranges Classic your way: tick the cards you want, drag them (or use the arrows)
+        into your order, and make any of them <i>wide</i>. Four cards start switched off and are there to add: <i>Your to-dos</i> (due
+        this week or undated), <i>Bookings</i> (instruments booked in the next week), <i>Recent pages</i> of your notebook, and
+        <i>Calculators</i> (links to the ones you use most). <b>Back to the usual</b> puts everything back. Like the layout, it is yours
+        alone.</p>
       <p>On every layout:</p>
       <dl class="gdl">
         <dt>For you</dt>
@@ -309,7 +316,8 @@
         <li><b>The search box</b> above a sheet filters it as you type: an ID, a genotype, a cage, a note.</li>
         <li><b>Chips</b> beside it narrow it: <i>All</i>, <i>Alive</i>, <i>Mine</i>, <i>Lab common</i>, a status, <i>Expiring soon</i>.</li>
         <li><b>Search everything</b> with <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd>, from anywhere: mice, cages, litters, experiments,
-          strains, vials, tanks, lines, clutches, plasmids, orders, samples, reagents, antibodies, viruses and notebook pages. Arrows to move,
+          strains, vials, tanks, lines, clutches, plasmids, orders, samples, reagents, antibodies, viruses and notebook pages. Names that
+          are, or start with, what you typed come first ("S20" finds the S20 tubes before a note about an S200 column). Arrows to move,
           Enter to open.</li>
         <li><b>Tabs.</b> Following a link moves the tab you're in; <b>+</b> opens a new tab on your start page
           (<b>Settings → Default landing page</b>; Home if none). Drag to reorder, <kbd>Alt</kbd> (<kbd>⌥ Option</kbd> on a Mac) +
@@ -320,7 +328,7 @@
 
     <section id="history">
       <h2>Undo and history</h2>
-      <p><b>Batches</b> in the sidebar opens <b>Batch history</b>: every bulk change — an Add many, a move, a status change on fifty rows, an import — with
+      <p><b>More → Batch history</b> at the foot of the sidebar opens it: every bulk change — an Add many, a move, a status change on fifty rows, an import — with
         <b>Undo</b>. If someone has edited those records since, BioManager says so and offers <b>Undo anyway</b> rather than silently
         overwriting their work. Everyone sees their own batches; admins see the lab's.</p>
       <p>The <b>Audit log</b> (admins) records every create, edit and delete: when, who, which record, and exactly what changed —
@@ -600,7 +608,8 @@
       <h2>Calendar</h2>
       <ul>
         <li><b>Month, Week, Day</b> and <b>List</b> views. Filled in for you: weanings, genotyping and sac reminders, fly and worm flips and
-          egg collections, organism schedules, zebrafish tanks and reagent expiry. Clicking one opens the record it came from.</li>
+          egg collections, organism schedules, zebrafish tanks and reagent expiry. Clicking one (once, in every view) opens the record it
+          came from.</li>
         <li>The sidebar has a small month to jump around, a <b>Show</b> list with a colour and a count for each kind (events, to-dos,
           the colony, stocks and organisms, supplies, protocols, equipment, time away, connected calendars), the instruments and the
           protocols under way.</li>
@@ -612,7 +621,8 @@
         <li><b>Protocols</b>: write the steps once in days from day 0 (tamoxifen days 0–4, implant day 14, perfuse day 42), then start
           it for an experiment or a cohort. Every step lands on its day; move day 0 and they all move. A run keeps the steps it started
           with if the protocol is edited later. (These put the days on the calendar; the notebook's protocols hold the bench steps.)</li>
-        <li><b>Equipment</b>: add the lab's instruments under <b>Manage</b>. A booking that overlaps another is refused, saying who has
+        <li><b>Equipment</b>: add the lab's instruments under <b>Manage</b>, and <b>Edit</b> one there to rename it, say where it is or
+          change its colour; its bookings follow. A booking that overlaps another is refused, saying who has
           it and when. A new booking can repeat every day, weekday or week until a date — each repeat is a booking of its own, and if
           one clashes none is made. <b>Duplicate</b>, on an open booking, books the same instrument and times on another day.</li>
         <li><b>Time away</b>: leave or a conference. <b>Away soon</b> lists what of theirs falls due meanwhile — animals, vials,
@@ -628,15 +638,17 @@
       <h2>Notebook and utilities</h2>
       <h3>Pages</h3>
       <ul>
-        <li>Pages in <b>Topics</b>, written like a document and kept as Markdown. Type <b>/</b> at the start of a line for a menu of
+        <li>Pages in <b>Topics</b>, written like a document and kept as Markdown. A new page goes in the topic you have open
+          (experiments and meetings go to their own topics). Type <b>/</b> at the start of a line for a menu of
           blocks: tables, plots, protocols, calculators and the rest below. <b>Templates</b>: ⋯ → <b>Save as template</b>, and start new
-          pages from it. It keeps the page's type (an Experiment template makes Experiments); <b>Structure only</b> keeps the headings,
+          pages from it (a name you already use asks before replacing that template). It keeps the page's type (an Experiment template makes Experiments); <b>Structure only</b> keeps the headings,
           steps and table headers and leaves out the results, ticks, readings, pictures and what was written under Results,
           Observations or Conclusion; <b>Share it with the lab</b> offers it to
           everyone.</li>
         <li>Type <code>@</code> to link a mouse, plasmid, order or any inventory record — an antibody, a sample, a primer
           (<code>@antibodies 5</code>), found by its name, catalogue number or lot, or a colleague (<code>@jordan</code>, for action items); the page and the record then point at each other,
-          and the record lists the page under <b>Used in notebook pages</b>. Hover over one for
+          and the record lists the page under <b>Used in notebook pages</b>. The chip shows the record's name after its number
+          (<i>@antibodies 5 · anti-p53</i>). Hover over one for
           its details; clicking it opens the record, and <b>↗</b> (or <kbd>⌘</kbd>/<kbd>Ctrl</kbd>-click) opens it in a new BioManager tab.</li>
         <li><b>Daily log</b> (<i>Today</i>) and <b>Meetings</b>: a presenter rotation, shared meeting notes, and action items
           (<code>- [ ] @name …, due …</code>) sent to that person's to-dos — from any page, with ⋯ → <b>Send @name tasks as to-dos</b>.</li>
@@ -662,7 +674,8 @@
         <li><b>Buffer recipes</b> scale with the volume; common buffers are built in and the lab's own are shared. <b>Calculators</b>
           for dilution, molarity, master mix, serial dilution, ligation, cells, gels, DNA/RNA and <b>Protein (A₂₈₀)</b>: paste the
           sequence (or give ε and MW) and the reading, and it gives µM and mg/mL. Durations in a step get a
-          <b>⏱</b> timer.</li>
+          <b>⏱</b> timer; time points (<i>6, 24, 48 h</i>, <i>at 24 h</i>, <i>the 48 h samples</i>) don't. Times on a page (<i>started
+          16:00</i>) are on the lab's clock, whatever your computer's time zone.</li>
       </ul>
       <h3 id="signing">Signing a page</h3>
       <p>When a page should be the record of your work, <b>Sign</b> it — your choice, page by page; nothing asks you to. You confirm who
@@ -674,14 +687,35 @@
       <p>Share a page to read or edit; editors type in it at the same time. Comments on a passage, with <code>@name</code> telling that
         person (switch these notices off under <b>Settings → Notifications</b>). <b>Version history</b> keeps every editing session to
         compare or restore. <b>Tags and search</b> work across every page you can open.</p>
-      <h3>Utilities</h3>
-      <p><b>Utilities</b> in the sidebar: mass from concentration (molecular weight, target mM, final mL) and a chemical reference list.</p>
+      <h3 id="utilities">Utilities</h3>
+      <p><b>Utilities</b>, under Notebook in the sidebar, holds 41 bench calculators. Find one in the list or type in <b>Find a
+        calculator</b>; the answer changes as you type, each remembers what you last typed in it on this computer, and <b>Reset</b> goes
+        back to its example. Most solve for whichever field you leave empty (it is marked), and units are yours to choose.</p>
+      <dl class="gdl">
+        <dt>Solutions &amp; buffers</dt><dd>Molarity; dilution (C₁V₁ = C₂V₂); serial dilutions; percent solutions; ×-fold stocks; mass ↔
+          molar concentration; buffer pH (Henderson–Hasselbalch, with the temperature); osmolarity; another form of a chemical (a hydrate
+          or salt for the one in the recipe). Type a chemical's name to fill its molecular weight, from the lab's own list first.</dd>
+        <dt>DNA &amp; RNA</dt><dd>Concentration from A₂₆₀; mass ↔ moles ↔ copies; oligo Tm, GC, MW and resuspension volume; ligation
+          insert:vector; HiFi/Gibson assembly; PCR and qPCR master mixes; qPCR efficiency from a standard curve; ΔΔCt fold change;
+          transformation efficiency.</dd>
+        <dt>Protein</dt><dd>Concentration from A₂₈₀; MW, ε and pI from the sequence; a standard curve (BCA, Bradford, ELISA) read off for
+          your samples; SDS-PAGE gel recipes; µg per lane.</dd>
+        <dt>Cells</dt><dd>Haemocytometer counts; seeding plates (by vessel); doubling time; scaling a transfection; virus for an MOI;
+          lentivirus titer from % positive cells; freezing down; drug and vehicle for treatments.</dd>
+        <dt>Bacteria &amp; yeast</dt><dd>OD₆₀₀ to cells and dilutions; time to reach an OD; antibiotic for plates and media.</dd>
+        <dt>Centrifuge, animals &amp; gels</dt><dd>rpm ↔ × g; dose by body weight; agarose gels; radioactive decay.</dd>
+        <dt>Numbers &amp; units</dt><dd>Mean, SD, SEM and CV; animals or samples per group; a unit converter.</dd>
+      </dl>
+      <p><b>Reference tables</b>, below the calculator: culture vessels, buffers, antibiotics, agarose gels, isotopes and molecular
+        weights. A link to a calculator (<code>…/utilities#dilution</code>) opens it.</p>
+      <figure class="gshot"><a href="assets/screenshots/utilities.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/utilities.webp" alt="Utilities: the list of calculators and a PCR master mix worked out for 12 reactions" loading="lazy" width="2000" height="1250"></a><figcaption>Utilities</figcaption></figure>
     </section>
 
     <!-- ======================================================================= PART IV -->
     <div class="part"><p class="part-label">Part four</p><h2>Working as a lab</h2>
       <p>On a <a href="server.html">lab server</a>, everyone works in the same live database. The admin pages — <b>Manage users</b>,
-        <b>Guests</b> and <b>Racks &amp; boxes</b> — are in the account menu: click your name, top right.</p></div>
+        <b>Guests</b> and <b>Racks &amp; boxes</b> — are under <b>More</b> at the foot of the sidebar, with Lab setup, the Colony overview
+        and the Audit log, and in the account menu (click your name, top right).</p></div>
 
     <section id="lab">
       <h2>Who can do what</h2>
@@ -708,7 +742,7 @@
           methods</b> (<a href="server.html#sign-in">setting it up</a>).</dd>
         <dt>Admins</dt><dd><b>Manage users</b> promotes and demotes admins, disables accounts and resets passwords; <b>Lab setup</b> can also
           make someone admin. Keep at least two.</dd>
-        <dt>Leaving</dt><dd><b>Overview</b> in the sidebar (admins) lists every cage by who manages it, idle cages and living mice without a cage; hand racks over in
+        <dt>Leaving</dt><dd><b>More → Colony overview</b> in the sidebar (admins) lists every cage by who manages it, idle cages and living mice without a cage; hand racks over in
           <b>Racks &amp; boxes</b>, then disable the account. Their records and history stay.</dd>
         <dt id="guests">Guests</dt><dd>For someone outside the lab — a collaborator, a visitor — for a day to a month: <b>Guests</b> in the
           account menu (admins), who it's for and how long, <b>Make a code</b>. They open the link, enter the code, and work as a member with
@@ -719,7 +753,7 @@
 
     <section id="setup">
       <h2>Lab setup</h2>
-      <p><b>Setup</b> in the sidebar (admins) reopens the survey at any time: switch databases on or off, rename the lab, choose the
+      <p><b>More → Lab setup</b> in the sidebar (admins) reopens the survey at any time: switch databases on or off, rename the lab, choose the
         calendar and notebook, and set what members may do — create their own databases, or add ones for the whole lab. Under
         <b>Who looks after the lab</b>, make someone admin.</p>
       <p>Switching a database off hides it and closes it to members, even by a saved link; its data is kept, and admins can still open
@@ -876,22 +910,22 @@
           and, if your lab uses its own certificate, that it's installed on the phone.</dd>
         <dt>I can't edit a record</dt><dd>It belongs to someone else and isn't shared: BioManager says whose it is. Ask them, or an admin.</dd>
         <dt>A cell turned red</dt><dd>That change wasn't saved; the message at the bottom says why (a required field, a date that isn't one).</dd>
-        <dt>I made a mistake with a bulk change</dt><dd><b>Batches</b> in the sidebar → <b>Undo</b>.</dd>
+        <dt>I made a mistake with a bulk change</dt><dd><b>More → Batch history</b> in the sidebar → <b>Undo</b>.</dd>
         <dt>I forgot my password</dt><dd>Ask an admin: <b>Manage users</b> resets it.</dd>
         <dt>Rows were skipped on import</dt><dd>The preview lists each one by its row number in Excel and says why. Fix those rows
           and import just them: importing the whole sheet again would add the other rows a second time.</dd>
         <dt>A colleague's database isn't in my sidebar</dt><dd>It may be their personal one (<i>Just you</i> on its tile), which only
           they and admins see, or an admin may have switched it off.</dd>
-        <dt>A database disappeared from the sidebar</dt><dd>An admin may have switched it off in <b>Setup</b>; its data is kept, and it
+        <dt>A database disappeared from the sidebar</dt><dd>An admin may have switched it off in <b>Lab setup</b>; its data is kept, and it
           comes back when it is switched on.</dd>
-        <dt>Something else</dt><dd><b>Feedback</b> in the sidebar (see below), or <a href="https://github.com/gaspolymerase/biomanager/issues">open an issue</a> —
+        <dt>Something else</dt><dd><b>Help → Send feedback</b> in the sidebar (see below), or <a href="https://github.com/gaspolymerase/biomanager/issues">open an issue</a> —
           say which system you use and what you expected to happen.</dd>
       </dl>
     </section>
 
     <section id="feedback">
       <h2>Feedback</h2>
-      <p><b>Feedback</b>, under Help in the sidebar, is for something that went wrong, an idea or a question, from the page you're on.
+      <p><b>Send feedback</b>, under Help in the sidebar, is for something that went wrong, an idea or a question, from the page you're on.
         It is kept in your lab: its admins are told, read it on the same page and mark it <b>Done</b>. To tell BioManager's makers too,
         <b>Open as a GitHub issue</b>: a new issue opens with your text, the page, the version and the browser filled in (not your server's
         address, nor your name), for you to check and submit. You need a GitHub account.</p>
