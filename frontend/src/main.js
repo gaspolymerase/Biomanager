@@ -30,7 +30,7 @@ import { LabBlock } from './blocks/index.js';
 import { StepTimers, timers } from './timers.js';
 import { createToolbar } from './toolbar.js';
 import { attachTableAutofill } from './table-autofill.js';
-import { HttpSyncProvider } from './collab.js';
+import { HttpSyncProvider, stateOf } from './collab.js';
 import { appendLogLine, stampTime, taskItems } from './docops.js';
 import { openRunMode } from './runmode.js';
 import { uploadFile, uploadImage } from './commands.js';
@@ -160,7 +160,7 @@ async function mountOnce(options) {
     const markdown = editor.storage.markdown.getMarkdown();
     if (markdown === lastSaved) return undefined;
     lastSaved = markdown;
-    return options.onSave && options.onSave(markdown, { gen: provider.gen });
+    return options.onSave && options.onSave(markdown, { gen: provider.gen, state: stateOf(provider.doc) });
   };
   const saveSoon = debounce(doSave, 900);
   const saveLater = debounce(doSave, 5000);

@@ -113,7 +113,41 @@ class SharingTests(Notebook):
             self.assertEqual(count(table, "page_id_fk=?", page), 0, table)
 
 
+def state_vector(clocks: dict) -> str:
+    """A Yjs state vector for {client: clock}, as the editor sends it."""
+    def varuint(n):
+        out = bytearray()
+        while True:
+            byte, n = n & 0x7F, n >> 7
+            out.append(byte | (0x80 if n else 0))
+            if not n:
+                return bytes(out)
+    return b64(varuint(len(clocks)) + b"".join(varuint(c) + varuint(k) for c, k in clocks.items()))
+
+
 class SyncTests(Notebook):
+    def test_a_tab_that_fell_behind_does_not_save_an_older_text(self):
+        page = self.new_page(self.m, title=uniq("race"))
+        gen = self.m.get(f"/notebook/api/pages/{page}/sync?since=0&gen=-1&client=a").get_json()["gen"]
+        live = {"X-Collab-Gen": str(gen), "X-Autosave": "1"}
+        # The busy tab saves the newest text: its own edits (client 1) and another's (client 2).
+        self.save(self.m, page, headers=live, body="- [ ] one\n- [ ] two\n- [ ] three",
+                  collab_state=state_vector({1: 30, 2: 4}))
+        # A background tab that has seen less saves late: kept out.
+        r = self.save(self.m, page, headers=live, body="- [ ] one", collab_state=state_vector({1: 12, 2: 4}))
+        self.assertTrue(r.get_json()["behind"])
+        self.assertIn("three", one("select body from notebook_pages where id=?", page))
+        # One that holds something the saved text lacks is saved.
+        r = self.save(self.m, page, headers=live, body="- [ ] one\n- [ ] two\n- [ ] three\n- [ ] four",
+                      collab_state=state_vector({1: 30, 2: 4, 7: 2}))
+        self.assertNotIn("behind", r.get_json())
+        self.assertIn("four", one("select body from notebook_pages where id=?", page))
+        # An unreadable state is ignored rather than refused.
+        from app import lab_notebook
+        self.assertFalse(lab_notebook.behind(state_vector({1: 5}), "not base64!"))
+        self.assertTrue(lab_notebook.behind(state_vector({1: 5, 2: 1}), state_vector({1: 5})))
+        self.assertFalse(lab_notebook.behind(state_vector({1: 5}), state_vector({1: 5})))
+
     def test_editors_exchange_updates_and_the_first_state_is_seeded_once(self):
         editor = make_user()
         page = self.new_page(self.m, title=uniq("live"))
@@ -316,6 +350,11 @@ class PageKindTests(Notebook):
         with mock.patch.object(lab, "clock_zone", return_value="America/New_York"):
             html = self.m.get(f"/notebook?page={page}").get_data(as_text=True)
         self.assertIn('"labZone": "America/New_York"', html)
+
+    def test_a_new_page_s_title_box_starts_empty(self):
+        page = self.new_page(self.m, starter="blank")
+        html = self.m.get(f"/notebook?page={page}").get_data(as_text=True)
+        self.assertIn('id="page-title" class="page-title" value="" placeholder="Untitled page"', html)
 
     def test_the_notebook_page_renders_every_kind(self):
         for starter in ("blank", "experiment", "protocol", "meeting", "seminar", "daily", "cloning", "western"):

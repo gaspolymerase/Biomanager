@@ -317,7 +317,54 @@ def reset_collab(session, page_id: int) -> int:
     info = info_for(session, page_id, create=True)
     session.execute(delete(NotebookSyncUpdate).where(NotebookSyncUpdate.page_id_fk == page_id))
     info.collab_generation = (info.collab_generation or 0) + 1
+    info.body_state = ""
     return info.collab_generation
+
+
+def _state_vector(raw: str) -> dict[int, int] | None:
+    """A Yjs state vector (base64): {client id: clock}; None if unreadable."""
+    try:
+        data = base64.b64decode(raw or "", validate=True)
+    except (ValueError, TypeError):
+        return None
+    pos = 0
+
+    def varuint() -> int:
+        nonlocal pos
+        value, shift = 0, 0
+        while True:
+            if pos >= len(data) or shift > 63:
+                raise ValueError("truncated")
+            byte = data[pos]
+            pos += 1
+            value |= (byte & 0x7F) << shift
+            if byte < 0x80:
+                return value
+            shift += 7
+
+    try:
+        count = varuint()
+        if count > 100_000:
+            return None
+        vector = {}
+        for _ in range(count):
+            client = varuint()
+            vector[client] = varuint()
+        return vector if pos == len(data) else None
+    except ValueError:
+        return None
+
+
+def behind(saved_state: str, new_state: str) -> bool:
+    """Whether a save from an editor at `new_state` holds less than the body
+    already saved at `saved_state`: every edit it has, the saved one has, and
+    more. Saves that each hold something the other lacks both go through;
+    the editors meet, and the next save holds everything."""
+    saved, new = _state_vector(saved_state), _state_vector(new_state)
+    if not saved or new is None:
+        return False
+    return all(saved.get(c, 0) >= clock for c, clock in new.items()) and any(
+        clock > new.get(c, 0) for c, clock in saved.items())
 
 
 def collab_generation(session, page_id: int) -> int:

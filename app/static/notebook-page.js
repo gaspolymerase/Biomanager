@@ -305,10 +305,10 @@
             .then(function () { toast('Shared. They have been told.'); refresh(); })
             .catch(function (err) { toast(esc(err.message), true); });
         });
-        box.addEventListener('change', function (e) {
+        box.onchange = function (e) {      // once per box, however often the panel redraws
           var u = e.target.dataset && e.target.dataset.shareRole;
           if (u) api('/notebook/api/pages/' + page.id + '/shares', { body: { username: u, role: e.target.value } });
-        });
+        };
         box.onclick = function (e) {
           var b = e.target.closest('[data-share-remove]');
           if (b) api('/notebook/api/pages/' + page.id + '/shares/remove', { body: { username: b.dataset.shareRemove } }).then(refresh);
@@ -909,7 +909,9 @@
 
   function saveBody(markdown, meta) {
     var headers = meta && meta.gen !== undefined ? { 'X-Collab-Gen': String(meta.gen) } : {};
-    return post({ body: markdown }, headers).then(function (r) {
+    var fields = { body: markdown };
+    if (meta && meta.state) fields.collab_state = meta.state;     // which edits this text holds
+    return post(fields, headers).then(function (r) {
       if (r.status === 409) { restartEditor(); return; }
       return r.json().then(function (d) {
         if (d.ok) setSaved('Saved ' + new Date().toLocaleTimeString([], inLab({ hour: '2-digit', minute: '2-digit' })));
@@ -943,13 +945,16 @@
       if (e.key === 'Enter') { e.preventDefault(); saveTitleNow(); if (nb) nb.editor.commands.focus('start'); }
     });
   }
-  // A new page: the title is where you start, and typing replaces
-  // "Untitled page" rather than adding to it.
-  if (title && canEdit && (!title.value || title.value === 'Untitled page')) {
-    title.addEventListener('focus', function () { if (title.value === 'Untitled page') title.select(); });
-    setTimeout(function () {
-      if (!document.querySelector('dialog[open]') && document.activeElement === document.body) title.focus();
-    }, 150);
+  // A new page: the title is where you start. "Untitled page" is only the
+  // box's placeholder (the page is saved under it), so typing starts clean.
+  if (title && canEdit && !title.value) {
+    var focusTitle = function () {
+      var here = document.activeElement;
+      var elsewhere = here && here !== document.body && here !== title && !here.closest('.ProseMirror');
+      if (!document.querySelector('dialog[open]') && !elsewhere) title.focus();
+    };
+    setTimeout(focusTitle, 0);
+    setTimeout(focusTitle, 400);     // after the editor has mounted
   }
   var dateInput = $('#page-entry-date');
   if (dateInput && canEdit) dateInput.addEventListener('change', function () { saveField('entry_date', dateInput.value); });
@@ -1188,7 +1193,8 @@
       onChange: debounce(updateRun, 400),
       onStatus: function (s) { if (s === 'offline') setSaved('Offline — changes will be sent when back', true); },
       onMeta: function (m) {
-        if (m.title && title && titleUnsaved === null && document.activeElement !== title && title.value !== m.title) title.value = m.title;
+        var shown = m.title === 'Untitled page' ? '' : m.title;
+        if (m.title && title && titleUnsaved === null && document.activeElement !== title && title.value !== shown) title.value = shown;
       },
       onReset: restartEditor,
       onCommentOpen: function (id) { openPanel('comments', { focus: id }); },

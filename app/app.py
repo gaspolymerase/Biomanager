@@ -6012,11 +6012,21 @@ def notebook_update_page(page_id: int):
             generation = lab_notebook.collab_generation(db_session, page.id)
             if collab is not None and collab != str(generation):
                 return jsonify({"ok": False, "reset": True, "gen": generation}), 409
+            # From the live editor, with the edits it holds: a tab that has
+            # fallen behind (a background tab saving late) does not put an
+            # older text over a newer one; its own edits are already in it.
+            state = request.form.get("collab_state", "")
+            info = lab_notebook.info_for(db_session, page.id, create=True) if collab is not None else None
+            if info is not None and state and lab_notebook.behind(info.body_state, state):
+                db_session.commit()
+                return jsonify({"ok": True, "behind": True, "updated_at": page.updated_at.isoformat()})
             if body != (page.body or ""):
                 page.body = body
                 changed = True
                 if collab is None:
                     lab_notebook.reset_collab(db_session, page.id)
+            if info is not None and state:
+                info.body_state = state[:200_000]
         if "entry_date" in request.form:
             raw_date = (request.form.get("entry_date") or "").strip()
             page.entry_date = parse_date(raw_date) if raw_date else None
@@ -6154,19 +6164,30 @@ def _mention_modules(db_session, with_old: bool = False) -> dict[str, InventoryM
     return modules
 
 
+def _record_number(query: str) -> int | None:
+    """What typed after @ is a record's number: digits, and not "0012", which
+    is a lot or catalogue number (record numbers have no leading zero)."""
+    if query.isdigit() and len(query) <= 12 and not (len(query) > 1 and query.startswith("0")):
+        return int(query)
+    return None
+
+
 def _mention_items(db_session, module: InventoryModule, query: str, limit: int) -> list[InventoryItem]:
     """Records whose name, catalogue number, lot or vendor holds what was
-    typed; digits also find the record of that number (first)."""
+    typed; a record number finds that record too. A lot or catalogue number
+    that is what was typed comes first, then the record of that number."""
     stmt = select(InventoryItem).where(InventoryItem.module_id_fk == module.id)
     if query:
         like = like_pattern(query)
         found = (InventoryItem.name.ilike(like, escape="\\") | InventoryItem.catalog_number.ilike(like, escape="\\")
                  | InventoryItem.lot.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\"))
-        if query.isdigit():
-            found = found | (InventoryItem.number == int(query))
-            stmt = stmt.where(found).order_by((InventoryItem.number != int(query)))
-        else:
-            stmt = stmt.where(found)
+        exact = (func.lower(InventoryItem.lot) == query.lower()) | (func.lower(InventoryItem.catalog_number) == query.lower())
+        number = _record_number(query)
+        if number is not None:
+            found = found | (InventoryItem.number == number)
+        stmt = stmt.where(found).order_by(case((exact, 0), else_=1))
+        if number is not None:
+            stmt = stmt.order_by(InventoryItem.number != number)
     return list(db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)))
 
 
@@ -6199,20 +6220,27 @@ def notebook_lookup_item(key: str, number: int):
                         "name": item.name or "", "fields": [[k, v] for k, v in fields if v]})
 
 
-def _order_items_query(db_session, query: str, limit: int):
+def _order_items_query(db_session, query: str, limit: int, by_number: bool = False):
     """Orders for @order mentions: items of the first orders inventory,
-    where an order's number is what @order <n> refers to."""
+    where an order's number is what @order <n> refers to. `by_number`: that
+    order only; otherwise what was typed is looked for in the item, vendor
+    and catalogue number too (@order 2947 finds catalogue ab2947)."""
     from . import inventory_service as inventories
     module = inventories.first_of_kind(db_session, "orders")
     if module is None:
         return []
     stmt = select(InventoryItem).where(InventoryItem.module_id_fk == module.id)
-    if query.isdigit():
+    if by_number:
         stmt = stmt.where(InventoryItem.number == int(query))
     elif query:
         like = like_pattern(query)
-        stmt = stmt.where(InventoryItem.name.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\")
-                          | InventoryItem.catalog_number.ilike(like, escape="\\"))
+        found = (InventoryItem.name.ilike(like, escape="\\") | InventoryItem.vendor.ilike(like, escape="\\")
+                 | InventoryItem.catalog_number.ilike(like, escape="\\"))
+        number = _record_number(query)
+        if number is not None:
+            stmt = stmt.where(found | (InventoryItem.number == number)).order_by(InventoryItem.number != number)
+        else:
+            stmt = stmt.where(found)
     return db_session.scalars(stmt.order_by(InventoryItem.number.desc()).limit(limit)).all()
 
 
@@ -6220,7 +6248,7 @@ def _order_items_query(db_session, query: str, limit: int):
 @login_required
 def notebook_lookup_order(order_id: int):
     with SessionLocal() as db_session:
-        found = _order_items_query(db_session, str(order_id), 1)
+        found = _order_items_query(db_session, str(order_id), 1, by_number=True)
         if not found:
             return jsonify({"ok": False}), 404
         order = found[0]
@@ -6264,7 +6292,7 @@ def notebook_open_mention(entity_type: str, number: int):
             flash(f"There is no plasmid #{number}.", "warning")
             return redirect(url_for("plasmids"))
         if entity_type == "order":
-            found = _order_items_query(db_session, str(number), 1)
+            found = _order_items_query(db_session, str(number), 1, by_number=True)
             if found:
                 module = db_session.get(InventoryModule, found[0].module_id_fk)
                 return redirect(url_for("inventory.module", key=module.key, open=found[0].id))
@@ -6345,7 +6373,7 @@ def notebook_search_entity(entity_type: str):
     with SessionLocal() as db_session:
         if entity_type == "mouse":
             stmt = select(MouseRecord)
-            if query.isdigit():
+            if _record_number(query) is not None:
                 stmt = stmt.where(MouseRecord.mouse_id == int(query))
             elif query:
                 stmt = stmt.where(MouseRecord.genotype.ilike(like_pattern(query), escape="\\") | MouseRecord.owner.ilike(like_pattern(query), escape="\\"))
@@ -6357,7 +6385,7 @@ def notebook_search_entity(entity_type: str):
             ]})
         if entity_type == "plasmid":
             stmt = select(PlasmidRecord)
-            if query.isdigit():
+            if _record_number(query) is not None:
                 stmt = stmt.where(PlasmidRecord.plasmid_id == int(query))
             elif query:
                 stmt = stmt.where(PlasmidRecord.name.ilike(like_pattern(query), escape="\\") | PlasmidRecord.backbone.ilike(like_pattern(query), escape="\\"))
@@ -6378,6 +6406,7 @@ def notebook_search_entity(entity_type: str):
             # `type` so the editor can build the right `@<type> <id>` chip.
             per_type_limit = max(2, limit // 3)
             items: list[dict] = []
+            number = _record_number(query)
             # People first, for "@jordan" and action items ("- [ ] @jordan …"):
             # a name that starts with what was typed.
             if query and not query.isdigit():
@@ -6389,9 +6418,20 @@ def notebook_search_entity(entity_type: str):
                                       "label": f"{person['name']} · @{person['username']}"})
                 items = items[:3]
 
+            # A lot or catalogue number typed as it is (@0012, @ab2947) is what
+            # was meant, before any record that happens to have that number.
+            codes = []
+            if query:
+                for module in _mention_modules(db_session).values():
+                    for i in _mention_items(db_session, module, query, per_type_limit):
+                        if query.lower() in ((i.lot or "").lower(), (i.catalog_number or "").lower()):
+                            codes.append({"type": module.key, "type_label": module.label, "id": i.number,
+                                          "label": _mention_label(module, i, True)})
+            items += codes
+
             mouse_stmt = select(MouseRecord)
-            if query.isdigit():
-                mouse_stmt = mouse_stmt.where(MouseRecord.mouse_id == int(query))
+            if number is not None:
+                mouse_stmt = mouse_stmt.where(MouseRecord.mouse_id == number)
             elif query:
                 like = like_pattern(query)
                 mouse_stmt = mouse_stmt.where(
@@ -6406,8 +6446,8 @@ def notebook_search_entity(entity_type: str):
                 })
 
             plasmid_stmt = select(PlasmidRecord)
-            if query.isdigit():
-                plasmid_stmt = plasmid_stmt.where(PlasmidRecord.plasmid_id == int(query))
+            if number is not None:
+                plasmid_stmt = plasmid_stmt.where(PlasmidRecord.plasmid_id == number)
             elif query:
                 like = like_pattern(query)
                 plasmid_stmt = plasmid_stmt.where(
@@ -6433,8 +6473,10 @@ def notebook_search_entity(entity_type: str):
             if query:
                 for module in _mention_modules(db_session).values():
                     for i in _mention_items(db_session, module, query, per_type_limit):
-                        items.append({"type": module.key, "type_label": module.label, "id": i.number,
-                                      "label": _mention_label(module, i, True)})
+                        hit = {"type": module.key, "type_label": module.label, "id": i.number,
+                               "label": _mention_label(module, i, True)}
+                        if hit not in codes:
+                            items.append(hit)
 
             return jsonify({"ok": True, "items": items[:limit]})
         module = _mention_modules(db_session, with_old=True).get(entity_type)

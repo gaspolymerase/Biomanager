@@ -1857,6 +1857,10 @@ class NotebookPageInfo(Base):
     # restored version, the plain-text fallback): editors open on the old
     # state start again from the saved text.
     collab_generation: Mapped[int] = mapped_column(Integer, default=0)
+    # Which live edits the saved body holds: the editor's Yjs state vector
+    # (base64) when it saved. A save strictly behind it (a background tab
+    # that hasn't caught up) is not written over it (lab_notebook.behind).
+    body_state: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
 class NotebookShare(Base):

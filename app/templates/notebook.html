@@ -165,7 +165,7 @@
           </div>
         </div>
 
-        <input id="page-title" class="page-title" value="{{ p.title }}" placeholder="Untitled page" autocomplete="off" {% if not can_edit %}readonly{% endif %}>
+        <input id="page-title" class="page-title" value="{{ '' if p.title == 'Untitled page' else p.title }}" placeholder="Untitled page" autocomplete="off" {% if not can_edit %}readonly{% endif %}>
 
         <div class="page-meta" id="page-meta">
           <input type="date" id="page-entry-date" class="page-date-input" value="{{ p.entry_date }}" aria-label="Page date" {% if not can_edit %}disabled{% endif %}>

@@ -37,6 +37,29 @@ class RecordLinks(InventoryCase):
         got = self.m.get(f"/notebook/search/all?q={self.name.split()[-1]}").get_json()
         self.assertIn({"type": self.abs, "id": self.number}, [{"type": i["type"], "id": i["id"]} for i in got["items"]])
 
+    def test_a_lot_number_typed_comes_before_records_that_have_that_number(self):
+        # A busy lab: record #12 in several databases, and a tube of lot 0012.
+        for _ in range(14):
+            self.make_item(self.a, self.abs, uniq("filler "))
+        lot_item = self.make_item(self.m, self.abs, uniq("anti-actin "), lot="0012")
+        number = one("select number from inventory_items where id=?", lot_item)
+        got = self.m.get("/notebook/search/all?q=0012").get_json()["items"]
+        self.assertEqual((got[0]["type"], got[0]["id"]), (self.abs, number))
+        got = self.m.get(f"/notebook/search/{self.abs}?q=0012").get_json()["items"]
+        self.assertEqual(got[0]["id"], number)
+        # "12" is still record #12.
+        got = self.m.get(f"/notebook/search/{self.abs}?q=12").get_json()["items"]
+        self.assertEqual(got[0]["id"], 12)
+
+    def test_an_order_is_found_by_part_of_its_catalogue_number(self):
+        orders = one("select key from inventory_modules where kind='orders' order by id limit 1")
+        digits = "".join(ch for ch in uniq("9") if ch.isdigit())[-5:]
+        order = self.make_item(self.m, orders, uniq("anti-GAPDH "), catalog_number=f"ab{digits}-100")
+        number = one("select number from inventory_items where id=?", order)
+        got = self.m.get(f"/notebook/search/order?q={digits}").get_json()["items"]
+        self.assertIn(number, [i["id"] for i in got])
+        self.assertTrue(self.m.get(f"/notebook/lookup/order/{number}").get_json()["ok"])
+
     def test_the_at_menu_offers_people_and_finds_numbers_in_catalogue_and_lot(self):
         who = make_user(uniq("jordana"))
         got = self.m.get(f"/notebook/search/all?q={who[:6]}").get_json()["items"]
