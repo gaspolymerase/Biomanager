@@ -2964,6 +2964,20 @@
 
   /* The databases row on the home page. */
   .home-dbs { @apply flex gap-2 overflow-x-auto pb-1; scrollbar-width: none; }
+  /* Home's cards, in each person's order (templates/home.html). */
+  .home-grid { @apply grid grid-cols-1 gap-3 lg:grid-cols-2; }
+  .home-card { @apply flex min-w-0 flex-col; }
+  .home-card > .card { @apply h-full; }
+  .home-card.is-wide { @apply lg:col-span-2; }
+  .home-calcs { @apply flex flex-wrap gap-1.5 px-4 py-3; }
+  .home-cust-list { @apply flex flex-col gap-1; }
+  .home-cust-row { @apply flex items-center gap-2 rounded-lg border border-hairline bg-surface px-2 py-1.5 text-[13px]; }
+  .home-cust-row.is-dragging { @apply opacity-50; }
+  .home-cust-grip { @apply cursor-grab select-none text-muted; }
+  .home-cust-show { @apply flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-ink; }
+  .home-cust-show .icon { @apply size-3.5 shrink-0 text-muted; }
+  .home-cust-wide { @apply flex shrink-0 cursor-pointer items-center gap-1 text-[12px] text-muted; }
+  .home-cust-move { @apply flex shrink-0; }
   .home-db {
     @apply inline-flex shrink-0 items-center gap-2 rounded-xl border border-hairline bg-surface px-3.5 py-2.5
            text-[13px] font-medium text-ink no-underline shadow-xs;

@@ -1754,6 +1754,11 @@ def home_dashboard():
     # which draw the same work from one agenda.
     zebrafish_due = zebrafish_home_summary()
     with SessionLocal() as db_session:
+        home_cards = home_layouts.get_cards(db_session, g.user.username)
+        offered = home_layouts.offered_cards(lab.request_features(), {
+            "has_orders": has_orders, "has_restock": has_restock, "has_stocks": has_stocks})
+        shown = {c["key"] for c in offered} - set(home_cards["hidden"])
+        extra = _home_extra_cards(db_session, shown, today)
         home_layout = home_layouts.get_layout(db_session, g.user.username)
         layout_view = None
         if home_layout != "classic":
@@ -1770,6 +1775,10 @@ def home_dashboard():
 
     return render_template(
         "home.html",
+        home_cards=home_cards,
+        offered_cards=offered,
+        shown_cards=shown,
+        **extra,
         home_layout=home_layout,
         layout_choices=home_layouts.LAYOUTS,
         layout_view=layout_view,
@@ -1800,6 +1809,56 @@ def home_dashboard():
         restock=restock,
         wean_offset_days=WEAN_OFFSET_DAYS,
     )
+
+
+# Calculators the Home card links to (static/bench-calcs.js ids).
+HOME_CALCULATORS = [("dilution", "Dilution"), ("molarity", "Molarity"), ("a260", "DNA / RNA from A260"),
+                    ("count", "Cell count"), ("seeding", "Seeding plates"), ("rcf", "rpm ↔ × g"),
+                    ("buffer", "Buffer pH"), ("pcrmix", "PCR master mix")]
+
+
+def _home_extra_cards(db_session, shown: set, today: date) -> dict:
+    """What Home's optional cards show, read only when they are on."""
+    me = g.user.username
+    out = {"todos": [], "bookings": [], "recent_pages": [], "home_calculators": HOME_CALCULATORS}
+    if "todos" in shown:
+        rows = db_session.scalars(select(TaskItem).where(
+            TaskItem.owner == me, TaskItem.status != "done",
+            TaskItem.due_date.is_(None) | (TaskItem.due_date <= today + timedelta(days=7)))
+            .order_by(TaskItem.due_date.is_(None), TaskItem.due_date).limit(8)).all()
+        out["todos"] = [{"id": t.id, "title": t.title, "due": t.due_date,
+                         "overdue": bool(t.due_date and t.due_date < today)} for t in rows]
+    if "bookings" in shown:
+        from .models import EquipmentBooking
+        start = datetime.combine(today, datetime.min.time())
+        rows = db_session.scalars(select(EquipmentBooking).options(selectinload(EquipmentBooking.equipment)).where(
+            EquipmentBooking.owner == me, EquipmentBooking.end_at >= start,
+            EquipmentBooking.start_at < start + timedelta(days=8)).order_by(EquipmentBooking.start_at).limit(8)).all()
+        out["bookings"] = [{"what": b.equipment.name, "start": b.start_at, "end": b.end_at, "purpose": b.purpose}
+                           for b in rows]
+    if "notebook" in shown:
+        rows = db_session.scalars(lab_notebook.accessible_filter(
+            select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
+            .order_by(NotebookPage.updated_at.desc()).limit(6)).all()
+        out["recent_pages"] = [{"id": p.id, "tab_id": p.tab_id_fk, "title": p.title or "Untitled page",
+                                "updated_at": p.updated_at} for p in rows]
+    return out
+
+
+@app.route("/home/cards", methods=["POST"])
+@login_required
+def set_home_cards():
+    """Customize Home: which cards show, their order, which are full width."""
+    with SessionLocal() as db_session:
+        if request.form.get("reset") == "1":
+            home_layouts.reset_cards(db_session, g.user.username)
+        else:
+            order = request.form.getlist("order")
+            shown = set(request.form.getlist("show"))
+            home_layouts.set_cards(db_session, g.user.username, order,
+                                   [k for k in order if k not in shown], request.form.getlist("wide"))
+        db_session.commit()
+    return redirect(url_for("home_dashboard"))
 
 
 ALLOWED_LANDING_ENDPOINTS = {"colony", "notebook", "calendar", "orders", "samples", "plasmids"}

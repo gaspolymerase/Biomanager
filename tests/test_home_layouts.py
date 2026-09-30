@@ -91,3 +91,47 @@ class FreezerTests(AppTestCase):
     def get_rack(name: str) -> int:
         from tests.base import one
         return one("select id from mouse_racks where name=?", name)
+
+
+class CustomizeHomeTests(AppTestCase):
+    """Each person chooses Home's cards, their order and which are wide."""
+
+    def cards(self, html):
+        return re.findall(r'data-home-card="([a-z_]+)"', html)
+
+    def save(self, client, order, show, wide=()):
+        return self.post(client, "/home/cards", {"order": order, "show": show, "wide": list(wide)})
+
+    def test_a_new_person_gets_the_usual_cards_and_the_optional_ones_off(self):
+        fresh = client_for(make_user(uniq("fresh")))
+        got = self.cards(self.get_ok(fresh, "/home"))
+        self.assertLess(got.index("stats"), got.index("sac"))
+        for off in ("todos", "bookings", "notebook", "utilities"):
+            self.assertNotIn(off, got)
+        self.assertIn('id="home-customize"', self.get_ok(fresh, "/home"))
+
+    def test_hiding_reordering_and_widening_is_kept_for_that_person_only(self):
+        who = client_for(make_user(uniq("picky")))
+        order = ["utilities", "calendar", "sac", "stats", "databases", "weanings", "geno", "orders"]
+        self.save(who, order, show=["utilities", "calendar", "sac", "stats"], wide=["calendar"])
+        html = self.get_ok(who, "/home")
+        self.assertEqual([k for k in self.cards(html) if k in order], ["utilities", "calendar", "sac", "stats"])
+        self.assertIn('class="home-card is-wide" data-home-card="calendar"', html)
+        self.assertIn("All utilities", html)                     # the Calculators card is on
+        self.assertIn("weanings", self.cards(self.get_ok(self.m, "/home")))
+        # Back to the usual.
+        self.post(who, "/home/cards", {"reset": "1"})
+        self.assertIn("weanings", self.cards(self.get_ok(who, "/home")))
+
+    def test_the_optional_cards_show_their_own_things(self):
+        who_name = make_user(uniq("busy"))
+        who = client_for(who_name)
+        title = uniq("Order primers ")
+        who.post("/calendar/items", data='{"kind": "task", "title": "%s", "start": "%sT00:00:00", "isAllday": true}' % (title, days_ago(0)),
+                 content_type="application/json")
+        order = ["todos", "notebook", "bookings"]
+        self.save(who, order, show=order)
+        html = self.get_ok(who, "/home")
+        self.assertIn(title, html)
+        self.assertIn("Recent notebook pages", html)
+        self.assertIn("No instrument booked in the next week.", html)
