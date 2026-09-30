@@ -508,14 +508,26 @@
   }
   body[data-rail="closed"] .rail-item[data-label]:hover::after { @apply opacity-100; }
 
+  /* The logo and, beside it, Hide sidebar (above it when collapsed). */
+  .rail-top { @apply mb-2 flex shrink-0 items-center justify-between gap-1; }
+  .rail-top .rail-brand { @apply mb-0 min-w-0; }
+  body[data-rail="closed"] .rail-top { @apply flex-col gap-1; }
   .rail-toggle {
-    @apply flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2
-           text-[12px] text-muted transition-colors duration-75;
+    @apply flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md
+           text-muted transition-colors duration-75;
   }
   .rail-toggle:hover { @apply bg-sand-300/45 text-ink; }
-  .rail-toggle .icon { @apply size-[14px] transition-transform duration-200; }
+  .rail-toggle .icon { @apply size-[13px] transition-transform duration-200; }
   body[data-rail="open"] .rail-toggle .icon { @apply rotate-180; }
-  body[data-rail="closed"] .rail-toggle { @apply justify-center px-0; }
+
+  /* More and Help: a button that opens its menu beside the sidebar
+     (placed by static/shell.js, as the sidebar scrolls and clips). */
+  .rail-menu { @apply relative flex shrink-0 flex-col; }
+  .rail-item .rail-chev { @apply ml-auto size-[10px] text-muted; }
+  body[data-rail="closed"] .rail-item .rail-chev { @apply hidden; }
+  .menu.rail-pop { @apply fixed right-auto top-auto w-56; }
+  .rail-pop-head { @apply px-2.5 pb-0.5 pt-1 text-[11px] font-semibold text-muted; }
+  .menu-item.is-current { @apply font-semibold; }
 
   /* --- Main column ------------------------------------------------------ */
 

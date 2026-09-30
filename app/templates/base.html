@@ -57,10 +57,16 @@
 
         {# ---- Sidebar ---- #}
         <aside class="rail" aria-label="Sidebar">
-          <a class="rail-brand" href="{{ url_for('home_dashboard') }}">
-            <img src="{{ app_icon_url }}" alt="" data-app-icon>
-            <span class="rail-brand-word">BioManager</span>
-          </a>
+          <div class="rail-top">
+            <a class="rail-brand" href="{{ url_for('home_dashboard') }}">
+              <img src="{{ app_icon_url }}" alt="" data-app-icon>
+              <span class="rail-brand-word">BioManager</span>
+            </a>
+            <button type="button" class="rail-toggle" data-rail-toggle
+                    aria-label="Hide or show the sidebar" title="Hide or show the sidebar">
+              {{ icon('chevrons-right') }}
+            </button>
+          </div>
 
           {% for section in nav_sections %}
             <div class="rail-group">
@@ -84,6 +90,25 @@
           {% endfor %}
 
           <div class="rail-foot">
+            {# Pages not used every day, in one menu: batch history, and the admin's pages. #}
+            {% if nav_more %}
+              {% set more_active = nav_more | selectattr('active') | list %}
+              <div class="rail-menu" data-rail-menu>
+                <button type="button" class="rail-item {% if more_active %}is-active{% endif %}" data-label="More"
+                        data-rail-menu-toggle aria-haspopup="menu" aria-expanded="false">
+                  {{ icon('ellipsis') }}<span class="rail-label">More</span>{{ icon('chevron-right', 'rail-chev') }}
+                </button>
+                <div class="menu rail-pop" role="menu" hidden>
+                  {% for item in nav_more %}
+                    {% if loop.index0 == 1 %}<div class="menu-rule"></div><div class="rail-pop-head">Lab</div>{% endif %}
+                    <a class="menu-item {% if item.active %}is-current{% endif %}" role="menuitem" href="{{ item.url }}"
+                       data-label="{{ item.label }}" {% if item.hint %}title="{{ item.hint }}"{% endif %}>
+                      {{ icon(item.icon) }} {{ item.label }}
+                    </a>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
             {% for item in nav_footer %}
               <a class="rail-item {% if item.active %}is-active{% endif %}"
                  href="{{ item.url }}" data-label="{{ item.label }}"
@@ -91,20 +116,20 @@
                 {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
               </a>
             {% endfor %}
-            {# The user guide is on the BioManager website (app/lab.py GUIDE_URL). #}
-            <a class="rail-item" href="{{ guide_url }}" target="_blank" rel="noopener"
-               data-label="User guide" data-milestone="guide">
-              {{ icon('info') }}<span class="rail-label">Help</span>
-            </a>
-            <a class="rail-item {% if request.endpoint == 'feedback.index' %}is-active{% endif %}"
-               href="{{ url_for('feedback.index', **({'from': request.full_path.rstrip('?')} if request.endpoint and not request.endpoint.startswith('feedback.') else {})) }}"
-               data-label="Send feedback" title="Something went wrong, an idea or a question">
-              {{ icon('mail') }}<span class="rail-label">Feedback</span>
-            </a>
-            <button type="button" class="rail-toggle" data-rail-toggle
-                    aria-label="Hide or show the sidebar">
-              {{ icon('chevrons-right') }}<span class="rail-label">Hide sidebar</span>
-            </button>
+            <div class="rail-menu" data-rail-menu>
+              <button type="button" class="rail-item {% if request.endpoint == 'feedback.index' %}is-active{% endif %}"
+                      data-label="Help" data-rail-menu-toggle aria-haspopup="menu" aria-expanded="false">
+                {{ icon('info') }}<span class="rail-label">Help</span>{{ icon('chevron-right', 'rail-chev') }}
+              </button>
+              <div class="menu rail-pop" role="menu" hidden>
+                {# The user guide is on the BioManager website (app/lab.py GUIDE_URL). #}
+                <a class="menu-item" role="menuitem" href="{{ guide_url }}" target="_blank" rel="noopener"
+                   data-label="User guide" data-milestone="guide">{{ icon('info') }} User guide</a>
+                <a class="menu-item" role="menuitem"
+                   href="{{ url_for('feedback.index', **({'from': request.full_path.rstrip('?')} if request.endpoint and not request.endpoint.startswith('feedback.') else {})) }}"
+                   data-label="Send feedback" title="Something went wrong, an idea or a question">{{ icon('mail') }} Send feedback</a>
+              </div>
+            </div>
           </div>
         </aside>
         <script nonce="{{ csp_nonce() }}">

@@ -580,6 +580,8 @@ NAV_SECTIONS: list[dict] = [
              "endpoint": "calendar", "feature": "calendar"},
             {"key": "notebook", "label": "Notebook", "icon": "notebook", "feature": "notebook",
              "endpoint": "notebook", "match": ("notebook", "notebook_templates")},
+            {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities",
+             "hint": "Bench calculators and reference data"},
         ],
     },
     {
@@ -599,22 +601,29 @@ NAV_SECTIONS: list[dict] = [
     },
 ]
 
+# The foot of the sidebar: Settings, and one More menu for the pages not
+# used every day (batch history for everyone; the admin's pages). Help and
+# Feedback are a Help menu in the template. Utilities sits with Workspace.
 NAV_FOOTER: list[dict] = [
-    {"key": "utilities", "label": "Utilities", "icon": "calculator", "endpoint": "utilities",
-     "hint": "Bench calculators (dilutions, molarity, recipes) and reference data"},
-    {"key": "admin-colony", "label": "Colony overview", "short": "Overview",
-     "hint": "Every member's mice and cages at a glance",
-     "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True, "feature": "colony"},
-    {"key": "batches", "label": "Batch history", "short": "Batches", "icon": "layers", "endpoint": "batches_view",
-     "hint": "Changes made many records at a time (Add many, bulk edits, imports), each with Undo"},
-    {"key": "audit", "label": "Audit log", "icon": "history", "endpoint": "audit_log_view",
-     "hint": "Who changed what, and when",
-     "admin_only": True},
-    {"key": "lab-setup", "label": "Lab setup", "short": "Setup", "icon": "sliders",
-     "hint": "What the lab keeps, its name, and what members may do",
-     "endpoint": "lab.setup", "admin_only": True},
     {"key": "settings", "label": "Settings", "icon": "settings", "endpoint": "settings",
      "match": ("settings", "admin_users")},
+]
+NAV_MORE: list[dict] = [
+    {"key": "batches", "label": "Batch history", "icon": "layers", "endpoint": "batches_view",
+     "hint": "Changes made many records at a time (Add many, bulk edits, imports), each with Undo"},
+    {"key": "lab-setup", "label": "Lab setup", "icon": "sliders",
+     "hint": "What the lab keeps, its name, and what members may do",
+     "endpoint": "lab.setup", "admin_only": True},
+    {"key": "admin-colony", "label": "Colony overview", "hint": "Every member's mice and cages at a glance",
+     "icon": "list", "endpoint": "admin_colony_overview", "admin_only": True, "feature": "colony"},
+    {"key": "audit", "label": "Audit log", "icon": "history", "endpoint": "audit_log_view",
+     "hint": "Who changed what, and when", "admin_only": True},
+    {"key": "users", "label": "Manage users", "icon": "users", "endpoint": "admin_users", "admin_only": True,
+     "hint": "Approve people, roles, passwords"},
+    {"key": "guests", "label": "Guests", "icon": "user", "endpoint": "guests.admin", "admin_only": True,
+     "hint": "A pass for someone outside the lab"},
+    {"key": "racks", "label": "Racks & boxes", "icon": "box", "endpoint": "admin_racks.index", "admin_only": True,
+     "hint": "Who may change each rack, box and incubator"},
 ]
 
 # Colony sub-views: label, icon and one-line description for the segmented
@@ -790,7 +799,7 @@ def _organism_module_links() -> list[dict]:
 @app.context_processor
 def inject_nav():
     if g.get("user") is None:
-        return {"nav_sections": [], "nav_footer": [], "tab_icon_rules": [],
+        return {"nav_sections": [], "nav_footer": [], "nav_more": [], "tab_icon_rules": [],
                 "colony_view_meta": COLONY_VIEW_META, "db_labels": {}}
 
     active = request.endpoint or ""
@@ -815,9 +824,11 @@ def inject_nav():
         if links:
             sections.append({"label": section["label"], "links": links})
     footer = [r for r in (_resolve_nav_item(i, active) for i in NAV_FOOTER) if r]
+    more = [r for r in (_resolve_nav_item(i, active) for i in NAV_MORE) if r]
     return {
         "nav_sections": sections,
         "nav_footer": footer,
+        "nav_more": more,
         "tab_icon_rules": tab_icon_rules,
         "colony_view_meta": COLONY_VIEW_META,
         "db_labels": g.db_labels,

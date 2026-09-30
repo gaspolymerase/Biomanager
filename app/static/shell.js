@@ -81,6 +81,61 @@
     });
   }
 
+  /* ------------------------------------------------ the sidebar's menus */
+
+  // More and Help at the foot of the sidebar. The menu is fixed beside the
+  // sidebar (which scrolls, so it would clip an absolute one), its bottom
+  // level with the button, and closes on a click elsewhere or Escape.
+  function setupRailMenus() {
+    // The sidebar's backdrop blur makes it the box a fixed child is placed
+    // in (and clipped by), so each menu moves to the page's body.
+    const menus = [...document.querySelectorAll('[data-rail-menu]')].map((root) => {
+      const pop = root.querySelector('.rail-pop');
+      pop.dataset.railPop = '';
+      document.body.appendChild(pop);
+      return { root, pop, button: root.querySelector('[data-rail-menu-toggle]') };
+    });
+    const closeAll = (except) => menus.forEach((m) => {
+      if (m.root === except) return;
+      m.pop.hidden = true;
+      m.button.setAttribute('aria-expanded', 'false');
+    });
+    menus.forEach(({ root, pop, button }) => {
+      const place = () => {
+        const r = button.getBoundingClientRect();
+        const rail = button.closest('.rail').getBoundingClientRect();
+        // Beside the sidebar; over it when there's no room (a phone's drawer).
+        const width = pop.offsetWidth || 224;
+        pop.style.left = `${Math.round(Math.min(rail.right + 6, window.innerWidth - width - 8))}px`;
+        pop.style.bottom = `${Math.max(8, Math.round(window.innerHeight - r.bottom))}px`;
+      };
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const opening = pop.hidden;
+        closeAll(root);
+        pop.hidden = !opening;
+        button.setAttribute('aria-expanded', String(opening));
+        if (opening) {
+          place();
+          requestAnimationFrame(place);          // again once it has its width
+          const first = pop.querySelector('a, button');
+          if (first && event.detail === 0) first.focus();     // opened from the keyboard
+        }
+      });
+      pop.addEventListener('keydown', (event) => {
+        const items = [...pop.querySelectorAll('a, button')];
+        const at = items.indexOf(document.activeElement);
+        if (event.key === 'ArrowDown') { event.preventDefault(); items[(at + 1) % items.length].focus(); }
+        if (event.key === 'ArrowUp') { event.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+      });
+    });
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest || !event.target.closest('[data-rail-menu], [data-rail-pop]')) closeAll(null);
+    });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAll(null); });
+    window.addEventListener('resize', () => closeAll(null));
+  }
+
   /* --------------------------------------------------------- notifications */
 
   // The bell (app/notify.py). The list is rendered by the server and fetched
@@ -204,7 +259,7 @@
     const send = () => {
       const api = window.pywebview && window.pywebview.api;
       if (!api || typeof api.set_nav !== 'function') return;
-      const links = (root) => [...root.querySelectorAll('a.rail-item[href]')]
+      const links = (root) => [...root.querySelectorAll('a.rail-item[href], .rail-pop a[href]')]
         .filter((a) => a.getAttribute('href').startsWith('/'))
         .map((a) => ({ label: a.dataset.label || a.textContent.trim(), url: a.getAttribute('href') }));
       const sections = [...document.querySelectorAll('.rail-group')].map((group) => ({
@@ -212,7 +267,12 @@
         links: links(group),
       }));
       const foot = document.querySelector('.rail-foot');
-      if (foot) sections.push({ label: 'More', links: links(foot) });
+      if (foot) {
+        const more = [...links(foot), ...[...document.querySelectorAll('[data-rail-pop] a[href]')]
+          .filter((a) => a.getAttribute('href').startsWith('/'))
+          .map((a) => ({ label: a.dataset.label || a.textContent.trim(), url: a.getAttribute('href') }))];
+        sections.push({ label: 'More', links: more });
+      }
       api.set_nav(sections);
     };
     const ready = () => window.pywebview && window.pywebview.api && typeof window.pywebview.api.set_nav === 'function';
@@ -224,6 +284,7 @@
 
   function init() {
     shareNavWithDesktop();
+    setupRailMenus();
     document.querySelectorAll('[data-rail-toggle]').forEach((el) => {
       el.addEventListener('click', toggleRail);
     });
