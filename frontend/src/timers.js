@@ -9,28 +9,10 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { ask, el, escapeHtml } from './util.js';
+import { findDurations } from './durations.js';
 
 const KEY = 'bm-nb-timers';
-export const DURATION_RE = /\b(\d+(?:\.\d+)?)(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*(hours?|hrs?|h|minutes?|mins?|min|seconds?|secs?|sec|s)\b(?![\w/°])/gi;
-
-export function durationSeconds(amount, unit) {
-  const u = unit.toLowerCase();
-  const n = Number(amount);
-  if (u.startsWith('h')) return n * 3600;
-  if (u.startsWith('m')) return n * 60;
-  return n;
-}
-
-export function findDurations(text) {
-  const out = [];
-  DURATION_RE.lastIndex = 0;
-  let m;
-  while ((m = DURATION_RE.exec(text))) {
-    const seconds = durationSeconds(m[1], m[2]);
-    if (seconds > 0 && seconds <= 72 * 3600) out.push({ index: m.index, length: m[0].length, seconds, text: m[0] });
-  }
-  return out;
-}
+export { DURATION_RE, durationSeconds, findDurations } from './durations.js';
 
 function load() {
   try { return JSON.parse(localStorage.getItem(KEY) || '[]') || []; } catch (_e) { return []; }

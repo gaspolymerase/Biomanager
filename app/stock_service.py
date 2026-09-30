@@ -185,8 +185,8 @@ def create_module(session, kind: str, label: str = "", created_by: str = "", key
 
 
 def racks_of(session, module_id: int) -> list[StockRack]:
-    return list(session.scalars(select(StockRack).where(StockRack.module_id_fk == module_id)
-                                .order_by(StockRack.name)))
+    return sorted(session.scalars(select(StockRack).where(StockRack.module_id_fk == module_id)),
+                  key=lambda r: positions.place_order(r.name))
 
 
 def incubators_of(session, module_id: int) -> list[StockIncubator]:

@@ -513,7 +513,7 @@
         <legend>{{ m.item_noun|capitalize }}</legend>
         <label><span>{{ m.category_label }}{{ star('category') }}</span>
           {% if m.categories %}
-            <select name="category"{{ req('category') }}><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c[:1]|upper ~ c[1:] }}</option>{% endfor %}</select>
+            <select name="category"{{ req('category') }}><option value="">Not set</option>{% for c in m.categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
           {% else %}<input name="category"{{ req('category') }}{{ rem('category') }}>{% endif %}
         </label>
         {% if m.statuses %}

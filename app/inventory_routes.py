@@ -335,8 +335,8 @@ def module(key: str):
             kept = {i.id for i in listed}
             all_items = [i for i in items if i.id in kept or i.rack_id_fk]
             items = listed
-        racks = list(session.scalars(select(InventoryRack).where(InventoryRack.module_id_fk == row.id)
-                                     .order_by(InventoryRack.name)))
+        racks = sorted(session.scalars(select(InventoryRack).where(InventoryRack.module_id_fk == row.id)),
+                       key=lambda r: positions.place_order(r.name))
         me = g.user.username
         source_fields = [f for f in mv.fields if f["type"] == "source"]
         sources = sample_sources(session) if source_fields else []

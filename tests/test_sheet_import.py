@@ -60,6 +60,11 @@ class Matching(AppTestCase):
         got = si.auto_match(["Location"], [["Freezer 2, shelf 3", "Cold room"]], fields)
         self.assertEqual(got[0][0], "location")
 
+    def test_a_position_column_may_mix_a1_and_plain_numbers(self):
+        for values in (["A1", "3", "B2", "12", "C4"], ["1", "2", "3", "81"]):
+            got = si.auto_match(["Position"], [values], self.fields())
+            self.assertEqual(got[0][0], "position", values)
+
     def test_near_spellings_match(self):
         got = si.auto_match(["Resistence"], [["Kan"]], self.fields())
         self.assertEqual(got[0][0], "resistance")

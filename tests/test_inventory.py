@@ -11,6 +11,7 @@ import io
 import json
 import re
 import unittest
+from html import escape as html_escape
 
 from tests.base import *  # noqa: F401,F403
 from tests.base import (AppTestCase, GRID_NAMING, T, client_for, count, days_ago, days_ahead, errors,
@@ -264,6 +265,14 @@ class BoxTests(InventoryCase):
         self.assertFlash(r, f"Made 3 boxes: {base} 2 to {base} 4", "success")
         names = [n for (n,) in rows("select name from inventory_racks where name like ? order by id", f"{base}%")]
         self.assertEqual(names, [f"{base} {i}" for i in (1, 2, 3, 4)])
+
+    def test_boxes_list_coldest_first_whichever_dash_was_typed(self):
+        key = self.new_module(self.a, "reagents")
+        for name in ("Box 10", "\u221280 A", "-20 B", "4 \u00b0C shelf", "Box 2", "\u221220 A"):
+            self.make_rack(self.a, key, name)
+        html = self.get_ok(self.a, f"/inventory/{key}")
+        wanted = ["\u221280 A", "\u221220 A", "-20 B", "4 \u00b0C shelf", "Box 2", "Box 10"]
+        self.assertEqual(sorted(wanted, key=lambda n: html.index(f" {html_escape(n)}</button>")), wanted)
 
     def test_member_cannot_rename_or_resize_someone_elses_box(self):
         name = uniq("AdminBox")

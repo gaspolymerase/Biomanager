@@ -326,6 +326,14 @@ def _shape(values: list[str]) -> str:
     return "text"
 
 
+def _positions(values: list[str]) -> bool:
+    """Values a position column may hold: "A1", "4-7", and plain numbers
+    (a box numbered 1…81), mixed as a lab's sheet mixes them."""
+    filled = [v for v in values if v.strip()][:40]
+    return not filled or sum(1 for v in filled if _POSITION.match(v) or re.fullmatch(r"\s*\d{1,4}\s*", v)) \
+        >= 0.7 * len(filled)
+
+
 def score(header: str, values: list[str], f: Field) -> tuple[float, str]:
     """How well a spreadsheet column fits a database column, and why."""
     h = norm(header)
@@ -352,7 +360,7 @@ def score(header: str, values: list[str], f: Field) -> tuple[float, str]:
             ratio = difflib.SequenceMatcher(None, h, n).ratio()
             if ratio >= 0.82 and ratio * 0.85 > best:
                 best, why = ratio * 0.85, f"spelled like “{n}”"
-    if best and f.kind == "position" and shape not in ("position", ""):
+    if best and f.kind == "position" and not _positions(values):
         best *= 0.4                       # "Location: Freezer 2" is a note, not a position
     if best and f.kind == "place" and shape == "position" and h in _EITHER:
         best *= 0.5                       # and "Location: A1" is a position, not a note

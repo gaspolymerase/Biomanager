@@ -29,6 +29,9 @@ class Blocks(unittest.TestCase):
     def test_plate_standard_series_follows_the_selection_shape(self):
         self.check("plate.check.mjs")
 
+    def test_step_timers_leave_time_points_alone(self):
+        self.check("durations.check.mjs")
+
 
 if __name__ == "__main__":
     unittest.main()
