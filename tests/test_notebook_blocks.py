@@ -1,5 +1,6 @@
-"""The notebook's blocks are JavaScript (frontend/src/blocks); their
-arithmetic is checked in Node, when Node is there."""
+"""The notebook's blocks (frontend/src/blocks) and the Utilities
+calculators (app/static/bench-calcs.js) are JavaScript; their arithmetic is
+checked in Node, when Node is there."""
 from __future__ import annotations
 
 import shutil
@@ -21,6 +22,9 @@ class Blocks(unittest.TestCase):
 
     def test_protein_concentration_from_a280_and_the_sequence(self):
         self.check("protein.check.mjs")
+
+    def test_the_utilities_calculators_give_known_answers(self):
+        self.check("bench-calcs.check.mjs")
 
 
 if __name__ == "__main__":

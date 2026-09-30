@@ -133,6 +133,11 @@ class PagesRender(AppTestCase):
                 "/inventory/new?preset=antibodies"]
         self.assertAllRender(self.a, urls, ok=lambda code: code == 200)
 
+    def test_utilities_has_the_calculators_and_the_lab_s_chemicals(self):
+        html = self.get_ok(self.m, "/utilities")
+        self.assertIn("bench-calcs.js", html)
+        self.assertIn('"name": "NaCl"', html)          # the lab's list, for the chemical picker
+
     # ------------------------------------------------------------ detail pages
     def test_record_detail_pages_render(self):
         mouse_number = one("select mouse_id from mice where id=?", self.colony["mice"][0])

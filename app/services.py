@@ -650,21 +650,6 @@ def dashboard_counts() -> dict[str, int]:
         }
 
 
-def calculate_reagent_requirements(
-    molecular_weight: float,
-    target_concentration_mm: float,
-    final_volume_ml: float,
-) -> dict[str, float]:
-    molar_concentration = target_concentration_mm / 1000.0
-    volume_l = final_volume_ml / 1000.0
-    grams_needed = molecular_weight * molar_concentration * volume_l
-    return {
-        "grams": grams_needed,
-        "milligrams": grams_needed * 1000.0,
-        "volume_ml": final_volume_ml,
-    }
-
-
 def upload_name(original: str) -> str:
     """A stored name nobody can guess and no two uploads share: before this,
     two files with the same name uploaded in the same second overwrote each

@@ -93,7 +93,6 @@ from .services import (
     breeder_summary,
     cage_derived_dates,
     cage_is_active,
-    calculate_reagent_requirements,
     current_lab_usernames,
     mouse_is_active,
     apply_status_rules,
@@ -7465,18 +7464,15 @@ def plasmid_sequence_json(row_id: int):
         })
 
 
-@app.route("/utilities", methods=["GET", "POST"])
+@app.route("/utilities")
 @login_required
 def utilities():
-    result = None
+    """The bench calculators (static/bench-calcs.js); the lab's own list of
+    molecular weights comes first in their chemical picker."""
     with SessionLocal() as db_session:
-        chemicals = db_session.scalars(select(ChemicalReference).order_by(ChemicalReference.name)).all()
-        if request.method == "POST":
-            mw = float(request.form["molecular_weight"])
-            concentration = float(request.form["target_concentration_mm"])
-            volume = float(request.form["final_volume_ml"])
-            result = calculate_reagent_requirements(mw, concentration, volume)
-    return render_template("utilities.html", chemicals=chemicals, result=result)
+        chemicals = [{"name": c.name, "mw": c.molecular_weight, "notes": c.notes}
+                     for c in db_session.scalars(select(ChemicalReference).order_by(ChemicalReference.name))]
+    return render_template("utilities.html", chemicals=chemicals)
 
 
 # ---------------------------------------------------------------------------
