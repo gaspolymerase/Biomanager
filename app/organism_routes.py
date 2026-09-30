@@ -48,7 +48,7 @@ from .models import (
     OrganismModule,
 )
 from . import access
-from . import audit
+from . import audit, database_keys
 from . import organism_service as svc
 from . import inventory as inventory_presets
 from . import stocks as stock_presets
@@ -151,6 +151,7 @@ def _module_or_404(session, key: str) -> OrganismModule:
     # person can tell (app/lab.py).
     if module is None or not lab.can_see(module):
         abort(404)
+    database_keys.to_current(module, key)   # an address it had before a rename
     return module
 
 
@@ -266,7 +267,8 @@ def index():
         # see the lab's and their own (app/lab.py).
         everyone = access.is_admin()
         stock_modules = stocks.list_modules(session, include_disabled=True, everyone=everyone)
-        moved = {m.key for m in stock_modules}
+        # (by any key a stock database has had: a renamed Drosophila too)
+        moved = {m.key for m in stock_modules} | set(database_keys.aliases_by_key(session, "stocks"))
         # Old fly/worm modules that moved to the stock pages are not listed.
         modules = [m for m in svc.list_modules(session, include_disabled=True, everyone=everyone)
                    if m.enabled or m.key not in moved]
@@ -2042,9 +2044,11 @@ def configure(key: str):
             module.enabled = not form.get("disabled")
         session.flush()
         svc.recompute_due(session, module)
+        moved = database_keys.rekey(session, "organisms", module)    # its address follows its name
         session.commit()
-        flash("Configuration saved.", "success")
-        return _redirect_back(key, "settings")
+        flash("Configuration saved." + (
+            f" Its address is now /organisms/{moved}; links to the old one still work." if moved else ""), "success")
+        return _redirect_back(module.key, "settings")
 
 
 @bp.route("/<key>/field/add", methods=["POST"])

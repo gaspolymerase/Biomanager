@@ -153,16 +153,17 @@ def list_modules(session, include_disabled: bool = False, everyone: bool = False
 
 
 def get_module(session, key: str) -> StockModule | None:
-    return session.scalar(select(StockModule).where(StockModule.key == key))
+    """By its address, or one it had before a rename (app/database_keys.py)."""
+    module = session.scalar(select(StockModule).where(StockModule.key == key))
+    if module is None and key:
+        from .database_keys import resolve
+        module = resolve(session, "stocks", key)
+    return module
 
 
 def unique_key(session, label: str) -> str:
-    from .organism_service import slugify
-    base = slugify(label) or "stocks"
-    key, n = base, 2
-    while get_module(session, key) is not None:
-        key, n = f"{base}_{n}", n + 1
-    return key
+    from .database_keys import free_key
+    return free_key(session, "stocks", label)
 
 
 def create_module(session, kind: str, label: str = "", created_by: str = "", key: str = "") -> StockModule:

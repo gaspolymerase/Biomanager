@@ -5167,8 +5167,10 @@ def notebook():
                               if selected_page is not None else None)
         selected_tab_id_value = selected_tab.id if selected_tab else None
         me = {"username": g.user.username, "name": g.user.display_name or g.user.username}
-        mention_types = [{"key": m.key, "label": m.label, "noun": m.item_noun}
-                         for m in _mention_modules(db_session).values()]
+        # Old keys too ("old": the @ menu leaves them out), so a chip written
+        # before a rename still reads as one.
+        mention_types = [{"key": key, "label": m.label, "noun": m.item_noun, **({"old": True} if key != m.key else {})}
+                         for key, m in _mention_modules(db_session, with_old=True).items()]
 
     return render_template(
         "notebook.html",
@@ -6136,11 +6138,20 @@ def notebook_lookup_plasmid(plasmid_id: int):
 MENTION_BUILTINS = ("mouse", "plasmid", "order", "all")
 
 
-def _mention_modules(db_session) -> dict[str, InventoryModule]:
-    """The inventories the signed-in person can see and @link, by key."""
+def _mention_modules(db_session, with_old: bool = False) -> dict[str, InventoryModule]:
+    """The inventories the signed-in person can see and @link, by key; with
+    `with_old`, also by the keys they had before a rename, so "@antibodies 5"
+    written before Antibodies became Primary antibodies still finds it."""
+    from . import database_keys
     from . import inventory_service as inventories
-    return {m.key: m for m in inventories.list_modules(db_session)
-            if m.kind != "orders" and m.key not in MENTION_BUILTINS}
+    modules = {m.key: m for m in inventories.list_modules(db_session)
+               if m.kind != "orders" and m.key not in MENTION_BUILTINS}
+    if with_old:
+        by_id = {m.id: m for m in modules.values()}
+        for old, module_id in database_keys.aliases_by_key(db_session, "inventory").items():
+            if module_id in by_id and old not in modules and old not in MENTION_BUILTINS:
+                modules[old] = by_id[module_id]
+    return modules
 
 
 def _mention_items(db_session, module: InventoryModule, query: str, limit: int) -> list[InventoryItem]:
@@ -6172,7 +6183,7 @@ def notebook_lookup_item(key: str, number: int):
     """What the popover on an @<inventory> <n> chip shows."""
     from . import inventory_service as inventories
     with SessionLocal() as db_session:
-        module = _mention_modules(db_session).get(key)
+        module = _mention_modules(db_session, with_old=True).get(key)
         item = module and db_session.scalar(select(InventoryItem).where(
             InventoryItem.module_id_fk == module.id, InventoryItem.number == number))
         if not item:
@@ -6259,7 +6270,7 @@ def notebook_open_mention(entity_type: str, number: int):
                 return redirect(url_for("inventory.module", key=module.key, open=found[0].id))
             flash(f"There is no order #{number}.", "warning")
             return redirect(url_for("home_dashboard"))
-        module = _mention_modules(db_session).get(entity_type)
+        module = _mention_modules(db_session, with_old=True).get(entity_type)
         if module is not None:
             item = db_session.scalar(select(InventoryItem).where(
                 InventoryItem.module_id_fk == module.id, InventoryItem.number == number))
@@ -6278,14 +6289,23 @@ def notebook_backlinks(entity_type: str, entity_id: int):
     Scoped to pages the current user may open (theirs and shared). Returns a list of
     {page_id, page_title, tab_id, tab_title, snippet, updated_at}.
     """
-    needle = f"@{entity_type} {entity_id}"
     with SessionLocal() as db_session:
-        if entity_type not in ("mouse", "plasmid", "order") and entity_type not in _mention_modules(db_session):
-            return jsonify({"ok": False, "error": "bad type"}), 400
+        # An inventory is found by every key it has had: "@antibodies 5" from
+        # before a rename is the same record as "@primary_antibodies 5".
+        keys = [entity_type]
+        if entity_type not in ("mouse", "plasmid", "order"):
+            known = _mention_modules(db_session, with_old=True)
+            if entity_type not in known:
+                return jsonify({"ok": False, "error": "bad type"}), 400
+            keys = [k for k, m in known.items() if m.id == known[entity_type].id]
+        found = None
+        for key in keys:
+            clause = NotebookPage.body.ilike(like_pattern(f"@{key} {entity_id}"), escape="\\")
+            found = clause if found is None else (found | clause)
         stmt = (
             lab_notebook.accessible_filter(
                 select(NotebookPage).join(NotebookTab, NotebookPage.tab_id_fk == NotebookTab.id))
-            .where(NotebookPage.body.ilike(like_pattern(needle), escape="\\"))
+            .where(found)
             .order_by(NotebookPage.updated_at.desc())
             .limit(25)
         )
@@ -6293,7 +6313,7 @@ def notebook_backlinks(entity_type: str, entity_id: int):
         items = []
         # Use a word-boundary check to avoid `@mouse 12` matching `@mouse 123`.
         import re
-        pattern = re.compile(rf"@{entity_type}\s+{entity_id}(?!\d)")
+        pattern = re.compile(rf"@(?:{'|'.join(re.escape(k) for k in keys)})\s+{entity_id}(?!\d)")
         for page in rows:
             body = page.body or ""
             m = pattern.search(body)
@@ -6417,7 +6437,7 @@ def notebook_search_entity(entity_type: str):
                                       "label": _mention_label(module, i, True)})
 
             return jsonify({"ok": True, "items": items[:limit]})
-        module = _mention_modules(db_session).get(entity_type)
+        module = _mention_modules(db_session, with_old=True).get(entity_type)
         if module is not None:
             return jsonify({"ok": True, "items": [
                 {"id": i.number, "label": _mention_label(module, i)}

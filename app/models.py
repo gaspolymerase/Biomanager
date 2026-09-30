@@ -1392,6 +1392,22 @@ class BatchRecord(Base):
         return self.undone_at is not None
 
 
+class DatabaseAlias(Base):
+    """An address a database had before it was renamed (app/database_keys.py):
+    /inventory/<old_key> and the rest still find it, so printed QR labels,
+    bookmarks, @old_key mentions in notebook pages and scripts keep working.
+    `kind` is inventory, stocks or organisms; `module_id` that kind's row."""
+
+    __tablename__ = "database_aliases"
+    __table_args__ = (UniqueConstraint("kind", "old_key", name="uq_database_aliases_kind_old_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    old_key: Mapped[str] = mapped_column(String(80))
+    module_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 # ---------------------------------------------------------------------------
 # Lab inventories: samples, orders, reagents, antibodies and custom lists.
 #

@@ -40,7 +40,6 @@ from .organisms import (
     FIELD_TYPE_BY_KEY,
     PRESET_BY_KEY,
     PRESETS,
-    RESERVED_KEYS,
     SERVICE_ANCHORS,
     anchor_allowed,
     default_dead_statuses,
@@ -194,7 +193,12 @@ def list_modules(session, include_disabled: bool = False, everyone: bool = False
 
 
 def get_module(session, key: str) -> OrganismModule | None:
-    return session.scalar(select(OrganismModule).where(OrganismModule.key == key))
+    """By its address, or one it had before a rename (app/database_keys.py)."""
+    module = session.scalar(select(OrganismModule).where(OrganismModule.key == key))
+    if module is None and key:
+        from .database_keys import resolve
+        module = resolve(session, "organisms", key)
+    return module
 
 
 # ---------------------------------------------------------------------------
@@ -208,12 +212,10 @@ def slugify(text: str) -> str:
 
 
 def _key_taken(session, key: str) -> bool:
-    if key in RESERVED_KEYS or get_module(session, key) is not None:
-        return True
-    # Fly and worm databases share the /organisms/<key> namespace through the
-    # redirect for modules that moved to the stock engine.
-    from .models import StockModule
-    return session.scalar(select(StockModule.id).where(StockModule.key == key)) is not None
+    # Reserved words, live keys and old ones, of organisms and of fly and worm
+    # databases (they share /organisms/<key> through its redirect).
+    from .database_keys import taken
+    return taken(session, "organisms", key)
 
 
 def unique_key(session, base: str) -> str:
@@ -559,7 +561,12 @@ ENTITY_LETTER = {"organism": "A", "housing": "H", "line": "L", "cohort": "C", "c
 
 
 def code_prefix(module: OrganismModule, entity: str) -> str:
-    stem = re.sub(r"[^A-Z0-9]", "", module.key.upper())[:4] or "ORG"
+    # The first key's stem: a renamed database goes on numbering its codes.
+    from sqlalchemy.orm import object_session
+    from .database_keys import first_key
+    session = object_session(module)
+    key = first_key(session, "organisms", module) if session is not None else module.key
+    stem = re.sub(r"[^A-Z0-9]", "", key.upper())[:4] or "ORG"
     return f"{stem}-{ENTITY_LETTER.get(entity, 'A')}"
 
 

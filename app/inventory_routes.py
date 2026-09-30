@@ -29,7 +29,7 @@ from flask import (
 )
 from sqlalchemy import select
 
-from . import access, audit, positions
+from . import access, audit, database_keys, positions
 from . import inventory as presets
 from . import inventory_service as svc
 from .db import SessionLocal
@@ -81,6 +81,7 @@ def _module_or_404(session, key: str) -> InventoryModule:
     # person can tell (app/lab.py).
     if module is None or not lab.can_see(module):
         abort(404)
+    database_keys.to_current(module, key)   # an address it had before a rename
     return module
 
 
@@ -1422,9 +1423,12 @@ def configure(key: str):
                         svc.relabel_items(session, row.id, column, plan.relabel)
             else:
                 row.settings = settings
+            moved = database_keys.rekey(session, "inventory", row)    # its address follows its name
             session.commit()
-            flash(f"Saved {row.label}." + (" " + "; ".join(changes) + "." if changes else ""), "success")
-            return redirect(url_for("inventory.module", key=key))
+            flash(f"Saved {row.label}." + (" " + "; ".join(changes) + "." if changes else "")
+                  + (f" Its address is now /inventory/{moved}; links to the old one still work." if moved else ""),
+                  "success")
+            return redirect(url_for("inventory.module", key=row.key))
         mv = svc.view(row)
         return render_template("inventory/configure.html", module=mv, features=presets.FEATURES,
                                field_types=presets.FIELD_TYPES, icons=ICON_CHOICES,

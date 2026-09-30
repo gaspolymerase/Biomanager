@@ -1138,8 +1138,8 @@ class SettingsAndModuleTests(StockCase):
         form[f"temp_{i25}_flip"] = 12
         r = self.post(self.a, self.url(key, "/settings"), form)
         self.assertFlash(r, "Saved", "success")
+        key = one("select key from stock_modules where label=?", form["label"])   # its address follows the name
         s = self.stored(key)
-        self.assertEqual(one("select label from stock_modules where key=?", key), form["label"])
         self.assertEqual([p["key"] for p in s["purposes"]], ["stock", "balancer_stock", "experiment"])
         # Cross and progeny drive behaviour, so they stay usable when left out.
         cross = self.make_cross(self.a, key)
@@ -1175,8 +1175,9 @@ class SettingsAndModuleTests(StockCase):
 
     def test_creator_may_change_their_own_databases_settings(self):
         key = self.make_stock_module(self.m, "fly")
+        mid = one("select id from stock_modules where key=?", key)
         self.post(self.m, self.url(key, "/settings"), self.settings_form(key, label="my flies", code_prefix="F"))
-        self.assertEqual(one("select label from stock_modules where key=?", key), "my flies")
+        self.assertEqual(one("select label from stock_modules where id=?", mid), "my flies")
         self.assertFlash(self.create(self.m, key)[0], "Created F1")
 
     def test_delete_needs_the_typed_name_and_the_right_person(self):

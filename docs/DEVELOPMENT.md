@@ -124,6 +124,26 @@ each to its base unit first. It loads in Node too, and
 address hash) and the reference tables; the lab's chemicals come from the
 page (`/utilities` passes them) ahead of the built-in list.
 
+### Database addresses
+
+A database's `key` is its address (`/inventory/<key>`, `/stocks/<key>`,
+`/organisms/<key>`) and follows its name: the Configure routes and the setup
+survey call `database_keys.rekey()` after a rename, which gives it the new
+name's slug and keeps the old key in `database_aliases` (revision 0011).
+Each service's `get_module()` falls back to those, so everything that finds
+a database by key still finds it: routes (whose `_module_or_404` sends a
+GET on to the current address; a POST from an older page just saves),
+the API, `Experiment.db` places, import targets, labels. `rekey` rewrites
+the stored exact matches (`Experiment.db`, an order's `stocked_as`, a
+sample's `organism:<key>` source). Notebook `@<key> n` text is never
+rewritten (signed pages can't change): `_mention_modules(with_old=True)`
+knows the old keys, the page's `#nb-mention-types` lists them (`old`), and
+backlinks search every key a database has had. New keys (`free_key`) avoid
+reserved words, live keys and old ones, across organisms and stocks (they
+share `/organisms/<key>`). Organism codes keep the first key's stem
+(`first_key`). Plasmids: the page is `/plasmid/<number>`; `/plasmids/<row
+id>` redirects there, and the writes stay under `/plasmids/<row id>/…`.
+
 ### Small shared rules
 
 - Box, rack and freezer lists sort with `positions.place_order()`: numbers

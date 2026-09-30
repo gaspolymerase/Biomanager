@@ -255,6 +255,8 @@ change:
 
 Each inventory can keep **your own stock** apart from **lab common
 stock**, and statuses and categories can be renamed without losing items.
+Renaming a database moves it to its new name's address; the old one keeps
+working, so printed labels, bookmarks and `@mentions` still find it.
 
 - **Filter orders by status** — one tap shows only what is requested,
   ordered, received or cancelled.

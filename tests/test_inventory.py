@@ -729,8 +729,9 @@ class ConfigureTests(InventoryCase):
         key = self.new_module(self.m, "custom")
         self.get_ok(self.m, f"/inventory/{key}/configure")
         new_label = uniq("Renamed ")
+        mid = one("select id from inventory_modules where key=?", key)
         self.post(self.m, f"/inventory/{key}/configure", data=self.configure_form(key, label=new_label))
-        self.assertEqual(one("select label from inventory_modules where key=?", key), new_label)
+        self.assertEqual(one("select label from inventory_modules where id=?", mid), new_label)
 
     def test_configure_can_turn_on_a_board_for_a_custom_list(self):
         key = self.new_module(self.a, "custom")

@@ -16,7 +16,7 @@ from flask import (
 )
 from sqlalchemy import func, select
 
-from . import access, audit, positions
+from . import access, audit, database_keys, positions
 from . import stock_service as svc
 from . import stocks as presets
 from .db import SessionLocal
@@ -59,6 +59,7 @@ def _module_or_404(session, key: str) -> StockModule:
     # person can tell (app/lab.py).
     if module is None or not lab.can_see(module):
         abort(404)
+    database_keys.to_current(module, key)   # an address it had before a rename
     return module
 
 
@@ -1088,8 +1089,10 @@ def save_settings(key: str):
             s["default_temperature"] = listed[0]
         s["frozen"] = "1" in form.getlist("frozen")
         row.settings = json.dumps(s)
+        moved = database_keys.rekey(session, "stocks", row)    # its address follows its name
         session.commit()
-        return _back(key, view="settings", message=f"Saved {row.label}.")
+        return _back(row.key, view="settings", message=f"Saved {row.label}." + (
+            f" Its address is now /stocks/{moved}; links to the old one still work." if moved else ""))
 
 
 @bp.route("/<key>/delete", methods=["POST"])

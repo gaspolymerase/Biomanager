@@ -113,7 +113,12 @@ def list_modules(session, include_disabled: bool = False, everyone: bool = False
 
 
 def get_module(session, key: str) -> InventoryModule | None:
-    return session.scalar(select(InventoryModule).where(InventoryModule.key == key))
+    """By its address, or one it had before a rename (app/database_keys.py)."""
+    module = session.scalar(select(InventoryModule).where(InventoryModule.key == key))
+    if module is None and key:
+        from .database_keys import resolve
+        module = resolve(session, "inventory", key)
+    return module
 
 
 def first_of_kind(session, kind: str) -> InventoryModule | None:
@@ -124,12 +129,8 @@ def first_of_kind(session, kind: str) -> InventoryModule | None:
 
 
 def unique_key(session, label: str) -> str:
-    from .organism_service import slugify
-    base = slugify(label) or "inventory"
-    key, n = base, 2
-    while get_module(session, key) is not None:
-        key, n = f"{base}_{n}", n + 1
-    return key
+    from .database_keys import free_key
+    return free_key(session, "inventory", label)
 
 
 def create_module(session, preset_key: str, label: str = "", created_by: str = "") -> InventoryModule:

@@ -412,7 +412,7 @@ def apply_survey(session, form, actor: str) -> list[str]:
     """Save the survey. Returns the labels of databases and functions it
     switched on that were off, for telling the lab. Nothing is deleted:
     a database the lab stops using is only switched off."""
-    from . import inventory_service, stock_service
+    from . import database_keys, inventory_service, stock_service
     _, set_setting = _settings()
     before = survey_state(session)
     switched_on: list[str] = []
@@ -443,6 +443,7 @@ def apply_survey(session, form, actor: str) -> list[str]:
             module.enabled = wanted
             if wanted and name:
                 module.label = name
+                database_keys.rekey(session, "stocks", module)
 
     for kind, (label, _blurb, _icon) in INVENTORY_CHOICES.items():
         wanted = form.get(f"inventory:{kind}") == "1"
@@ -457,6 +458,7 @@ def apply_survey(session, form, actor: str) -> list[str]:
             module.enabled = wanted
             if wanted and name:
                 module.label = name
+                database_keys.rekey(session, "inventory", module)
 
     for key in MEMBER_PERMISSIONS:
         _set_flag(session, key, form.get(key) == "1")

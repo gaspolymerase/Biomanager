@@ -159,7 +159,8 @@ class ConfigureTests(OrganismCase):
         new_label = uniq("Renamed ")
         self.post(self.m, f"/organisms/{key}/configure", {"_full": "1", "label": new_label,
                                                           "capabilities": ["housing"]})
-        self.assertEqual(module_row(key, "label"), new_label)
+        key = one("select key from organism_modules where label=?", new_label)    # its address follows the name
+        self.assertTrue(key)
         self.post(self.m, f"/organisms/{key}/location/save", {"name": "My rack", "rows": "2", "cols": "2"})
         self.assertEqual(count("organism_locations", "module_id_fk=? and name='My rack'",
                                self.organism_module_id(key)), 1)
