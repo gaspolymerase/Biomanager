@@ -214,6 +214,15 @@ class BookingTests(Calendar):
         # Someone else's instrument is theirs to rename.
         self.assertEqual(self.post_json(self.o, "/calendar/equipment", {"id": eq["id"], "name": "Mine"}).status_code, 403)
 
+    def test_an_instrument_colour_is_a_colour(self):
+        for bad in ('#"><b>', "#zzz", "red", "#12345"):
+            r = self.post_json(self.m, "/calendar/equipment", {"name": uniq("Rig "), "color": bad})
+            self.assertTrue(r.get_json()["equipment"]["color"].startswith("#"), bad)
+            self.assertNotIn('"', r.get_json()["equipment"]["color"])
+            self.assertNotEqual(r.get_json()["equipment"]["color"], bad)
+        r = self.post_json(self.m, "/calendar/equipment", {"name": uniq("Rig "), "color": "#3bc"})
+        self.assertEqual(r.get_json()["equipment"]["color"], "#3bc")
+
     def test_overlapping_bookings_are_refused_with_who_has_it(self):
         eq = self.instrument()
         day = days_ahead(3)

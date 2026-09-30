@@ -70,12 +70,28 @@ def parse_version(text: str) -> tuple[int, ...] | None:
     return tuple(int(p) for p in m.group(1).split(".")) if m else None
 
 
+def _prerelease(text: str) -> tuple[int, ...] | None:
+    """"1.0.0-rc.2" → (2,): a release candidate, before 1.0.0 itself."""
+    m = re.match(r"^\s*v?\d+(?:\.\d+)*-[A-Za-z]*\.?(\d*)", text or "")
+    return (int(m.group(1) or 0),) if m else None
+
+
 def is_newer(latest: str, current: str) -> bool:
+    """Whether `latest` comes after `current`. A release candidate
+    (1.0.0-rc.1) comes before its release (1.0.0), so an app on a candidate
+    is offered the release; installed apps never see candidates, which are
+    published as pre-releases (GitHub's /releases/latest leaves them out)."""
     a, b = parse_version(latest), parse_version(current)
     if a is None or b is None:
         return False
     width = max(len(a), len(b))
-    return a + (0,) * (width - len(a)) > b + (0,) * (width - len(b))
+    a, b = a + (0,) * (width - len(a)), b + (0,) * (width - len(b))
+    if a != b:
+        return a > b
+    pa, pb = _prerelease(latest), _prerelease(current)
+    if pa is None or pb is None:
+        return pa is None and pb is not None      # the release after its candidate
+    return pa > pb
 
 
 # ---------------------------------------------------------------- preferences

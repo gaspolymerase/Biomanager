@@ -33,3 +33,22 @@ export function findDurations(text) {
   }
   return out;
 }
+
+// A timer's name: the step its duration is in, not the start of the line.
+// "…incubate 5 min at RT, then centrifuge 12,000 × g 15 min at 4 °C" names
+// its 15 min timer "centrifuge 12,000 × g 15 min at 4 °C".
+const CLAUSE_END = /(?:[.;:!?]\s|,\s|\s[—–-]\s|\n)/g;
+
+export function timerLabel(text, start, end) {
+  let from = 0;
+  let to = text.length;
+  CLAUSE_END.lastIndex = 0;
+  let m;
+  while ((m = CLAUSE_END.exec(text))) {
+    if (m.index + m[0].length <= start) from = m.index + m[0].length;
+    else if (m.index >= end) { to = m.index; break; }
+  }
+  const clause = text.slice(from, to).replace(/\s+/g, ' ').trim()
+    .replace(/^(?:then|and|next|after that)\s+/i, '').replace(/[.,;:]+$/, '');
+  return (clause.length > 60 ? `${clause.slice(0, 59)}…` : clause) || 'Timer';
+}

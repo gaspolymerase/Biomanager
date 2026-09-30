@@ -65,6 +65,16 @@ class Matching(AppTestCase):
             got = si.auto_match(["Position"], [values], self.fields())
             self.assertEqual(got[0][0], "position", values)
 
+    def test_merged_cells_cost_the_sheet_s_size_not_the_number_of_merges(self):
+        import time
+        rows = [[str(i)] for i in range(5000)]
+        start = time.monotonic()
+        si._fill_merged(rows, [(1, 1 + i, 1, 5001 + i) for i in range(20000)])
+        self.assertLess(time.monotonic() - start, 1.0)
+        rows = [["C1", "a"], ["", "b"], ["", "c"], ["C2", "d"], ["", "e"]]
+        si._fill_merged(rows, [(1, 4, 1, 5), (1, 1, 1, 3)])
+        self.assertEqual([r[0] for r in rows], ["C1", "C1", "C1", "C2", "C2"])
+
     def test_near_spellings_match(self):
         got = si.auto_match(["Resistence"], [["Kan"]], self.fields())
         self.assertEqual(got[0][0], "resistance")

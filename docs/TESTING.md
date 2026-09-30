@@ -120,11 +120,11 @@ For 1.0:
 
 | Check | SQLite | PostgreSQL 16 |
 | --- | --- | --- |
-| Test suite (`scripts/test.sh`) | 1,369 tests pass (5 skipped) | 1,365 tests pass (19 skipped) |
+| Test suite (`scripts/test.sh`) | 1,455 tests pass (5 skipped) | 1,451 tests pass (19 skipped) |
 | Upgrade check, every release 0.2.0 → 0.10.2 | 14 of 14: upgraded, nothing lost, pages open | 14 of 14 |
 
-The one new database change for 1.0, one cage per rack place (revision
-0006), was also run on a database that already had three cages in one
+Of the database changes for 1.0 (revisions 0006 to 0012), the one that
+could meet data it has to settle, one cage per rack place (0006), was also run on a database that already had three cages in one
 place: the oldest kept it, the other two were taken off the rack with a
 line in their notes, and the rule was in place afterwards.
 
@@ -136,6 +136,39 @@ and what is tedious? Five testers played a lab manager and four researchers
 (cloning, cell culture and CRISPR, protein purification, RNA and Westerns)
 in one lab for two simulated weeks. The findings, the chores that repeat
 and the functions they suggest are in [testing/wet-lab.md](testing/wet-lab.md).
+
+## The new work, reviewed and tried again
+
+What the wet-lab test led to (Utilities, Customize Home, @links to any
+record, positions that look after themselves, renamed databases and plasmid
+addresses) was then reviewed for security and tried again by two testers.
+
+**Security review.** Every route, template and script added since the
+stress test was read for the ways in: markup that reaches the page, what
+a lab copy carries, what an upload can make the server do. Fixed: a record's
+details popover in the notebook now escapes its type and error text; a
+member's lab copy no longer carries other people's batch history or the old
+addresses of databases they can't see; an instrument's colour must be a real
+colour code; a sheet with thousands of merged cells, or a notebook page with
+thousands of code fences, no longer ties up the server. Each has a test.
+
+**Re-test.** A bench researcher worked through every calculator with their
+own numbers, and a lab manager set the lab up and printed labels, both on a
+copy of the wet-lab test's lab. All the calculators gave the right answers.
+What they found, and what became of it:
+
+| Found | Now |
+| --- | --- |
+| QR codes on inventory and stock labels were cut off at the edge | Fixed: they scale to their box, and a printed label was checked to scan |
+| Molarity kept the last chemical's weight when an unknown one was typed | Fixed: the weight it filled is taken back; one typed by hand stays |
+| Calculator search didn't find *a260*, *ddct* or *nanodrop* | Fixed |
+| The unit converter wanted exact case; a dilution to a higher concentration gave an answer; ΔΔCt and standard curves showed noise-sized terms | Fixed |
+| `@anti-β` and `@Waf1/Cip1` stopped the @ menu; only two records per database were offered; a lot number typed in Ctrl+K came after other records | Fixed; typing a database's name now offers it too |
+| A two-column Nanodrop paste put A260/280 in the unit column | Fixed: it steps over a column it doesn't fit, and says which rows it went into |
+| A sheet's sort was lost on reload; a chip or a week in the calendar couldn't be linked to | Fixed (`?chip=`, `?scope=mine`, `/calendar?view=week&date=…`) |
+| A renamed page kept its old name on its tab; a new page with no topic open went to the last topic | Fixed: it goes in *Inbox* |
+| Customize took many clicks to move a card to the top and reset without asking; the audit log showed table names | Fixed |
+| Fly vials and organisms can't be @linked; *Getting started* isn't in Customize; a renamed database's chip keeps the old name in pages written before | Left for after 1.0 |
 
 ## How it was done
 

@@ -109,7 +109,8 @@ show; `POST /home/cards` saves the Customize dialog
 (`templates/home/_customize.html`). `home.html` captures each card with
 `{% set %}` into a dict and draws them in the person's order;
 `_home_extra_cards` loads the four off at first (to-dos, bookings, recent
-pages, calculators).
+pages, calculators). The calculators card puts the ones Utilities opened
+last first (`biomanager:util:recent` in `localStorage`, up to eight).
 
 ### Utilities
 
@@ -154,7 +155,19 @@ id>` redirects there, and the writes stay under `/plasmids/<row id>/…`.
   pages by the name: equal, then starting with the words, then containing
   them, then the rest.
 - A sheet cell takes a pasted block (`static/sheet.js`, `pasteBlock`): rows
-  and columns as shown, each cell put in and saved as if typed.
+  and columns as shown, each cell put in and saved as if typed. A value
+  that isn't one of a `<select>`'s options moves on to the next cell (at
+  most two), and a toast names the first and last rows filled.
+- `static/data-table.js` keeps a sheet's sort in `localStorage`
+  (`dt:<id>:sort`, restored before the first render) and its chip in the
+  address (`?chip=<spec>`; `?scope=mine` picks the chip reading *Mine*).
+- Ctrl+K and the unified `@` search (`/notebook/search/all`) rank a query
+  that is a record number (`_record_number`: digits, no leading zero) by
+  number; anything else by a code equal to it (lot, catalogue number),
+  then names. The unified menu fills from each inventory in turn up to the
+  limit, and offers a database whose key or label word starts with the
+  query (`type: "database"`; picking it inserts `@<key> ` and keeps the
+  menu open for its records).
 
 ### Styling
 
@@ -451,10 +464,12 @@ the rules; the editor is `frontend/src/` and the page around it is
 
 **Durations and clocks.** `frontend/src/durations.js` finds what gets a
 step timer and leaves time points out (a list of times, "at 24 h", "48 h
-samples"); `tests/js/durations.check.mjs` holds the cases. The page shows
+samples"); `tests/js/durations.check.mjs` holds the cases; `timerLabel()` names a
+timer from the words of its own sentence before the duration. The page shows
 times in the lab's zone (`lab.clock_zone()`, `labZone` in `#nb-data`),
 the clock the app writes "Started:" lines on. A new page goes in the topic
-open (`open_tab_id`) unless it is an experiment or a meeting.
+open (`open_tab_id`, sent only when a topic was chosen, `topicChosen`), else
+in *Inbox*, unless it is an experiment or a meeting.
 
 **Templates.** A name the person already uses answers 409 `exists`, and
 the page asks before sending `replace=1`, which saves over it.
@@ -546,7 +561,12 @@ snapshot (`/sync/compact`).
 
 The Markdown in `notebook_pages.body` stays the source for search,
 history and export: editors save it after their changes (with
-`X-Collab-Gen`), and a version is credited to whoever last typed. Anything
+`X-Collab-Gen`, and `collab_state`: the Yjs state vector of what the
+editor held), and a version is credited to whoever last typed. The page
+keeps the state its body was saved at (`notebook_page_info.body_state`,
+revision 0012); a save whose state is strictly behind it
+(`lab_notebook.behind`, e.g. a background tab that had not caught up) is
+answered `behind` and not written. Anything
 that replaces the text from outside the editor (restoring a version, the
 plain-text fallback) bumps `collab_generation` and clears the log; open
 editors are told to start again from the saved text.
@@ -986,6 +1006,16 @@ client-side pages.
 
 ## Desktop App
 
+**Releasing.** Push a tag: `v1.0.0` builds every app, the server image and
+bundle, checks each starts, and publishes the release (the website's
+download buttons use `/releases/latest`). A tag with a hyphen, `v1.0.0-rc.1`,
+is published as a *pre-release*: `/releases/latest` leaves it out (so the
+website, the desktop app's update check and the server set-up stay on the
+last release) and the image gets no `:latest` tag. Try the candidate, then
+tag the release. A version's notes for the labs are
+`docs/release-notes/<version>.md` (a candidate uses its release's), put
+above the list of files on the release page.
+
 **Signed builds.** The release workflow signs and notarises the Mac apps
 (`scripts/sign-macos.sh`, entitlements in `desktop/entitlements.plist`) and
 signs the Windows exe when these repository secrets exist; without them it
@@ -1014,7 +1044,8 @@ sidebar links to `DesktopApi.set_nav` over pywebview's JavaScript bridge,
 which keeps only same-origin paths. `desktop_updates.py` is the version
 (the `VERSION` file `Biomanager.spec` bundles from `BIOMANAGER_VERSION`;
 from source, the latest tag + "+dev"), the update check against
-`api.github.com/repos/gaspolymerase/biomanager/releases/latest`, and
+`api.github.com/repos/gaspolymerase/biomanager/releases/latest` (which
+leaves pre-releases out; `is_newer` puts `1.0.0-rc.1` before `1.0.0`), and
 this computer's `desktop-prefs.json` (automatic check, skipped version,
 appearance, zoom) in the data folder. Set `BIOMANAGER_MENU_DUMP=<file>` to
 have a running app write its menu bar there, for checking a build.

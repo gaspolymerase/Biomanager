@@ -157,7 +157,9 @@
       && item.row <= rack.rows && item.col <= rack.cols;
     const isPlacedAnywhere = (item) => racks.some((rack) => placedIn(rack, item));
 
-    function tile(item) {
+    // `where`: the cell's own name ("A1"), shown on a placed tile so a long
+    // name doesn't hide which position it is.
+    function tile(item, where) {
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'rack-tile';
@@ -166,14 +168,15 @@
       if (item.locked) el.dataset.locked = 'true';
       el.dataset.id = item.id;
       if (item.tone) el.dataset.tone = String(item.tone).toLowerCase();
-      el.title = item.title || [item.label, item.sub].filter(Boolean).join(' · ');
+      el.title = [where, item.title || [item.label, item.sub].filter(Boolean).join(' · ')].filter(Boolean).join(' · ');
       el.innerHTML = `
         <span class="rack-tile-top">
           <span class="rack-tile-id">${escapeHtml(item.label)}</span>
           ${item.flag ? '<span class="rack-tile-flag" aria-label="Needs attention"></span>' : ''}
           ${item.badge ? `<span class="rack-tile-badge">${escapeHtml(item.badge)}</span>` : ''}
         </span>
-        ${item.sub ? `<span class="rack-tile-sub">${escapeHtml(item.sub)}</span>` : ''}`;
+        ${item.sub || where ? `<span class="rack-tile-foot">${item.sub ? `<span class="rack-tile-sub">${escapeHtml(item.sub)}</span>` : ''}${
+          where ? `<span class="rack-tile-pos">${escapeHtml(where)}</span>` : ''}</span>` : ''}`;
       el.addEventListener('dragstart', (event) => {
         event.dataTransfer.setData('text/plain', String(item.id));
         event.dataTransfer.effectAllowed = 'move';
@@ -247,7 +250,7 @@
             cell.title = whereText(rack, r, c);
             const here = items.find((item) => item.rack === rack.id && item.row === r && item.col === c);
             if (here) {
-              cell.appendChild(tile(here));
+              cell.appendChild(tile(here, positionText(rack, r, c)));
             } else {
               // An empty cell shows its own name, so what the sheet calls D7
               // is visibly the D7 here.

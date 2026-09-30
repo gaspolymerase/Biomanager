@@ -29,6 +29,12 @@ function randomId() {
   return bytesToBase64(bytes).replace(/[+/=]/g, '');
 }
 
+// Which edits this document holds (a Yjs state vector, base64), sent with a
+// save of the page's Markdown: the server keeps the text that holds the most.
+export function stateOf(doc) {
+  return bytesToBase64(Y.encodeStateVector(doc));
+}
+
 export class HttpSyncProvider {
   constructor({ pageId, canEdit, user, onReset, onPeers, onStatus, onMeta }) {
     this.pageId = pageId;

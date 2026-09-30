@@ -314,7 +314,15 @@
 
     let savedView = null;
     try { savedView = localStorage.getItem(VIEW_KEY); } catch (_) {}
-    const initial = savedView || (window.innerWidth < 720 ? 'list' : 'month');
+    // A link or bookmark may say which view and day: /calendar?view=week&date=2026-10-06.
+    const params = new URLSearchParams(window.location.search);
+    const askedView = ['month', 'week', 'day', 'list'].includes(params.get('view')) ? params.get('view') : null;
+    const askedDate = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') || '') ? new Date(`${params.get('date')}T12:00`) : null;
+    if (askedDate && !Number.isNaN(askedDate.getTime())) {
+      calendar.setDate(askedDate);
+      listAnchor = startOfDay(askedDate);
+    }
+    const initial = askedView || savedView || (window.innerWidth < 720 ? 'list' : 'month');
     setView(initial, false);
     fetchAndRender();
     loadProtocols();

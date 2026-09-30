@@ -18,6 +18,11 @@ on:
 
 env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # v1.0.0-rc.1: a release candidate. It is published as a pre-release, which
+  # GitHub's /releases/latest (the website's download buttons, the desktop
+  # app's update check, the server set-up) leaves out, and the server image
+  # gets no :latest tag. Try it, then tag the release itself.
+  PRERELEASE: ${{ contains(github.event.inputs.tag || github.ref_name, '-') }}
 
 jobs:
   desktop:
@@ -191,7 +196,7 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE }}:${{ env.VERSION }}
-            ${{ env.IMAGE }}:latest
+            ${{ env.PRERELEASE != 'true' && format('{0}:latest', env.IMAGE) || '' }}
           labels: |
             org.opencontainers.image.title=BioManager
             org.opencontainers.image.description=BioManager lab server (see biomanager-server.tar.gz in the release)
@@ -254,6 +259,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # What's new in this version, written for the labs (docs/release-notes/<version>.md).
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: docs/release-notes
       - uses: actions/download-artifact@v8
         with:
           path: assets
@@ -283,13 +292,20 @@ jobs:
 
           Your data is kept outside the app, so updating never touches it.
           EOF
+          # A candidate (1.0.0-rc.1) uses its release's notes.
+          written="docs/release-notes/$(echo "${TAG#v}" | sed 's/-.*//').md"
+          if [ -f "$written" ]; then
+            { cat "$written"; echo; echo "---"; echo; cat notes.md; } > notes.full.md && mv notes.full.md notes.md
+          fi
           publish() {
             # A release made by hand first (or a re-run) gets its files replaced.
+            pre=()
+            [ "$PRERELEASE" = "true" ] && pre=(--prerelease)
             if gh release view "$TAG" --repo "$1" > /dev/null 2>&1; then
               gh release upload "$TAG" assets/* --repo "$1" --clobber
-              gh release edit "$TAG" --repo "$1" --notes-file notes.md
+              gh release edit "$TAG" --repo "$1" --notes-file notes.md "${pre[@]}"
             else
-              gh release create "$TAG" assets/* --repo "$1" --title "BioManager ${TAG#v}" --notes-file notes.md
+              gh release create "$TAG" assets/* --repo "$1" --title "BioManager ${TAG#v}" --notes-file notes.md "${pre[@]}"
             fi
           }
           publish "$GITHUB_REPOSITORY"

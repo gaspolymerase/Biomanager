@@ -155,6 +155,11 @@
     return el && !el.disabled && !el.readOnly ? el : null;
   }
 
+  function fits(select, value) {
+    const want = value.trim().toLowerCase();
+    return Array.from(select.options).some((o) => o.value.toLowerCase() === want || o.text.trim().toLowerCase() === want);
+  }
+
   function put(el, value) {
     if (el.tagName === 'SELECT') {
       const want = value.trim().toLowerCase();
@@ -191,15 +196,36 @@
     const first = rows.indexOf(tr);
     const column = shownCells(tr).indexOf(td);
     let skipped = 0;
+    const filled = [];
     grid.forEach((cells, r) => {
       const row = rows[first + r];
-      cells.forEach((value, c) => {
-        const el = row && editable(shownCells(row)[column + c]);
-        if (!(el && put(el, value)) && value.trim()) skipped += 1;
+      if (!row) { skipped += cells.filter((v) => v.trim()).length; return; }
+      const line = shownCells(row);
+      let at = column;
+      cells.forEach((value) => {
+        // A number that isn't one of a choice column's options goes on to
+        // the next column (a Nanodrop "conc ⇥ 260/280" block steps over the
+        // unit column); at most two such columns are stepped over.
+        let el = editable(line[at]);
+        for (let hop = 0; el && el.tagName === 'SELECT' && value.trim() && !fits(el, value) && hop < 2; hop += 1) {
+          at += 1;
+          el = editable(line[at]);
+        }
+        if (el && put(el, value)) filled.push(row);
+        else if (value.trim()) skipped += 1;
+        at += 1;
       });
     });
-    if (skipped && window.BiomanagerShell) {
-      window.BiomanagerShell.toast(`${skipped} pasted value${skipped === 1 ? '' : 's'} had no cell to go in (past the last row, or not a choice there).`);
+    const say = window.BiomanagerShell && window.BiomanagerShell.toast;
+    // Which rows it went into, first and last, as the sheet shows them, so a
+    // list pasted in another order than the rows is seen at once.
+    const nameOf = (row) => { const el = row && row.querySelector('[name="name"]'); return el ? el.value : ''; };
+    if (say && filled.length) {
+      const a = nameOf(filled[0]); const z = nameOf(filled[filled.length - 1]);
+      say(`Pasted into ${new Set(filled).size} rows${a && z ? `, ${a} to ${z}` : ''}.`
+        + (skipped ? ` ${skipped} value${skipped === 1 ? '' : 's'} had no cell to go in.` : ''));
+    } else if (say && skipped) {
+      say(`${skipped} pasted value${skipped === 1 ? '' : 's'} had no cell to go in (past the last row, or not a choice there).`);
     }
   }
 

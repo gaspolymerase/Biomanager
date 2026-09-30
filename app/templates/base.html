@@ -216,20 +216,10 @@
                   <a class="menu-item" href="{{ url_for('export_my_data') }}" role="menuitem">
                     {{ icon('download') }} Export my data
                   </a>
-                  {% if current_user.role == 'admin' %}
-                    <a class="menu-item" href="{{ url_for('lab.setup') }}" role="menuitem">
-                      {{ icon('sliders') }} Lab setup
-                    </a>
-                    <a class="menu-item" href="{{ url_for('admin_users') }}" role="menuitem">
-                      {{ icon('users') }} Manage users
-                    </a>
-                    <a class="menu-item" href="{{ url_for('guests.admin') }}" role="menuitem">
-                      {{ icon('user') }} Guests
-                    </a>
-                    <a class="menu-item" href="{{ url_for('admin_racks.index') }}" role="menuitem">
-                      {{ icon('box') }} Racks &amp; boxes
-                    </a>
-                  {% endif %}
+                  {# The lab's admin pages: the same list as More in the sidebar. #}
+                  {% for item in nav_more[1:] %}
+                    <a class="menu-item" href="{{ item.url }}" role="menuitem">{{ icon(item.icon) }} {{ item.label }}</a>
+                  {% endfor %}
                   <div class="menu-rule"></div>
                   <form method="post" action="{{ url_for('logout') }}">
                     <button type="submit" class="menu-item menu-item-danger" role="menuitem">

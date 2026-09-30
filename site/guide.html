@@ -108,7 +108,7 @@
         <tr><th>Typing, then Save, then "who has the file open?"</th><td>Type in the cell; it <b>saves as you type</b>. Everyone edits
           the same records at once, and nobody's work overwrites anyone else's.</td></tr>
         <tr><th>AutoFilter</th><td>The search box and the <b>chips</b> above every sheet: <i>All, Alive, Mine</i>, one per status. Your last
-          choice is remembered.</td></tr>
+          choice is remembered, and it is in the page's address, so a bookmark or a link you send opens the sheet the same way.</td></tr>
         <tr><th>Freeze panes, hide columns, column widths</th><td>The ID stays pinned as you scroll; <b>Columns</b> hides and shows; drag a
           column's edge to resize. Remembered per sheet.</td></tr>
         <tr><th>Data validation drop-downs</th><td><b>Choices</b> for a column (statuses, categories, purposes), set in <b>Configure</b> or
@@ -118,7 +118,8 @@
         <tr><th>Fill down, copy a row</th><td>In the mice's <b>Add many</b> preview, click a cell and <b>Fill down</b> (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>D</kbd>)
           copies it to the rows below. <b>Duplicate</b> copies any record.</td></tr>
         <tr><th>Paste a column</th><td>Copy a column of readings (a Nanodrop export, say) or a block of cells, click the first cell in the
-          sheet and paste: the values go down the rows as shown, and across if you copied several columns, each saved as if typed.</td></tr>
+          sheet and paste: the values go down the rows as shown, and across if you copied several columns, each saved as if typed. A number steps over a choice column it isn't one of (the
+          unit between concentration and A260/280), and a note says which rows it went into, first to last, so a list in another order shows at once.</td></tr>
         <tr><th>Formulas for age, wean and flip dates</th><td>Worked out for you: ages, P21 weaning, genotyping dates, flip schedules that follow
           the incubator's temperature.</td></tr>
         <tr><th>Conditional formatting</th><td>Status pills, a green dot for what is alive or in use, expired stock in red — and the
@@ -233,10 +234,10 @@
         <dd>Your racks seen from above, lit where something is due, with a <b>Pull list</b> of the next three days' jobs in walking order,
           to take into the room. A cage's cap colour shows its owner.</dd>
       </dl>
-      <p><b>Customize</b>, beside the layout chips, arranges Classic your way: tick the cards you want, drag them (or use the arrows)
+      <p><b>Customize</b>, beside the layout chips, arranges Classic your way: tick the cards you want, drag them (or use the arrows; the double arrow sends a card to the top)
         into your order, and make any of them <i>wide</i>. Four cards start switched off and are there to add: <i>Your to-dos</i> (due
         this week or undated), <i>Bookings</i> (instruments booked in the next week), <i>Recent pages</i> of your notebook, and
-        <i>Calculators</i> (links to the ones you use most). <b>Back to the usual</b> puts everything back. Like the layout, it is yours
+        <i>Calculators</i> (the ones you opened last, then the usual ones). <b>Back to the usual</b> puts everything back, after asking. Like the layout, it is yours
         alone.</p>
       <p>On every layout:</p>
       <dl class="gdl">
@@ -269,7 +270,7 @@
         <dd>The pencil opens the full record in a dialog, with every field, grouped. New records open the same dialog.</dd>
         <dt>Sort, Columns, Export, Print</dt>
         <dd><b>Sort</b> by any column, or click a heading. <b>Columns</b> hides what you don't need; drag an edge to resize. <b>Export</b>
-          downloads the rows you see as CSV (mice: also Excel and PDF). <b>Print</b> gives a clean sheet. Your filters, hidden columns
+          downloads the rows you see as CSV (mice: also Excel and PDF). <b>Print</b> gives a clean sheet. Your sort, filters, hidden columns
           and widths are remembered on that computer.</dd>
         <dt>On a phone</dt>
         <dd>A sheet becomes one card per row: the number and its buttons on top, then each column by name. <b>Columns</b> still hides
@@ -277,7 +278,7 @@
         <dt>If a save is refused</dt>
         <dd>Say a tank ID is taken: the page tells you why and reopens the form with what you typed, so you fix one field, not all of them.</dd>
         <dt>Layouts</dt>
-        <dd>Where it fits, a sheet also shows as a <b>Rack grid</b> or <b>Box grid</b>: drag a tile to move it. On a touch screen, press
+        <dd>Where it fits, a sheet also shows as a <b>Rack grid</b> or <b>Box grid</b>: each tile shows its record's name and position; drag a tile to move it. On a touch screen, press
           <b>Move</b>, tap a tile, then tap where it goes — another tile swaps with it, <i>Unplaced</i> takes it out. Orders also show as a
           <b>Board</b>, a column per status: drag a card along.</dd>
         <dt>Suggestions</dt>
@@ -317,7 +318,8 @@
         <li><b>Chips</b> beside it narrow it: <i>All</i>, <i>Alive</i>, <i>Mine</i>, <i>Lab common</i>, a status, <i>Expiring soon</i>.</li>
         <li><b>Search everything</b> with <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>K</kbd>, from anywhere: mice, cages, litters, experiments,
           strains, vials, tanks, lines, clutches, plasmids, orders, samples, reagents, antibodies, viruses and notebook pages. Names that
-          are, or start with, what you typed come first ("S20" finds the S20 tubes before a note about an S200 column). Arrows to move,
+          are, or start with, what you typed come first ("S20" finds the S20 tubes before a note about an S200 column), and a lot
+          or catalogue number typed in full comes before anything that merely contains it. Arrows to move,
           Enter to open.</li>
         <li><b>Tabs.</b> Following a link moves the tab you're in; <b>+</b> opens a new tab on your start page
           (<b>Settings → Default landing page</b>; Home if none). Drag to reorder, <kbd>Alt</kbd> (<kbd>⌥ Option</kbd> on a Mac) +
@@ -612,7 +614,7 @@
       <ul>
         <li><b>Month, Week, Day</b> and <b>List</b> views. Filled in for you: weanings, genotyping and sac reminders, fly and worm flips and
           egg collections, organism schedules, zebrafish tanks and reagent expiry. Clicking one (once, in every view) opens the record it
-          came from.</li>
+          came from. A link can open a given view and day: <code>/calendar?view=week&amp;date=2026-10-05</code>.</li>
         <li>The sidebar has a small month to jump around, a <b>Show</b> list with a colour and a count for each kind (events, to-dos,
           the colony, stocks and organisms, supplies, protocols, equipment, time away, connected calendars), the instruments and the
           protocols under way.</li>
@@ -641,15 +643,17 @@
       <h2>Notebook and utilities</h2>
       <h3>Pages</h3>
       <ul>
-        <li>Pages in <b>Topics</b>, written like a document and kept as Markdown. A new page goes in the topic you have open
-          (experiments and meetings go to their own topics). Type <b>/</b> at the start of a line for a menu of
+        <li>Pages in <b>Topics</b>, written like a document and kept as Markdown. A new page goes in the topic you have open, or in
+          <i>Inbox</i> when none is (experiments and meetings go to their own topics). Type <b>/</b> at the start of a line for a menu of
           blocks: tables, plots, protocols, calculators and the rest below. <b>Templates</b>: ⋯ → <b>Save as template</b>, and start new
           pages from it (a name you already use asks before replacing that template). It keeps the page's type (an Experiment template makes Experiments); <b>Structure only</b> keeps the headings,
           steps and table headers and leaves out the results, ticks, readings, pictures and what was written under Results,
           Observations or Conclusion; <b>Share it with the lab</b> offers it to
           everyone.</li>
         <li>Type <code>@</code> to link a mouse, plasmid, order or any inventory record — an antibody, a sample, a primer
-          (<code>@antibodies 5</code>), found by its name, catalogue number or lot, or a colleague (<code>@jordan</code>, for action items); the page and the record then point at each other,
+          (<code>@antibodies 5</code>), found by its name, catalogue number or lot (a lot or catalogue number typed in full, like
+          <code>@0012</code>, comes first; names such as <i>anti-β-actin</i> or <i>Waf1/Cip1</i> are found as written), a database by its
+          name (<code>@antib</code> offers <i>Antibodies</i>, and picking it lists its records), or a colleague (<code>@jordan</code>, for action items); the page and the record then point at each other,
           and the record lists the page under <b>Used in notebook pages</b>. The chip shows the record's name after its number
           (<i>@antibodies 5 · anti-p53</i>). Hover over one for
           its details; clicking it opens the record, and <b>↗</b> (or <kbd>⌘</kbd>/<kbd>Ctrl</kbd>-click) opens it in a new BioManager tab.</li>
@@ -677,7 +681,7 @@
         <li><b>Buffer recipes</b> scale with the volume; common buffers are built in and the lab's own are shared. <b>Calculators</b>
           for dilution, molarity, master mix, serial dilution, ligation, cells, gels, DNA/RNA and <b>Protein (A₂₈₀)</b>: paste the
           sequence (or give ε and MW) and the reading, and it gives µM and mg/mL. Durations in a step get a
-          <b>⏱</b> timer; time points (<i>6, 24, 48 h</i>, <i>at 24 h</i>, <i>the 48 h samples</i>) don't. Times on a page (<i>started
+          <b>⏱</b> timer, named from the step's own words; time points (<i>6, 24, 48 h</i>, <i>at 24 h</i>, <i>the 48 h samples</i>) don't. Times on a page (<i>started
           16:00</i>) are on the lab's clock, whatever your computer's time zone.</li>
       </ul>
       <h3 id="signing">Signing a page</h3>
@@ -692,12 +696,13 @@
         compare or restore. <b>Tags and search</b> work across every page you can open.</p>
       <h3 id="utilities">Utilities</h3>
       <p><b>Utilities</b>, under Notebook in the sidebar, holds 41 bench calculators. Find one in the list or type in <b>Find a
-        calculator</b>; the answer changes as you type, each remembers what you last typed in it on this computer, and <b>Reset</b> goes
+        calculator</b> (plain letters do: <i>a260</i>, <i>ddct</i>, or what you are doing, like <i>nanodrop</i>); the answer changes as you type, each remembers what you last typed in it on this computer, and <b>Reset</b> goes
         back to its example. Most solve for whichever field you leave empty (it is marked), and units are yours to choose.</p>
       <dl class="gdl">
         <dt>Solutions &amp; buffers</dt><dd>Molarity; dilution (C₁V₁ = C₂V₂); serial dilutions; percent solutions; ×-fold stocks; mass ↔
           molar concentration; buffer pH (Henderson–Hasselbalch, with the temperature); osmolarity; another form of a chemical (a hydrate
-          or salt for the one in the recipe). Type a chemical's name to fill its molecular weight, from the lab's own list first.</dd>
+          or salt for the one in the recipe). Type a chemical's name or formula to fill its molecular weight, from the lab's own list first (<i>MgCl2·6H2O</i> and
+          <i>magnesium chloride hexahydrate</i> are the same one); one it doesn't know leaves the weight for you to type.</dd>
         <dt>DNA &amp; RNA</dt><dd>Concentration from A₂₆₀; mass ↔ moles ↔ copies; oligo Tm, GC, MW and resuspension volume; ligation
           insert:vector; HiFi/Gibson assembly; PCR and qPCR master mixes; qPCR efficiency from a standard curve; ΔΔCt fold change;
           transformation efficiency.</dd>

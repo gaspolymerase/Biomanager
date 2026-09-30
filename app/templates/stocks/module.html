@@ -693,7 +693,7 @@
       <section class="card">
         <header class="card-head"><h2>{{ icon('tag') }} Purposes</h2></header>
         <div class="p-4">
-          <label class="field-label">One per line, as <code class="ident">key = Label</code>. <code class="ident">cross</code> and <code class="ident">progeny</code> drive the cross and egg-collection behaviour and are always kept.
+          <label class="field-label"><span>One per line, as <code class="ident">key = Label</code>. <code class="ident">cross</code> and <code class="ident">progeny</code> drive the cross and egg-collection behaviour and are always kept.</span>
             <textarea name="purposes" rows="8" class="font-mono">{% for p in m.purposes %}{{ p.key }} = {{ p.label }}
 {% endfor %}</textarea>
           </label>

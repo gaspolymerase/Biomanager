@@ -22,7 +22,9 @@ import { mentionTypes, styleOf, typedTriggerRe } from './mentionTypes.js';
 // Unified trigger: `@` followed by a single word-token (no space). Stops at
 // punctuation/whitespace so the menu closes naturally when the user types
 // past the entity reference.
-const UNIFIED_TRIGGER_RE = /@([\w-]*)$/;
+// What follows @ while typing: letters of any script (anti-β), digits and
+// the - / . a name or catalogue number holds (Waf1/Cip1, 12D1.2).
+const UNIFIED_TRIGGER_RE = /@([\p{L}\p{N}_\-/.]*)$/u;
 
 class SuggestionMenu {
   constructor() {
@@ -179,10 +181,11 @@ export const MentionSuggestion = Extension.create({
                     if (!insertType) return;
                     // A person is "@jordan" (action items and mentions); a
                     // record is "@<type> <number>", which becomes a chip.
-                    const text = insertType === 'person' ? `@${item.id} ` : `@${insertType} ${item.id} `;
+                    // A database: its word, and the menu goes on with its records.
+                    const text = insertType === 'person' || insertType === 'database' ? `@${item.id} ` : `@${insertType} ${item.id} `;
                     const tr = view.state.tr.insertText(text, ctx.triggerStart, ctx.triggerEnd);
                     view.dispatch(tr);
-                    closeMenu();
+                    if (insertType !== 'database') closeMenu();
                     view.focus();
                   });
                 })

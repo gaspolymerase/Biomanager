@@ -160,21 +160,32 @@ def _merged_ranges(data: bytes) -> dict[str, list[tuple[int, int, int, int]]]:
     return out
 
 
+MAX_MERGES = 20_000
+
+
 def _fill_merged(rows: list[list[str]], ranges) -> None:
     """A cell merged down over several rows (a Cage # typed once for all
-    its mice) belongs to each of those rows, as the sheet shows it."""
-    for min_col, min_row, _max_col, max_row in ranges:
+    its mice) belongs to each of those rows, as the sheet shows it.
+
+    Each row of a column is filled once however the ranges overlap (a real
+    sheet's merges don't; a made-up one's could, a million times over), so
+    the work is the sheet's size, not the number of merges."""
+    done: dict[int, int] = {}            # column → rows below this are filled
+    for min_col, min_row, _max_col, max_row in sorted(ranges[:MAX_MERGES], key=lambda r: (r[0], r[1])):
         if max_row <= min_row or min_row > len(rows) or min_col > MAX_COLS:
             continue
         top = rows[min_row - 1]
         value = top[min_col - 1] if min_col - 1 < len(top) else ""
-        if not value:
+        end = min(max_row, len(rows))
+        start = max(min_row, done.get(min_col, 0))
+        if not value or start >= end:
             continue
-        for r in range(min_row, min(max_row, len(rows))):
+        for r in range(start, end):
             row = rows[r]
             row.extend([""] * (min_col - len(row)))
             if not row[min_col - 1]:
                 row[min_col - 1] = value
+        done[min_col] = end
 
 
 def _decode(data: bytes) -> str:

@@ -178,7 +178,7 @@ class GettingStarted(LabSettingsCase):
     def test_a_cage_card_scans_as_a_scan(self):
         from unittest import mock
         self.a.post("/colony/cages/create", data={"cage_id": uniq("C")})
-        with mock.patch("app.labels._qr_svg", side_effect=lambda target, scale=3: f"<i>{target}</i>"):
+        with mock.patch("app.labels._qr_svg", side_effect=lambda target, scale=3, fit=False: f"<i>{target}</i>"):
             self.assertIn("card=1", self.get_ok(self.a, "/labels/cards/cages?scope=all"))
 
     def test_the_guide_link_goes_to_the_website(self):

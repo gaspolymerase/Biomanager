@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 from calendar import monthrange
 from datetime import date, datetime, timedelta
@@ -98,9 +99,13 @@ def _int(raw, default=0, lo=None, hi=None) -> int:
     return value
 
 
+_HEX_COLOR = re.compile(r"#(?:[0-9A-Fa-f]{3}){1,2}")
+
+
 def _color(raw, default="") -> str:
+    """"#30b0c7" or "#3bc", nothing else: it is written into a style."""
     raw = str(raw or "").strip()
-    return raw if raw.startswith("#") and len(raw) in (4, 7) else default
+    return raw if _HEX_COLOR.fullmatch(raw) else default
 
 
 def _refuse(message: str, status: int = 400):
@@ -417,7 +422,7 @@ def delete_run(run_id: int):
 # ---------------------------------------------------------------- equipment
 
 def _equipment_dict(e: Equipment) -> dict:
-    return {"id": e.id, "name": e.name, "location": e.location, "color": e.color or COLORS["bookings"],
+    return {"id": e.id, "name": e.name, "location": e.location, "color": _color(e.color, COLORS["bookings"]),
             "active": e.active, "editable": _can_edit(e.created_by) or not e.created_by}
 
 

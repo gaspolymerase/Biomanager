@@ -23,6 +23,7 @@
               {{ icon(c.icon) }} {{ c.label }}</label>
             <label class="home-cust-wide" title="Span both columns"><input type="checkbox" name="wide" value="{{ key }}" {% if key in home_cards.wide %}checked{% endif %}> Wide</label>
             <span class="home-cust-move">
+              <button type="button" class="row-icon-btn" data-move="top" title="To the top" aria-label="Move {{ c.label }} to the top">{{ icon('arrow-up') }}{{ icon('arrow-up') }}</button>
               <button type="button" class="row-icon-btn" data-move="-1" aria-label="Move {{ c.label }} up">{{ icon('arrow-up') }}</button>
               <button type="button" class="row-icon-btn" data-move="1" aria-label="Move {{ c.label }} down">{{ icon('arrow-down') }}</button>
             </span>
@@ -37,7 +38,8 @@
       {% endfor %}
     </div>
     <footer class="record-dialog-foot">
-      <button type="submit" name="reset" value="1" class="btn" formnovalidate>Back to the usual</button>
+      <button type="submit" name="reset" value="1" class="btn" formnovalidate
+              data-confirm="Put Home back as it comes: every card in its usual place, and your order and choices gone?">Back to the usual</button>
       <span class="mr-auto"></span>
       <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
       <button type="submit" class="btn btn-primary">Save</button>
@@ -53,11 +55,23 @@
       const b = e.target.closest('[data-move]');
       if (!b) return;
       const row = b.closest('li');
+      if (b.dataset.move === 'top') list.insertBefore(row, list.firstElementChild);
       if (b.dataset.move === '-1' && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
       if (b.dataset.move === '1' && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
       b.focus();
     });
     let dragged = null;
+    // A card switched off goes below the ones shown, so the list reads as Home will.
+    list.addEventListener('change', (e) => {
+      const box = e.target.closest('input[name="show"]');
+      if (!box) return;
+      const row = box.closest('li');
+      if (!box.checked) list.appendChild(row);
+      else {
+        const firstOff = [...list.children].find((li) => li !== row && !li.querySelector('input[name="show"]').checked);
+        list.insertBefore(row, firstOff || null);
+      }
+    });
     list.addEventListener('dragstart', (e) => { dragged = e.target.closest('li'); if (dragged) dragged.classList.add('is-dragging'); });
     list.addEventListener('dragend', () => { if (dragged) dragged.classList.remove('is-dragging'); dragged = null; });
     list.addEventListener('dragover', (e) => {

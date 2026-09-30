@@ -234,7 +234,7 @@ class MemberCopyTests(CopyCase):
             (uploads_dir() / name).write_text("image")
             self.addCleanup((uploads_dir() / name).unlink)
         self.member_name = make_user(uniq("member"))
-        self.words = {w: uniq(w) for w in ("private", "shared", "own", "personal", "feedback", "note")}
+        self.words = {w: uniq(w) for w in ("private", "shared", "own", "personal", "feedback", "note", "batch", "oldkey")}
         with SessionLocal() as s:
             tab = NotebookTab(owner_username=self.admin, title=uniq("Admin topic "))
             mine = NotebookTab(owner_username=self.member_name, title=uniq("Member topic "))
@@ -253,6 +253,9 @@ class MemberCopyTests(CopyCase):
             s.add(module)
             s.flush()
             s.add(InventoryItem(module_id_fk=module.id, name=self.words["personal"]))
+            from app.models import BatchRecord, DatabaseAlias
+            s.add(BatchRecord(description=f"add primer pair {self.words['batch']}", actor=self.admin))
+            s.add(DatabaseAlias(kind="inventory", old_key=self.words["oldkey"], module_id=module.id))
             s.add(Feedback(username=self.admin, text=self.words["feedback"]))
             s.add(NotificationRecord(recipient_username=self.admin, title=self.words["note"]))
             s.add(ApiToken(user_id_fk=user_id(self.admin), label="script", token_hash=uniq("hash")))
@@ -282,6 +285,9 @@ class MemberCopyTests(CopyCase):
                 self.assertEqual(con.execute(f"select count(*) from {table}").fetchone()[0], 0, table)
             self.assertNotIn(self.words["personal"], {n for (n,) in con.execute("select name from inventory_items")})
             self.assertNotIn(self.words["note"], {t for (t,) in con.execute("select title from notifications")})
+            # Someone else's Batch history, and old addresses of their personal databases.
+            self.assertFalse(any(self.words["batch"] in d for (d,) in con.execute("select description from batches")))
+            self.assertNotIn(self.words["oldkey"], {k for (k,) in con.execute("select old_key from database_aliases")})
             self.assertEqual(con.execute("select count(*) from mice").fetchone()[0], one("select count(*) from mice"))
 
     def test_an_admin_s_copy_is_the_whole_lab(self):

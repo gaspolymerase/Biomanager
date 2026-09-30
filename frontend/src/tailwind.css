@@ -1953,13 +1953,20 @@
   .rack-tile.is-dimmed { @apply opacity-25; }
   .rack-tile.is-match { @apply ring-2 ring-brand-500; }
   .rack-tile-top { @apply flex min-w-0 items-center gap-1; }
-  .rack-tile-id { @apply truncate font-mono text-[11.5px] font-semibold text-ink; }
+  /* A long name wraps to two lines (breaking inside "NUT01-10uM-48h-rep3")
+     rather than ending after six letters; the full name is the tooltip. */
+  .rack-tile-id {
+    @apply line-clamp-2 min-w-0 font-mono text-[11px] font-semibold leading-[1.25] text-ink;
+    overflow-wrap: anywhere;
+  }
   .rack-tile-flag { @apply size-1.5 shrink-0 rounded-full bg-warn-600; }
   .rack-tile-badge {
     @apply ml-auto shrink-0 rounded-full bg-sand-100 px-1.5 text-[10px] font-semibold leading-4
            text-muted tabular-nums;
   }
-  .rack-tile-sub { @apply truncate text-[10.5px] text-muted; }
+  .rack-tile-foot { @apply flex min-w-0 items-baseline gap-1; }
+  .rack-tile-sub { @apply min-w-0 truncate text-[10.5px] text-muted; }
+  .rack-tile-pos { @apply ml-auto shrink-0 font-mono text-[9.5px] font-medium text-sand-400 tabular-nums; }
 
   /* Tone by purpose — the same palette as the status pills. */
   .rack-tile:is([data-tone="breeder"], [data-tone="breeding"], [data-tone="mating"]) { @apply border-brand-200 bg-brand-50; }

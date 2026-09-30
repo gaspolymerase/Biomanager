@@ -21,7 +21,7 @@ SKIP = {"/logout", "/calendar/google/connect", "/calendar/google/callback",
         # The desktop app's only (tests/test_server_setup.py).
         "/server-setup/"}
 # /: the welcome page before signing in (app.py hello); /guest: entering a guest code (app/guests.py).
-PUBLIC = {"/", "/login", "/register", "/healthz", "/guest"}
+PUBLIC = {"/", "/login", "/register", "/healthz", "/guest", "/favicon.ico"}
 
 
 def simple_get_routes() -> list[str]:

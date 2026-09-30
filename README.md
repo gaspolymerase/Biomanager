@@ -317,8 +317,10 @@ working, so printed labels, bookmarks and `@mentions` still find it.
     Calendar subscribes to, with just your things or the whole lab.
 - **Lab notebook** — pages in topics, written like a document and saved as
   Markdown. A page links to mice, plasmids, orders and any inventory record
-  (`@mouse 12`, `@antibodies 5`): type **@** and a name, catalogue number
-  or lot (or a colleague's name, for `@jordan`); the chip shows the
+  (`@mouse 12`, `@antibodies 5`): type **@** and a name (written as it is,
+  `anti-β-actin` or `Waf1/Cip1`), a catalogue number or lot, a database's
+  name (`@antib` offers Antibodies and lists its records) or a colleague's
+  name, for `@jordan`; the chip shows the
   record's name after its number, and its popover shows its lot and place. The record's
   dialog lists the pages that link it (**Used in notebook pages**), so the
   record and the notes point at each other. Type **/** on a new line for
@@ -372,7 +374,7 @@ working, so printed labels, bookmarks and `@mentions` still find it.
     Conclusion; **Share it with the lab** lets everyone start a
     page from it.
   - **Timers**: every duration written in a step ("incubate 30 min") gets a
-    ⏱ button; timers keep running across pages and ring, vibrate and notify
+    ⏱ button, named from the step's words; timers keep running across pages and ring, vibrate and notify
     when they end.
   - **Daily log**: *Today* opens the day's page; each quick entry is added
     with the time.
@@ -434,12 +436,13 @@ working, so printed labels, bookmarks and `@mentions` still find it.
       above, with a pull list in the order you'd walk the room).
       <b>Customize</b> chooses which cards Classic shows, in what order
       and how wide, with your to-dos, bookings, recent pages and
-      calculators to add.
+      calculators (the ones you opened last) to add.
     </td>
     <td width="50%" valign="top">
       <h4>📊 Spreadsheet-style editing</h4>
       Click a cell and type; it saves as you go. Every table sorts,
-      filters, exports to CSV and prints. Years of history stay quick:
+      filters, exports to CSV and prints, and keeps your sort and filter
+      (the filter also in its address, for a bookmark). Years of history stay quick:
       mice that died, cages emptied, tubes used up and vials discarded
       more than 90 days ago wait behind <b>Show them</b> at the top of
       the sheet, and are still found by search and in every export.
@@ -453,7 +456,8 @@ working, so printed labels, bookmarks and `@mentions` still find it.
       written). You check an editable preview — IDs included — before
       anything is saved. <b>Fill down</b> (<kbd>Ctrl</kbd> + <kbd>D</kbd>)
       works as in a spreadsheet, and a column of readings pasted into a
-      sheet cell fills the cells below.
+      sheet cell fills the cells below (a Nanodrop block steps over the
+      unit column, and says which rows it filled).
     </td>
     <td valign="top">
       <h4>↩️ Batch actions with undo</h4>
