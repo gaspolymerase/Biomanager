@@ -109,7 +109,8 @@ show; `POST /home/cards` saves the Customize dialog
 (`templates/home/_customize.html`). `home.html` captures each card with
 `{% set %}` into a dict and draws them in the person's order;
 `_home_extra_cards` loads the four off at first (to-dos, bookings, recent
-pages, calculators).
+pages, calculators). The calculators card puts the ones Utilities opened
+last first (`biomanager:util:recent` in `localStorage`, up to eight).
 
 ### Utilities
 
@@ -154,7 +155,19 @@ id>` redirects there, and the writes stay under `/plasmids/<row id>/…`.
   pages by the name: equal, then starting with the words, then containing
   them, then the rest.
 - A sheet cell takes a pasted block (`static/sheet.js`, `pasteBlock`): rows
-  and columns as shown, each cell put in and saved as if typed.
+  and columns as shown, each cell put in and saved as if typed. A value
+  that isn't one of a `<select>`'s options moves on to the next cell (at
+  most two), and a toast names the first and last rows filled.
+- `static/data-table.js` keeps a sheet's sort in `localStorage`
+  (`dt:<id>:sort`, restored before the first render) and its chip in the
+  address (`?chip=<spec>`; `?scope=mine` picks the chip reading *Mine*).
+- Ctrl+K and the unified `@` search (`/notebook/search/all`) rank a query
+  that is a record number (`_record_number`: digits, no leading zero) by
+  number; anything else by a code equal to it (lot, catalogue number),
+  then names. The unified menu fills from each inventory in turn up to the
+  limit, and offers a database whose key or label word starts with the
+  query (`type: "database"`; picking it inserts `@<key> ` and keeps the
+  menu open for its records).
 
 ### Styling
 
@@ -451,10 +464,12 @@ the rules; the editor is `frontend/src/` and the page around it is
 
 **Durations and clocks.** `frontend/src/durations.js` finds what gets a
 step timer and leaves time points out (a list of times, "at 24 h", "48 h
-samples"); `tests/js/durations.check.mjs` holds the cases. The page shows
+samples"); `tests/js/durations.check.mjs` holds the cases; `timerLabel()` names a
+timer from the words of its own sentence before the duration. The page shows
 times in the lab's zone (`lab.clock_zone()`, `labZone` in `#nb-data`),
 the clock the app writes "Started:" lines on. A new page goes in the topic
-open (`open_tab_id`) unless it is an experiment or a meeting.
+open (`open_tab_id`, sent only when a topic was chosen, `topicChosen`), else
+in *Inbox*, unless it is an experiment or a meeting.
 
 **Templates.** A name the person already uses answers 409 `exists`, and
 the page asks before sending `replace=1`, which saves over it.
