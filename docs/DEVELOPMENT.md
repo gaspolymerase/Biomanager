@@ -546,7 +546,12 @@ snapshot (`/sync/compact`).
 
 The Markdown in `notebook_pages.body` stays the source for search,
 history and export: editors save it after their changes (with
-`X-Collab-Gen`), and a version is credited to whoever last typed. Anything
+`X-Collab-Gen`, and `collab_state`: the Yjs state vector of what the
+editor held), and a version is credited to whoever last typed. The page
+keeps the state its body was saved at (`notebook_page_info.body_state`,
+revision 0012); a save whose state is strictly behind it
+(`lab_notebook.behind`, e.g. a background tab that had not caught up) is
+answered `behind` and not written. Anything
 that replaces the text from outside the editor (restoring a version, the
 plain-text fallback) bumps `collab_generation` and clears the log; open
 editors are told to start again from the saved text.
@@ -986,6 +991,16 @@ client-side pages.
 
 ## Desktop App
 
+**Releasing.** Push a tag: `v1.0.0` builds every app, the server image and
+bundle, checks each starts, and publishes the release (the website's
+download buttons use `/releases/latest`). A tag with a hyphen, `v1.0.0-rc.1`,
+is published as a *pre-release*: `/releases/latest` leaves it out (so the
+website, the desktop app's update check and the server set-up stay on the
+last release) and the image gets no `:latest` tag. Try the candidate, then
+tag the release. A version's notes for the labs are
+`docs/release-notes/<version>.md` (a candidate uses its release's), put
+above the list of files on the release page.
+
 **Signed builds.** The release workflow signs and notarises the Mac apps
 (`scripts/sign-macos.sh`, entitlements in `desktop/entitlements.plist`) and
 signs the Windows exe when these repository secrets exist; without them it
@@ -1014,7 +1029,8 @@ sidebar links to `DesktopApi.set_nav` over pywebview's JavaScript bridge,
 which keeps only same-origin paths. `desktop_updates.py` is the version
 (the `VERSION` file `Biomanager.spec` bundles from `BIOMANAGER_VERSION`;
 from source, the latest tag + "+dev"), the update check against
-`api.github.com/repos/gaspolymerase/biomanager/releases/latest`, and
+`api.github.com/repos/gaspolymerase/biomanager/releases/latest` (which
+leaves pre-releases out; `is_newer` puts `1.0.0-rc.1` before `1.0.0`), and
 this computer's `desktop-prefs.json` (automatic check, skipped version,
 appearance, zoom) in the data folder. Set `BIOMANAGER_MENU_DUMP=<file>` to
 have a running app write its menu bar there, for checking a build.

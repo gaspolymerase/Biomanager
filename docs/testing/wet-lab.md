@@ -175,9 +175,16 @@ not counted as a bug.
 
 After the test, for 1.0:
 
-- **Bugs fixed:** 1, 3, 4, 5, 6, 7, 8, 9, 10, 12 and the cryo labels in 15.
-  Still open: 2 (not reproduced), 11, 13, 14, 16, 17, the box tiles in 15,
-  and the small ones in 18 (oligos now have an *ordered* status).
+- **Bugs fixed:** all eighteen. First 1, 3–10, 12 and the cryo labels in
+  15; then 11, 13, 14, 16, 17 and every small one in 18 (a renamed
+  database moves to its new name's address and the old one still works;
+  a plasmid's page is at its number); then the box tiles in 15 (names
+  wrap to two lines and show their position) and 2: it was not seen
+  again, but the cause found, an editor tab that had fallen behind saving
+  the page's text late over a newer one, can no longer happen (a save
+  that holds fewer edits than the saved text is not written). The
+  single-person share that seemed not to register works when tried again
+  in a browser.
 - **Quick wins done:** every row of the quick-wins table, with these left
   out: the "for: @person" hand-off on a record, and a Cell culture preset
   (Primers & oligos and Cell lines are presets now). @name tasks go to
@@ -204,11 +211,13 @@ fix and quick win above worked, and what they found was fixed too:
   headings; decimal commas were saved as text; the Lab common plasmid
   wording.
 
-Left for later: Month view needs a double-click to open an event;
-instruments can't be renamed; saving a template under a taken name makes a
-second one; a refusal shows behind the open dialog; a record chip reads
-"@antibodies 6" rather than the antibody's name; and Nanodrop values still
-go in tube by tube (no pasting a column).
+Left for later then, and done before 1.0: Month view needed a
+double-click to open an event (one click now); instruments couldn't be
+renamed (Edit); saving a template under a taken name made a second one (it
+asks, then replaces); a refusal showed behind the open dialog (it shows in
+it); a record chip read "@antibodies 6" rather than the antibody's name
+(it shows the name); and Nanodrop values went in tube by tube (a pasted
+column fills the sheet).
 
 ## How it was done, and its limits
 
