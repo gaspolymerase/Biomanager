@@ -592,7 +592,7 @@ NAV_SECTIONS: list[dict] = [
             {"key": "zebrafish", "label": "Zebrafish", "short": "Fish", "icon": "fish",
              "endpoint": "zebrafish", "feature": "zebrafish", "match": ("zebrafish", "zebrafish_line_detail")},
             {"key": "plasmids", "label": "Plasmids", "icon": "plasmid", "feature": "plasmids",
-             "endpoint": "plasmids", "match": ("plasmids", "plasmid_detail")},
+             "endpoint": "plasmids", "match": ("plasmids", "plasmid_detail", "plasmid_page")},
             {"key": "new-db", "label": "Add database", "icon": "plus", "needs": "create_db",
              "hint": "Keep another kind of record: an organism, a stock collection or an inventory",
              "endpoint": "organisms.new_module", "match": ("organisms.new_module",)},
@@ -5392,7 +5392,7 @@ def global_search():
                 "label": f"Plasmid #{p.plasmid_id} · {p.name or '(no name)'}",
                 "sublabel": f"{p.backbone or '?'} · {p.resistance or 'no resistance'} · {p.owner or 'no owner'}"
                             + (f" · {where}" if where else ""),
-                "url": url_for("plasmid_detail", row_id=p.id),
+                "url": url_for("plasmid_page", number=p.plasmid_id),
             })
 
         # Every lab inventory: samples, orders, reagents, antibodies, custom.
@@ -6249,7 +6249,7 @@ def notebook_open_mention(entity_type: str, number: int):
         if entity_type == "plasmid":
             plasmid = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == number))
             if plasmid is not None:
-                return redirect(url_for("plasmid_detail", row_id=plasmid.id))
+                return redirect(url_for("plasmid_page", number=plasmid.plasmid_id))
             flash(f"There is no plasmid #{number}.", "warning")
             return redirect(url_for("plasmids"))
         if entity_type == "order":
@@ -6427,7 +6427,8 @@ def notebook_search_entity(entity_type: str):
 
 # ---------------------------------------------------------------------------
 # Plasmids: the sheet, box grid and list (/plasmids), the detail page with
-# the sequence editor (/plasmids/<id>), and the writes behind them.
+# the sequence editor (/plasmid/<number>), and the writes behind them
+# (/plasmids/<row id>/…, where the page's own script sends them).
 #
 # Every write checks access.can_edit: a plasmid is its owner's (or anyone's
 # while unowned); admins can change anything. Boxes are PlasmidBox rows
@@ -6559,7 +6560,7 @@ def _plasmid_back(row_id: int | None = None):
     if referrer.startswith(request.host_url):
         return redirect(referrer)
     if row_id:
-        return redirect(url_for("plasmid_detail", row_id=row_id))
+        return redirect(plasmid_page_url(row_id))
     return redirect(url_for("plasmids"))
 
 
@@ -7133,13 +7134,34 @@ def delete_plasmid_box(box_id: int):
     return _plasmids_page()
 
 
+def plasmid_page_url(row_id: int) -> str:
+    """The page of the plasmid with this row: /plasmid/<its number>, the
+    number the list, the labels and the API use."""
+    with SessionLocal() as db_session:
+        number = db_session.scalar(select(PlasmidRecord.plasmid_id).where(PlasmidRecord.id == row_id))
+    return url_for("plasmid_page", number=number) if number is not None else url_for("plasmids")
+
+
 @app.route("/plasmids/<int:row_id>")
 @login_required
 def plasmid_detail(row_id: int):
+    """Addresses from before the page went by the plasmid's number (saved
+    tabs, bookmarks, old notifications): on to /plasmid/<number>."""
     with SessionLocal() as db_session:
-        p = db_session.get(PlasmidRecord, row_id)
+        number = db_session.scalar(select(PlasmidRecord.plasmid_id).where(PlasmidRecord.id == row_id))
+    if number is None:
+        flash("Plasmid not found.", "error")
+        return redirect(url_for("plasmids"))
+    return redirect(url_for("plasmid_page", number=number), code=301)
+
+
+@app.route("/plasmid/<int:number>")
+@login_required
+def plasmid_page(number: int):
+    with SessionLocal() as db_session:
+        p = db_session.scalar(select(PlasmidRecord).where(PlasmidRecord.plasmid_id == number))
         if p is None:
-            flash("Plasmid not found.", "error")
+            flash(f"There is no plasmid #{number}.", "error")
             return redirect(url_for("plasmids"))
         try:
             features = json.loads(p.features_json) if p.features_json else []
@@ -7202,22 +7224,22 @@ def plasmid_upload_sequence(row_id: int):
             return redirect(url_for("plasmids"))
         if not access.can_edit(p):
             flash(_plasmid_denied(p), "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         parsed, problem = _submitted_sequence("file")
         if problem:
             # Nothing was changed, so a warning (as on create), not an error.
             flash(f"{problem} The sequence was not changed.", "warning")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         if not parsed:
             flash("Choose a file or paste a sequence first.", "info")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         _apply_parsed_sequence(p, parsed)
         if parsed.get("name") and not p.name:
             p.name = parsed["name"]
         stamp_updated(p)
         db_session.commit()
     flash(f"Loaded {parsed['format'].upper()} · {len(parsed['sequence'])} bp · {len(parsed['features'])} features.", "success")
-    return redirect(url_for("plasmid_detail", row_id=row_id))
+    return redirect(plasmid_page_url(row_id))
 
 
 @app.route("/plasmids/<int:row_id>/clear-sequence", methods=["POST"])
@@ -7233,10 +7255,10 @@ def plasmid_clear_sequence(row_id: int):
             return redirect(url_for("plasmids"))
         if not access.can_edit(p):
             flash(_plasmid_denied(p), "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         if request.form.get("confirm") != "1":
             flash("Confirm clearing the sequence first.", "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         p.full_sequence = ""
         p.features_json = "[]"
         p.sequence_format = ""
@@ -7244,7 +7266,7 @@ def plasmid_clear_sequence(row_id: int):
         stamp_updated(p)
         db_session.commit()
         flash(f"Cleared the sequence of plasmid #{p.plasmid_id}. Its audit history keeps the old one.", "success")
-    return redirect(url_for("plasmid_detail", row_id=row_id))
+    return redirect(plasmid_page_url(row_id))
 
 
 @app.route("/plasmids/<int:row_id>/move", methods=["POST"])
@@ -7442,10 +7464,10 @@ def plasmid_edit_sequence(row_id: int):
             return redirect(url_for("plasmids"))
         if not access.can_edit(p):
             flash(_plasmid_denied(p), "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         if not cleaned:
             flash("That leaves no sequence, so nothing was saved. Use Clear sequence to empty it.", "error")
-            return redirect(url_for("plasmid_detail", row_id=row_id))
+            return redirect(plasmid_page_url(row_id))
         p.full_sequence = cleaned
         p.is_circular = new_circular
         try:
@@ -7465,7 +7487,7 @@ def plasmid_edit_sequence(row_id: int):
         stamp_updated(p)
         db_session.commit()
     flash(f"Saved sequence · {len(cleaned)} bp.", "success")
-    return redirect(url_for("plasmid_detail", row_id=row_id))
+    return redirect(plasmid_page_url(row_id))
 
 
 @app.route("/plasmids/<int:row_id>/sequence-save", methods=["POST"])

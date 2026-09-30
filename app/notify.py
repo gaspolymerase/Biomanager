@@ -401,7 +401,8 @@ def _link(session, target) -> str:
             module = session.get(InventoryModule, ident)
             return url_for("inventory.module", key=module.key) if module else ""
         if kind == "plasmid":
-            return url_for("plasmid_detail", row_id=ident)
+            plasmid = session.get(PlasmidRecord, ident)
+            return url_for("plasmid_page", number=plasmid.plasmid_id) if plasmid else ""
         if kind == "inventory-item":
             # The order itself, opened in its dialog (?open=, inventory_routes).
             item = session.get(InventoryItem, ident)

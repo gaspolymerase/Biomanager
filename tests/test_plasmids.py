@@ -65,6 +65,11 @@ def snapgene_bytes(sequence: bytes, circular: bool, features_xml: str) -> bytes:
 
 # ====================================================================== parser
 
+def page(row_id) -> str:
+    """The plasmid's page: /plasmid/<its number>."""
+    return f"/plasmid/{one('select plasmid_id from plasmids where id=?', row_id)}"
+
+
 class SequenceParserTests(AppTestCase):
     def test_clean_bases_keeps_every_iupac_ambiguity_code(self):
         self.assertEqual(sp.clean_bases("acgt uryk mswb dhvn 12 xz-*"), "ACGTURYKMSWBDHVN")
@@ -192,6 +197,20 @@ class CreatePlasmidTests(AppTestCase):
 
 # ================================================================ permissions
 
+class AddressTests(AppTestCase):
+    def test_a_plasmid_s_page_is_at_its_number_and_old_addresses_lead_there(self):
+        number = (one("select max(plasmid_id) from plasmids") or 0) + 500    # a number far from its row id
+        rid = self.make_plasmid(self.m, plasmid_id=str(number))
+        self.assertEqual(one("select plasmid_id from plasmids where id=?", rid), number)
+        html = self.get_ok(self.m, f"/plasmid/{number}")
+        self.assertIn(f"#{number}", html)
+        r = self.m.get(f"/plasmids/{rid}")
+        self.assertEqual((r.status_code, r.headers["Location"].split("?")[0][-len(f"/plasmid/{number}"):]),
+                         (301, f"/plasmid/{number}"))
+        self.assertIn(f'href="/plasmid/{number}"', self.get_ok(self.m, "/plasmids"))
+        self.assertEqual(self.m.get("/plasmid/987654321").status_code, 302)   # not there: back to the list
+
+
 class PermissionTests(AppTestCase):
     """The member owns a plasmid; `other` (a member too) may only read it."""
 
@@ -295,12 +314,12 @@ class PermissionTests(AppTestCase):
         self.assertIn("sheet-lock", tr)
         item = [x for x in grid_of(sheet)["items"] if x["id"] == self.rid][0]
         self.assertTrue(item["locked"])
-        detail = self.get_ok(self.o, f"/plasmids/{self.rid}")
+        detail = self.get_ok(self.o, page(self.rid))
         self.assertIn('data-locked="1"', detail)
         self.assertNotIn("Replace sequence", detail)
         self.assertNotIn("Save storage", detail)
         self.assertTrue(self.o.get(f"/plasmids/{self.rid}/sequence.json").get_json()["locked"])
-        self.assertIn('data-locked="0"', self.get_ok(self.m, f"/plasmids/{self.rid}"))
+        self.assertIn('data-locked="0"', self.get_ok(self.m, page(self.rid)))
 
 
 # ================================================================ autosave
@@ -508,7 +527,7 @@ class EditorAnnotationTests(AppTestCase):
         self.assertEqual([t["name"] for t in data["translations"]], ["mine"])
         self.assertEqual([(p["name"], p["strand"]) for p in data["parts"]], [("insert", -1)])
         # The detail page counts features only.
-        self.assertIn("its 1 feature(s)", self.get_ok(self.a, f"/plasmids/{self.rid}"))
+        self.assertIn("its 1 feature(s)", self.get_ok(self.a, page(self.rid)))
 
     def test_notes_and_joined_features_survive_a_round_trip(self):
         self.save(features=[{"name": "split", "start": 0, "end": 50, "forward": True,
@@ -606,7 +625,7 @@ class BoxTests(AppTestCase):
         bad = uniq("Bad")
         r = self.post(self.a, "/plasmids", {"name": bad, "box_id": str(box), "position": "B3"})
         self.assertFlash(r, "Positions there run 1-1–8-10", "warning")
-        detail = self.get_ok(self.a, f"/plasmids/{rid}")
+        detail = self.get_ok(self.a, page(rid))
         self.assertIn(f'{box_name} · <span class="ident">2-3</span>', detail)
         r = self.autosave(self.a, f"/plasmids/{rid}/update", {
             "box_id": str(box), "position": "3-4", "box_id_was": str(box), "position_was": "2-3"})
@@ -890,9 +909,9 @@ class PageTests(AppTestCase):
         rid = self.make_plasmid(self.a, box_id=box, position="B3", sequence_text=">x\nACGTNN\n")
         name = plasmid(rid, "name")[0]
         sheet = self.get_ok(self.m, "/plasmids")
-        self.assertIn(f'href="/plasmids/{rid}"', sheet)
+        self.assertIn(f'href="{page(rid)}"', sheet)
         self.assertIn('id="plasmid-box-dialog"', sheet)
-        detail = self.get_ok(self.a, f"/plasmids/{rid}")
+        detail = self.get_ok(self.a, page(rid))
         self.assertIn(name, detail)
         self.assertIn('<span class="ident">B3</span>', detail)
         self.assertIn("Replace sequence", detail)

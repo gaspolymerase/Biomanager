@@ -43,7 +43,7 @@
     <span class="plasmid-cell">
       <input class="ident" name="{{ name }}" form="{{ form_id }}" value="{{ value }}" list="inv-plasmid-options" placeholder="#"
              data-autosave="1" aria-label="{{ field.label }}" {% if locked %}disabled{% endif %}>
-      {% if plasmid %}<a class="plasmid-cell-link" href="{{ url_for('plasmid_detail', row_id=plasmid.row_id) }}"
+      {% if plasmid %}<a class="plasmid-cell-link" href="{{ url_for('plasmid_page', number=plasmid.number) }}"
          title="Open plasmid #{{ plasmid.number }}">{{ plasmid.name or ('#' ~ plasmid.number) }}</a>{% endif %}
     </span>
   {% elif field.type == 'url' and value %}

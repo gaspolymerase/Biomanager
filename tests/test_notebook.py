@@ -556,7 +556,7 @@ class MentionLinkTests(AppTestCase):
         pid = self.make_plasmid(self.m)
         number = one("select plasmid_id from plasmids where id=?", pid)
         r = self.m.get(f"/notebook/open/plasmid/{number}")
-        self.assertTrue(r.headers["Location"].endswith(f"/plasmids/{pid}"), r.headers["Location"])
+        self.assertTrue(r.headers["Location"].endswith(f"/plasmid/{number}"), r.headers["Location"])
 
     def test_an_unknown_number_says_so(self):
         r = self.m.get("/notebook/open/mouse/987654", follow_redirects=True)

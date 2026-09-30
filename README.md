@@ -231,7 +231,7 @@ on the same rack grid as everything else, so every tube has an address.
 Each tube keeps its miniprep's concentration (ng/µL) and 260/280, and a
 plasmid can be **Lab common**: anyone can edit it, while its owner still
 decides whose it is. A plasmid's page lists the notebook pages that
-`@plasmid` it.
+`@plasmid` it, and its address is its number (plasmid #12 is `/plasmid/12`).
 
 <p align="center">
   <img src="docs/screenshots/plasmid-map.webp" alt="A plasmid map with features, restriction sites and the sequence view" width="100%">

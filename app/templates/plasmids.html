@@ -142,7 +142,7 @@
                 <input type="checkbox" data-select-row value="{{ p.id }}" aria-label="Select plasmid {{ p.plasmid_id }}">
               </td>
               <td class="sheet-pin sheet-pin-1">
-                <a href="{{ url_for('plasmid_detail', row_id=p.id) }}" class="sheet-link" title="Open the page of plasmid #{{ p.plasmid_id }} (sequence map)">
+                <a href="{{ url_for('plasmid_page', number=p.plasmid_id) }}" class="sheet-link" title="Open the page of plasmid #{{ p.plasmid_id }} (sequence map)">
                   {{ sheet_ui.id_cell('#' ~ p.plasmid_id, alive=r.stored, locked=locked, owner=p.owner, noun='plasmid',
                                       alive_title='In a box', dead_title='Not stored') }}
                 </a>
@@ -231,7 +231,7 @@
         {% for r in rows %}
           {% set p = r.p %}
           <li class="plasmid-list-row" data-search="{{ ((p.name or '') + ' ' + (p.backbone or '') + ' ' + (p.resistance or '') + ' ' + (p.owner or '') + ' ' + r.where)|lower }}">
-            <a href="{{ url_for('plasmid_detail', row_id=p.id) }}">
+            <a href="{{ url_for('plasmid_page', number=p.plasmid_id) }}">
               <span class="plasmid-list-id">#{{ p.plasmid_id }}</span>
               <span class="plasmid-list-name">{{ p.name or 'Unnamed' }}</span>
               <span class="plasmid-list-meta">
@@ -460,7 +460,7 @@
         syncMany();
       } else {
         const link = document.createElement('a');
-        link.href = `/plasmids/${data.id}`;
+        link.href = `/plasmid/${data.plasmid_id}`;
         link.textContent = 'Open its page (sequence map)';
         sub.appendChild(link);
       }

@@ -2,7 +2,7 @@
 request tells the admins, and @someone in any record's notes tells them."""
 from __future__ import annotations
 
-from tests.base import AppTestCase, count, execute, make_user, uniq
+from tests.base import AppTestCase, count, execute, make_user, one, uniq
 from tests.test_inventory import InventoryCase
 
 
@@ -40,7 +40,7 @@ class MentionsInNotes(InventoryCase):
         pid = self.make_plasmid(self.m, notes=f"For @{self.admin}: verified clone 3")
         got = notices(self.admin, "%mentioned you%")
         self.assertEqual(len(got), 1)
-        self.assertEqual(got[0][1], f"/plasmids/{pid}")
+        self.assertEqual(got[0][1], f"/plasmid/{one('select plasmid_id from plasmids where id=?', pid)}")
         # Saving the notes again with the same mention is not a new mention.
         self.m.post(f"/plasmids/{pid}/update", data={"notes": f"For @{self.admin}: verified clone 3, glycerol"},
                     headers={"X-Autosave": "1"})

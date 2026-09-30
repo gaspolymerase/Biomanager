@@ -142,7 +142,7 @@ class PagesRender(AppTestCase):
     def test_record_detail_pages_render(self):
         mouse_number = one("select mouse_id from mice where id=?", self.colony["mice"][0])
         plasmid_number = one("select plasmid_id from plasmids where id=?", self.plasmid)
-        urls = [f"/colony/experiments/{self.experiment}", f"/plasmids/{self.plasmid}",
+        urls = [f"/colony/experiments/{self.experiment}", f"/plasmid/{plasmid_number}",
                 f"/plasmids/{self.plasmid}/sequence.json", f"/zebrafish/lines/{self.line}",
                 f"/zebrafish/tanks/{self.tank}/card", "/labels/cards/cages", f"/labels/cards/{self.org}",
                 "/labels/qr.svg?d=hello", f"/notebook/backlinks/mouse/{self.colony['mice'][0]}",
@@ -155,7 +155,7 @@ class PagesRender(AppTestCase):
             self.assertEqual(self.a.get("/search", query_string={"q": q}).status_code, 200, q)
 
     def test_a_missing_record_is_not_a_server_error(self):
-        urls = ["/colony/experiments/987654321", "/plasmids/987654321", "/zebrafish/lines/987654321",
+        urls = ["/colony/experiments/987654321", "/plasmids/987654321", "/plasmid/987654321", "/zebrafish/lines/987654321",
                 "/zebrafish/tanks/987654321/card", "/organisms/no-such-db", "/stocks/no-such-db",
                 "/inventory/no-such-db"]
         self.assertAllRender(self.a, urls, ok=lambda code: code < 500)
