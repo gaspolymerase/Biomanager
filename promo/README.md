@@ -26,8 +26,8 @@ count who actually uses it.
   with the first release that has it (1.0.1).
 - [x] **The version to announce**: 1.0.
 - [ ] **Accounts** on the five platforms with the same name and avatar
-  (the app icon), a one-line bio, and the website in each profile
-  (Xiaohongshu shows no links in posts; the profile is where people look).
+  (the app icon), a one-line bio, and the website in each profile.
+  Xiaohongshu posts write the address out (it isn't clickable there).
 - [ ] **A Zenodo DOI**: connect the repository to Zenodo so every release
   is citable from day 0.
 - [ ] **Visits to the website.** GitHub Pages counts nothing; the links

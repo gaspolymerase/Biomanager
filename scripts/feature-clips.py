@@ -15,6 +15,7 @@ it is posted:
     <out>/<clip>/portrait-zh.mp4    3:4 with a Chinese title (Xiaohongshu)
     <out>/<clip>/clip.gif           960 px wide, for the README and GitHub
     <out>/<clip>/cover-en.png, cover-zh.png, cover-portrait.png
+    <out>/<clip>/plain.mp4           with --plain: the footage alone, for the explainer
 
 With no --base it makes its own demo lab (scripts/demo-data.py) in a
 temporary folder and runs the app on a free port, so every recording starts
@@ -302,7 +303,7 @@ class Layout:
     """The canvas for one render (gradient, title, bullets, brand) and where
     a desktop window or a phone sits on it."""
 
-    def __init__(self, canvas, title, subtitle, lang, colours, bullets=()):
+    def __init__(self, canvas, title, subtitle, lang, colours, bullets=(), plain=False):
         self.canvas = canvas
         cw, ch = canvas
         self.portrait = portrait = ch > cw
@@ -322,15 +323,19 @@ class Layout:
             tw = draw.textlength(subtitle, font=sub_font)
             draw.text(((cw - tw) / 2, y + int(sub_font.size * 0.2)), subtitle, font=sub_font, fill=(75, 85, 99))
             y += int(sub_font.size * 1.6)
-        # The brand mark along the bottom.
-        brand = "BioManager｜免费开源" if lang == "zh" else "BioManager · free and open source"
-        bfont = font(face, int(cw * (0.032 if portrait else 0.016)))
-        icon = Image.open(ICON).convert("RGBA").resize((int(bfont.size * 1.6),) * 2, Image.LANCZOS)
-        bw = icon.width + 12 + draw.textlength(brand, font=bfont)
-        bx, by = int((cw - bw) / 2), int(ch - bfont.size * (2.4 if portrait else 2.2))
-        bg.paste(icon, (bx, by - int(bfont.size * 0.35)), icon)
-        draw.text((bx + icon.width + 12, by), brand, font=bfont, fill=(55, 65, 81))
-        bottom = by - int(ch * 0.03)
+        if plain:
+            # Footage for a longer video: no words, and room below for its subtitles.
+            bottom = ch - int(ch * 0.17)
+        else:
+            # The brand mark along the bottom.
+            brand = "BioManager｜免费开源" if lang == "zh" else "BioManager · free and open source"
+            bfont = font(face, int(cw * (0.032 if portrait else 0.016)))
+            icon = Image.open(ICON).convert("RGBA").resize((int(bfont.size * 1.6),) * 2, Image.LANCZOS)
+            bw = icon.width + 12 + draw.textlength(brand, font=bfont)
+            bx, by = int((cw - bw) / 2), int(ch - bfont.size * (2.4 if portrait else 2.2))
+            bg.paste(icon, (bx, by - int(bfont.size * 0.35)), icon)
+            draw.text((bx + icon.width + 12, by), brand, font=bfont, fill=(55, 65, 81))
+            bottom = by - int(ch * 0.03)
         # On the portrait canvas, up to three short points under the window.
         if portrait and bullets:
             pfont = font(face, int(cw * 0.04))
@@ -552,6 +557,8 @@ def main():
     ap.add_argument("--data", help="that lab's data folder (for its demo-password)")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--quick", action="store_true", help="only landscape-en.mp4, for checking a clip")
+    ap.add_argument("--plain", action="store_true",
+                    help="only plain.mp4: the footage with no words, for scripts/explainer-video.py")
     args = ap.parse_args()
     clips, prepares = load_clips()
     if args.list:
@@ -590,6 +597,10 @@ def main():
                 renders = (("landscape-en", (1920, 1080), "en"),
                            ("landscape-zh", (1920, 1080), "zh"),
                            ("portrait-zh", (1080, 1440), "zh"))
+                if args.plain:
+                    render(segments, Layout((1920, 1080), "", "", "zh", colours, plain=True), folder / "plain.mp4")
+                    print("  plain.mp4", flush=True)
+                    continue
                 for fname, canvas, lang in renders[:1] if args.quick else renders:
                     layout = Layout(canvas, meta.get(f"title_{lang}", name), meta.get(f"subtitle_{lang}", ""),
                                     lang, colours, meta.get("bullets_zh", ()) if lang == "zh" else ())

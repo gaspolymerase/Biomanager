@@ -136,8 +136,11 @@ def datasheet(d):
     d.goto(PAGES["datasheet"])
     d.start()
     d.wait(0.8)
-    cell = "input[data-r='{}'][data-c='1']"
+    cell = "input[data-r='{}'][data-c='1']:visible"
     scroll_to(d, cell.format(8), 250, seconds=1.2)
+    # 1.0's floating editor toolbar covers the window's bottom: keep the rows above it.
+    d.page.locator(cell.format(8)).first.evaluate("e => e.scrollIntoView({block: 'center', behavior: 'smooth'})")
+    d.wait(0.8)
     for i, value in enumerate(DRUG_B):
         d.type(cell.format(8 + i), value, delay=110, after=0.5)
     d.wait(0.8)
@@ -609,6 +612,60 @@ def labels(d):
     d.page.request.get(f"{d.base}/labels/cards/cages?scope=mine&stock=sheet")
 
 
+# ---------------------------------------------------------------------------
+# Connected records: samples from a mouse, and a mouse mentioned in a notebook
+# ---------------------------------------------------------------------------
+
+def make_links(api, base):
+    for name, mouse in (("Liver, snap-frozen", "16"), ("Serum", "16"), ("Liver, snap-frozen", "17"), ("Serum", "17")):
+        r = api.post(f"{base}/inventory/samples/items/save", form={
+            "id": "", "name": name, "attr_source_kind": "mouse", "attr_source_ref": mouse,
+            "attr_collected_on": TODAY.isoformat(), "attr_storage_temp": "−80 °C"})
+        if not r.ok:
+            raise RuntimeError(f"sample: {r.status} {r.text()[:200]}")
+    body = ("## qPCR: Il6 in liver after LPS\n\n"
+            "Liver from @mouse 16 (LPS 1 mg/kg), collected 4 h after injection. "
+            "RNA with TRIzol, cDNA from 1 µg, Il6 and Gapdh in triplicate.\n\n"
+            "Samples are in Samples, box 1, A1–A4.\n")
+    PAGES["links"] = f"/notebook?page={notebook_page(api, base, 'qPCR: Il6 in liver after LPS', body)}"
+
+
+def links(d):
+    d.goto("/inventory/samples")
+    d.start()
+    d.wait(0.8)
+    chip = d.page.locator(".source-chip-link:visible").first
+    box = chip.bounding_box()
+    # The samples' Source column: each one's mouse, a link.
+    d.zoom(box=(box["x"] - 520, box["y"] - 60, 760, 200), scale=1.9)
+    d.move(chip, 0.9)
+    d.wait(1.4)
+    d.cover()
+    d.unzoom()
+    d.click(chip, after=2.2)         # the mouse it came from, in the colony
+    d.goto(PAGES["links"], settle=1.0)
+    para = d.page.locator("[contenteditable=true] p:visible").first
+    d.zoom(para, scale=1.5)
+    mention = d.page.locator("[contenteditable=true] :text('@mouse 16'):visible").first
+    d.move(mention if mention.count() else para, 0.9)
+    d.wait(2.4)                      # its card: the mouse, from the colony
+    d.move("[contenteditable=true] h2:visible", 0.6)   # away, so the card closes
+    d.key("Escape", after=0.8)
+    last = d.page.locator("[contenteditable=true] p:visible").last
+    d.click(last, after=0.3)
+    d.key("Meta+ArrowDown", after=0.2)
+    d.key("Enter", after=0.2)
+    d.zoom(last, scale=1.6)
+    d.page.keyboard.type("Its cage mate @mouse 17 got saline.", delay=75)
+    d.key("Escape", after=1.0)
+    typed = d.page.locator("[contenteditable=true] :text('@mouse 17'):visible").first
+    if typed.count():
+        d.move(typed, 0.8)
+    d.wait(2.0)
+    d.unzoom()
+    d.wait(0.6)
+
+
 CLIPS = {
     "datasheet": [("desktop", datasheet)],
     "qpcr": [("desktop", qpcr)],
@@ -621,6 +678,7 @@ CLIPS = {
     "looks": [("desktop", looks)],
     "phone": [("phone", phone)],
     "labels": [("desktop", labels)],
+    "links": [("desktop", links)],
 }
 PREPARE = {
     "datasheet": make_datasheet,
@@ -629,4 +687,5 @@ PREPARE = {
     "protocol": make_protocol_page,
     "flies": make_flies,
     "calendar": make_calendar,
+    "links": make_links,
 }

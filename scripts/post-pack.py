@@ -140,7 +140,7 @@ def pack(post: dict, data: dict, when: date, ver: str, record: bool) -> Path:
         "- [ ] LinkedIn: text + linkedin.mp4",
         "- [ ] Facebook: text + facebook.mp4",
         "- [ ] Bilibili: title, description, tags + bilibili.mp4 (cover: bilibili-cover.png)",
-        "- [ ] Xiaohongshu: title, text + xhs.mp4 (cover: xhs-cover.png). No link in the text; the link is on the profile.",
+        "- [ ] Xiaohongshu: title, text + xhs.mp4 (cover: xhs-cover.png). The address is in the text; it isn't clickable there.",
         "- [ ] Reply to comments from yesterday's posts", "",
         "## X", "", "```", fill(post["x"], links, "x", day, ver), "```",
         f"{x_length(fill(post['x'], links, 'x', day, ver))}/280", "",
