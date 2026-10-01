@@ -70,6 +70,26 @@
     },
     {
       "day": 2,
+      "clip": "links",
+      "theme": "Connected records: samples link to their mouse, and @mouse in the notebook",
+      "title_en": "Your records are connected",
+      "subtitle_en": "Samples know their mouse; @mouse 16 in a notebook links to it",
+      "title_zh": "数据互相连通",
+      "subtitle_zh": "样本链接回小鼠 · 记录本里 @ 一只鼠",
+      "bullets_zh": [
+        "样本链接回来源动物",
+        "记录本里 @ 小鼠、质粒、订单",
+        "点一下就打开那条记录"
+      ],
+      "x": "In a spreadsheet, a sample is just a row. In BioManager it knows the mouse it came from: one click opens that mouse.\n\nWrite @mouse 16 in a qPCR notebook page and its genotype and cage show up right there.\n\n{site}",
+      "linkedin": "The thing a spreadsheet can't do: connect your records.\n\nIn BioManager, a liver or serum sample in Samples links back to the mouse it came from, and one click opens that mouse in the colony. In the lab notebook, writing @mouse 16 in a qPCR page turns into a link: point at it and you see the mouse's genotype, cage and owner; click it and its record opens. The same works for plasmids, orders and every inventory.\n\nSo the question \"which animal was this from?\" always has an answer.\n\nFree and open source: {site}",
+      "xhs_title": "样本是哪只鼠的？一点就知道🔗",
+      "xhs_body": "Excel 里，样本只是一行字，是哪只鼠的全靠备注…\n\nBioManager 里，数据都是连在一起的：\n🧪 肝脏、血清这些样本，直接链接回来源的那只鼠，点一下就打开它\n📓 写 qPCR 实验记录时输入 @mouse 16，这只鼠的基因型、笼号、负责人随手可见\n🧬 质粒、订单、各种库存也一样可以 @\n\n“这个样本是哪只鼠的？”永远有答案\n\n永久免费开源\n官网：gaspolymerase.github.io/biomanager",
+      "bili_title": "样本、小鼠、实验记录互相连通：@mouse 一下就打开那只鼠 | BioManager",
+      "bili_desc": "样本链接回来源动物；记录本里 @mouse、@plasmid、@order 直接链接到记录。永久免费开源：{site}"
+    },
+    {
+      "day": 3,
       "clip": "cards",
       "theme": "Cage cards with QR codes that open the cage on any phone",
       "title_en": "Print cage cards. Scan one, and the cage opens on your phone",
@@ -89,7 +109,7 @@
       "bili_desc": "笼卡、鱼缸卡、果蝇管标签，每张带二维码，任何手机相机扫码打开记录。支持 Brother QL 和 Zebra（.zpl / 直接发送）。\n{site}"
     },
     {
-      "day": 3,
+      "day": 4,
       "clip": "plasmid",
       "theme": "Plasmid maps from GenBank/SnapGene files, and where each tube lives",
       "title_en": "Plasmid maps, free, and the box each tube is in",
@@ -109,7 +129,7 @@
       "bili_desc": "上传 GenBank、FASTA 或 SnapGene 文件，保存序列和特征，交互式图谱可编辑；质粒盒放在冻存架格子图上。永久免费开源：{site}"
     },
     {
-      "day": 4,
+      "day": 5,
       "clip": "experiment",
       "theme": "Experiments: doses from body weight, the weight chart, tests by day, export for Prism or R",
       "title_en": "Doses worked out from body weight, and the stats done for you",
@@ -129,7 +149,7 @@
       "bili_desc": "给药方案写一次，按每只鼠最新体重算剂量和体积；体重曲线标出给药日和显著性；导出 Excel 给 Prism/R；手机 Bench mode。{site}"
     },
     {
-      "day": 5,
+      "day": 6,
       "clip": "datasheet",
       "theme": "Notebook data sheets: paste from Excel, get a plot with error bars and a test",
       "title_en": "Paste your numbers, get the plot and the test",
@@ -149,7 +169,7 @@
       "bili_desc": "数据表：粘贴 Excel 或导入 CSV，公式列，柱状/点/箱线/散点/折线图，SEM/SD，t 检验、Mann–Whitney、ANOVA（Holm），SVG/PNG 下载。{site}"
     },
     {
-      "day": 6,
+      "day": 7,
       "clip": "orders",
       "theme": "Orders board: requested to ordered to received, then straight into the reagent inventory",
       "title_en": "When the box arrives, it goes straight onto the shelf",
@@ -169,7 +189,7 @@
       "bili_desc": "订单看板（申请/下单/到货/取消），自动补全，收货后一键入库到试剂、抗体、病毒，过期提醒，再订一次。{site}"
     },
     {
-      "day": 7,
+      "day": 8,
       "clip": "new-database",
       "theme": "A database for any organism, in your own words, no code",
       "title_en": "Xenopus? Axolotls? Build its database in a minute",
@@ -189,7 +209,7 @@
       "bili_desc": "Add database：自定义名词、计数方式、功能、时间表和字段，实验功能同样可用。{site}"
     },
     {
-      "day": 8,
+      "day": 9,
       "clip": "home",
       "theme": "Home tells you what needs doing today",
       "title_en": "Every morning: what needs doing today",
@@ -209,7 +229,7 @@
       "bili_desc": "首页：30 周以上小鼠、断奶、基因分型、果蝇翻管、试剂过期、未来 14 天；Classic / Tracks / Freezer 三种布局；可选每日邮件。{site}"
     },
     {
-      "day": 9,
+      "day": 10,
       "clip": "flies",
       "theme": "Fly and worm stocks: temperature-aware flip schedules on the rack grid",
       "title_en": "Flip every 14 days at 25 °C, 28 at 18 °C. It keeps count",
@@ -229,7 +249,7 @@
       "bili_desc": "果蝇管/线虫板按培养箱和架子管理，翻管时间随温度变化，格子图显示上次和下次翻管，杂交与子代时间。{site}"
     },
     {
-      "day": 10,
+      "day": 11,
       "clip": "sign",
       "theme": "Sign a notebook page as a locked record, with a witness",
       "title_en": "Sign a notebook page. It's locked, fingerprinted and witnessed",
@@ -249,7 +269,7 @@
       "bili_desc": "签名锁定页面并存指纹，见证人，修订需理由，版本历史逐行对比，多人实时协作。{site}"
     },
     {
-      "day": 11,
+      "day": 12,
       "clip": "protocol",
       "theme": "Protocols with versions, Run mode at the bench, timers in every step",
       "title_en": "Run a protocol one step at a time, timers included",
@@ -269,7 +289,7 @@
       "bili_desc": "方案版本、Run mode、步骤计时器、偏差记录，内置十几个常用方案。{site}"
     },
     {
-      "day": 12,
+      "day": 13,
       "clip": "calendar",
       "theme": "The lab calendar fills itself in: colony dates, flips, protocol timelines, bookings",
       "title_en": "A lab calendar that fills itself in",
@@ -289,7 +309,7 @@
       "bili_desc": "自动日程、实验时间线、重复事件、仪器预约、请假交接、Google 日历与 ICS、手机订阅。{site}"
     },
     {
-      "day": 13,
+      "day": 14,
       "clip": "undo",
       "theme": "Batch actions with undo, and a full change history",
       "title_en": "Change a cage of mice at once. Undo it if you were wrong",
@@ -309,7 +329,7 @@
       "bili_desc": "批量操作可撤销（不覆盖他人后续修改），完整变更历史。{site}"
     },
     {
-      "day": 14,
+      "day": 15,
       "clip": "search",
       "theme": "⌘K searches everything; every page is a tab",
       "title_en": "⌘K finds anything in the lab",
@@ -327,22 +347,6 @@
       "xhs_body": "那个 GCaMP 质粒在哪？那只鼠是哪笼的？上次的记录写在哪？\n\nBioManager 按 ⌘K（Windows 是 Ctrl+K）：\n🔍 小鼠、质粒、订单、试剂、实验记录，全部一起搜\n🗂️ 每个页面都是一个标签页，可以拖动排序\n💾 关掉明天再开，标签还在\n⌨️ Alt+数字键切换标签\n\n永久免费开源\n官网：gaspolymerase.github.io/biomanager",
       "bili_title": "⌘K 全局搜索 + 标签页：在实验室数据里找东西只要一秒 | BioManager",
       "bili_desc": "全局搜索、标签页、快捷键。{site}"
-    },
-    {
-      "day": 15,
-      "clip": "",
-      "theme": "The user manual as a paper on arXiv (post only once it is listed)",
-      "title_en": "The BioManager manual, now on arXiv",
-      "subtitle_en": "",
-      "title_zh": "BioManager 使用手册上 arXiv 了",
-      "subtitle_zh": "",
-      "bullets_zh": [],
-      "x": "The BioManager paper and user manual is on arXiv: what it tracks, how the configurable organism databases work, and how to run it for a lab.\n\n{arxiv}\n\nIf BioManager helps your work, citing it helps it keep going.",
-      "linkedin": "BioManager now has a paper on arXiv, written as its user manual: what each database does, how the configurable organism engine lets a lab describe any species without code, how experiments, the notebook and the calendar fit together, and how to run it on a lab server.\n\n{arxiv}\n\nIf BioManager is useful in your lab, citing it is the best way to help it continue. Free and open source: {site}",
-      "xhs_title": "我的软件手册挂上 arXiv 了📄",
-      "xhs_body": "BioManager 的论文 / 使用手册已经在 arXiv 上线📄\n\n里面写了：\n📚 每个数据库能做什么\n🧬 怎么不写代码给任何物种建库\n🧪 实验、实验记录本、日历怎么连在一起\n🖥️ 怎么给全组搭服务器\n\n用得上的话欢迎引用～官网：gaspolymerase.github.io/biomanager",
-      "bili_title": "BioManager 论文 / 使用手册上线 arXiv：一篇讲清楚所有功能",
-      "bili_desc": "arXiv：{arxiv}\n官网：{site}"
     },
     {
       "day": 16,
@@ -443,6 +447,24 @@
       "xhs_body": "三周，每天一个功能，终于介绍完啦🎉\n\n谢谢每一个下载、试用、给反馈的朋友🙏\n\nBioManager 会一直免费开源。接下来做什么，由你们决定：\n💬 软件里 Help 下面有 Feedback，问题和想法都可以写\n🐙 也可以在 GitHub 上提 issue\n\n你们实验室最想要什么功能？评论区告诉我👇\n官网：gaspolymerase.github.io/biomanager",
       "bili_title": "连更三周：BioManager 二十个功能回顾，接下来做什么由你决定",
       "bili_desc": "谢谢大家。反馈：软件内 Help → Feedback，或 GitHub issue。{site}"
+    }
+  ],
+  "extra": [
+    {
+      "day": null,
+      "clip": "",
+      "theme": "The user manual as a paper on arXiv (post only once it is listed)",
+      "title_en": "The BioManager manual, now on arXiv",
+      "subtitle_en": "",
+      "title_zh": "BioManager 使用手册上 arXiv 了",
+      "subtitle_zh": "",
+      "bullets_zh": [],
+      "x": "The BioManager paper and user manual is on arXiv: what it tracks, how the configurable organism databases work, and how to run it for a lab.\n\n{arxiv}\n\nIf BioManager helps your work, citing it helps it keep going.",
+      "linkedin": "BioManager now has a paper on arXiv, written as its user manual: what each database does, how the configurable organism engine lets a lab describe any species without code, how experiments, the notebook and the calendar fit together, and how to run it on a lab server.\n\n{arxiv}\n\nIf BioManager is useful in your lab, citing it is the best way to help it continue. Free and open source: {site}",
+      "xhs_title": "我的软件手册挂上 arXiv 了📄",
+      "xhs_body": "BioManager 的论文 / 使用手册已经在 arXiv 上线📄\n\n里面写了：\n📚 每个数据库能做什么\n🧬 怎么不写代码给任何物种建库\n🧪 实验、实验记录本、日历怎么连在一起\n🖥️ 怎么给全组搭服务器\n\n用得上的话欢迎引用～官网：gaspolymerase.github.io/biomanager",
+      "bili_title": "BioManager 论文 / 使用手册上线 arXiv：一篇讲清楚所有功能",
+      "bili_desc": "arXiv：{arxiv}\n官网：{site}"
     }
   ]
 }

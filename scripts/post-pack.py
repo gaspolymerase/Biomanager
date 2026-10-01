@@ -12,8 +12,8 @@ link (tagged with utm_source so the website can tell where visits came
 from), and writes promo/out/packs/<date>-day<N>/:
 
     post.md               every platform's text, with a checklist
-    x.mp4, linkedin.mp4, facebook.mp4    16:9, English title
-    bilibili.mp4          16:9, Chinese title
+    x.mp4, linkedin.mp4, facebook.mp4    16:9, English (the day's own video if made)
+    bilibili.mp4          16:9, Chinese (the day's own video if made)
     xhs.mp4, xhs-cover.png               3:4, Chinese title
     clip.gif              for GitHub and the README
 
@@ -122,6 +122,17 @@ def pack(post: dict, data: dict, when: date, ver: str, record: bool) -> Path:
             shutil.copy2(source / src, folder / name)
         else:
             missing.append(name)
+    # The day's own video (scripts/daily-video.py), where it has been made,
+    # instead of the plain clip: English for X, LinkedIn and Facebook, Chinese
+    # and its cover for Bilibili.
+    daily = OUT / "daily"
+    for name, src in (("x.mp4", "en.mp4"), ("linkedin.mp4", "en.mp4"), ("facebook.mp4", "en.mp4"),
+                      ("bilibili.mp4", "zh.mp4"), ("bilibili-cover.png", "cover-zh.png")):
+        made = daily / f"day{day:02d}-{src}"
+        if made.exists():
+            shutil.copy2(made, folder / name)
+            if name in missing:
+                missing.remove(name)
     tags_en, tags_zh = " ".join(data["tags_en"]), " ".join(data["tags_zh"])
     notes = problems(post, links, ver)
     li = fill(post["linkedin"], links, "linkedin", day, ver)
