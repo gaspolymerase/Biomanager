@@ -379,6 +379,28 @@ class CageSheetTests(Case):
         for mid in self.colony["mice"]:
             self.assertIn(f'<form id="cage-mouse-update-{mid}"', self.html)
 
+    def test_a_cage_opens_from_its_row_and_shows_as_a_card(self):
+        cid = self.colony["cage_id"]
+        tr = between(self.html, f'<tr id="cage-{cid}"', "</tr>")
+        # The arrow is at the start of the row, by the cage's number; the
+        # number and the mice count open it as well.
+        first_cells = between(tr, 'sheet-pin-1', "</td>")
+        self.assertIn(f'data-cage-expand="{cid}"', first_cells)
+        self.assertIn(f'data-cage-open="{cid}"', tr)
+        self.assertIn("data-cage-expand-all", self.html)                   # Open all
+        # Cards: a layout beside Table and Rack grid; each cage's panel is a
+        # card with what it is and its own buttons, and filters of its own.
+        self.assertIn('data-layout="cards"', self.html)
+        self.assertIn('data-layout-panel="cards"', self.html)
+        self.assertIn("data-cage-cards", self.html)
+        detail = between(self.html, f'id="cage-detail-{cid}"', "</article>")
+        self.assertIn(f'data-cage-card="{cid}"', detail)
+        self.assertIn("cage-card-head", detail)
+        self.assertIn("Shelf 3", detail)                                    # where it is, with no rack
+        self.assertIn('data-record-edit="cage-dialog"', detail)
+        for f in ("active", "breeding", "mine"):
+            self.assertIn(f'data-cage-card-filter="{f}"', self.html)
+
     def test_someone_elses_cage_is_read_only(self):
         tr = between(self.html, f'<tr id="cage-{self.theirs}"', "</tr>")
         self.assertIn("is-locked", tr)

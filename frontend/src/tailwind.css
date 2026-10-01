@@ -2814,11 +2814,20 @@
   .cage-wean[data-state="soon"] { @apply font-semibold text-warn-700; }
   .cage-wean[data-state="overdue"] { @apply font-semibold text-danger-700; }
 
-  /* The chevron that opens a cage's mice; it turns while open. */
-  .cage-expand { @apply w-auto gap-0.5 px-1; }
-  .cage-expand svg { @apply transition-transform duration-150; }
-  .cage-expand[aria-expanded="true"] svg { @apply rotate-180; }
-  .cage-expand-count { @apply min-w-3 text-[10.5px] font-semibold tabular-nums text-muted; }
+  /* The arrow at the start of a cage's row that opens its mice; it turns
+     while open. The cage's number and its mice count open it too. */
+  .cage-id-cell { @apply whitespace-nowrap; }
+  .cage-id-cell .sheet-id { @apply inline-flex align-middle; }
+  .cage-id-cell .ident { @apply cursor-pointer hover:underline; }
+  .cage-expand {
+    @apply mr-0.5 inline-flex size-6 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent
+           p-0 align-middle text-ink-soft hover:bg-sand-100 hover:text-ink;
+  }
+  .cage-expand svg { @apply size-4 transition-transform duration-150; }
+  .cage-expand[aria-expanded="true"] svg { @apply rotate-90 text-brand-600; }
+  .cage-mice-count[data-cage-open] { @apply cursor-pointer; }
+  .cage-mice-count[data-cage-open]:hover strong { @apply text-brand-700 underline; }
+  .dt-toolbar-btn[data-cage-expand-all][aria-pressed="true"] svg { @apply rotate-180; }
   .sheet-table tbody tr.is-expanded td { @apply bg-brand-50/40; }
   .sheet-table tbody tr.is-expanded .sheet-actions { @apply opacity-100; }
 
@@ -2842,6 +2851,40 @@
   .cage-detail-lock { @apply inline-flex items-center gap-1 text-[11.5px] text-muted; }
   .cage-detail-lock svg { @apply size-3; }
   .cage-detail-empty { @apply m-0 py-1 text-[12px] text-muted; }
+
+  /* A cage panel's head is for its card only. */
+  .cage-card-head { display: none; }
+
+  /* Cards: the cage panels, each a card, in a grid (the Cards layout). */
+  .cage-card-grid.sheet-table {
+    @apply grid w-auto min-w-0 gap-3 p-3;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+  }
+  /* The card reads: the cage and its buttons, where and what it is, its mice. */
+  .cage-card-grid .cage-detail-body {
+    @apply static flex max-w-none flex-col overflow-x-auto rounded-xl border border-hairline bg-surface p-3 shadow-sm;
+  }
+  .cage-card-grid .cage-detail-body > * { order: 3; }
+  .cage-card-grid .cage-detail-body > .cage-detail-tools { order: 1; }
+  .cage-card-grid .cage-detail-body > .cage-card-head { order: 2; }
+  .cage-card-grid .cage-detail-body[hidden] { display: none; }
+  .cage-card-grid .cage-detail-body.is-scanned { @apply ring-2 ring-brand-400; }
+  .cage-card-grid .cage-card-head {
+    @apply mb-2 flex flex-wrap items-center gap-1.5 border-b border-hairline pb-2 text-[12px] text-ink-soft;
+  }
+  .cage-card-grid .cage-detail-tools { @apply mb-1.5; }
+  .cage-card-where { @apply inline-flex items-center gap-1; }
+  .cage-card-where svg { @apply size-3.5 text-muted; }
+  .cage-card-geno { @apply max-w-48 truncate text-muted; }
+  .cage-card-head .cage-wean { @apply inline-flex items-center gap-1 text-[12px]; }
+  .cage-card-head .cage-wean svg { @apply size-3.5; }
+  .cage-card-grid .cage-detail-title { @apply text-[14px]; }
+  .cage-card-grid .breeding-actions { @apply inline-flex flex-wrap items-center gap-1.5; }
+  .cage-card-grid .breeding-actions.hidden-row { display: none; }
+  .cage-card-grid .cage-mice-table { @apply w-full; }
+  .cage-card-grid .cage-mice-table tbody td { @apply h-8 border-b border-sand-100 bg-surface px-1; }
+  .cage-card-grid .cage-mice-table tbody tr:hover td { @apply bg-sand-50; }
+  .cage-card-grid .cage-mice-table tbody tr:last-child td { @apply border-b-0; }
 
   .cage-mice-table { @apply w-max border-separate border-spacing-0 rounded-lg border border-hairline bg-surface; }
   .cage-mice-table thead th {

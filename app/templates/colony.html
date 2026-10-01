@@ -395,7 +395,7 @@
       {% set cs = cage_sheet %}
       <div data-layout-scope>
         <div class="mb-3 flex flex-wrap items-center gap-2.5">
-          {{ view_switch('mouse-cages', 'Table', 'Rack grid') }}
+          {{ view_switch('mouse-cages', 'Table', 'Rack grid', 'Cards') }}
           <div class="rack-chips" role="group" aria-label="Rack settings">
             <span class="rack-chips-label">Racks</span>
             {% for rack in cage_racks.racks %}
@@ -421,6 +421,45 @@
                          url_for('place_cage', cage_row_id=0)|replace('/0/', '/{id}/'),
                          rack_noun='rack', rack_dialog_id='mouse-rack-dialog',
                          empty_text='No racks yet. Use New rack to add one; cages whose location names it will appear.') }}
+          </section>
+        </div>
+
+        {# Cards: one card per cage with its mice and actions, as the Cages tab
+           used to be. The cards are the table's own cage panels, moved here
+           while this layout is shown (so each field and button works and
+           saves the same); a card's head says where the cage is and what it is. #}
+        <div data-layout-panel="cards" hidden>
+          <section class="data-table-card cage-cards-panel" data-cage-cards-panel>
+            <div class="dt-toolbar">
+              <div class="dt-toolbar-search">
+                {{ icon('search', 'search-icon') }}
+                <input type="text" class="dt-search" placeholder="Search cage, mouse, genotype, owner…"
+                       autocomplete="off" aria-label="Search cage cards" data-cage-card-search>
+              </div>
+              <div class="dt-chips" role="group" aria-label="Show">
+                <button type="button" class="dt-chip" data-cage-card-filter="" aria-pressed="false">
+                  All <span class="dt-chip-count">{{ cage_rows|length }}</span>
+                </button>
+                <button type="button" class="dt-chip" data-cage-card-filter="active" aria-pressed="true" title="Cages with living mice">
+                  Active <span class="dt-chip-count">{{ cs.active_count }}</span>
+                </button>
+                <button type="button" class="dt-chip" data-cage-card-filter="breeding" aria-pressed="false" title="Purpose breeder or breeding">
+                  Breeding <span class="dt-chip-count">{{ cs.breeding_count }}</span>
+                </button>
+                <button type="button" class="dt-chip" data-cage-card-filter="mine" aria-pressed="false">
+                  Mine <span class="dt-chip-count">{{ cs.mine_count }}</span>
+                </button>
+              </div>
+              <div class="dt-toolbar-spacer"></div>
+              <a class="dt-toolbar-btn" href="{{ url_for('labels.cage_cards', scope=scope) }}"
+                 title="Printable cards for the cages in this scope">{{ icon('qrcode') }} Cage cards</a>
+              <button type="button" class="btn btn-primary" data-record-edit="cage-dialog"
+                      data-record-payload='{{ {"purpose": "Experiments", "count": 1} | tojson }}'>
+                {{ icon('plus') }} New cage
+              </button>
+            </div>
+            <div class="cage-card-grid sheet-table" data-autosave-sheet data-cage-cards></div>
+            <p class="muted-inline px-3 pb-3" data-cage-cards-none hidden>No cages match.</p>
           </section>
         </div>
 
@@ -457,6 +496,8 @@
               </div>
               <div class="dt-toolbar-spacer"></div>
               {{ sheet_ui.tools() }}
+              <button type="button" class="dt-toolbar-btn" data-cage-expand-all aria-pressed="false"
+                      title="Show the mice of every cage on this page">{{ icon('chevron-down') }} <span>Open all</span></button>
               <a class="dt-toolbar-btn" href="{{ url_for('labels.cage_cards', scope=scope) }}"
                  title="Printable cards for the cages in this scope">{{ icon('qrcode') }} Cage cards</a>
               <button type="button" class="btn btn-primary" data-record-edit="cage-dialog"
@@ -529,7 +570,10 @@
                       <td class="sheet-pin sheet-pin-0">
                         <input type="checkbox" data-select-row value="{{ cage.id }}" aria-label="Select cage {{ cage.cage_id }}">
                       </td>
-                      <td class="sheet-pin sheet-pin-1">
+                      <td class="sheet-pin sheet-pin-1 cage-id-cell">
+                        <button type="button" class="cage-expand" data-cage-expand="{{ cage.id }}" aria-expanded="false"
+                                aria-controls="cage-detail-{{ cage.id }}" title="Show the mice in cage {{ cage.cage_id }}"
+                                aria-label="Show the mice in cage {{ cage.cage_id }}">{{ icon('chevron-right') }}</button>
                         {{ sheet_ui.id_cell(cage.cage_id, alive=cage.active, locked=locked, owner=cage.owner, noun='cage',
                                             alive_title='Holds living mice', dead_title='No living mice') }}
                         {# What decides the dot until the server answers (static/sheet.js). #}
@@ -565,7 +609,8 @@
                           <option value="1" {% if cage.shared %}selected{% endif %}>Shared</option>
                         </select>
                       </td>
-                      <td class="sheet-num cage-mice-count" title="{{ cage.live_count }} living of {{ cage.total_count }}">
+                      <td class="sheet-num cage-mice-count" data-cage-open="{{ cage.id }}"
+                          title="{{ cage.live_count }} living of {{ cage.total_count }}: click to show them">
                         {% if cage.live_count %}<strong>{{ cage.live_count }}</strong> <span class="cage-sexes">{{ cage.sex_label }}</span>
                         {% elif cage.total_count %}<span class="sheet-empty">0 of {{ cage.total_count }}</span>
                         {% else %}<span class="sheet-empty">empty</span>{% endif %}
@@ -592,10 +637,6 @@
                                  data-autosave="1" aria-label="Note" {% if locked %}disabled{% endif %}></td>
                       <td class="sheet-pin sheet-pin-end">
                         <div class="sheet-actions">
-                          <button type="button" class="row-icon-btn cage-expand" data-cage-expand="{{ cage.id }}" aria-expanded="false"
-                                  aria-controls="cage-detail-{{ cage.id }}" title="Show the mice in cage {{ cage.cage_id }}">
-                            {{ icon('chevron-down') }}<span class="cage-expand-count">{{ cage.total_count }}</span>
-                          </button>
                           <button type="button" class="row-icon-btn" title="Open cage {{ cage.cage_id }}"
                                   data-record-edit="cage-dialog" data-record-payload='{{ cage.payload | tojson }}'>{{ icon('edit') }}</button>
                           <a class="row-icon-btn" href="{{ url_for('labels.cage_cards', ids=cage.id) }}" target="_blank"
@@ -607,7 +648,31 @@
                        its row when the sheet sorts or pages (data-detail-for). #}
                     <tr class="cage-detail" id="cage-detail-{{ cage.id }}" data-detail-for="{{ cage.id }}" hidden>
                       <td colspan="14">
-                        <article class="cage-detail-body{% if locked %} is-locked{% endif %}" aria-label="Cage {{ cage.cage_id }}">
+                        <article class="cage-detail-body{% if locked %} is-locked{% endif %}" aria-label="Cage {{ cage.cage_id }}"
+                                 data-cage-card="{{ cage.id }}" data-active="{{ 'true' if cage.active else 'false' }}"
+                                 data-breeding="{{ cage.breeding }}" data-mine="{{ 'true' if cage.mine else 'false' }}"
+                                 data-search="{{ [cage.cage_id, cage.rack_name, cage.position, cage.purpose, cage.owner,
+                                                  cage.genotype_summary, cage.genotype_auto, cage.cage_location, cage.notes]
+                                                 | select | join(' ') | lower }} {{ cage.mice|map(attribute='mouse_id')|join(' ')|lower }}">
+                          {# Shown only on a card (Cards layout): where it is, what it is, and its own buttons. #}
+                          <div class="cage-card-head">
+                            <span class="cage-card-where">{{ icon('location') }}
+                              {%- if cage.rack_name %} {{ cage.rack_name }}{% if cage.position %} · {{ cage.position }}{% endif %}
+                              {%- elif cage.cage_location %} {{ cage.cage_location }}{% else %} No rack{% endif %}</span>
+                            {% if cage.purpose %}<span class="status-pill-static" data-status="{{ cage.purpose|lower }}">{{ cage.purpose }}</span>{% endif %}
+                            {% if cage.owner %}{{ cage.owner | owner_badge }}{% endif %}
+                            {% if cage.genotype_summary or cage.genotype_auto %}
+                              <span class="cage-card-geno" title="Strain / genotype">{{ cage.genotype_summary or cage.genotype_auto }}</span>
+                            {% endif %}
+                            {% if cage.wean_due %}
+                              <span class="cage-wean" data-state="{{ cage.wean_state }}" title="Wean due (P{{ wean_offset_days | int }})">{{ icon('calendar-clock') }} Wean {{ cage.wean_due }}</span>
+                            {% endif %}
+                            <span class="cage-detail-spacer"></span>
+                            <button type="button" class="row-icon-btn" title="Open cage {{ cage.cage_id }}"
+                                    data-record-edit="cage-dialog" data-record-payload='{{ cage.payload | tojson }}'>{{ icon('edit') }}</button>
+                            <a class="row-icon-btn" href="{{ url_for('labels.cage_cards', ids=cage.id) }}" target="_blank"
+                               title="Print the card for cage {{ cage.cage_id }}">{{ icon('print') }}</a>
+                          </div>
                           <div class="cage-detail-tools">
                             <span class="cage-detail-title">{{ icon('cage') }} Cage <span class="ident">{{ cage.cage_id }}</span>
                               <span class="text-muted">· {{ cage.live_count }} alive{% if cage.total_count %} of {{ cage.total_count }}{% endif %}
@@ -2014,16 +2079,95 @@ function weanDue(born) {
     row.dataset.wean_due = due || '';
   };
 
-  // Expand a cage: its mice and per-cage actions in a sub-row.
+  // Open a cage: its mice and per-cage actions in a sub-row. The arrow at
+  // the start of the row, the cage's number and its mice count all do it.
+  const setOpen = (id, open) => {
+    const detail = document.getElementById(`cage-detail-${id}`);
+    const row = document.getElementById(`cage-${id}`);
+    if (!detail || !row) return;
+    detail.hidden = !open;
+    row.classList.toggle('is-expanded', open);
+    row.querySelectorAll('[data-cage-expand]').forEach((b) => b.setAttribute('aria-expanded', open ? 'true' : 'false'));
+  };
+  const toggle = (id) => {
+    const detail = document.getElementById(`cage-detail-${id}`);
+    if (detail) setOpen(id, detail.hidden);
+  };
   sheet.addEventListener('click', (event) => {
     const button = event.target.closest('[data-cage-expand]');
-    if (!button) return;
-    const detail = document.getElementById(`cage-detail-${button.dataset.cageExpand}`);
-    if (!detail) return;
-    detail.hidden = !detail.hidden;
-    button.setAttribute('aria-expanded', detail.hidden ? 'false' : 'true');
-    button.closest('tr').classList.toggle('is-expanded', !detail.hidden);
+    if (button) { toggle(button.dataset.cageExpand); return; }
+    const count = event.target.closest('[data-cage-open]');
+    if (count) { toggle(count.dataset.cageOpen); return; }
+    const ident = event.target.closest('.cage-id-cell .ident');
+    if (ident) toggle(ident.closest('tr').dataset.cageRowId);
   });
+
+  // Open all / Close all: every cage the sheet shows now (this page, this filter).
+  const all = sheet.querySelector('[data-cage-expand-all]');
+  if (all) {
+    all.addEventListener('click', () => {
+      const open = all.getAttribute('aria-pressed') !== 'true';
+      sheet.querySelectorAll('tbody tr[data-cage-row-id]').forEach((row) => {
+        if (!row.hidden && row.offsetParent !== null) setOpen(row.dataset.cageRowId, open);
+        else if (!open) setOpen(row.dataset.cageRowId, false);
+      });
+      all.setAttribute('aria-pressed', open ? 'true' : 'false');
+      all.querySelector('span').textContent = open ? 'Close all' : 'Open all';
+    });
+  }
+
+  // Cards: the same cage panels, moved into a grid of cards while that
+  // layout is shown, and back into their rows for the table.
+  const cardsPanel = document.querySelector('[data-cage-cards-panel]');
+  const grid = cardsPanel && cardsPanel.querySelector('[data-cage-cards]');
+  let cardFilter = 'active';
+  const filterCards = () => {
+    if (!grid) return;
+    const q = (cardsPanel.querySelector('[data-cage-card-search]').value || '').trim().toLowerCase();
+    let shown = 0;
+    grid.querySelectorAll('[data-cage-card]').forEach((card) => {
+      const ok = (!cardFilter || (cardFilter === 'breeding' ? card.dataset.breeding === '1' : card.dataset[cardFilter] === 'true'))
+        && (!q || card.dataset.search.includes(q));
+      card.hidden = !ok;
+      if (ok) shown += 1;
+    });
+    cardsPanel.querySelector('[data-cage-cards-none]').hidden = shown > 0;
+  };
+  const showCards = (on) => {
+    if (!grid) return;
+    if (on) {
+      sheet.querySelectorAll('tr.cage-detail').forEach((tr) => {
+        const card = tr.querySelector('[data-cage-card]');
+        if (card) grid.appendChild(card);
+      });
+      filterCards();
+      // Arriving from a cage card's QR code (#cage-12): that card, marked.
+      const scanned = (location.hash.match(/^#cage-(\d+)$/) || [])[1];
+      const card = scanned && grid.querySelector(`[data-cage-card="${scanned}"]`);
+      if (card) {
+        card.hidden = false;
+        card.classList.add('is-scanned');
+        card.scrollIntoView({ block: 'center' });
+      }
+    } else {
+      grid.querySelectorAll('[data-cage-card]').forEach((card) => {
+        card.hidden = false;
+        const home = document.querySelector(`#cage-detail-${card.dataset.cageCard} > td`);
+        if (home) home.appendChild(card);
+      });
+    }
+  };
+  if (grid) {
+    const scope = cardsPanel.closest('[data-layout-scope]');
+    scope.addEventListener('layout:change', (event) => showCards(event.detail.layout === 'cards'));
+    if (!cardsPanel.closest('[data-layout-panel]').hidden) showCards(true);
+    cardsPanel.querySelector('[data-cage-card-search]').addEventListener('input', filterCards);
+    cardsPanel.querySelectorAll('[data-cage-card-filter]').forEach((chip) => chip.addEventListener('click', () => {
+      cardFilter = chip.dataset.cageCardFilter;
+      cardsPanel.querySelectorAll('[data-cage-card-filter]').forEach((c) => c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'));
+      filterCards();
+    }));
+  }
 
   // Arriving from a cage card's QR code (#cage-12): the table has already
   // brought that cage onto the page (data-table.js reveal); open it, so its

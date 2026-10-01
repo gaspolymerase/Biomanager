@@ -4,9 +4,10 @@
    {% from "_rack_grid.html" import rack_grid, rack_dialog, view_switch with context %}
    (`with context` so the macros can call icon()). #}
 
-{% macro view_switch(key, table_label='Table', grid_label='Grid') %}
+{% macro view_switch(key, table_label='Table', grid_label='Grid', cards_label=None) %}
   <div class="dt-chips view-switch" data-view-switch="{{ key }}" role="group" aria-label="Layout">
     <button type="button" class="dt-chip" data-layout="table">{{ icon('table') }}{{ table_label }}</button>
+    {% if cards_label %}<button type="button" class="dt-chip" data-layout="cards">{{ icon('layers') }}{{ cards_label }}</button>{% endif %}
     <button type="button" class="dt-chip" data-layout="grid">{{ icon('grid') }}{{ grid_label }}</button>
   </div>
 {% endmacro %}

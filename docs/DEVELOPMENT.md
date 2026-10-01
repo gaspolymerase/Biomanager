@@ -880,6 +880,16 @@ again with a fresh one instead of reporting an ID the person never typed.
 One cage per rack place is a unique index (`uq_mouse_cages_place`,
 revision 0006); a swap on the rack grid moves the cages in steps.
 
+**The Cages tab's three layouts.** `view_switch(..., cards_label=)` in
+`_rack_grid.html` adds a Cards button; `rack-grid.js` shows one
+`data-layout-panel` and fires `layout:change` on the scope. Each cage's
+panel (`article[data-cage-card]` in its `tr.cage-detail`, opened by the
+row's arrow, number or mice count) is also its card: while Cards is
+shown, `colony.html` moves the articles into `[data-cage-cards]` (marked
+`data-autosave-sheet`, so `sheet.js` saves their fields as before) and
+back into their rows for the table, so nothing is rendered twice. A
+panel's `.cage-card-head` shows only on a card.
+
 > Previously this path was broken: `next_mouse_id()` was called per row, and
 > because the session runs with `autoflush=False` the `max()` query could not
 > see pending rows, so every row was handed the same ID and the import died
