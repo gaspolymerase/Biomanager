@@ -49,7 +49,8 @@ def version() -> str:
         tag = subprocess.run(["gh", "release", "view", "--repo", "gaspolymerase/biomanager",
                               "--json", "tagName", "-q", ".tagName"], capture_output=True, text=True, timeout=20)
         if tag.returncode == 0 and tag.stdout.strip():
-            return tag.stdout.strip().lstrip("v")
+            ver = tag.stdout.strip().lstrip("v")
+            return ver[:-2] if ver.count(".") == 2 and ver.endswith(".0") else ver   # 1.0.0 reads as 1.0
     except (OSError, subprocess.TimeoutExpired):
         pass
     return "(version)"
@@ -87,6 +88,9 @@ def problems(post: dict, links: dict, ver: str) -> list[str]:
     x = fill(post["x"], links, "x", post["day"], ver)
     if x_length(x) > 280:
         out.append(f"X post is {x_length(x)} characters (limit 280)")
+    for i, reply in enumerate(post.get("x_thread", []), 2):
+        if x_length(fill(reply, links, "x", post["day"], ver)) > 280:
+            out.append(f"X thread post {i} is over 280 characters")
     if len(post["xhs_title"]) > 20:
         out.append(f"Xiaohongshu title is {len(post['xhs_title'])} characters (limit 20)")
     if len(post["xhs_body"]) > 1000:
@@ -140,6 +144,9 @@ def pack(post: dict, data: dict, when: date, ver: str, record: bool) -> Path:
         "- [ ] Reply to comments from yesterday's posts", "",
         "## X", "", "```", fill(post["x"], links, "x", day, ver), "```",
         f"{x_length(fill(post['x'], links, 'x', day, ver))}/280", "",
+        *[line for i, reply in enumerate(post.get("x_thread", []), 2) for line in (
+            f"Reply {i} (post it as a reply to the one above, once that is out; X can't schedule a thread):",
+            "```", fill(reply, links, "x", day, ver), "```", f"{x_length(fill(reply, links, 'x', day, ver))}/280", "")],
         "## LinkedIn", "", "```", li + "\n\n" + tags_en, "```", "",
         "## Facebook", "", "```", fb, "```", "",
         "## Bilibili", "", "Title:", "```", fill(post["bili_title"], links, "bilibili", day, ver), "```",

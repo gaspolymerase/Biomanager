@@ -1,5 +1,5 @@
 {
-  "start": "2026-10-08",
+  "start": "2026-10-01",
   "post_at": "08:30 America/New_York (20:30 Beijing, 14:30 Central Europe)",
   "links": {
     "site": "https://gaspolymerase.github.io/biomanager/",
@@ -7,8 +7,20 @@
     "github": "https://github.com/gaspolymerase/biomanager",
     "download": "https://github.com/gaspolymerase/biomanager/releases/latest"
   },
-  "tags_en": ["#labmanagement", "#opensource", "#PhDlife", "#research"],
-  "tags_zh": ["#科研", "#实验室管理", "#研究生日常", "#科研工具", "#开源软件", "#免费软件"],
+  "tags_en": [
+    "#labmanagement",
+    "#opensource",
+    "#PhDlife",
+    "#research"
+  ],
+  "tags_zh": [
+    "#科研",
+    "#实验室管理",
+    "#研究生日常",
+    "#科研工具",
+    "#开源软件",
+    "#免费软件"
+  ],
   "posts": [
     {
       "day": 0,
@@ -18,13 +30,23 @@
       "subtitle_en": "Free and open source, forever",
       "title_zh": "实验室的动物、品系和耗材，一个免费软件全管好",
       "subtitle_zh": "永久免费 · 开源 · 数据留在你自己手里",
-      "bullets_zh": ["小鼠 斑马鱼 果蝇 线虫 质粒 试剂 订单", "像 Excel 一样编辑，底下是真正的数据库", "Mac / Windows / Linux，手机也能用"],
-      "x": "BioManager {version} is out: one app for a lab's mice, fish, flies, worms, plasmids, samples, orders, calendar and notebook.\n\nFree and open source (MIT), forever. No subscription, no paid tier. Your records stay on your computer or your lab's server.\n\n{site}",
+      "bullets_zh": [
+        "小鼠 斑马鱼 果蝇 线虫 质粒 试剂 订单",
+        "像 Excel 一样编辑，底下是真正的数据库",
+        "Mac / Windows / Linux，手机也能用"
+      ],
+      "x": "BioManager {version} is out: one app for everything labs keep in spreadsheets. Mouse cages and litters, fish tanks, fly vials, plasmids, reagents and orders, in a database that tells you what's due today.\n\nFree and open source (MIT), forever.\n\n{site}",
       "linkedin": "Today I'm releasing BioManager {version}, free and open source.\n\nMost labs I know run on twenty spreadsheets, a whiteboard and paper cage cards. BioManager puts the mouse colony, zebrafish, fly and worm stocks, plasmids, samples, orders, reagents, antibodies, viruses, the calendar and a lab notebook in one app. You edit it like a spreadsheet, but underneath it is a real database: it knows which mouse is in which cage, when a litter needs weaning and which antibody is about to expire, and it tells you.\n\nIt runs as a desktop app for one person (macOS, Windows, Linux) or on a lab server everyone signs in to, phones included.\n\nMy promise: BioManager stays free and open source. MIT licence, no paid tier, no subscription, and your records stay on your own computer or server. Every sheet exports to Excel.\n\nFor the next three weeks I'll post one feature a day. If your lab tries it, I'd love to hear what's missing.\n\n{site}",
       "xhs_title": "我给实验室做了个免费管理软件🐭",
       "xhs_body": "管小鼠、养鱼、翻果蝇、存质粒……还在用二十个 Excel 表？\n\n我做了 BioManager，今天正式发布 {version} 🎉\n\n🐭 小鼠：笼位、窝、断奶日期、繁殖笼\n🐟 斑马鱼 / 🪰 果蝇 / 🪱 线虫，还能自建任何物种的数据库\n🧬 质粒图谱，每管放在哪一目了然\n🧪 样本、订单、试剂、抗体、病毒\n📅 日历 + 电子实验记录本\n\n✅ 像 Excel 一样直接改，底下是真正的数据库\n✅ 电脑版一个人用，或者搭个服务器全组一起用，手机扫码就能开笼卡\n✅ 永久免费、开源（MIT），没有付费版\n✅ 数据只在你自己的电脑或服务器上\n\n接下来三周每天介绍一个功能，关注不迷路～\n下载：搜 BioManager 或看主页链接",
       "bili_title": "我给实验室写了个免费开源的管理软件：小鼠、斑马鱼、果蝇、质粒、试剂一个软件全管 | BioManager {version} 正式发布",
-      "bili_desc": "BioManager {version} 正式发布，永久免费开源（MIT）。\n小鼠品系与笼位、斑马鱼、果蝇和线虫、任意物种的数据库、质粒图谱、样本/订单/试剂/抗体/病毒、日历和电子实验记录本。\n电脑版（Mac/Windows/Linux）或实验室服务器，手机可用。数据只在你自己的电脑或服务器上。\n官网与下载：{site}\n使用手册：{guide}"
+      "bili_desc": "BioManager {version} 正式发布，永久免费开源（MIT）。\n小鼠品系与笼位、斑马鱼、果蝇和线虫、任意物种的数据库、质粒图谱、样本/订单/试剂/抗体/病毒、日历和电子实验记录本。\n电脑版（Mac/Windows/Linux）或实验室服务器，手机可用。数据只在你自己的电脑或服务器上。\n官网与下载：{site}\n使用手册：{guide}",
+      "x_thread": [
+        "You edit it like a spreadsheet, but underneath is a real database: it knows which mouse is in which cage, when a litter needs weaning, which vials need flipping and which antibody is about to expire. Home lists what needs doing today.",
+        "Coming from Excel? Import your sheets as they are; columns are matched by meaning. Print cage cards with QR codes that open the cage on any phone. And add a database for any organism, in your own words, with no code.",
+        "One person can run it as a desktop app (Mac, Windows, Linux); a whole lab can share a server and sign in from a browser or phone. Your records stay on your own computer or server, and every sheet exports to Excel.",
+        "For the next three weeks I'll post one feature a day here. If your lab tries it, tell me what's missing: in the app, Feedback is under Help.\n\n{site}"
+      ]
     },
     {
       "day": 1,
@@ -34,7 +56,11 @@
       "subtitle_en": "Columns matched by meaning, with a preview before anything is saved",
       "title_zh": "旧的 Excel 表，原样导进来",
       "subtitle_zh": "按意思自动匹配列，先预览再导入",
-      "bullets_zh": ["DOB、Born 都认得是出生日期", "Male / m / ♂ 自动变成 M", "导入是一个批次，可以一键撤销"],
+      "bullets_zh": [
+        "DOB、Born 都认得是出生日期",
+        "Male / m / ♂ 自动变成 M",
+        "导入是一个批次，可以一键撤销"
+      ],
       "x": "Switching from a spreadsheet shouldn't mean retyping it.\n\nBioManager's Import from Excel reads your sheet as it is: \"DOB\" is date of birth, \"Cage #\" is the cage, ♂ is M. Each match says why, you check a preview, and it can all be undone.\n\n{site}",
       "linkedin": "The hardest part of any new lab software is the first day: moving years of spreadsheets in.\n\nBioManager's Import from Excel takes the workbook you already keep, as it is. Columns are matched by meaning, not just by name: DOB and Born are the date of birth, Cage # is the cage, Supplier is the vendor. Each match says why it was made, and you can change any of them. Dates in any style, Male/m/♂ and your lab's own statuses are tidied. A column BioManager doesn't have becomes a new column, or goes into the notes, so nothing is lost.\n\nYou see a preview first, with every row that would be skipped and why, by its row number in Excel. The import is one batch, so it can be undone.\n\nIt works on every database: mice, fish, plasmids, vials, any organism and every inventory. Free and open source: {site}",
       "xhs_title": "Excel 小鼠表一键导入，不用重打😭",
@@ -50,7 +76,11 @@
       "subtitle_en": "Any phone camera, no app needed",
       "title_zh": "打印笼卡，手机一扫，笼子信息直接打开",
       "subtitle_zh": "任何手机相机都能扫，不用装 App",
-      "bullets_zh": ["笼卡、鱼缸卡、果蝇管标签都能打", "支持 Brother / Zebra 标签打印机", "在鼠房里直接改，不用跑回电脑"],
+      "bullets_zh": [
+        "笼卡、鱼缸卡、果蝇管标签都能打",
+        "支持 Brother / Zebra 标签打印机",
+        "在鼠房里直接改，不用跑回电脑"
+      ],
       "x": "Paper cage cards, but they open the cage.\n\nBioManager prints correctly sized cards for cages, tanks and vials, each with a QR code. Scan it with any phone camera at the rack and that cage opens, ready to edit. Brother and Zebra label printers too.\n\n{site}",
       "linkedin": "Nobody should have to walk back to a computer to look up a cage.\n\nBioManager prints cage cards (and tank and vial labels) with a QR code on each. Scan it with any phone camera at the rack and that cage opens, ready to edit: its mice, the litter, the weaning date. On a phone every sheet row becomes a card, and rack grids get a Move button.\n\nPrint on a sheet for any printer, or on a label printer's roll: Brother QL and Zebra sizes, with Download for Zebra (.zpl) or Send to Zebra straight to the printer on your network.\n\nFree and open source: {site}",
       "xhs_title": "鼠房神器：笼卡扫码直接打开📱",
@@ -66,7 +96,11 @@
       "subtitle_en": "GenBank, FASTA or SnapGene files, with an editable map",
       "title_zh": "免费的质粒图谱，还知道每管放在哪",
       "subtitle_zh": "GenBank / FASTA / SnapGene 文件直接上传",
-      "bullets_zh": ["环形图、线性图、序列一起看", "特征、酶切位点可以直接编辑", "冻存盒位置和质粒放在一起"],
+      "bullets_zh": [
+        "环形图、线性图、序列一起看",
+        "特征、酶切位点可以直接编辑",
+        "冻存盒位置和质粒放在一起"
+      ],
       "x": "Upload a GenBank, FASTA or SnapGene file and BioManager keeps the sequence and its features, with an interactive map you can edit.\n\nAnd the tube has an address: plasmid boxes sit on the same rack grid as everything else.\n\nFree, no licence key: {site}",
       "linkedin": "Plasmid records usually live in two places: a sequence tool on one computer, and a spreadsheet saying which box the tube is in.\n\nIn BioManager, upload a GenBank, FASTA or SnapGene file and it keeps the sequence and its features, with an interactive circular and linear map you can edit. The plasmid's storage box sits on the same rack grid as everything else, so every tube has an address. Viruses made from a plasmid link back to it, both ways.\n\nNo licence key, no seat limit. Free and open source: {site}",
       "xhs_title": "不花钱也能看质粒图谱🧬",
@@ -82,7 +116,11 @@
       "subtitle_en": "Tamoxifen 75 mg/kg: each mouse's dose from its latest weight",
       "title_zh": "按体重自动算剂量，统计检验也帮你做好",
       "subtitle_zh": "每只鼠的给药量按最新体重算",
-      "bullets_zh": ["每天的给药和称重一张表", "体重曲线自动标显著性星号", "一键导出 Excel，直接进 Prism / R"],
+      "bullets_zh": [
+        "每天的给药和称重一张表",
+        "体重曲线自动标显著性星号",
+        "一键导出 Excel，直接进 Prism / R"
+      ],
       "x": "Tamoxifen 75 mg/kg i.p., days 1–5.\n\nBioManager works out each mouse's dose (and volume) from its latest weight, reminds you each day, draws the body-weight chart with stars where the groups differ, and exports for Prism or R.\n\n{site}",
       "linkedin": "A mouse experiment in BioManager is one page: the mice, what each got and when, and the readout.\n\nWrite the regimen once (Tamoxifen 75 mg/kg i.p. on days 1–5) and each mouse's dose is worked out from its latest weight, with the volume from the solution's concentration. The days still to do are on the calendar and the owner is reminded each morning; nothing is marked done until someone records it. Pick the reagent from your inventory and its lot is kept with the day.\n\nThe chart shows body weight (or tumour volume, a clinical score, survival) over the days, with the manipulation days marked and stars where the groups differ: Welch's t-test for two groups, one-way ANOVA for more, χ² for survival. Export gives an Excel workbook, long and wide, ready for Prism or R. On a phone, Bench mode goes one animal at a time.\n\nFree and open source: {site}",
       "xhs_title": "给药剂量按体重自动算💉统计也做好",
@@ -98,7 +136,11 @@
       "subtitle_en": "Bar, dot, box or scatter, with SEM and significance stars",
       "title_zh": "粘贴数据，直接出图出统计",
       "subtitle_zh": "柱状图、点图、箱线图，自带误差棒和星号",
-      "bullets_zh": ["从 Excel 粘贴或导入 CSV", "t 检验 / Mann–Whitney / ANOVA", "图可以下载 SVG / PNG"],
+      "bullets_zh": [
+        "从 Excel 粘贴或导入 CSV",
+        "t 检验 / Mann–Whitney / ANOVA",
+        "图可以下载 SVG / PNG"
+      ],
       "x": "Most lab plots are three groups, a mean, SEM and a star.\n\nIn BioManager's notebook, paste from Excel into a data sheet and get a bar, dot, box or scatter plot with error bars and a t-test, Mann–Whitney or ANOVA. Download as SVG or PNG.\n\n{site}",
       "linkedin": "A lot of everyday lab analysis is small: three groups, a mean with SEM, and whether they differ.\n\nBioManager's notebook has data sheets for exactly that. Paste from Excel or import a CSV, add formula columns (=B/mean(B)*100), and get a bar, dot, box, scatter or line plot with SEM or SD error bars, a fitted line, and a t-test, Mann–Whitney or ANOVA with Holm-corrected pairs and significance stars. Plots download as SVG or PNG, and the data stays in the page next to your methods.\n\nFree and open source: {site}",
       "xhs_title": "实验记录本里直接画图出统计📊",
@@ -114,7 +156,11 @@
       "subtitle_en": "Orders from requested to received, then into Reagents with everything filled in",
       "title_zh": "订单到货，一拖就进试剂库存",
       "subtitle_zh": "从申请、下单到收货，一个看板",
-      "bullets_zh": ["拖一下卡片就改状态", "收货自动加入试剂/抗体/病毒库存", "过期和快用完的试剂首页提醒"],
+      "bullets_zh": [
+        "拖一下卡片就改状态",
+        "收货自动加入试剂/抗体/病毒库存",
+        "过期和快用完的试剂首页提醒"
+      ],
       "x": "Requested → ordered → received.\n\nDrag the card when the box arrives, and BioManager offers to add it to Reagents, Antibodies or Viruses with the vendor, catalogue number and lot already filled in. Order again is one click.\n\n{site}",
       "linkedin": "Ordering in most labs is a shared spreadsheet plus a lot of \"did anyone order the tamoxifen?\".\n\nBioManager's Orders is a board from requested to ordered to received, with vendor, catalogue number, price and grant account. An order can't be placed half filled in, and every column suggests what the lab typed before, so picking an earlier item fills the vendor, price and grant.\n\nWhen an order is marked received, BioManager offers to add it to Reagents, Antibodies or Viruses with everything filled in. Expiring and low stock shows on everyone's Home page, and Order again starts a new order from the last one.\n\nFree and open source: {site}",
       "xhs_title": "实验室订单看板🛒到货一拖进库存",
@@ -130,7 +176,11 @@
       "subtitle_en": "Your own nouns, counts, schedules and columns. No code",
       "title_zh": "非模式生物也能一分钟建库",
       "subtitle_zh": "用你自己的叫法、字段和时间表，不用写代码",
-      "bullets_zh": ["缸、管、板、笼，叫法随你", "按个体或按组计数", "繁殖、基因分型、体重…勾选即用"],
+      "bullets_zh": [
+        "缸、管、板、笼，叫法随你",
+        "按个体或按组计数",
+        "繁殖、基因分型、体重…勾选即用"
+      ],
       "x": "Not a mouse lab? Choose Add database, describe your organism (a frog lives in a tank, comes in clutches, is tracked as groups or individuals), tick what it needs, and BioManager speaks your language.\n\nNo code, no migration.\n\n{site}",
       "linkedin": "Lab software tends to assume you work on mice.\n\nIn BioManager, Add database builds a database for any organism in your own words: a Xenopus colony where the animal is a frog, the housing a tank and a litter a clutch. Choose how it is counted (individuals, groups with a headcount, or both), tick what it needs (crosses, cohorts, a nursery stage, genotyping, environment logs, cryo inventory, census), add schedules like \"wean at P21\" that can vary with temperature, and add your own columns. Experiments work on it as they do for mice.\n\nCell lines, yeast strains, axolotls: anything kept in containers and bred or passaged fits. Free and open source: {site}",
       "xhs_title": "非模式生物实验室也有专属数据库了🐸",
@@ -146,7 +196,11 @@
       "subtitle_en": "Weanings, genotyping, flips, expiring reagents, the next 14 days",
       "title_zh": "每天早上打开，今天该做什么一目了然",
       "subtitle_zh": "断奶、基因分型、翻果蝇、试剂过期、未来两周",
-      "bullets_zh": ["超过 30 周的老鼠自动提醒", "三种布局：卡片 / 时间轴 / 冰箱", "按走进鼠房的顺序列出清单"],
+      "bullets_zh": [
+        "超过 30 周的老鼠自动提醒",
+        "三种布局：卡片 / 时间轴 / 冰箱",
+        "按走进鼠房的顺序列出清单"
+      ],
       "x": "BioManager's Home page is a to-do list your colony writes for you: mice past 30 weeks, weanings due, the genotyping queue, vials to flip, reagents expiring, the next 14 days.\n\nThree layouts: Classic, Tracks, Freezer.\n\n{site}",
       "linkedin": "The best feature of a real database over a spreadsheet: it can tell you what to do.\n\nBioManager's Home page lists what needs doing today: mice older than 30 weeks, upcoming weanings, the genotyping queue, fly vials due for flipping, expiring stock, zebrafish tasks, the next 14 days and recent orders. Three layouts: Classic cards, Tracks (the coming weeks on one ruler, a track per kind of work) and Freezer (your racks from above, with a pull list in the order you'd walk the room). Optional daily emails send each person their own list.\n\nFree and open source: {site}",
       "xhs_title": "打开就知道今天要干嘛☀️",
@@ -162,7 +216,11 @@
       "subtitle_en": "Fly vials and worm plates, rack by rack",
       "title_zh": "25°C 两周翻一次，18°C 四周，它帮你记",
       "subtitle_zh": "果蝇管和线虫板，按架子管理",
-      "bullets_zh": ["翻管时间随温度自动变", "架子格子图显示上次/下次翻管", "杂交、收卵、子代成虫时间"],
+      "bullets_zh": [
+        "翻管时间随温度自动变",
+        "架子格子图显示上次/下次翻管",
+        "杂交、收卵、子代成虫时间"
+      ],
       "x": "Fly people: BioManager's flip schedules follow temperature (every 14 days at 25 °C, 28 at 18 °C), each rack's grid shows when it was last flipped and when it's next due, and Flipped today is one click.\n\nWorms too. {site}",
       "linkedin": "Fly and worm stocks, organised the way they sit in the incubator.\n\nBioManager labels each vial or plate with its genotype and purpose (stock, experiment, cross, progeny), sets crosses, collects eggs or picks progeny into new vials, and says when the progeny will be adults. Flip and chunk schedules follow temperature (every 14 days at 25 °C, every 28 at 18 °C) and show up on Home when due. Each rack's grid says when it was last flipped and when the next is due, red when overdue, with a Flipped today button.\n\nFree and open source: {site}",
       "xhs_title": "果蝇人狂喜🪰翻管时间自动算",
@@ -178,7 +236,11 @@
       "subtitle_en": "Amend with a reason; every version kept",
       "title_zh": "实验记录可以签名锁定，还能请人见证",
       "subtitle_zh": "修改要写理由，每个版本都留着",
-      "bullets_zh": ["签名后内容指纹存档并锁定", "同事可以见证签名", "版本历史逐行对比、随时恢复"],
+      "bullets_zh": [
+        "签名后内容指纹存档并锁定",
+        "同事可以见证签名",
+        "版本历史逐行对比、随时恢复"
+      ],
       "x": "When a notebook page should be the record of your work, sign it: BioManager fingerprints its exact text, freezes any live experiment in it, and locks it. A lab mate can witness it. Changes need an amendment with a reason.\n\nYour choice, page by page. {site}",
       "linkedin": "BioManager's lab notebook lets you sign a page when it should be the record of your work, page by page and only if you choose.\n\nYou confirm who you are, the page's exact text is fingerprinted and kept, any live experiment in it is frozen, and it is locked. A lab mate can witness it. To change it, its owner amends it with a reason, which stays in the record with every signature, and a signed page can't be deleted. Every editing session is kept in the version history, compared line by line and restorable.\n\nFree and open source: {site}",
       "xhs_title": "电子实验记录本也能签名存证✍️",
@@ -194,7 +256,11 @@
       "subtitle_en": "Versions kept; deviations written down as you go",
       "title_zh": "实验步骤一步一步跟着做，计时器自带",
       "subtitle_zh": "版本管理，偏差当场记下",
-      "bullets_zh": ["常用实验方案内置", "Run mode 大字一步一步打勾", "“孵育 30 分钟”旁边就有计时按钮"],
+      "bullets_zh": [
+        "常用实验方案内置",
+        "Run mode 大字一步一步打勾",
+        "“孵育 30 分钟”旁边就有计时按钮"
+      ],
       "x": "Protocols in BioManager have numbered versions, and Run mode walks you through one step at a time in large type. Every duration (\"incubate 30 min\") gets a ⏱ button; timers keep running across pages and ring when they end.\n\n{site}",
       "linkedin": "Protocols in BioManager's notebook have numbered versions. Start an experiment from one and its steps are copied as a checklist, with the version that was followed recorded.\n\nRun mode goes through the checklist at the bench one step at a time in large type: each tick gets the time, and a deviation is written under the page's Deviations heading. Every duration written in a step (\"incubate 30 min\") gets a ⏱ button; timers keep running across pages and ring, vibrate and notify when they end.\n\nA dozen common protocols are built in: genotyping, perfusion, immunofluorescence, western, BCA, transformation, miniprep, TRIzol, qPCR, passaging, tamoxifen.\n\nFree and open source: {site}",
       "xhs_title": "做实验不怕漏步骤了⏱️",
@@ -210,7 +276,11 @@
       "subtitle_en": "Weanings, genotyping, flips and expiry dates, plus your Google Calendar",
       "title_zh": "会自己填日程的实验室日历",
       "subtitle_zh": "断奶、基因分型、翻管、过期日期自动上日历",
-      "bullets_zh": ["实验时间线：改第 0 天，后面全跟着动", "仪器预约，撞时间直接拒绝", "手机日历订阅，只看自己的"],
+      "bullets_zh": [
+        "实验时间线：改第 0 天，后面全跟着动",
+        "仪器预约，撞时间直接拒绝",
+        "手机日历订阅，只看自己的"
+      ],
       "x": "BioManager's calendar fills in weanings, genotyping, fly flips and reagent expiry by itself. Protocol timelines put every step on the calendar (move day 0 and they all move), bookings refuse double bookings, and phones can subscribe.\n\n{site}",
       "linkedin": "BioManager's calendar has experiments and to-dos, with colony dates (weanings, genotyping, sac reminders), fly and worm flips, organism schedules and reagent expiry filled in for you, and your Google Calendar or any ICS subscription alongside.\n\nProtocol timelines: write the steps once in days from day 0 (tamoxifen days 0–4, implant day 14, perfuse day 42), start them for a cohort, and every step lands on the calendar; move day 0 and they all move. Equipment booking refuses double bookings, saying who has it. Time away shows what falls due while you're gone and who covers it. And a private link lets Apple, Google or Outlook Calendar subscribe.\n\nFree and open source: {site}",
       "xhs_title": "实验室日历会自己排日程📅",
@@ -222,11 +292,15 @@
       "day": 13,
       "clip": "undo",
       "theme": "Batch actions with undo, and a full change history",
-      "title_en": "Change 40 mice at once. Undo it if you were wrong",
+      "title_en": "Change a cage of mice at once. Undo it if you were wrong",
       "subtitle_en": "Every change recorded: who, when, exactly what",
-      "title_zh": "一次改 40 只鼠，改错了一键撤销",
+      "title_zh": "一次改一批鼠，改错了一键撤销",
       "subtitle_zh": "每次修改都有记录：谁、什么时候、改了什么",
-      "bullets_zh": ["勾选多行批量改字段", "批量操作都能撤销", "不会覆盖别人后来的修改"],
+      "bullets_zh": [
+        "勾选多行批量改字段",
+        "批量操作都能撤销",
+        "不会覆盖别人后来的修改"
+      ],
       "x": "Tick rows, set a field for all of them, and if it was a mistake, undo it. Unless someone has edited those records since, so their work is never silently lost.\n\nAnd every change is in the history: genotype: DBH-Cre → ∅.\n\n{site}",
       "linkedin": "Spreadsheets make bulk edits easy and mistakes permanent.\n\nIn BioManager you tick rows, then set a field, add them to an experiment or sac them, and every bulk action can be undone, unless someone has edited those records since, so their work is never silently lost. Every create, edit and delete is recorded with who and exactly what changed (genotype: DBH-Cre → ∅), and an import from Excel is one batch you can take back.\n\nFree and open source: {site}",
       "xhs_title": "批量改错了？一键撤销↩️",
@@ -242,7 +316,11 @@
       "subtitle_en": "Mice, plasmids, orders, notebook pages. Every page opens as a tab",
       "title_zh": "⌘K 一搜，全实验室的东西都能找到",
       "subtitle_zh": "小鼠、质粒、订单、实验记录，每页都是一个标签",
-      "bullets_zh": ["一个搜索框搜所有数据库", "标签页可以拖动排序", "明天打开标签还在"],
+      "bullets_zh": [
+        "一个搜索框搜所有数据库",
+        "标签页可以拖动排序",
+        "明天打开标签还在"
+      ],
       "x": "⌘K (Ctrl+K) searches everything in BioManager: mice, plasmids, orders, notebook pages. Every page opens as a tab you can reorder, and your tabs are still there tomorrow.\n\n{site}",
       "linkedin": "Small thing, big difference: in BioManager, Cmd/Ctrl+K searches everything, from a mouse ID to a plasmid name to a line in someone's notebook page. Every page opens as a tab you can reorder, + opens a new one on your start page, and your tabs are still there tomorrow. Alt+1…9 switches between them.\n\nFree and open source: {site}",
       "xhs_title": "找东西不用翻十个表了🔍",
@@ -274,7 +352,11 @@
       "subtitle_en": "Standard curves and ΔΔCt fold changes from pasted values",
       "title_zh": "酶标仪和 qPCR 的计算，记录本里直接做",
       "subtitle_zh": "标准曲线、ΔΔCt 倍数变化，粘贴就算",
-      "bullets_zh": ["6 到 384 孔板热图", "标记空白、标准品、样本", "粘贴 Ct 值自动算 ΔΔCt"],
+      "bullets_zh": [
+        "6 到 384 孔板热图",
+        "标记空白、标准品、样本",
+        "粘贴 Ct 值自动算 ΔΔCt"
+      ],
       "x": "Paste plate-reader values onto a 6- to 384-well heatmap, mark blanks, standards and samples, and read concentrations off the standard curve. Paste Ct values and get ΔΔCt fold changes.\n\nIn BioManager's notebook, free: {site}",
       "linkedin": "Two calculations every lab repeats weekly, built into BioManager's notebook:\n\nPlate reader: paste readings onto a 6- to 384-well heatmap, mark blanks, standards and samples, and read concentrations off the standard curve.\nqPCR: paste Ct values and get ΔΔCt fold changes.\n\nAlongside: buffer recipes that scale with the volume, and calculators for dilution, molarity, master mix, serial dilution, ligation, cell seeding, agarose gels and DNA/RNA copy number.\n\nFree and open source: {site}",
       "xhs_title": "qPCR算ΔΔCt不用写公式🧮",
@@ -290,7 +372,11 @@
       "subtitle_en": "macOS feel, full dark mode, and your own app icon",
       "title_zh": "实验室软件也可以很好看",
       "subtitle_zh": "Mac 风格界面，深色模式，还能换 App 图标",
-      "bullets_zh": ["完整的深色模式", "8 种图标：小鼠、斑马鱼、果蝇…", "6 种马卡龙配色"],
+      "bullets_zh": [
+        "完整的深色模式",
+        "8 种图标：小鼠、斑马鱼、果蝇…",
+        "6 种马卡龙配色"
+      ],
       "x": "Lab software doesn't have to look like 2004.\n\nBioManager follows macOS conventions, has a full dark mode, and lets each person pick an app icon (mouse, zebrafish, worm, fly, cryobox…) in one of six macaron colours. Works on Windows and Linux too.\n\n{site}",
       "linkedin": "People use software they like looking at. BioManager's interface follows macOS conventions (a translucent sidebar, Finder-style tabs, system type and colours) with a full dark mode, and it works in any modern browser on Windows and Linux too.\n\nEach person can pick their own app icon in Settings: a double helix, mouse, zebrafish, C. elegans, Drosophila, cryobox, microtube or petri dish, in one of six macaron colours, and the app's accent colour follows it.\n\nFree and open source: {site}",
       "xhs_title": "颜值超高的实验室软件🌙",
@@ -302,11 +388,15 @@
       "day": 18,
       "clip": "phone",
       "theme": "One person on a desktop, or the whole lab on a server, phones included",
-      "title_en": "One desktop app, or the whole lab on a server",
+      "title_en": "The whole lab on one server, and on their phones",
       "subtitle_en": "Everyone signs in from a browser, including on their phone at the rack",
-      "title_zh": "一个人用电脑版，全组用服务器版",
+      "title_zh": "全组用一个服务器，手机上也能用",
       "subtitle_zh": "浏览器登录，在鼠房用手机也行",
-      "bullets_zh": ["用学校账号登录（Google / Microsoft）", "动物房工作人员可以有单独权限", "每晚自动备份"],
+      "bullets_zh": [
+        "用学校账号登录（Google / Microsoft）",
+        "动物房工作人员可以有单独权限",
+        "每晚自动备份"
+      ],
       "x": "BioManager runs as a desktop app for one person, or on a lab server everyone signs in to from a browser, phones included. Sign in with Google, Microsoft or your institution's account; animal-facility staff get their own roles.\n\nFree for the whole lab: {site}",
       "linkedin": "BioManager runs two ways. For one person, a desktop app on macOS, Windows or Linux. For the whole lab, a server everyone signs in to from a browser, including on their phone at the rack: sheets become one card per row, and rack grids get a Move button.\n\nSign in with Google, Microsoft, a password or your institution's own account. Animal-facility staff can have care or facility roles. A lab server keeps nightly backups, and upgrades take a copy first. There's a step-by-step guide for setting one up, including one written for an AI assistant to follow.\n\nFree for the whole lab, no per-seat pricing: {site}",
       "xhs_title": "全组一起用，手机也能管老鼠📱",
@@ -322,7 +412,11 @@
       "subtitle_en": "Labels typed to fit the roll, or straight to the Zebra on your network",
       "title_zh": "Brother、Zebra 标签机都能直接打",
       "subtitle_zh": "按标签尺寸自动排版，或者直接发到网络上的 Zebra",
-      "bullets_zh": ["Brother QL 62×29、90×29、100×62 mm", "Zebra 2×1、3×1、4×2 英寸", "冻存管标签也有"],
+      "bullets_zh": [
+        "Brother QL 62×29、90×29、100×62 mm",
+        "Zebra 2×1、3×1、4×2 英寸",
+        "冻存管标签也有"
+      ],
       "x": "Print on: choose a sheet of cards for any printer, or a label printer's roll (Brother QL 62×29, 90×29, 100×62 mm; Zebra 2×1, 3×1, 4×2 in; cryo-tube labels). Download ZPL, or Send to Zebra straight to the printer on your network.\n\n{site}",
       "linkedin": "Labels in BioManager: Print on chooses a sheet of cards for any printer, or a label printer's roll: Brother QL (62 × 29, 90 × 29, 100 × 62 mm), Zebra (2 × 1, 3 × 1, 4 × 2, 4 × 2.5 in) or cryo-tube labels. It prints one label a page, typed to fit, and remembers each person's choice.\n\nFor Zebras, Download for Zebra (.zpl) gives the labels in the printer's own language, or an admin adds the printer's address once and Send to Zebra prints straight away. Tick samples or reagents and press Labels for tube labels.\n\nFree and open source: {site}",
       "xhs_title": "标签机党看过来🏷️",
@@ -338,7 +432,11 @@
       "subtitle_en": "Tell us what your lab needs next",
       "title_zh": "三周二十个功能，一直免费",
       "subtitle_zh": "告诉我你们实验室还需要什么",
-      "bullets_zh": ["在软件里点 Feedback 反馈", "或者在 GitHub 提 issue", "永久免费开源"],
+      "bullets_zh": [
+        "在软件里点 Feedback 反馈",
+        "或者在 GitHub 提 issue",
+        "永久免费开源"
+      ],
       "x": "Three weeks, one BioManager feature a day. Thank you to everyone who tried it.\n\nIt stays free and open source. What should it do next? In the app, Feedback (under Help) sends a problem or idea to your lab's admins, and on to us if you choose.\n\n{site}",
       "linkedin": "Three weeks ago I released BioManager and posted one feature a day. Thank you to everyone who downloaded it, set it up for their lab, or sent feedback.\n\nIt stays free and open source. What comes next depends on what labs ask for: in the app, Feedback (under Help) keeps a problem or idea for your lab's admins, and Open as a GitHub issue sends it to us if you choose.\n\n{site}",
       "xhs_title": "连更三周，谢谢大家🙏",

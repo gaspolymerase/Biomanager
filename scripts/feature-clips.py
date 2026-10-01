@@ -164,11 +164,13 @@ class Director:
         loc.scroll_into_view_if_needed()
         x, y = self.centre(loc)
         x0, y0 = self.pos
-        steps = max(int(seconds * 60), 2)
-        for i in range(1, steps + 1):
-            k = ease(i / steps)
+        # Paced by the clock: each mouse call is a round trip to the browser.
+        start = time.time()
+        while (elapsed := time.time() - start) < seconds:
+            k = ease(elapsed / seconds)
             self.page.mouse.move(x0 + (x - x0) * k, y0 + (y - y0) * k)
-            self.page.wait_for_timeout(16)
+            self.page.wait_for_timeout(8)
+        self.page.mouse.move(x, y)
         self.pos = (x, y)
 
     def click(self, target, after: float = 0.6, seconds: float = 0.7):
@@ -195,10 +197,16 @@ class Director:
     def scroll(self, dy: float, seconds: float = 0.9, at=None):
         if at is not None:
             self.move(at, 0.4)
-        steps = max(int(seconds * 60), 2)
-        for i in range(steps):
-            self.page.mouse.wheel(0, dy / steps)
-            self.page.wait_for_timeout(16)
+        start, done = time.time(), 0.0
+        while done < dy if dy > 0 else done > dy:
+            k = ease(min((time.time() - start) / seconds, 1.0))
+            step = dy * k - done
+            if step:
+                self.page.mouse.wheel(0, step)
+                done += step
+            if k >= 1:
+                break
+            self.page.wait_for_timeout(8)
         self.wait(0.3)
 
     def zoom(self, target=None, scale: float = 1.6, box=None):
@@ -274,8 +282,9 @@ def gradient(size, colours) -> Image.Image:
 
 def wrap(draw, text, fnt, width):
     """Break a title into lines that fit; Chinese breaks between characters."""
-    words = text.split(" ") if " " in text and not any("一" <= c <= "鿿" for c in text) else list(text)
-    joiner = " " if len(words) and len(words[0]) > 1 else ""
+    spaced = " " in text and not any("一" <= c <= "鿿" for c in text)
+    words = text.split(" ") if spaced else list(text)
+    joiner = " " if spaced else ""
     lines, line = [], ""
     for w in words:
         trial = (line + joiner + w) if line else w
@@ -507,7 +516,11 @@ def titles() -> dict:
     if not path.exists():
         return {}
     posts = json.loads(path.read_text())
-    return {p["clip"]: p for p in posts["posts"] if p.get("clip")}
+    out = {}
+    for p in posts["posts"]:   # a clip used twice (the tour) keeps its first day's title
+        if p.get("clip"):
+            out.setdefault(p["clip"], p)
+    return out
 
 
 def record(browser, base, password, walk, kind, prepare=None):

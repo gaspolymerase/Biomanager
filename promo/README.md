@@ -10,7 +10,7 @@ count who actually uses it.
 
 | | |
 | --- | --- |
-| Day 0 | **Thu 8 Oct 2026**, the first working day after China's National Day holiday |
+| Day 0 | **Thu 1 Oct 2026**, with 1.0 (China's National Day holiday starts that day, so Chinese platforms are quieter in week one) |
 | Every day | **08:30 New York** = 20:30 Beijing (Xiaohongshu and Bilibili's evening peak) = 14:30 Central Europe (LinkedIn and X's working day) |
 | Days | 0 announcement · 1–7 the strongest features · review · 8–20 the rest · 20 thank-you |
 | Calendar | [`posts.json`](posts.json): every day's theme, clip, and text for each platform |
@@ -36,7 +36,7 @@ count who actually uses it.
 - [ ] **Visits to the website.** GitHub Pages counts nothing; the links
   carry `utm_source` per platform, so add a counter that reads them
   (GoatCounter is free and cookieless) to know which platform works.
-- [ ] Record every clip and build every pack (the readiness task does both on 5 Oct).
+- [ ] Record every clip and build every pack (the readiness task does both on 30 Sep).
 
 ## Every day
 
@@ -92,7 +92,7 @@ endorsement). Post it on day 15 once listed; set `links.arxiv` in
 
 ## After a week
 
-On 15 Oct the review task runs `promo-metrics.py --review` against these targets:
+On 8 Oct the review task runs `promo-metrics.py --review` against these targets:
 
 | Since launch | Target |
 | --- | --- |
