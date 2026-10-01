@@ -33,6 +33,7 @@ PROJECT = "638885"   # BioManager's PostHog project (app/telemetry.py's key belo
 # A personal API key that may read the project ("Query: read"), kept on this
 # computer only: never in the repository.
 KEY_FILE = Path.home() / ".config/biomanager/posthog-personal-key"
+COUNT_FROM = "2026-10-01 04:00:00"   # UTC
 
 # The week-1 bar. Below it on most lines: change something before carrying on.
 # Stars and downloads count from the last numbers taken before the launch day.
@@ -78,7 +79,9 @@ def posthog() -> dict:
                                      headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.load(r)["results"]
-    beat = "from events where event = 'heartbeat' and timestamp > now() - interval"
+    # Heartbeats before COUNT_FROM came from GitHub's build machines, before CI was switched off.
+    beat = (f"from events where event = 'heartbeat' and timestamp >= toDateTime('{COUNT_FROM}') "
+            "and timestamp > now() - interval")
     try:
         out = {"installs_1d": q(f"select count(distinct distinct_id) {beat} 1 day")[0][0],
                "installs_7d": q(f"select count(distinct distinct_id) {beat} 7 day")[0][0]}

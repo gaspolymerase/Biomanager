@@ -779,7 +779,9 @@ to that, and `tests/test_telemetry.py` checks names don't leak.
   `phc_…` key; overrides `PROJECT_KEY`, BioManager's own project: a
   write-only key, safe in public code; with neither, nothing is ever
   sent), `BIOMANAGER_TELEMETRY=0` or `DO_NOT_TRACK=1`
-  (off, whatever the admin chose; the page says "Off (set by the server)").
+  (off, whatever the admin chose; the page says "Off (set by the server)"),
+  and `CI=true`, which GitHub Actions sets: the upgrade check opens every
+  earlier release's database, and each would otherwise count as a lab.
   The Docker stack passes both switches from `deploy/.env`. A demo lab
   from `scripts/demo-data.py` is switched off in its own settings, so
   screenshots and the launch clips never count as a lab.

@@ -30,7 +30,7 @@ class Heartbeat(AppTestCase):
         env = mock.patch.dict(os.environ, {"BIOMANAGER_TELEMETRY_KEY": KEY})
         env.start()
         self.addCleanup(env.stop)
-        for name in ("BIOMANAGER_TELEMETRY", "DO_NOT_TRACK"):
+        for name in ("BIOMANAGER_TELEMETRY", "DO_NOT_TRACK", "CI"):   # GitHub Actions sets CI
             os.environ.pop(name, None)
         set_up = mock.patch("app.lab.setup_done", return_value=True)
         set_up.start()
@@ -115,7 +115,7 @@ class Heartbeat(AppTestCase):
         self.urlopen.assert_not_called()
 
     def test_nothing_when_the_server_turned_it_off(self):
-        for name, value in (("BIOMANAGER_TELEMETRY", "0"), ("DO_NOT_TRACK", "1")):
+        for name, value in (("BIOMANAGER_TELEMETRY", "0"), ("DO_NOT_TRACK", "1"), ("CI", "true")):
             with mock.patch.dict(os.environ, {name: value}):
                 self.assertFalse(self.send())
         self.urlopen.assert_not_called()

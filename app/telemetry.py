@@ -82,10 +82,13 @@ def project_key() -> str:
 
 
 def off_by_env() -> bool:
-    """BIOMANAGER_TELEMETRY=0 (or off/false/no), or DO_NOT_TRACK set to anything but 0."""
+    """BIOMANAGER_TELEMETRY=0 (or off/false/no), DO_NOT_TRACK set to anything
+    but 0, or a CI machine (CI=true, as GitHub Actions and most others set):
+    a build being checked is not a lab."""
     own = (os.environ.get("BIOMANAGER_TELEMETRY") or "").strip().lower()
     dnt = (os.environ.get("DO_NOT_TRACK") or "").strip().lower()
-    return own in ("0", "off", "false", "no") or dnt not in ("", "0", "false", "no")
+    ci = (os.environ.get("CI") or "").strip().lower()
+    return own in ("0", "off", "false", "no") or dnt not in ("", "0", "false", "no") or ci in ("1", "true", "yes")
 
 
 def lab_on(session) -> bool:
