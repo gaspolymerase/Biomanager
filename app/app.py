@@ -7678,7 +7678,7 @@ def utilities():
 # ZEBRAFISH MODULE — parallel to the mouse colony.
 # ---------------------------------------------------------------------------
 
-ZEBRAFISH_VIEWS = ("tanks", "fish", "clutches", "lines", "water")
+ZEBRAFISH_VIEWS = ("tanks", "fish", "clutches", "experiments", "lines", "water")
 # Older view names, still in bookmarks and reminders, and where they live now.
 ZEBRAFISH_VIEW_ALIASES = {"racks": "grid", "genotyping": "geno", "sac": "table"}
 
@@ -8060,7 +8060,12 @@ def _zebrafish_context(active_view: str):
             "fish": sum(f.count or 0 for t in tanks for f in t.fish if fish_alive(f)),
             "clutches": s.scalar(select(func.count(ClutchRecord.id))) or 0,
             "lines": len(lines),
+            "experiments": experiment_pages.tab_count(s, "zebrafish"),
         }
+        experiments_tab = None
+        if active_view == "experiments":
+            place = experiment_pages.place_for(s, "zebrafish")
+            experiments_tab = experiment_pages.tab_context(s, place) if place else None
 
     # Rack grid: tanks store 0-based rows/columns; the grid payload is
     # 1-based and the page tells rack-grid.js to convert back.
@@ -8115,6 +8120,7 @@ def _zebrafish_context(active_view: str):
         "geno_queue": geno_queue,
         "sac_log": sac_log,
         "census": census,
+        "experiments_tab": experiments_tab,
         "usernames": usernames,
         "me": me,
         "next_tank_id": next_tank_id,

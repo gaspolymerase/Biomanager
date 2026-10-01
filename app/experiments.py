@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from . import access, lab
 from .db import SessionLocal
@@ -145,7 +145,7 @@ def place_for(session, key: str) -> Place | None:
         if not features.get("zebrafish", True):
             return None
         return Place("zebrafish", lab.FEATURES["zebrafish"].label, "fish", "fish", "fish row", "fish rows", "tank",
-                     "fish", url_for("experiments.index", db_key="zebrafish"), url_for("zebrafish", view="fish"))
+                     "fish", url_for("zebrafish", view="experiments"), url_for("zebrafish", view="fish"))
     if kind == "stocks":
         module = stock_service.get_module(session, sub)
         if module is None or not lab.can_see(module):
@@ -153,14 +153,15 @@ def place_for(session, key: str) -> Place | None:
         mv = stock_service.view(module)
         family = "worm" if module.kind == "worm" else "fly"
         return Place(key, mv.label, family, "unit", mv.unit, mv.units, mv.rack_noun, module.icon or family,
-                     url_for("experiments.index", db_key=key), url_for("stocks.module", key=module.key), module, mv)
+                     url_for("stocks.module", key=module.key, view="experiments"),
+                     url_for("stocks.module", key=module.key), module, mv)
     if kind == "organisms":
         module = organism_service.get_module(session, sub)
         if module is None or not lab.can_see(module):
             return None
         mv = organism_service.view(module)
         return Place(key, mv.label, "organism", "organism", mv.organism_noun, mv.organism_noun_plural,
-                     mv.housing_noun, module.icon or "paw", url_for("experiments.index", db_key=key),
+                     mv.housing_noun, module.icon or "paw", url_for("organisms.module", key=module.key, view="experiments"),
                      url_for("organisms.module", key=module.key), module, mv)
     return None
 
@@ -587,27 +588,45 @@ def data_json(experiment_id: int):
         return jsonify({"ok": True, **payload(s, exp, place)})
 
 
+def tab_context(session, place: Place) -> dict:
+    """What a database's Experiments tab shows (templates/_experiments_tab.html):
+    its experiments, newest first by status, and the readouts a new one can
+    follow. The zebrafish, fly and worm, and organism pages pass it on as
+    `experiments_tab`; the mouse colony has its own tab."""
+    rows = session.scalars(select(Experiment).where(Experiment.db == place.key)
+                           .order_by(Experiment.status, Experiment.created_at.desc())).all()
+    counts = dict(session.execute(
+        select(ExperimentSubject.experiment_id_fk, func.count(ExperimentSubject.id))
+        .where(ExperimentSubject.experiment_id_fk.in_([e.id for e in rows]))
+        .group_by(ExperimentSubject.experiment_id_fk)).all()) if rows else {}
+    cards = [{"id": e.id, "name": e.name, "description": e.description, "status": e.status,
+              "owner": e.owner_username, "editable": access.can_edit_experiment(e), "count": counts.get(e.id, 0),
+              "start_date": e.start_date.strftime("%b %d, %Y") if e.start_date else "",
+              "readout": readout_of(e, place)["label"], "url": url_for("experiments.page", experiment_id=e.id)}
+             for e in rows]
+    # A new experiment can start with a whole tank, rack or housing of them,
+    # as a mouse one starts with a cage's mice.
+    groups = candidates(session, Experiment(id=0, db=place.key), place)["groups"]
+    return {"place": place, "cards": cards, "readouts": readout_choices(place), "groups": groups,
+            "today": date.today().isoformat(), "statuses": STATUSES}
+
+
+def tab_count(session, db_key: str) -> int:
+    """How many experiments a database has, for the count on its tab."""
+    return session.scalar(select(func.count(Experiment.id)).where(Experiment.db == db_key)) or 0
+
+
 @bp.get("/in/<db_key>")
 def index(db_key: str):
-    """A database's experiments, and a new one. (The colony's are on its Experiments tab.)"""
+    """A database's experiments are on its Experiments tab; this address
+    (from before the tab, in bookmarks and notebook links) goes there."""
     if db_key == "colony":
         return redirect(url_for("colony", view="experiments"))
     with SessionLocal() as s:
         place = place_for(s, db_key)
         if place is None:
             abort(404)
-        rows = s.scalars(select(Experiment).where(Experiment.db == db_key)
-                         .order_by(Experiment.status, Experiment.created_at.desc())).all()
-        items = []
-        for e in rows:
-            n = s.scalar(select(ExperimentSubject.id).where(ExperimentSubject.experiment_id_fk == e.id).limit(1))
-            count = len(s.scalars(select(ExperimentSubject.id).where(ExperimentSubject.experiment_id_fk == e.id)).all()) if n else 0
-            items.append({"id": e.id, "name": e.name, "description": e.description, "status": e.status,
-                          "owner": e.owner_username, "editable": access.can_edit_experiment(e), "count": count,
-                          "start_date": e.start_date.strftime("%b %d, %Y") if e.start_date else "",
-                          "readout": readout_of(e, place)["label"]})
-        return render_template("experiments_list.html", place=place, items=items, readouts=readout_choices(place),
-                               today=date.today().isoformat(), statuses=STATUSES)
+        return redirect(place.list_url)
 
 
 @bp.post("/in/<db_key>/create")
@@ -625,6 +644,12 @@ def create(db_key: str):
                          owner_username=g.user.username, start_date=parse_date(form.get("start_date")),
                          db=place.key, readout=json.dumps({"key": readout}) if readout in READOUTS else "")
         s.add(exp)
+        s.flush()
+        start_with = (form.get("from_group") or "").strip()
+        if start_with:
+            for kind, rec, start in _records_to_add(s, place, "group", start_with):
+                s.add(ExperimentSubject(experiment_id_fk=exp.id, subject_kind=kind, subject_id=rec.id,
+                                        start_count=start))
         s.commit()
         return redirect(page_url(exp))
 

@@ -147,8 +147,8 @@ The most complete module, built around how a mouse room actually works.
 Lines, tanks, individual fish, clutches, matings (and returning the fish
 afterwards), water systems with water-quality logs, and a sac log. A tank
 can hold a group with a headcount, or resolve into named individuals.
-**Experiments** (beside the database's name) work as the mouse colony's
-do, with fish in mind: add a tank's fish rows at once, or a clutch's
+The **Experiments** tab, beside Tanks and Fish, works as the mouse
+colony's does, with fish in mind: start with a tank's fish rows, or a clutch's
 larvae, record drug in the water, microinjection, a heat shock or an
 injury, and follow survival (how many of those at the start are still
 alive), standard length or a phenotype.
@@ -167,7 +167,7 @@ incubators.
 - **Each rack's grid says when it was last flipped** and when the next is
   due (red when overdue), with a **Flipped today** button beside Edit.
 - Frozen-stock records for worms.
-- **Experiments** (beside the database's name) on vials or plates, with
+- An **Experiments** tab for vials or plates (a rack's at once), with
   the manipulations flies and worms get: drug in the food or on the plate,
   RNAi feeding, a temperature shift, starvation, infection, flipping to
   fresh food. They have no body weight, so the readout is **survival**
@@ -203,9 +203,9 @@ sheet, and describe your organism:
   was really done.
 - **Your own columns** — text, numbers, dates, dropdowns, people or links,
   edited in the sheet like the others and set on many rows at once.
-- **Experiments**, the same as the mouse colony's, on your animals,
-  groups or cohorts, with body weight, length, survival or your own
-  readout.
+- An **Experiments** tab, the same as the mouse colony's, on your
+  animals, groups or cohorts (a housing's at once), with body weight,
+  length, survival or your own readout.
 
 <p align="center">
   <img src="docs/screenshots/new-database.webp" alt="The Add database page with presets for flies, worms, inventories and organisms" width="100%">

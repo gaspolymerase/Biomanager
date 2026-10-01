@@ -2,15 +2,16 @@
 {% from "_db_actions.html" import db_actions with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 {% import "_sheet.html" as sheet_ui with context %}
+{% from "_experiments_tab.html" import experiments_tab as experiments_panel with context %}
 
 {% set m = module %}
 {% set key = m.key %}
 {% set S = m.s %}
 {% set parent_purposes = ['cross', 'progeny'] %}
 {% set tab_labels = {
-  'units': m.units|capitalize, 'schedule': 'Schedule', 'genotypes': 'Genotypes',
+  'units': m.units|capitalize, 'schedule': 'Schedule', 'experiments': 'Experiments', 'genotypes': 'Genotypes',
   'setup': m.rooms|capitalize ~ ' & ' ~ m.racks_noun, 'frozen': 'Frozen', 'settings': 'Settings'} %}
-{% set tab_icons = {'units': m.icon, 'schedule': 'calendar-clock', 'genotypes': 'dna', 'setup': 'temperature',
+{% set tab_icons = {'units': m.icon, 'schedule': 'calendar-clock', 'experiments': 'flask', 'genotypes': 'dna', 'setup': 'temperature',
                     'frozen': 'snowflake', 'settings': 'settings'} %}
 
 {% block page_title %}{{ m.label }} · {{ tab_labels[view] }}{% endblock %}
@@ -19,7 +20,6 @@
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('experiments.index', db_key='stocks:' ~ module.key) }}" title="{{ m.units|capitalize }} under a shared treatment: what is done each day, and a readout such as survival">{{ icon('flask') }} Experiments</a>
   {{ db_actions(url_for('stocks.module', key=module.key, view='settings'), can_configure) }}
 {% endblock %}
 
@@ -52,7 +52,7 @@
 {% block page_nav %}
   <div class="mb-4 flex flex-wrap items-center gap-3">
     <nav class="seg max-w-full overflow-x-auto" role="tablist" aria-label="{{ m.label }} views">
-      {% for v in ['units', 'schedule', 'genotypes', 'setup'] + (['frozen'] if S.frozen else []) + ['settings'] %}
+      {% for v in ['units', 'schedule', 'experiments', 'genotypes', 'setup'] + (['frozen'] if S.frozen else []) + ['settings'] %}
         <a class="seg-item {% if view == v %}is-active{% endif %}" role="tab" aria-selected="{{ 'true' if view == v else 'false' }}"
            href="{{ url_for('stocks.module', key=key, view=v) }}">
           {{ icon(tab_icons[v]) }}{{ tab_labels[v] }}
@@ -660,6 +660,10 @@
 {# =====================================================================
    SETTINGS
    ===================================================================== #}
+{% if view == 'experiments' and experiments_tab %}
+  {{ experiments_panel(experiments_tab) }}
+{% endif %}
+
 {% if view == 'settings' %}
   <div class="grid max-w-[1000px] grid-cols-1 gap-3">
     <form method="post" action="{{ url_for('stocks.save_settings', key=key) }}" class="flex flex-col gap-3">

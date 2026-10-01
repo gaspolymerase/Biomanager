@@ -37,6 +37,15 @@ class Zebrafish(Base):
         for n in (12, 8):
             self.a.post("/zebrafish/fish/create", data={"tank_id_fk": str(self.tank), "count": str(n)})
 
+    def test_a_new_experiment_starts_with_a_tank_s_fish(self):
+        tab = self.get_ok(self.a, "/zebrafish?view=experiments")
+        self.assertIn("Start with a tank’s fish rows", tab)
+        self.assertIn(f'<option value="{self.tank}">', tab)
+        r = self.a.post("/experiments/in/zebrafish/create", data={"name": uniq("Exp "), "from_group": str(self.tank)})
+        exp = int(location(r).rsplit("/", 1)[1])
+        subs = self.data(exp)["subjects"]
+        self.assertEqual(sorted(s["start"] for s in subs), [8, 12])          # both rows, with their counts
+
     def test_a_tank_of_fish_counted_as_they_survive(self):
         exp = self.new("zebrafish")
         data = self.data(exp)
@@ -63,10 +72,19 @@ class Zebrafish(Base):
         html = self.get_ok(self.a, f"/experiments/{exp}")
         self.assertIn("Record manipulation", html)
         self.assertIn("Survival", html)
-        listing = self.get_ok(self.a, "/experiments/in/zebrafish")
+        # The list is a tab beside Tanks and Fish, as the mice's is, and the
+        # experiment's page goes back to it.
+        listing = self.get_ok(self.a, "/zebrafish?view=experiments")
         self.assertIn(f"/experiments/{exp}", listing)
+        self.assertIn("Survival", listing)
+        self.assertIn("/zebrafish?view=experiments", html)
         self.assertNotIn(f"/experiments/{exp}\"", self.get_ok(self.a, "/colony?view=experiments"))
-        self.assertIn("/experiments/in/zebrafish", self.get_ok(self.a, "/zebrafish?view=fish"))
+        fish = self.get_ok(self.a, "/zebrafish?view=fish")
+        self.assertIn('href="/zebrafish?view=experiments"', fish)
+        self.assertNotIn("/experiments/in/zebrafish", fish)
+        # The address the list had before (bookmarks, notebook links) leads to the tab.
+        old = self.a.get("/experiments/in/zebrafish")
+        self.assertEqual((old.status_code, location(old)), (302, "/zebrafish?view=experiments"))
 
 
 class FlyStocks(Base):
@@ -92,6 +110,16 @@ class FlyStocks(Base):
         pct = self.read(exp, TODAY, {first: "15"}).get_json()["table"]["rows"]
         self.assertEqual(next(r for r in pct if r["key"] == first)["pct"], [75.0])
 
+    def test_the_experiments_tab_beside_the_vials(self):
+        key = self.make_stock_module(self.a)
+        exp = self.new(f"stocks:{key}")
+        tab = self.get_ok(self.a, f"/stocks/{key}?view=experiments")
+        self.assertIn(f"/experiments/{exp}", tab)
+        self.assertIn("Eclosed adults", tab)                                # a fly's own readouts to start with
+        self.assertIn(f'href="/stocks/{key}?view=experiments"', self.get_ok(self.a, f"/stocks/{key}"))
+        self.assertIn(f"/stocks/{key}?view=experiments", self.get_ok(self.a, f"/experiments/{exp}"))
+        self.assertEqual(location(self.a.get(f"/experiments/in/stocks:{key}")), f"/stocks/{key}?view=experiments")
+
     def test_worms_have_rnai_and_brood_size(self):
         key = self.make_stock_module(self.a, kind="worm")
         data = self.data(self.new(f"stocks:{key}", readout="brood"))
@@ -100,6 +128,15 @@ class FlyStocks(Base):
 
 
 class Organisms(Base):
+    def test_the_experiments_tab_beside_the_animals(self):
+        key = self.make_organism_module(self.a)
+        exp = self.new(f"organisms:{key}")
+        tab = self.get_ok(self.a, f"/organisms/{key}?view=experiments")
+        self.assertIn(f"/experiments/{exp}", tab)
+        self.assertIn(f'href="/organisms/{key}?view=experiments"', self.get_ok(self.a, f"/organisms/{key}"))
+        self.assertEqual(location(self.a.get(f"/experiments/in/organisms:{key}")),
+                         f"/organisms/{key}?view=experiments")
+
     def test_an_organism_weighed_and_dosed_by_weight(self):
         key = self.make_organism_module(self.a)
         animal = self.make_animal(self.a, key)

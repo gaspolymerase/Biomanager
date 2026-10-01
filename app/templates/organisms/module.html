@@ -4,6 +4,7 @@
 {% import "organisms/_fields.html" as F with context %}
 {% import "_sheet.html" as sheet_ui with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog, view_switch with context %}
+{% from "_experiments_tab.html" import experiments_tab as experiments_panel with context %}
 
 {% set view_label = (views | selectattr('key', 'equalto', active_view) | map(attribute='label') | first) or 'Configure' %}
 
@@ -13,7 +14,6 @@
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('experiments.index', db_key='organisms:' ~ module.key) }}" title="{{ module.organism_noun_plural|capitalize }} under a shared treatment: what is done each day, and a readout">{{ icon('flask') }} Experiments</a>
   {{ db_actions(url_for('organisms.module', key=module.key, view='settings'), can_configure) }}
 {% endblock %}
 
@@ -1439,6 +1439,10 @@
 {# =====================================================================
    CONFIGURE
    ===================================================================== #}
+{% if active_view == 'experiments' and experiments_tab %}
+  {{ experiments_panel(experiments_tab) }}
+{% endif %}
+
 {% if active_view == 'settings' %}
   <div class="grid max-w-[1000px] grid-cols-1 gap-3">
     {% if not can_configure %}

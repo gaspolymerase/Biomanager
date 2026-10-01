@@ -29,7 +29,7 @@ from .models import (
 
 bp = Blueprint("stocks", __name__, url_prefix="/stocks")
 
-VIEWS = ("units", "schedule", "genotypes", "setup", "frozen", "settings")
+VIEWS = ("units", "schedule", "experiments", "genotypes", "setup", "frozen", "settings")
 
 
 @bp.before_request
@@ -311,6 +311,10 @@ def module(key: str):
         }
         # Remembered layout is by column position; a changed purpose list
         # or parent labels mean a fresh start.
+        if view_name == "experiments":
+            from . import experiments as experiment_pages
+            place = experiment_pages.place_for(session, f"stocks:{row.key}")
+            context["experiments_tab"] = experiment_pages.tab_context(session, place) if place else None
         context["col_sig"] = format(zlib.crc32(json.dumps(mv.s["parents"]).encode()), "x")
         context.update(hidden_old=hidden_old, show_ended=show_ended, recent_days=90)
         return render_template("stocks/module.html", **context)
