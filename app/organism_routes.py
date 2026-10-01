@@ -78,6 +78,7 @@ MODULE_VIEWS = [
     ("lines", "sitemap", "lines"),
     ("crosses", "heart", "crosses"),
     ("cohorts", "baby", "cohorts"),
+    ("experiments", "flask", None),
     ("genotyping", "microscope", "genotyping"),
     ("schedule", "calendar-clock", "schedule"),
     ("environment", "droplet", "environment"),
@@ -161,13 +162,15 @@ def _views_for(mv: svc.ModuleView) -> list[dict]:
         "lines": mv.line_noun_plural, "crosses": mv.cross_noun_plural,
         "cohorts": mv.cohort_noun_plural, "genotyping": "Genotyping", "schedule": "Schedule",
         "environment": "Environment", "preservation": "Cryo", "settings": "Configure",
+        "experiments": "Experiments",
     }
     out = []
     for key, icon, capability in MODULE_VIEWS:
         if capability and capability not in mv.capabilities:
             continue
-        # "Animals" is meaningless if the module tracks neither.
-        if key == "animals" and not mv.any_of("individuals", "group_counts"):
+        # "Animals" is meaningless if the module tracks neither, and so are
+        # experiments on them.
+        if key in ("animals", "experiments") and not mv.any_of("individuals", "group_counts"):
             continue
         if key == "animals":
             icon = mv.icon
@@ -642,6 +645,11 @@ def module(key: str):
             ctx["methods"] = mv.settings.get("preservation_methods") or [
                 "-80 °C", "liquid nitrogen", "sperm", "embryo"
             ]
+
+        if active == "experiments":
+            from . import experiments as experiment_pages
+            place = experiment_pages.place_for(session, f"organisms:{row.key}")
+            ctx["experiments_tab"] = experiment_pages.tab_context(session, place) if place else None
 
         ctx["today_iso"] = date.today().isoformat()
         return render_template("organisms/module.html", **ctx)

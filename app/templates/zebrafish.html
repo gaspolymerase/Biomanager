@@ -2,11 +2,13 @@
 {% from "_db_actions.html" import db_actions with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 {% import "_sheet.html" as sheet_ui with context %}
+{% from "_experiments_tab.html" import experiments_tab as experiments_panel with context %}
 
 {% set zfish_views = [
   ("tanks",    "Tanks",    "tank",    census.tanks,    "tanks in use"),
   ("fish",     "Fish",     "fish",    census.fish,     "live fish"),
   ("clutches", "Clutches", "egg",     census.clutches, "clutches"),
+  ("experiments", "Experiments", "flask", census.experiments, "experiments"),
   ("lines",    "Lines",    "sitemap", census.lines,    "lines"),
   ("water",    "Water",    "droplet", None,            ""),
 ] %}
@@ -15,12 +17,13 @@
   "fish": "Group-count rows, or individual fish when you need them. Setting a row to sac logs it on the sacrifice log.",
   "clutches": "Crosses and embryo cohorts. The fertilisation date drives tank-up, fin-clip and adult dates.",
   "lines": "The strain catalogue, with founder lineage.",
+  "experiments": "Fish under a shared treatment: what is done each day, and their survival, length or phenotype.",
   "water": "System health: temperature, pH, conductivity and alarms.",
 } %}
 {% set tanks_sub = request.args.get('mode', 'table') %}
 {% set extra_purposes = tanks | map(attribute='purpose') | reject('in', tank_purpose_options) | reject('none') | unique | list %}
 
-{% block page_actions %}<a class="btn" href="{{ url_for('experiments.index', db_key='zebrafish') }}" title="Fish under a shared treatment: what is done each day, and their survival, length or phenotype">{{ icon('flask') }} Experiments</a>{{ db_actions(url_for('organisms.configure_builtin', key='zebrafish'), current_user.role == 'admin') }}{% endblock %}
+{% block page_actions %}{{ db_actions(url_for('organisms.configure_builtin', key='zebrafish'), current_user.role == 'admin') }}{% endblock %}
 {% block page_title %}{{ db_labels.get('zebrafish', 'Zebrafish') }} · {{ active_view|title }}{% endblock %}
 {% block page_heading %}{{ db_labels.get('zebrafish', 'Zebrafish') }}{% endblock %}
 {% block page_subtitle %}{{ zfish_blurbs.get(active_view, '') }}{% endblock %}
@@ -989,6 +992,11 @@
     <label class="record-wide">Founder notes <textarea name="founder_info" rows="2"></textarea></label>
     <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
   {{ dialog_close('Create line') }}
+{% endif %}
+
+{# ============================== EXPERIMENTS ============================= #}
+{% if active_view == "experiments" and experiments_tab %}
+  {{ experiments_panel(experiments_tab) }}
 {% endif %}
 
 {# ================================= WATER ================================ #}

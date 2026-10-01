@@ -510,6 +510,14 @@ its animals get, the readouts that fit), and `subjects()` gives its
 animals the same shape whatever they are. One page serves them all:
 `templates/experiment.html`, drawn by `static/experiment-page.js` from
 `/experiments/<id>/data.json`, and every change answers with that data.
+Each database lists its experiments on its own **Experiments** tab: the
+colony's in `colony.html`, the others through `templates/_experiments_tab.html`
+with `tab_context()` (the zebrafish, stock and organism routes pass it as
+`experiments_tab` when that tab is open). `Place.list_url` is that tab, so
+the page's *All experiments* and a delete go back to it, and the old list
+address `/experiments/in/<db>` redirects there. A new experiment can name
+a group (`from_group`: a tank, rack or housing, from `candidates()`) whose
+animals it starts with.
 
 | Table | Holds |
 | --- | --- |
