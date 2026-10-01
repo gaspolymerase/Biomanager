@@ -21,13 +21,10 @@ count who actually uses it.
   code, the releases, the issues and the website (`site/`, at
   gaspolymerase.github.io/biomanager). The old biomanager-app is archived:
   it redirects, and holds only 0.10.1 for desktop apps from before the move.
-- [ ] **A PostHog project** (free tier, US region): create it, turn on
-  *Discard client IP data*, and put its public `phc_…` key in
-  `PROJECT_KEY` in `app/telemetry.py`. Then release (0.11) so the
-  downloads count. Without a key nothing is sent.
-- [ ] **Decide the version to announce.** Recommended: this release as
-  "the first public release", and save **1.0** for when the pilot
-  (`docs/PILOT.md`) says it is ready: a second announcement to make.
+- [x] **A PostHog project** (US, project 638885), *Discard client IP data*
+  on, its public key in `PROJECT_KEY` in `app/telemetry.py`. Counts start
+  with the first release that has it (1.0.1).
+- [x] **The version to announce**: 1.0.
 - [ ] **Accounts** on the five platforms with the same name and avatar
   (the app icon), a one-line bio, and the website in each profile
   (Xiaohongshu shows no links in posts; the profile is where people look).

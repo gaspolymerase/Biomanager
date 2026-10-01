@@ -776,10 +776,13 @@ to that, and `tests/test_telemetry.py` checks names don't leak.
   made on first use; the Usage report's preview makes it too, so the JSON
   shown is exact), `telemetry:last_sent` (UTC ISO).
 - **Environment**: `BIOMANAGER_TELEMETRY_KEY` (the project's public
-  `phc_…` key; overrides `PROJECT_KEY`, which is empty in the source: no
-  key, nothing is ever sent), `BIOMANAGER_TELEMETRY=0` or `DO_NOT_TRACK=1`
+  `phc_…` key; overrides `PROJECT_KEY`, BioManager's own project: a
+  write-only key, safe in public code; with neither, nothing is ever
+  sent), `BIOMANAGER_TELEMETRY=0` or `DO_NOT_TRACK=1`
   (off, whatever the admin chose; the page says "Off (set by the server)").
-  The Docker stack passes both switches from `deploy/.env`.
+  The Docker stack passes both switches from `deploy/.env`. A demo lab
+  from `scripts/demo-data.py` is switched off in its own settings, so
+  screenshots and the launch clips never count as a lab.
 
 ## Reminder emails
 

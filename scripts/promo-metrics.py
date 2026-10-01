@@ -9,8 +9,8 @@ forks and watchers, downloads of every release asset (on this repository
 and on biomanager-app, where desktop apps from before the move get 0.10.1),
 and the last 14 days' visits to the repository's GitHub pages, clones and
 referring sites (traffic needs push access; the website on GitHub Pages
-isn't counted by GitHub). From PostHog, if POSTHOG_PERSONAL_API_KEY and
-POSTHOG_PROJECT_ID are set: how many installations sent the daily
+isn't counted by GitHub). From PostHog, with a personal API key in
+~/.config/biomanager/posthog-personal-key (or POSTHOG_PERSONAL_API_KEY): how many installations sent the daily
 heartbeat (app/telemetry.py) in the last day and week, desktop or server.
 """
 from __future__ import annotations
@@ -29,6 +29,10 @@ ROOT = Path(__file__).resolve().parent.parent
 CSV = ROOT / "promo/out/metrics.csv"
 REPO, OLD = "gaspolymerase/biomanager", "gaspolymerase/biomanager-app"   # OLD: 0.10.1, for apps from before the move
 POSTHOG = os.environ.get("POSTHOG_HOST", "https://us.posthog.com")
+PROJECT = "638885"   # BioManager's PostHog project (app/telemetry.py's key belongs to it)
+# A personal API key that may read the project ("Query: read"), kept on this
+# computer only: never in the repository.
+KEY_FILE = Path.home() / ".config/biomanager/posthog-personal-key"
 
 # The week-1 bar. Below it on most lines: change something before carrying on.
 # Stars and downloads count from the last numbers taken before the launch day.
@@ -63,7 +67,9 @@ def github() -> dict:
 
 
 def posthog() -> dict:
-    key, project = os.environ.get("POSTHOG_PERSONAL_API_KEY"), os.environ.get("POSTHOG_PROJECT_ID")
+    key, project = os.environ.get("POSTHOG_PERSONAL_API_KEY"), os.environ.get("POSTHOG_PROJECT_ID", PROJECT)
+    if not key and KEY_FILE.exists():
+        key = KEY_FILE.read_text().strip()
     if not key or not project:
         return {}
     def q(sql):
@@ -145,7 +151,7 @@ def main():
             change = f" ({int(row[k]) - int(prev[k]):+d})" if prev.get(k) not in (None, "") else ""
             print(f"- {k}: {row[k]}{change}")
     if "installs_7d" not in row:
-        print("- installs: not measured (set POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID)")
+        print(f"- installs: not measured (put a PostHog personal API key in {KEY_FILE})")
     if referrers:
         print("- referrers: " + ", ".join(f"{r} {n}" for r, n in sorted(referrers.items(), key=lambda x: -x[1])[:8]))
     if args.review:

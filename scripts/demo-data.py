@@ -31,6 +31,7 @@ os.environ["BIOMANAGER_DATA_DIR"] = str(DATA)
 os.environ["DATABASE_URL"] = f"sqlite:///{DATA / 'biomanager.db'}"
 os.environ.pop("BIOMANAGER_ENV", None)
 os.environ["BIOMANAGER_SEED_DEFAULTS"] = "1"  # every default database, as a set-up lab has
+os.environ["BIOMANAGER_TELEMETRY"] = "0"      # a made-up lab is not a lab using BioManager
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -401,6 +402,14 @@ sam.post("/notebook/tabs/create", data={"title": "Photometry"})
 tab = one("select id from notebook_tabs order by id desc limit 1")
 if tab:
     sam.post("/notebook/pages/create", data={"tab_id": tab, "title": "Session 5: sucrose vs water"})
+
+# A made-up lab never sends the daily anonymous counts (app/telemetry.py),
+# however it is run later: the screenshots, the launch clips, a demo.
+from app import telemetry  # noqa: E402
+
+with SessionLocal() as s:
+    telemetry.set_lab_on(s, False)
+    s.commit()
 
 # ------------------------------------------------------------------ report
 

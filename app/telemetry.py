@@ -60,8 +60,9 @@ from .models import AppSetting, AuditEntry, InventoryModule, OrganismModule, Sto
 log = logging.getLogger(__name__)
 
 HOST = "https://us.i.posthog.com"
-# The PostHog project's public key (phc_…). Empty: nothing is ever sent.
-PROJECT_KEY = ""
+# The PostHog project's public key (phc_…): it can only send events, not read
+# them. Empty: nothing is ever sent.
+PROJECT_KEY = "phc_vHqAVNkAb8HL8n3A8SWkfUmYtFvU4b3gDCTqSe3ohfAb"
 EVENT = "heartbeat"
 TIMEOUT = 5                        # seconds
 EVERY = timedelta(days=1)          # at most one send a day per installation

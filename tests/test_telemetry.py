@@ -188,7 +188,8 @@ class Heartbeat(AppTestCase):
             html = self.get_ok(self.a, "/feedback/usage")
         self.assertIn("Off (set by the server)", html)
         self.assertNotIn('action="/feedback/usage/heartbeat"', html)
-        with mock.patch.dict(os.environ, {"BIOMANAGER_TELEMETRY_KEY": ""}):
+        with mock.patch.dict(os.environ, {"BIOMANAGER_TELEMETRY_KEY": ""}), \
+                mock.patch.object(telemetry, "PROJECT_KEY", ""):
             self.assertIn("Not set up in this build", self.get_ok(self.a, "/feedback/usage"))
 
     def test_asked_in_the_first_survey(self):
