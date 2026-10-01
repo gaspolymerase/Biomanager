@@ -449,7 +449,9 @@
          <button data-layout="table" class="dt-chip">…</button>
          <button data-layout="grid" class="dt-chip">…</button>
        </div>
-       <div data-layout-panel="table">…</div> <div data-layout-panel="grid" hidden>…</div> */
+       <div data-layout-panel="table">…</div> <div data-layout-panel="grid" hidden>…</div>
+     A third, data-layout="cards", works the same; each change fires
+     "layout:change" on the scope. */
   function setupSwitch(switcher) {
     const key = `layout:${switcher.dataset.viewSwitch}`;
     const buttons = Array.from(switcher.querySelectorAll('[data-layout]'));
@@ -460,6 +462,8 @@
       buttons.forEach((b) => b.setAttribute('aria-pressed', b.dataset.layout === name ? 'true' : 'false'));
       panels.forEach((p) => { p.hidden = p.dataset.layoutPanel !== name; });
       if (save) { try { localStorage.setItem(key, name); } catch (_) {} }
+      // A page that fills a panel when it is shown (the cage cards) listens.
+      scope.dispatchEvent(new CustomEvent('layout:change', { detail: { layout: name }, bubbles: true }));
     };
     buttons.forEach((b) => b.addEventListener('click', () => apply(b.dataset.layout, true)));
     let saved = null;
