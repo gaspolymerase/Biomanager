@@ -266,23 +266,25 @@ def outro_html(colours):
 
 
 def cover_html(colours):
+    """16:9, with everything inside the middle 4:3, which Bilibili's home page crops to."""
     chips = ["🐭 小鼠", "🐟 斑马鱼", "🪰 果蝇", "🧬 质粒", "🧪 试剂", "📓 记录本"]
     return f"""<style>{BASE_CSS}
 :root {{ --a:{colours[0]}; --b:{colours[1]}; }}
-.logo {{ position:absolute; left:130px; top:180px; width:360px; height:360px; filter: drop-shadow(0 24px 40px rgba(15,138,116,.35)); }}
-.logo svg {{ width:100%; height:100%; }}
-.t1 {{ position:absolute; left:560px; top:170px; font-size:132px; font-weight:900; line-height:1.12; }}
-.t1 em {{ font-style:normal; color:#0f8a74; }}
-.t2 {{ position:absolute; left:566px; top:520px; font-size:58px; color:#374151; font-weight:700; }}
-.badge {{ position:absolute; right:110px; top:80px; background:#ef4444; color:#fff; font-size:56px; font-weight:900;
+.safe {{ position:absolute; left:240px; width:1440px; top:0; height:1080px; text-align:center; }}
+.badge {{ position:absolute; right:40px; top:70px; background:#ef4444; color:#fff; font-size:56px; font-weight:900;
   padding:14px 34px; border-radius:20px; transform:rotate(6deg); box-shadow:0 10px 24px rgba(239,68,68,.35); }}
-.chips {{ position:absolute; left:130px; right:130px; top:720px; }}
-.chip {{ display:inline-block; margin:0 18px 22px 0; padding:16px 30px; border-radius:999px; background:rgba(255,255,255,.9);
-  font-size:46px; font-weight:600; box-shadow:0 6px 18px rgba(0,0,0,.08); }}
-</style>{blobs()}<div class="badge">永久免费</div><div class="logo">{ICON_SVG}</div>
+.logo {{ width:230px; height:230px; margin:90px auto 0; filter: drop-shadow(0 20px 36px rgba(15,138,116,.35)); }}
+.logo svg {{ width:100%; height:100%; }}
+.t1 {{ font-size:128px; font-weight:900; line-height:1.15; margin-top:24px; }}
+.t1 em {{ font-style:normal; color:#0f8a74; }}
+.t2 {{ font-size:54px; color:#374151; font-weight:700; margin-top:26px; }}
+.chips {{ margin-top:44px; }}
+.chip {{ display:inline-block; margin:0 8px 16px; padding:14px 26px; border-radius:999px; background:rgba(255,255,255,.9);
+  font-size:42px; font-weight:600; box-shadow:0 6px 18px rgba(0,0,0,.08); }}
+</style>{blobs()}<div class="safe"><div class="badge">永久免费</div><div class="logo">{ICON_SVG}</div>
 <div class="t1">实验室管理<br><em>不用再开 20 个 Excel</em></div>
 <div class="t2">BioManager 1.0 · 免费开源</div>
-<div class="chips">{''.join(f'<span class="chip">{c}</span>' for c in chips)}</div>"""
+<div class="chips">{''.join(f'<span class="chip">{c}</span>' for c in chips)}</div></div>"""
 
 
 STEP_JS = """t => { for (const a of document.getAnimations()) { a.pause(); a.currentTime = t * 1000; } }"""
