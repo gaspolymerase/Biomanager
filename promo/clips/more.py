@@ -419,14 +419,12 @@ def calendar(d):
     d.goto("/calendar", settle=1.0)
     d.start()
     d.wait(0.8)
-    d.move("text=Wean >> nth=0", 0.9)
-    d.wait(0.8)
-    d.move("text=Genotype >> nth=0", 0.7)
-    d.wait(0.8)
-    d.move("text=Tamoxifen i.p. >> nth=0", 0.8)
-    d.wait(0.6)
-    d.move("text=Implant fibre >> nth=0", 0.7)
-    d.wait(0.8)
+    # Point at what the month shows: which of these fall in it depends on the day it's recorded.
+    for text, seconds in (("Wean", 0.9), ("Genotype", 0.7), ("Tamoxifen i.p.", 0.8), ("Implant fibre", 0.7)):
+        item = d.page.locator(f"text={text}").first
+        if item.count() and item.is_visible():
+            d.move(item, seconds)
+            d.wait(0.7)
     d.click("label:has-text('Mouse colony')", after=1.2)
     d.click("label:has-text('Mouse colony')", after=1.0)
     d.click("#cal-new-more", after=0.6)
@@ -482,14 +480,14 @@ def undo(d):
     d.zoom(box=(240, 340, 700, 130), scale=1.5)
     d.wait(1.6)
     d.unzoom()
-    d.click("a[data-label='Batch history']", after=1.2)
+    d.goto("/batches", settle=1.2)          # 1.0 keeps Batches under More in the sidebar
     d.zoom(box=(240, 105, 1020, 70), scale=1.5)
     d.wait(1.2)
     d.click(d.page.locator("button:has-text('Undo')").first, after=0.8)
     d.click("dialog[open] button:has-text('OK')", after=1.6)
     d.unzoom()
     d.wait(0.8)
-    d.click("a[data-label='Audit log']", after=1.2)
+    d.goto("/audit", settle=1.2)
     d.zoom(box=(245, 160, 1010, 300), scale=1.3)
     d.wait(2.6)
     d.unzoom()
