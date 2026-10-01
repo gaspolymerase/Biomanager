@@ -136,8 +136,11 @@ def datasheet(d):
     d.goto(PAGES["datasheet"])
     d.start()
     d.wait(0.8)
-    cell = "input[data-r='{}'][data-c='1']"
+    cell = "input[data-r='{}'][data-c='1']:visible"
     scroll_to(d, cell.format(8), 250, seconds=1.2)
+    # 1.0's floating editor toolbar covers the window's bottom: keep the rows above it.
+    d.page.locator(cell.format(8)).first.evaluate("e => e.scrollIntoView({block: 'center', behavior: 'smooth'})")
+    d.wait(0.8)
     for i, value in enumerate(DRUG_B):
         d.type(cell.format(8 + i), value, delay=110, after=0.5)
     d.wait(0.8)
