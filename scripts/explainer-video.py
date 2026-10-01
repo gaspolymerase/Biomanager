@@ -435,7 +435,8 @@ def main():
         place(voice, v.astype(np.float64) * 0.95, at)
     talking = np.convolve((np.abs(voice) > 0.01).astype(float), np.ones(int(0.25 * SR)) / (0.25 * SR), "same")
     duck = 0.30 - 0.20 * np.clip(talking * 4, 0, 1)
-    bed = music(n_samples / SR)[:n_samples] * duck[:, None]
+    bed = music(n_samples / SR + 0.05)[:n_samples]
+    bed = np.pad(bed, ((0, n_samples - len(bed)), (0, 0))) * duck[:, None]
     fx = np.zeros(n_samples)
     for at in sfx_at:
         place(fx, whoosh(), max(0, at - 0.25))
