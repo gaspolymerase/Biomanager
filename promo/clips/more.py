@@ -468,7 +468,7 @@ def undo(d):
     d.wait(0.6)
     d.type(".dt-search", "106", delay=140, after=1.0)
     for i in range(3):
-        d.click(d.page.locator("tbody input[type=checkbox]").nth(i), after=0.3)
+        d.click(d.page.locator("tbody input[type=checkbox]:visible").nth(i), after=0.3)   # the rows the search left
     d.wait(0.4)
     bar = d.page.locator("[data-selection-bar]").first
     d.zoom(box=(240, 300, 800, 300), scale=1.4)
@@ -565,19 +565,19 @@ def phone(d):
     d.goto("/home", settle=0.8)
     d.start()
     d.wait(1.2)
-    d.scroll(520, seconds=1.4, at="text=Mice older than 30 weeks")
+    d.scroll(520, seconds=1.4, at="body")
     d.wait(1.0)
     d.scroll(420, seconds=1.2)
     d.wait(0.8)
     d.click("[data-drawer-toggle]", after=0.8)
     d.click("a[data-label='Mouse colony']", after=1.4)
-    d.scroll(380, seconds=1.2, at="text=Transgene 1 >> nth=0")
+    d.scroll(380, seconds=1.2)
     d.wait(1.0)
     d.scroll(520, seconds=1.4)
     d.wait(1.0)
     d.scroll(-900, seconds=1.0)
     d.click("a.seg-item:has-text('Cages')", after=1.4)
-    d.scroll(420, seconds=1.2, at="text=Cage >> nth=1")
+    d.scroll(420, seconds=1.2)
     d.wait(1.4)
 
 
