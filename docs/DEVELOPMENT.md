@@ -255,9 +255,15 @@ Who may change what lives in one place, `app/access.py`:
 
 - **You manage your own colony.** A record whose `owner` is you is yours to
   edit or delete.
-- **Shared resources are everyone's.** Breeder cages are shared implicitly
-  (`purpose` of breeder/breeding), and any cage can be shared explicitly with
-  its `is_shared` flag. The whole lab can edit them and pick mice out of them.
+- **Shared breeder cages are everyone's.** Only a cage whose `purpose` is
+  breeder (`access.SHAREABLE_PURPOSES`) can be shared: `is_shared_cage()` is
+  breeder *and* `mouse_cages.is_shared`. A cage that becomes a breeder cage
+  starts shared (a `set` event on `CageRecord.purpose` in `models.py`;
+  revision 0013 set the flag on the breeder cages a lab already had, which
+  were shared by purpose before). Turning it off or on, or giving the cage
+  to someone else, is `access.can_set_sharing()` / `can_manage()` (owner or
+  admin; animal care may also reassign), not everyone a shared cage lets
+  edit. The whole lab can edit a shared cage and pick mice out of it.
 - **Unowned records stay open**, so records predating ownership don't lock
   anyone out.
 - **Lab common** (`is_shared`) on inventory items and plasmids

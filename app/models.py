@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import event
 from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -269,7 +270,10 @@ class CageRecord(Base):
     # Who manages this cage. Empty means unowned, which stays editable by
     # everyone so existing cages are not locked away — see app/access.py.
     owner: Mapped[str] = mapped_column(String(120), default="", index=True)
-    # Breeder cages are shared implicitly; this flag shares any other cage.
+    # Whether a breeder cage is shared with the lab (it starts so, see
+    # _breeder_cages_start_shared below; its owner may turn it off). Only a
+    # breeder cage can be shared, so on any other cage this is ignored
+    # (app/access.py is_shared_cage).
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     active_override: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str] = mapped_column(Text, default="")
@@ -286,6 +290,16 @@ class CageRecord(Base):
 
     mice: Mapped[list["MouseRecord"]] = relationship(back_populates="cage")
     rack: Mapped["MouseRack | None"] = relationship()
+
+
+@event.listens_for(CageRecord.purpose, "set")
+def _breeder_cages_start_shared(cage, value, oldvalue, _initiator):
+    """A cage that becomes a breeder cage starts out shared with the lab;
+    its owner or an admin can then make it personal."""
+    def breeder(v):
+        return isinstance(v, str) and v.strip().lower() == "breeder"
+    if breeder(value) and not breeder(oldvalue):
+        cage.is_shared = True
 
 
 class MouseRecord(Base):

@@ -21,9 +21,11 @@ from __future__ import annotations
 
 from flask import g
 
-# Cage purposes that make a cage a shared lab resource rather than one
-# person's. Matched case-insensitively against a trimmed value.
-SHARED_PURPOSES = {"breeder", "breeding", "shared", "stock"}
+# The cage purpose that can be shared with the lab: a breeder cage, which
+# starts out shared (app/models.py) and stays so unless its owner or an
+# admin switches it to personal. Every other cage is its owner's. Matched
+# case-insensitively against a trimmed value.
+SHAREABLE_PURPOSES = {"breeder"}
 
 
 def current_user():
@@ -78,14 +80,21 @@ def is_unowned(record) -> bool:
     return not (getattr(record, "owner", "") or "").strip()
 
 
+def can_be_shared(cage) -> bool:
+    """Only a breeder cage can be shared with the lab."""
+    return cage is not None and (getattr(cage, "purpose", "") or "").strip().lower() in SHAREABLE_PURPOSES
+
+
 def is_shared_cage(cage) -> bool:
-    """A breeder cage, or one explicitly flagged as shared."""
-    if cage is None:
-        return False
-    if getattr(cage, "is_shared", False):
-        return True
-    purpose = (getattr(cage, "purpose", "") or "").strip().lower()
-    return purpose in SHARED_PURPOSES
+    """A breeder cage its owner hasn't made personal."""
+    return can_be_shared(cage) and bool(getattr(cage, "is_shared", False))
+
+
+def can_set_sharing(cage, user=None) -> bool:
+    """Who may make a breeder cage shared or personal: its owner or an
+    admin (anyone while it has no owner), not everyone who may edit it
+    because it is shared."""
+    return can_be_shared(cage) and can_manage(cage, user)
 
 
 def can_edit(record, user=None, shared: bool = False) -> bool:

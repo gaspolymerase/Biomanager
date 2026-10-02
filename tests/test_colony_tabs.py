@@ -181,13 +181,14 @@ class GiveBirthGenotypingTests(AppTestCase):
         self.m.post(f"/colony/cages/{cage}/give-birth")
         self.assertIsNone(one("select date_give_birth from mouse_cages where id=?", cage))
 
-    def test_breeding_purpose_in_any_case_makes_a_cage_shared(self):
-        # "Breeding" and "BREEDER" both mean a breeder cage (services.BREEDER_PURPOSES).
-        for purpose in ("Breeding", "BREEDER"):
+    def test_a_breeder_cage_in_any_case_is_shared_but_a_breeding_one_is_its_owners(self):
+        # Only a breeder cage can be shared (access.SHAREABLE_PURPOSES), so a
+        # member may record a birth in someone else's, not in their breeding cage.
+        for purpose, shared in (("Breeder", True), ("BREEDER", True), ("Breeding", False)):
             with self.subTest(purpose=purpose):
                 cage = self.make_cage(self.o, purpose=purpose)
                 self.m.post(f"/colony/cages/{cage}/give-birth")
-                self.assertEqual(one("select date_give_birth from mouse_cages where id=?", cage), T)
+                self.assertEqual(one("select date_give_birth from mouse_cages where id=?", cage), T if shared else None)
 
     def test_wean_clears_the_birth_date(self):
         cage = self.make_cage(self.m, date_give_birth=days_ago(21))
