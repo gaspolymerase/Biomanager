@@ -563,7 +563,11 @@ def setup_code() -> str:
 
 def setup_code_required() -> bool:
     """The desktop app sets LOCAL_SETUP: it listens on 127.0.0.1 only, and
-    the person at the keyboard is the only one who can reach it."""
+    the person at the keyboard is the only one who can reach it, unless it
+    shares its lab on the network (app/devices.py): from there, the code."""
+    from flask import has_request_context, request
+    if has_request_context() and request.environ.get("biomanager.lan") == "1":
+        return True
     return not current_app.config.get("LOCAL_SETUP")
 
 

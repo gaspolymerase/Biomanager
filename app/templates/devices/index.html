@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block page_title %}Devices{% endblock %}
+{% block page_heading %}Devices{% endblock %}
+{% block page_subtitle %}Which device holds the lab's master copy, and every computer that works on it{% endblock %}
+
+{% block page_actions %}
+  <a class="btn" href="{{ url_for('settings') }}">{{ icon('back') }} Settings</a>
+{% endblock %}
+
+{% block content %}
+{% set st = master.state %}
+{% set ph = master.phase %}
+<div class="grid max-w-[980px] grid-cols-1 gap-3">
+
+  {# ---- Where the master copy is ---- #}
+  <section class="card p-5" id="master">
+    <h2 class="flex items-center gap-2 text-[15px] font-semibold text-ink">{{ icon('database') }} The lab's master copy</h2>
+    <p class="mt-1 text-[12.5px] leading-snug text-muted">
+      One device holds the lab's records; every other one works on them through its address, so nothing is ever merged
+      and nothing written in two places can be lost. A lab server holds them unless an admin hands them to a desktop.
+    </p>
+    <div class="devices-where mt-3">
+      {% if ph == 'away' %}
+        <p><b>On {{ st.label or 'another computer' }}</b>{% if st.url %}, at <a href="{{ st.url }}" class="ident">{{ st.url }}</a>{% endif %}.
+          This device is read only: what it shows is the lab as it was when the master copy moved.</p>
+      {% elif ph in ('asked', 'frozen', 'receiving') %}
+        <p><b>{{ master.notice.text }}</b></p>
+      {% elif not is_desktop %}
+        <p><b>This server.</b> Everyone works on the lab here, in a browser, the Android app or a desktop that opens it in its window.</p>
+      {% elif master.sharing_url %}
+        <p><b>This computer</b>, shared on this network at <code class="ident">{{ master.sharing_url }}</code>{% if master.came_from %}
+          (taken over from {{ master.came_from.label }}){% endif %}. Other devices on the network open that address; this computer
+          must stay on and awake.</p>
+      {% else %}
+        <p><b>This computer, for itself.</b> Its lab is private to it: no other device reaches it.</p>
+      {% endif %}
+    </div>
+
+    {% if is_admin %}
+      <div class="mt-3 flex flex-wrap gap-2">
+        {% if ph in ('asked', 'frozen') %}
+          <form method="post" action="{{ url_for('devices.cancel') }}"
+                data-confirm="Stop handing the master copy over? This device stays the master.">
+            <button type="submit" class="btn">Cancel the hand-over</button>
+          </form>
+        {% elif ph == 'away' and master.can_take_back %}
+          <form method="post" action="{{ url_for('devices.cancel') }}"
+                data-confirm="Make this device the master again without what was changed on {{ st.label or 'the other computer' }} since it took over? Only do this if that computer is lost: otherwise give the master copy back from it.">
+            <button type="submit" class="btn btn-danger">Make this the master again (the other computer is lost)</button>
+          </form>
+        {% elif ph == 'away' and here and master.own_backup %}
+          <form method="post" action="{{ url_for('devices.own_again') }}"
+                data-confirm="Go back to this computer's own lab, as it was before it took the master copy over? The copy of the lab here is kept in backups.">
+            <button type="submit" class="btn">Go back to this computer's own lab</button>
+          </form>
+        {% endif %}
+        {% if here and not master.came_from and ph not in ('away', 'asked', 'frozen') %}
+          <form method="post" action="{{ url_for('devices.share') }}">
+            {% if master.sharing_url %}
+              <input type="hidden" name="on" value="0">
+              <button type="submit" class="btn">Stop sharing on the network</button>
+            {% else %}
+              <input type="hidden" name="on" value="1">
+              <button type="submit" class="btn btn-primary" {% if here.in_window %}disabled title="This window opens another device's lab"{% endif %}>
+                {{ icon('users') }} Share this lab on the network</button>
+            {% endif %}
+          </form>
+        {% endif %}
+        {% if here and master.came_from and master.sharing_url and ph not in ('away',) %}
+          <form method="post" action="{{ url_for('devices.give_back_now') }}"
+                data-confirm="Give the master copy back to {{ master.came_from.label }}? This computer stops sharing and opens the lab there; what was changed here goes with it.">
+            <button type="submit" class="btn btn-primary">Give the master copy back to {{ master.came_from.label }}</button>
+          </form>
+        {% endif %}
+      </div>
+      {% if here and not master.sharing_url and not master.came_from and ph != 'away' %}
+        <p class="mt-2 text-[12px] leading-snug text-muted">
+          Sharing makes this computer the lab's master copy for others on the same network (Wi-Fi or cable): they open its
+          address in a browser, the Android app, or the desktop app's window, and sign in with an account here. The connection
+          isn't encrypted, so share only on a network you trust; for a lab that works from anywhere, set up a lab server
+          instead. Your computer may ask once whether BioManager may accept connections.
+        </p>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  {# ---- The devices linked to this lab ---- #}
+  {% if is_admin and (master.is_master or (ph == 'away' and master.can_take_back)) %}
+    <section class="card" id="linked">
+      <header class="card-head"><h2>{{ icon('users') }} Computers linked to this lab</h2></header>
+      <div class="flex flex-col gap-3 p-4">
+        <p class="text-[12.5px] leading-snug text-muted">
+          A desktop is linked by a key from <a href="{{ url_for('settings') }}#lab-copies">Copies of the lab</a>, entered
+          on it under <b>Settings → Keep a copy of your lab server</b>. It keeps a daily copy, can open the lab in its window,
+          and can be handed the master copy: it then takes a last copy, keeps its own data as a backup, and shares the lab on
+          its network, while this device turns read only and points everyone there.
+        </p>
+        {% if devices %}
+          <div class="overflow-x-auto">
+            <table class="dt">
+              <thead><tr><th>Computer</th><th>Whose key</th><th>Uses the lab</th><th>Version</th><th>Last heard from</th><th></th></tr></thead>
+              <tbody>
+                {% for d in devices %}
+                  {% set k = d.key %}
+                  <tr class="{% if k.revoked_at %}opacity-55{% endif %}">
+                    <td><span class="font-medium text-ink">{{ k.label }}</span>{% if d.is_target %} <span class="badge badge-brand">{{ ph or 'master' }}</span>{% endif %}</td>
+                    <td>{{ d.owner | owner_badge }}</td>
+                    <td>{{ {'copy': 'keeps a copy', 'window': 'in its window', 'master': 'holds the master copy', 'giving-back': 'giving it back'}.get(k.device_role, '—') }}</td>
+                    <td class="text-muted">{{ k.device_version or '—' }}</td>
+                    <td>{% if k.last_seen_at %}<span class="{{ 'text-ink' if d.open_now else 'text-muted' }}">{{ (k.last_seen_at | local).strftime('%Y-%m-%d %H:%M') }}</span>
+                          {% if d.open_now %}<span class="badge badge-quiet">open now</span>{% endif %}
+                        {% else %}<span class="text-muted">not yet</span>{% endif %}</td>
+                    <td>
+                      {% if d.can_take_over %}
+                        <form method="post" action="{{ url_for('devices.make_master', key_id=k.id) }}"
+                              data-confirm="Hand the lab's master copy to {{ k.label }}? It takes a last copy and shares the lab on its network; this device turns read only and sends everyone there. Stored sign-ins to other services (Google Calendar) are not carried and must be connected again.">
+                          <button type="submit" class="btn btn-sm btn-primary">Make it the master</button>
+                        </form>
+                      {% elif not k.revoked_at and ph == '' %}
+                        <span class="text-[11.5px] text-muted" title="{{ d.why_not }}">{{ d.why_not }}</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-[12.5px] text-muted">No computer is linked yet.</p>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
+  {# ---- This computer (the desktop app) ---- #}
+  {% if here %}
+    <section class="card p-5" id="this-computer">
+      <h2 class="flex items-center gap-2 text-[15px] font-semibold text-ink">{{ icon('home') }} This computer</h2>
+      {% if here.linked %}
+        <p class="mt-1 text-[12.5px] leading-snug text-ink-soft">
+          Linked to <code class="ident">{{ here.server }}</code>
+          {%- if here.hello.at %} · last heard {{ here.hello.at | replace('T', ' ') }} UTC{% endif %}.
+          {% if here.hello.error %}<span class="text-danger-600">{{ here.hello.error }}</span>{% endif %}
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {% if not here.sharing %}
+            <form method="post" action="{{ url_for('devices.window') }}">
+              <input type="hidden" name="to" value="lab">
+              <button type="submit" class="btn btn-primary">{{ icon('external') }} Open the lab in this window</button>
+            </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('devices.hello_now') }}"><button type="submit" class="btn">Check now</button></form>
+          <a class="btn btn-ghost" href="{{ url_for('settings') }}#lab-copy">Address and key</a>
+        </div>
+        <p class="mt-2 text-[12px] leading-snug text-muted">
+          In the window you work on the lab itself, as in a browser; this computer keeps its daily copy. To come back to this
+          computer's own BioManager, use <b>Go → This Computer's BioManager</b> in the menu.
+        </p>
+      {% else %}
+        <p class="mt-1 text-[12.5px] leading-snug text-muted">
+          To work on a lab that another device holds — the lab server, or a computer that shares its lab on the network —
+          link this computer to it: its address and a key, under <a href="{{ url_for('settings') }}#lab-copy">Keep a copy of your lab server</a>.
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  <p class="text-[12px] text-muted">BioManager {{ version }}. Devices hand the master copy only between the same version.</p>
+</div>
+{% endblock %}

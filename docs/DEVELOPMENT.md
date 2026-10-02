@@ -455,6 +455,56 @@ deleted). A snapshot loads into a new server with
 `scripts/migrate-to-postgres.py` (`tests/test_lab_copy.py` proves it on
 PostgreSQL).
 
+## One master copy, many devices
+
+`app/devices.py`, the Settings → Devices page. One database is the lab's
+master copy and every other device works on it through the master's
+address: nothing is ever merged. A server is the master unless an admin
+hands the role to a desktop. A desktop becomes a master by sharing its lab
+on the network (**Share this lab on the network**): `start_sharing()` runs
+a second werkzeug server on `0.0.0.0` (port 5870, or the next free one,
+kept in the desktop prefs as `lan_port`) wrapped in middleware that sets
+`environ["biomanager.lan"]`. `via_network()` reads that mark and
+`on_this_computer()` is "a desktop, not over the network": the desktop-only
+routes (`server_setup`, `lab_copy`'s link form, the Devices page's own
+buttons) check it, and `security.setup_code_required()` asks for the setup
+code from the network as a server does. Links and keys made there use
+`share_url()`.
+
+A desktop linked by a copy key (`lab_copy.py`) says hello every minute
+(`POST /api/devices/hello`, Bearer key) with its role (master, window or
+copy), version and address, kept on its `lab_copy_keys` row
+(`device_role`, `device_version`, `device_url`, `last_seen_at`, migration
+0014). `linked_devices()` lists them for the master's admins and says why
+one can't take over (not open in the last 10 minutes, another version, a
+non-admin's key). **Open the lab in this window** saves the server's
+address as the desktop prefs' `window_url`, which `desktop.py` opens
+instead of the local app; Go → This Computer's BioManager clears it.
+
+The hand-over is a phase in `app_settings` `devices:state`: `asked` (an
+admin chose a desktop), `frozen` (that desktop took over and is taking its
+last copy), `away` (the master is elsewhere: `url`, `label`) and
+`receiving` (a returned database is loading). In `frozen`, `away` and
+`receiving` `refuse_changes_while_read_only` refuses every write but
+sign-in and the device APIs (409 JSON to autosave, a flash otherwise), and
+`base.html` shows the `devices_banner`. The desktop's side is
+`take_over()` (freeze, `lab_copy.pull()`, `install_copy()`, share, report
+its address to `/api/devices/handover/done`; on failure
+`/handover/abort`) and `give_back()` (freeze itself, `write_snapshot()`,
+upload the files the other lacks to `/api/devices/return/files/<path>`,
+`POST /api/devices/return` with the SHA-256, wait for hello to report the
+master back). Both load a lab with `load_lab()`: one transaction with
+foreign keys deferred, every table emptied and refilled from the SQLite
+snapshot, PostgreSQL sequences moved past the new ids, and the device's own
+settings kept (`LOCAL_SETTINGS`: `devices:`, `lab_copy_`, `telemetry:`,
+`server_setup`). Before it, `keep_a_copy()` writes what the device had to
+`<data>/backups/before-taking-over-…db` or `before-taking-back-…db`.
+Sessions survive only for the same account and password, so people sign
+in again on the new master. A lost desktop is written off with **Make this
+the master again** (clears `away`); a desktop that gave the lab back can
+reload its own lab from `own_backup` (`/settings/devices/own-again`).
+`tests/test_devices.py` covers both directions on SQLite and PostgreSQL.
+
 ## Notifications
 
 `app/notify.py`. A `before_flush` listener looks at dirty records (mice,

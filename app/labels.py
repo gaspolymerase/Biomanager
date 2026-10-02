@@ -123,8 +123,10 @@ def _cage_where(cage) -> str:
 
 
 def _absolute(path: str) -> str:
-    """Turn an app path into a URL that resolves from a phone on the LAN."""
-    return request.url_root.rstrip("/") + path
+    """Turn an app path into a URL that resolves from a phone on the LAN:
+    a desktop sharing its lab names its network address, not 127.0.0.1."""
+    from . import devices
+    return (devices.share_url() or request.url_root).rstrip("/") + path
 
 
 def _ids() -> list[int]:

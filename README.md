@@ -642,11 +642,35 @@ flowchart TB
 | **Database** | SQLite, on your computer | PostgreSQL | SQLite (or PostgreSQL) |
 | **Setup** | download and open | the desktop app sets it up for you (or Docker by hand) | Python 3.11+ and Node |
 | **Backups** | `dbtool.py backup` | automatic, nightly, test-restored weekly, optional off-site copy | `dbtool.py backup` |
-| **Phones & QR codes** | — only your computer can reach it | ✅ | on your local network |
+| **Phones & QR codes** | — only your computer, unless it shares its lab on the network | ✅ | on your local network |
 
 > [!NOTE]
 > Start on the desktop and move to a server later —
 > `scripts/migrate-to-postgres.py` carries an existing database across.
+
+### 🔁 One lab, many devices
+
+One device holds the lab's **master copy**; every other one works on it
+through its address, so nothing is ever merged and nothing written in two
+places is lost. **Settings → Devices** says which device it is and lists
+every computer linked to the lab:
+
+- **A lab server** is the master copy unless an admin hands it on.
+- **A desktop can open the lab in its window** (**Open the lab in this
+  window**): you work on the lab itself, in the app, and the computer keeps
+  its daily copy. **Go → This Computer's BioManager** comes back.
+- **A desktop can share its own lab on the network** (**Share this lab on
+  the network**): it becomes the master for every device on the same
+  network (Wi-Fi or cable), which opens its address. The computer must
+  stay on, and the connection isn't encrypted, so only on a network you
+  trust.
+- **An admin can hand the master copy to a linked desktop**
+  (**Make it the master**, for a computer with an admin's key, open, on the
+  same version). It takes a last copy, keeps its own data as a backup,
+  and shares the lab on its network; the old master turns read only and
+  sends everyone there. **Give the master copy back** returns it, with
+  everything changed meanwhile. Sign-ins to other services (Google
+  Calendar) are not carried along and are connected again.
 
 ---
 

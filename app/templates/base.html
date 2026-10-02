@@ -234,6 +234,15 @@
           {# ---- Content ---- #}
           <div class="shell-scroll" id="app-scroll">
             <div class="{% block page_shell_class %}shell-page{% endblock %}">
+              {# Where the lab's master copy is, while it moves or once it has (app/devices.py). #}
+              {% set master_notice = devices_banner() if devices_banner is defined and current_user else {} %}
+              {% if master_notice.text and (master_notice.tone != 'error' or current_user.role == 'admin') %}
+                <div class="devices-banner flash-message flash-{{ {'info': 'info', 'warn': 'warning'}.get(master_notice.tone, 'error') }}" role="status">
+                  {{ master_notice.text }}
+                  {% if master_notice.url %}<a href="{{ master_notice.url }}">Open the lab there</a>{% endif %}
+                  {% if current_user.role == 'admin' %}<a href="{{ url_for('devices.page') }}">Devices</a>{% endif %}
+                </div>
+              {% endif %}
               {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                   <section class="flash-stack">

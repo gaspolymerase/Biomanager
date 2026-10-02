@@ -153,6 +153,10 @@
         <code>%APPDATA%\Biomanager\</code> on Windows, <code>~/.local/share/Biomanager/</code> on Linux), so updating
         never touches it. Back that folder up with Time Machine or File History, and never keep it in Dropbox,
         OneDrive, Google Drive or iCloud Drive: syncing corrupts databases.</p>
+      <p>A few people on one network can share one computer's lab without a server: <b>Settings → Devices → Share this lab
+        on the network</b> makes it the lab's master copy, opened by the others at the address it shows. The computer must
+        stay on, nothing is backed up nightly as on a server, and the connection isn't encrypted: fine on a lab network you
+        trust, a server for anything more (<a href="guide.html#devices">Devices</a>).</p>
     </section>
 
     <!-- ======================================================= B -->
@@ -437,6 +441,9 @@ docker compose up -d
 docker compose cp /tmp/lab/uploads/. app:/data/uploads/</code></pre></li>
         <li>Sign in with your existing account. <code>--dry-run</code> after the script name checks everything first and changes nothing.</li>
       </ol>
+      <p>On a running server, the master copy can also move to a desktop and back without these steps: an admin hands it
+        over under <b>Settings → Devices</b>, and the desktop gives it back there. While a desktop holds it the server is
+        read only and says where the lab is (<a href="guide.html#devices">Devices</a>).</p>
     </section>
 
     <div class="part"><p class="part-label">Part four</p><h2>Help</h2></div>
