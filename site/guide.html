@@ -122,7 +122,7 @@
           unit between concentration and A260/280), and a note says which rows it went into, first to last, so a list in another order shows at once.</td></tr>
         <tr><th>Formulas for age, wean and flip dates</th><td>Worked out for you: ages, P21 weaning, genotyping dates, flip schedules that follow
           the incubator's temperature.</td></tr>
-        <tr><th>Conditional formatting</th><td>Status pills, a green dot for what is alive or in use, expired stock in red — and the
+        <tr><th>Conditional formatting</th><td>Status pills, a dot for what is alive or in use (coloured by age for animals), expired stock in red — and the
           <b>Home</b> page gathering everything that needs you today.</td></tr>
         <tr><th>VLOOKUP between sheets</th><td>Real links: a mouse is in a cage on a rack; a sample came from that mouse; an order became
           that reagent. Click through.</td></tr>
@@ -265,7 +265,15 @@
         <dd>Click a cell and type, or pick from its list. It saves as you go; a note at the bottom says <i>All changes saved</i>. If a
           change can't be saved (say, a required field emptied) the cell turns red and says why.</dd>
         <dt>The dot</dt>
-        <dd>A green dot beside the number means alive or usable: a living mouse, a vial in use, an open order, a reagent in stock.</dd>
+        <dd>The dot beside the number means alive or usable: a living mouse, a vial in use, an open order, a reagent in stock; grey
+          means it isn't. For animals its colour is their age: <b>blue</b> young, <b>green</b> adult, <b>red</b> old (mice: under 8
+          weeks, 8 to 30, past 30; fish: under 3 months, to 18 months, past 18; a vial or plate: progeny still developing, adults,
+          past its flip or chunk). An expired reagent, antibody or virus is red too. Point at a dot to see what it means.</dd>
+        <dt>Scrolling and New</dt>
+        <dd>The page scrolls, not the sheet: its search and buttons stay at the top of the window, its column names under them, and its
+          count at the bottom. <b>All</b> under <i>per page</i> lists every row. <b>New</b>, at the bottom left, adds an empty row
+          at the end of the sheet with its first cell ready to type in. A strain, fish, line, plasmid or order needs a name or a tank
+          first, so there it opens the form.</dd>
         <dt>Open a record</dt>
         <dd>The pencil opens the full record in a dialog, with every field, grouped. New records open the same dialog.</dd>
         <dt>Sort, Columns, Export, Print</dt>
@@ -278,7 +286,8 @@
         <dt>If a save is refused</dt>
         <dd>Say a tank ID is taken: the page tells you why and reopens the form with what you typed, so you fix one field, not all of them.</dd>
         <dt>Layouts</dt>
-        <dd>Where it fits, a sheet also shows as a <b>Rack grid</b> or <b>Box grid</b>: each tile shows its record's name and position; drag a tile to move it. On a touch screen, press
+        <dd>The layouts sit above the sheet, on the left, the same in every database. Where it fits, a sheet also shows as a
+          <b>Rack grid</b> or <b>Box grid</b>: each tile shows its record's name and position; drag a tile to move it. On a touch screen, press
           <b>Move</b>, tap a tile, then tap where it goes — another tile swaps with it, <i>Unplaced</i> takes it out. Orders also show as a
           <b>Board</b>, a column per status: drag a card along.</dd>
         <dt>Suggestions</dt>
@@ -362,6 +371,8 @@
         <li><b>Its address follows its name.</b> Rename <i>Antibodies</i> to <i>Primary antibodies</i> and it moves to
           <code>…/inventory/primary_antibodies</code>. The old address keeps working, so printed labels, bookmarks, links in
           messages and <code>@antibodies 5</code> in notebook pages still find it.</li>
+        <li><b>Every database has a name of its own.</b> A name another database has (in any case, the built-in ones included) is
+          refused, so <code>@</code> and a database's name in a notebook page always means one database.</li>
       </ul></div>
 
     <section id="mice">
@@ -376,9 +387,11 @@
         <code>7D</code> or 1 to 80, like the stickers on your real racks. Cages without a position wait in <i>Unplaced</i>; drag them
         on. Each cage has a purpose (breeding, stock, experiments), an owner, a room and its mice. Select cages to set purpose or owner,
         move them, or <b>Retire</b> them.</p>
-      <p>The cages show three ways. <b>Table</b>: one row per cage, each with its mice beneath it (edit them in place) and its actions.
+      <p>The cages show three ways. <b>Table</b>: one row per cage, each with its mice beneath it (edit them in place) and its actions;
+        <i>Litter born</i> and <i>Wean due</i> come right after the mice, so when to wean is in view. Type over a cage's number to
+        renumber it (its mice go with it; a number another cage has is refused).
         <b>Close all</b> folds every cage to its row (the page remembers), and <b>Open all</b> opens them again; the arrow at the
-        start of a row, the cage's number or its mice count opens or closes one. <b>Cards</b>: a card for each cage — where it is, its purpose, owner, strain and when to wean, its mice and the same
+        start of a row or its mice count opens or closes one. <b>Cards</b>: a card for each cage — where it is, its purpose, owner, strain and when to wean, its mice and the same
         actions — with its own search and <i>Active, Breeding, Mine</i> filters. <b>Rack grid</b>: the racks from the front. The page
         remembers the one you used last.</p>
       <figure class="gshot"><a href="assets/screenshots/rack-grid.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/rack-grid.webp" alt="A rack grid" loading="lazy" width="2000" height="1250"></a><figcaption>A rack grid</figcaption></figure>
@@ -397,8 +410,9 @@
       </ul>
 
       <h3>Breeding: from litter to weaning</h3>
-      <p>On the <b>Cages</b> tab, open a breeding cage (its arrow, number or mice count) or find its card under <b>Cards</b>:
-        <b>Litter born today</b>, <b>Genotyping</b> and <b>Wean</b> are there.</p>
+      <p>On the <b>Cages</b> tab, open a breeding cage (its arrow or mice count) or find its card under <b>Cards</b>:
+        <b>Litter born today</b>, <b>Genotyping</b> and <b>Wean</b> are there. New litters are numbered L-1, L-2, L-3… (type
+        your own ID instead if you like).</p>
       <ol class="steps-list">
         <li><b>Litter born today</b> records the birth. BioManager works out weaning (P21) and genotyping (P28, or the day chosen in
           <a href="#setup">Lab setup</a>), which appear on Home and the calendar when due — the same list in both. A cage holds one
@@ -546,7 +560,9 @@
     <section id="plasmids">
       <h2>Plasmids</h2>
       <ul>
-        <li>Show them as a table, by storage box, or as a list; chips for <i>Mine</i>, <i>Has sequence</i>, <i>In a box</i>.</li>
+        <li>Show them as a <b>Table</b>, by storage <b>Boxes</b>, or as a <b>List</b>; chips for <i>Mine</i>, <i>Has sequence</i>, <i>In a box</i>.</li>
+        <li><b>Sequence</b>, beside each plasmid's number in the table, opens its sequence and map (<b>Add sequence</b> when it has
+          none yet); the number opens the same page.</li>
         <li><b>New plasmid</b> takes a name, backbone, insert, resistance, owner and a box position (blank takes the next free one) —
           or paste a list of names to make several. Drop in a SnapGene <code>.dna</code>, GenBank, FASTA or plain-text sequence.</li>
         <li>Open a plasmid to see its sequence and features on an interactive map you can edit (edits save themselves), full screen if

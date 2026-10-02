@@ -170,6 +170,10 @@ def new_module():
             if not label:
                 flash("Give the inventory a name.", "error")
                 return redirect(url_for("inventory.new_module", preset=preset))
+            clash = database_keys.name_clash(session, label)
+            if clash:
+                flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
+                return redirect(url_for("inventory.new_module", preset=preset))
             module = svc.create_module(session, preset, label, created_by=g.user.username)
             module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
             if module.private_to and request.form.get("audience") == "lab":
@@ -1369,6 +1373,10 @@ def configure(key: str):
             label = (form.get("label") or "").strip()
             if not label:
                 flash("An inventory needs a name.", "error")
+                return redirect(url_for("inventory.configure", key=key))
+            clash = database_keys.name_clash(session, label[:120], "inventory", row)
+            if clash and label[:120].casefold() != (row.label or "").casefold():
+                flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
                 return redirect(url_for("inventory.configure", key=key))
             row.label = label[:120]
             row.blurb = (form.get("blurb") or "").strip()

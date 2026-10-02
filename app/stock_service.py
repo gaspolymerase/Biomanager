@@ -254,6 +254,25 @@ def flip_status(mv: ModuleView, rack: StockRack, today: date | None = None) -> d
     return {"text": f"{when} · next {due:%a %d %b}", "tone": "", "title": title}
 
 
+def unit_stage(mv: ModuleView, unit: StockUnit, today: date | None = None) -> tuple[str, str]:
+    """The colour of a vial's or plate's dot, and what it means: "young"
+    (blue) while its progeny are still developing (before Progeny eclose /
+    Progeny adult), "old" (red) once it is older than its rack's flip or
+    chunk interval, "adult" (green) between. ("", "") for a discarded one.
+    Its age counts from when it was set up or its rack last flipped."""
+    if not unit.active:
+        return "", ""
+    today = today or date.today()
+    if unit.ready_on and unit.ready_on > today:
+        return "young", f"{mv.s.get('ready_label', 'Ready')} {unit.ready_on:%d %b}"
+    started = [d for d in (unit.set_up_on, unit.rack.last_flipped_on if unit.rack else None) if d]
+    every = flip_interval(mv, unit.rack) if unit.rack else mv.interval("flip", rack_temperature(mv, None))
+    if started and every and (today - max(started)).days > every:
+        verb = mv.s.get("flip_verb", "Flip").lower()
+        return "old", f"{(today - max(started)).days} days old, past its {every}-day {verb}"
+    return "adult", "adult"
+
+
 # ---------------------------------------------------------------------------
 # Units
 # ---------------------------------------------------------------------------

@@ -125,23 +125,23 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 34px; min-width: 34px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ module.organism_noun_plural }}"></th>
-            {{ th('code', 'ID', module.icon, '120px', 'title="The dot is green while alive"') }}
-            {% if module.tracks_groups %}{{ th('count', 'Count', 'count', '76px') }}{% endif %}
-            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '130px') }}{% endif %}
-            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}{% endif %}
-            {{ th('sex', 'Sex', 'sex', '96px') }}
-            {{ th('status', 'Status', 'status', '124px') }}
-            {{ th('birth_on', 'Born', 'born', '132px') }}
-            {{ th('age', 'Age', 'age', '70px') }}
-            {{ th('death_on', 'Died / removed', 'died', '132px') }}
+            <th class="sheet-pin sheet-pin-start" style="width: 48px; min-width: 48px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ module.organism_noun_plural }}"></th>
+            {{ th('code', 'ID', module.icon, '104px', 'title="The dot shows a living one; in a mouse or zebrafish database its colour is its age (blue young, green adult, red old)"') }}
+            {% if module.tracks_groups %}{{ th('count', 'Count', 'count', '64px') }}{% endif %}
+            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '112px') }}{% endif %}
+            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '128px') }}{% endif %}
+            {{ th('sex', 'Sex', 'sex', '80px') }}
+            {{ th('status', 'Status', 'status', '104px') }}
+            {{ th('birth_on', 'Born', 'born', '112px') }}
+            {{ th('age', 'Age', 'age', '60px') }}
+            {{ th('death_on', 'Died / removed', 'died', '112px') }}
             {% if module.has('genotyping') %}
-              {{ th('genotype', 'Genotype', 'dna', '160px') }}
-              {{ th('call', 'Latest call', 'microscope', '160px', 'title="The most recent genotyping call (Genotyping tab)"') }}
+              {{ th('genotype', 'Genotype', 'dna', '136px') }}
+              {{ th('call', 'Latest call', 'microscope', '136px', 'title="The most recent genotyping call (Genotyping tab)"') }}
             {% endif %}
             {{ F.table_headers(own_fields) }}
-            {{ th('owner', 'Owner', 'user', '96px') }}
-            <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+            {{ th('owner', 'Owner', 'user', '80px') }}
+            <th style="min-width: 152px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -159,8 +159,11 @@
                 {% if call %}data-call="{{ (call.result ~ ' ' ~ call.zygosity) | trim }}"{% endif %}
                 class="{% if not r.alive %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
               <td class="sheet-pin sheet-pin-start"><input type="checkbox" data-select-row value="{{ row.id }}" aria-label="Select {{ row.code or module.organism_noun }}"></td>
+              {# Mouse and zebrafish databases colour the dot by age (app/life_stage.py). #}
+              {% set st = life_stage(module.preset_key, (today_date - row.birth_on).days) if row.birth_on else '' %}
               <td>{{ sheet_ui.id_cell(row.code or '—', alive=r.alive, locked=locked, owner=row.owner, noun=module.organism_noun,
-                                      alive_title='Alive', dead_title='Dead or removed') }}</td>
+                                      alive_title='Alive', dead_title='Dead or removed',
+                                      stage=st, stage_title=life_stage_title(module.preset_key, st)) }}</td>
               {% if module.tracks_groups %}
                 <td><input type="number" min="1" class="sheet-num" name="count" form="{{ f }}" value="{{ row.count }}" data-autosave="1" aria-label="Count" {% if locked %}disabled{% endif %}></td>
               {% endif %}
@@ -221,6 +224,8 @@
       </form>
     {% endfor %}
     <div class="dt-bottom-bar">
+      {{ sheet_ui.quick_add(url_for('organisms.save_animal', key=module.key), 'New ' ~ module.organism_noun,
+                            {'owner': current_user.username, 'count': 1}) }}
       <span class="dt-bottom-count dt-count">{{ census.records }} alive record{{ '' if census.records == 1 else 's' }} · {{ census.animals }} {{ module.organism_noun_plural }}</span>
       <div class="dt-bottom-spacer"></div>
       <div class="dt-pagination">
@@ -389,17 +394,17 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            <th class="sheet-pin sheet-pin-start" style="width: 34px; min-width: 34px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ module.housing_noun_plural }}"></th>
-            {{ th('code', module.housing_noun|capitalize, housing_icon, '120px', 'title="The dot is green while the ' ~ module.housing_noun ~ ' is in use"') }}
-            {{ th('location', module.container_noun|capitalize, 'grid', '150px') }}
-            {% if module.has('housing_grid') %}{{ th('position', 'Position', 'position', '84px') }}{% endif %}
-            {{ th('purpose', 'Purpose', 'tag', '124px') }}
-            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}{% endif %}
-            {{ th('held', 'Held', 'count', '70px') }}
-            {{ th('last_serviced_on', 'Last serviced', 'calendar-clock', '132px') }}
+            <th class="sheet-pin sheet-pin-start" style="width: 48px; min-width: 48px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ module.housing_noun_plural }}"></th>
+            {{ th('code', module.housing_noun|capitalize, housing_icon, '104px', 'title="The dot is green while the ' ~ module.housing_noun ~ ' is in use"') }}
+            {{ th('location', module.container_noun|capitalize, 'grid', '128px') }}
+            {% if module.has('housing_grid') %}{{ th('position', 'Position', 'position', '72px') }}{% endif %}
+            {{ th('purpose', 'Purpose', 'tag', '104px') }}
+            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '128px') }}{% endif %}
+            {{ th('held', 'Held', 'count', '60px') }}
+            {{ th('last_serviced_on', 'Last serviced', 'calendar-clock', '112px') }}
             {{ F.table_headers(own_fields) }}
-            {{ th('owner', 'Owner', 'user', '96px') }}
-            <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+            {{ th('owner', 'Owner', 'user', '80px') }}
+            <th style="min-width: 152px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -460,6 +465,8 @@
       </form>
     {% endfor %}
     <div class="dt-bottom-bar">
+      {{ sheet_ui.quick_add(url_for('organisms.save_housing', key=module.key), 'New ' ~ module.housing_noun,
+                            {'owner': current_user.username, 'established_on': today}) }}
       <span class="dt-bottom-count dt-count">{{ chip_counts.active }} active {{ module.housing_noun if chip_counts.active == 1 else module.housing_noun_plural }}</span>
       <div class="dt-bottom-spacer"></div>
       <div class="dt-pagination">
@@ -682,13 +689,13 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            {{ th('code', 'Code', 'barcode', '140px') }}
-            {{ th('name', 'Name', 'type', '190px') }}
-            {{ th('genotype', 'Genotype', 'dna', '220px') }}
+            {{ th('code', 'Code', 'barcode', '120px') }}
+            {{ th('name', 'Name', 'type', '160px') }}
+            {{ th('genotype', 'Genotype', 'dna', '188px') }}
             {{ F.table_headers(own_fields) }}
-            {{ th('alive', 'Alive', 'count', '80px') }}
-            {% if module.has('preservation') %}{{ th('frozen', 'Last frozen', 'snowflake', '120px') }}{% endif %}
-            {{ th('owner', 'Owner', 'user', '96px') }}
+            {{ th('alive', 'Alive', 'count', '68px') }}
+            {% if module.has('preservation') %}{{ th('frozen', 'Last frozen', 'snowflake', '104px') }}{% endif %}
+            {{ th('owner', 'Owner', 'user', '80px') }}
             <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -801,15 +808,15 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            {{ th('code', 'Code', 'barcode', '130px') }}
-            {{ th('type', 'Type', 'tag', '90px') }}
-            {{ th('sire', 'Male / sire', 'male', '170px') }}
-            {{ th('dam', 'Female / dam', 'female', '170px') }}
-            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '120px') }}{% endif %}
-            {{ th('set_up', 'Set up', 'calendar', '110px') }}
-            {{ th('collected', 'Collected', 'calendar', '110px') }}
+            {{ th('code', 'Code', 'barcode', '112px') }}
+            {{ th('type', 'Type', 'tag', '76px') }}
+            {{ th('sire', 'Male / sire', 'male', '144px') }}
+            {{ th('dam', 'Female / dam', 'female', '144px') }}
+            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '104px') }}{% endif %}
+            {{ th('set_up', 'Set up', 'calendar', '92px') }}
+            {{ th('collected', 'Collected', 'calendar', '92px') }}
             {{ F.table_headers(own_fields) }}
-            {{ th('owner', 'Owner', 'user', '96px') }}
+            {{ th('owner', 'Owner', 'user', '80px') }}
             <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -928,15 +935,15 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            {{ th('code', 'Code', 'barcode', '140px') }}
-            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}{% endif %}
-            {{ th('born', 'Born', 'born', '120px') }}
-            {{ th('age', 'Age', 'age', '70px') }}
-            {% if module.has('nursery') %}{{ th('stage', 'Stage', 'layers', '110px') }}{% endif %}
-            {{ th('initial', 'Initial', 'count', '80px') }}
-            {{ th('now', 'Now', 'count', '80px') }}
+            {{ th('code', 'Code', 'barcode', '120px') }}
+            {% if module.has('lines') %}{{ th('line', module.line_noun|capitalize, 'sitemap', '128px') }}{% endif %}
+            {{ th('born', 'Born', 'born', '104px') }}
+            {{ th('age', 'Age', 'age', '60px') }}
+            {% if module.has('nursery') %}{{ th('stage', 'Stage', 'layers', '92px') }}{% endif %}
+            {{ th('initial', 'Initial', 'count', '68px') }}
+            {{ th('now', 'Now', 'count', '68px') }}
             {{ F.table_headers(own_fields) }}
-            {{ th('owner', 'Owner', 'user', '96px') }}
+            {{ th('owner', 'Owner', 'user', '80px') }}
             <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -1057,15 +1064,15 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            {{ th('subject', module.organism_noun|capitalize, module.icon, '130px') }}
-            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '120px') }}{% endif %}
-            {{ th('assay', 'Assay', 'flask-vial', '130px') }}
-            {{ th('result', 'Result', 'dna', '170px') }}
-            {{ th('zygosity', 'Zygosity', 'tag', '100px') }}
-            {{ th('called_on', 'Called on', 'calendar', '112px') }}
-            {{ th('called_by', 'Called by', 'user', '104px') }}
-            <th style="width: 90px;"><span class="dt-col-head">{{ icon('file', 'dt-col-icon') }}Gel image</span></th>
-            <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+            {{ th('subject', module.organism_noun|capitalize, module.icon, '112px') }}
+            {% if module.has('housing') %}{{ th('housing', module.housing_noun|capitalize, housing_icon, '104px') }}{% endif %}
+            {{ th('assay', 'Assay', 'flask-vial', '112px') }}
+            {{ th('result', 'Result', 'dna', '144px') }}
+            {{ th('zygosity', 'Zygosity', 'tag', '84px') }}
+            {{ th('called_on', 'Called on', 'calendar', '96px') }}
+            {{ th('called_by', 'Called by', 'user', '88px') }}
+            <th style="width: 76px;"><span class="dt-col-head">{{ icon('file', 'dt-col-icon') }}Gel image</span></th>
+            <th style="min-width: 152px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
             <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -1284,11 +1291,11 @@
           <table class="dt">
             <thead>
               <tr>
-                <th style="width: 160px;">When</th>
-                <th style="width: 150px;">{{ module.container_noun|capitalize }}</th>
-                <th style="width: 140px;">Metric</th>
-                <th style="width: 110px;">Value</th>
-                <th style="width: 90px;">By</th>
+                <th style="width: 136px;">When</th>
+                <th style="width: 128px;">{{ module.container_noun|capitalize }}</th>
+                <th style="width: 120px;">Metric</th>
+                <th style="width: 92px;">Value</th>
+                <th style="width: 76px;">By</th>
                 <th>Notes</th>
               </tr>
             </thead>
@@ -1338,13 +1345,13 @@
       <table class="dt sheet-table" data-resizable="1">
         <thead>
           <tr>
-            {{ th('code', 'Lot', 'barcode', '140px') }}
-            {{ th('line', module.line_noun|capitalize, 'sitemap', '150px') }}
-            {{ th('method', 'Method', 'flask-vial', '150px') }}
-            {{ th('frozen', 'Frozen', 'snowflake', '110px') }}
-            {{ th('left', 'Vials left', 'count', '110px') }}
-            {{ th('storage', 'Storage', 'box', '170px') }}
-            {{ th('recovery', 'Recovery', 'heart-pulse', '150px') }}
+            {{ th('code', 'Lot', 'barcode', '120px') }}
+            {{ th('line', module.line_noun|capitalize, 'sitemap', '128px') }}
+            {{ th('method', 'Method', 'flask-vial', '128px') }}
+            {{ th('frozen', 'Frozen', 'snowflake', '92px') }}
+            {{ th('left', 'Vials left', 'count', '92px') }}
+            {{ th('storage', 'Storage', 'box', '144px') }}
+            {{ th('recovery', 'Recovery', 'heart-pulse', '128px') }}
             <th class="sheet-pin sheet-pin-end" style="width: 84px; min-width: 84px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -1576,9 +1583,9 @@
         <div class="table-wrap m-4">
           <table class="dense-table fit-table">
             <thead>
-              <tr><th style="width:130px;">On</th><th>Label</th><th style="width:110px;">Key</th>
-                  <th style="width:110px;">Type</th><th style="width:150px;">Choices</th>
-                  <th style="width:90px;">Default</th><th style="width:80px;">In table</th><th style="width:50px;"></th></tr>
+              <tr><th style="width:112px;">On</th><th>Label</th><th style="width:92px;">Key</th>
+                  <th style="width:92px;">Type</th><th style="width:128px;">Choices</th>
+                  <th style="width:76px;">Default</th><th style="width:68px;">In table</th><th style="width:48px;"></th></tr>
             </thead>
             <tbody>
               {% for entity_label, field in all_fields %}
@@ -1650,9 +1657,9 @@
           <div class="table-wrap m-4">
             <table class="dense-table fit-table">
               <thead>
-                <tr><th>Rule</th><th style="width:100px;">Subject</th><th style="width:150px;">Anchor</th>
-                    <th style="width:80px;">Offset</th><th style="width:80px;">Repeats</th>
-                    <th style="width:180px;">By temperature</th><th style="width:50px;"></th></tr>
+                <tr><th>Rule</th><th style="width:84px;">Subject</th><th style="width:128px;">Anchor</th>
+                    <th style="width:68px;">Offset</th><th style="width:68px;">Repeats</th>
+                    <th style="width:152px;">By temperature</th><th style="width:48px;"></th></tr>
               </thead>
               <tbody>
                 {% for rule in module.schedule_rules %}

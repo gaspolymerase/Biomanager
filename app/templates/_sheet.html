@@ -2,19 +2,23 @@
 
    {% import "_sheet.html" as sheet_ui with context %}   (context: icon())
 
-   id_cell     the pinned ID: availability dot, the ID, a lock when read-only
+   id_cell     the pinned ID: availability (or life-stage) dot, the ID, a lock when read-only
    owner_cell  owner badge + editable name with the lab's usernames
    owners_list the <datalist> owner_cell points at (once per page)
    tools       save indicator, Sort, Columns, Export, Print (toolbar right)
+   quick_add   the bottom bar's New button: an empty row at the bottom to type in
 
    Behaviour for editable cells lives in static/sheet.js; see there for the
    data-* hooks (autosave, live availability dot). #}
 
 {% macro id_cell(code, alive=None, locked=False, owner='', noun='record',
-                 alive_title='Available', dead_title='Not available') %}
+                 alive_title='Available', dead_title='Not available', stage='', stage_title='') %}
+  {# stage: "young", "adult" or "old" colours a living animal's dot blue,
+     green or red (app/life_stage.py); "expired" makes it red. #}
+  {% set alive_title = [alive_title, stage_title] | select | join(' · ') %}
   <span class="sheet-id">
     {% if alive is not none %}
-      <span class="life-dot{% if alive %} is-alive{% endif %}"
+      <span class="life-dot{% if alive %} is-alive{% endif %}"{% if stage %} data-stage="{{ stage }}"{% endif %}
             data-alive-title="{{ alive_title }}" data-dead-title="{{ dead_title }}"
             title="{{ alive_title if alive else dead_title }}"></span>
     {% endif %}
@@ -41,4 +45,17 @@
   <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
   {% if export %}<button type="button" class="dt-toolbar-btn dt-btn-export" title="Download the rows shown as CSV">{{ icon('download') }} Export</button>{% endif %}
   {% if print %}<button type="button" class="dt-toolbar-btn dt-btn-print" title="Print the rows shown">{{ icon('print') }} Print</button>{% endif %}
+{% endmacro %}
+
+{# The bottom bar's New button (bottom left, staying in view as the sheet
+   scrolls): it makes an empty record at once, and the page comes back with
+   it as the sheet's last row, its first cell ready to type in
+   (static/data-table.js). `fields` go with it, e.g. the owner. Where a new
+   record needs something first (a name, a tank), use a button that opens
+   the record's form instead. #}
+{% macro quick_add(action, label, fields={}) %}
+  <form method="post" action="{{ action }}" class="dt-quick-add" data-quick-add>
+    {% for name, value in fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <button type="submit" class="dt-bottom-action is-primary" title="Add an empty row at the bottom to type in">{{ icon('plus') }} {{ label }}</button>
+  </form>
 {% endmacro %}

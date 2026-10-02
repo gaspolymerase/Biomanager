@@ -77,15 +77,15 @@ class ModuleBuilderTests(AppTestCase):
         self.assertEqual(module_row(key, "created_by"), self.admin)
         self.assertFlash(self.a.get(location(r)), f"Created the {label} database.", "success")
 
-    def test_same_label_twice_gets_distinct_keys(self):
+    def test_names_that_make_the_same_address_get_distinct_keys(self):
         label = uniq("Twins ")
         first = self.make_organism_module(self.a, label=label)
-        second = self.make_organism_module(self.a, label=label)
+        second = self.make_organism_module(self.a, label=label + ".")
         self.assertNotEqual(first, second)
         self.assertTrue(second.startswith(first + "_"), (first, second))
 
     def test_reserved_word_never_becomes_a_key(self):
-        key = self.make_organism_module(self.a, label="New")
+        key = self.make_organism_module(self.a, label="New.")
         self.assertNotEqual(key, "new")
         self.assertTrue(key.startswith("new_"), key)
         self.assertIn("Pick a starting point", self.get_ok(self.a, "/organisms/new"))

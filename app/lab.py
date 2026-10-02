@@ -424,7 +424,9 @@ def apply_survey(session, form, actor: str) -> list[str]:
         set_feature(session, key, on)
         name = _name(form, f"name:{key}")
         if on and name and key in inventory_service.BUILTIN_DATABASES:
-            set_setting(session, f"db_label:{key}", name)
+            name = _own_name(session, name, inventory_service.builtin_labels(session).get(key, ""), builtin=key)
+            if name:
+                set_setting(session, f"db_label:{key}", name)
     if form.get("feature:colony") == "1":
         _make_mouse_racks(session, form, actor)
 
@@ -432,6 +434,9 @@ def apply_survey(session, form, actor: str) -> list[str]:
         wanted = form.get(f"stock:{kind}") == "1"
         existing = _stock_by_kind(session, kind)
         name = _name(form, f"name:stock:{kind}")
+        if wanted and name:
+            name = _own_name(session, name, existing[0].label if existing else "",
+                             kind="stocks", module=existing[0] if existing else None)
         if wanted and not existing:
             from .stocks import PRESETS as STOCK_PRESETS
             module = stock_service.create_module(session, kind, name or STOCK_PRESETS[kind]["label"], actor)
@@ -449,6 +454,9 @@ def apply_survey(session, form, actor: str) -> list[str]:
         wanted = form.get(f"inventory:{kind}") == "1"
         existing = _inventory_by_kind(session, kind)
         name = _name(form, f"name:inventory:{kind}")
+        if wanted and name:
+            name = _own_name(session, name, existing[0].label if existing else "",
+                             kind="inventory", module=existing[0] if existing else None)
         if wanted and not existing:
             inventory_service.create_module(session, kind, name or label, actor)
             switched_on.append(name or label)
@@ -480,6 +488,21 @@ def apply_survey(session, form, actor: str) -> list[str]:
 
 def _name(form, field: str) -> str:
     return (form.get(field) or "").strip()[:80]
+
+
+def _own_name(session, name: str, current: str = "", **whose) -> str:
+    """`name`, unless another database is already called that (every
+    database has its own name, database_keys.name_clash): then "" (the
+    database keeps the name it has) and a note saying why."""
+    from flask import flash
+    from . import database_keys
+    if not name or name.casefold() == (current or "").casefold():
+        return name
+    clash = database_keys.name_clash(session, name, **whose)
+    if clash:
+        flash(f"“{name}” was not used: there is already a database called {clash}.", "error")
+        return ""
+    return name
 
 
 def _make_mouse_racks(session, form, actor: str) -> int:

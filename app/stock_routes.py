@@ -143,6 +143,10 @@ def new_module():
             if not label:
                 flash("Give the database a name.", "error")
                 return redirect(url_for("stocks.new_module", kind=kind))
+            clash = database_keys.name_clash(session, label)
+            if clash:
+                flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
+                return redirect(url_for("stocks.new_module", kind=kind))
             module = svc.create_module(session, kind, label, created_by=g.user.username)
             module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
             if module.private_to and request.form.get("audience") == "lab":
@@ -280,6 +284,7 @@ def module(key: str):
                          "position": svc.position_label(u), "temp": svc.unit_temperature(mv, u),
                          "incubator": u.rack.incubator.name if u.rack and u.rack.incubator else "",
                          "next": nxt, "overdue": bool(nxt and nxt["on"] < today),
+                         "stage": svc.unit_stage(mv, u, today),
                          "payload": unit_payload(mv, u)})
         active_counts = {}
         for u in units:
@@ -1053,6 +1058,10 @@ def save_settings(key: str):
         label = (form.get("label") or "").strip()
         if not label:
             return _back(key, view="settings", error="The database needs a name.")
+        clash = database_keys.name_clash(session, label, "stocks", row)
+        if clash and label.casefold() != (row.label or "").casefold():
+            return _back(key, view="settings",
+                         error=f"There is already a database called {clash}; give this one a name of its own.")
         row.label = label
         row.blurb = (form.get("blurb") or "").strip()
         row.enabled = "1" in form.getlist("enabled")

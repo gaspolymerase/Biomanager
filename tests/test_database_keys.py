@@ -115,3 +115,44 @@ class RenameOthers(InventoryCase):
         self.assertEqual(location(self.a.get(f"/stocks/{old}")), f"/stocks/{new}")
         self.assertEqual(count("experiments", "db=?", f"stocks:{old}"), 0)
         self.assertEqual(count("experiments", "db=?", f"stocks:{new}"), 1)
+
+
+class EveryDatabaseHasItsOwnName(InventoryCase):
+    """No two databases share a name or an address, whatever their kind:
+    "@<name> 5" in a notebook page, the sidebar and search never mean two."""
+
+    def test_a_new_database_may_not_take_another_ones_name(self):
+        label = uniq("Ferrets ")
+        self.make_stock_module(self.a, "fly", label=label)
+        for url, data in (("/inventory/new", {"preset": "custom"}), ("/stocks/new", {"kind": "worm"}),
+                          ("/organisms/new", {"preset_key": "custom"})):
+            r = self.post(self.a, url, data={**data, "label": label.upper(), "audience": "lab"})
+            self.assertFlash(r, "already a database called", "error")
+        self.assertEqual(sum(one(f"select count(*) from {t} where lower(label)=lower(?)", label)
+                             for t in ("inventory_modules", "stock_modules", "organism_modules")), 1)
+
+    def test_renaming_to_another_databases_name_is_refused_but_keeping_ones_own_is_fine(self):
+        taken_label = uniq("Otters ")
+        self.new_module(self.a, "custom", label=taken_label)
+        key = self.new_module(self.a, "custom", label=uniq("Voles "))
+        mine = one("select label from inventory_modules where key=?", key)
+        r = self.post(self.a, f"/inventory/{key}/configure", data=self.configure_form(key, label=taken_label))
+        self.assertFlash(r, "already a database called", "error")
+        self.assertEqual(one("select label from inventory_modules where key=?", key), mine)
+        r = self.post(self.a, f"/inventory/{key}/configure", data=self.configure_form(key, blurb="kept"))
+        self.assertNoErrors(r)
+
+    def test_a_built_in_database_name_is_taken_too(self):
+        r = self.post(self.a, "/inventory/new", data={"preset": "custom", "label": "Plasmids", "audience": "lab"})
+        self.assertFlash(r, "already a database called Plasmids", "error")
+
+    def test_an_address_is_never_shared_across_kinds(self):
+        inv = self.new_module(self.a, "custom", label=uniq("Shrews "))
+        stock_label = one("select label from inventory_modules where key=?", inv) + "."
+        key = self.make_stock_module(self.a, "fly", label=stock_label)   # the same address, by its name
+        self.assertNotEqual(key, inv)
+        self.assertTrue(key.startswith(inv + "_"))
+
+    def test_the_at_words_of_mice_plasmids_and_orders_are_not_an_address(self):
+        key = self.new_module(self.a, "custom", label="Order")
+        self.assertNotEqual(key, "order")

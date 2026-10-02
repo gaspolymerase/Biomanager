@@ -131,19 +131,19 @@
           <thead>
             <tr>
               <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;"><input type="checkbox" data-select-all aria-label="Select all visible {{ m.units }}"></th>
-              <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="number" style="width: 84px; min-width: 84px;"
-                  title="{{ m.unit|capitalize }} number. The dot is green while the {{ m.unit }} is active."><span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}{{ m.unit|capitalize }}<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="genotype" style="width: 250px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="purpose" style="width: 122px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="female_genotype" style="width: 170px;"><span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}{{ S.parents.female }}<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="male_genotype" style="width: 170px;"><span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}{{ S.parents.male }}<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="incubator" style="width: 120px;"><span class="dt-col-head">{{ icon('temperature', 'dt-col-icon') }}{{ m.room|capitalize }}<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="rackname" style="width: 120px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}{{ m.rack_noun|capitalize }}<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="position" style="width: 78px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="set_up_on" style="width: 132px;"><span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Set up<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="nextdue" style="width: 150px;"><span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Next<span class="dt-sort-indicator"></span></span></th>
-              <th class="dt-sortable" data-sort-key="owner" style="width: 110px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span></th>
-              <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+              <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="number" style="width: 72px; min-width: 72px;"
+                  title="{{ m.unit|capitalize }} number. The dot is blue while its progeny are still developing, green once they are adults, red once it is past its {{ m.flip_verb|default('flip')|lower }} interval, and grey once discarded."><span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}{{ m.unit|capitalize }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="genotype" style="width: 212px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="purpose" style="width: 104px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="female_genotype" style="width: 144px;"><span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}{{ S.parents.female }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="male_genotype" style="width: 144px;"><span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}{{ S.parents.male }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="incubator" style="width: 104px;"><span class="dt-col-head">{{ icon('temperature', 'dt-col-icon') }}{{ m.room|capitalize }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="rackname" style="width: 104px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}{{ m.rack_noun|capitalize }}<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="position" style="width: 68px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="set_up_on" style="width: 112px;"><span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Set up<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="nextdue" style="width: 128px;"><span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Next<span class="dt-sort-indicator"></span></span></th>
+              <th class="dt-sortable" data-sort-key="owner" style="width: 92px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span></th>
+              <th style="min-width: 152px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
               <th class="sheet-pin sheet-pin-end" style="width: 132px; min-width: 132px;"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
@@ -161,7 +161,8 @@
                 <td class="sheet-pin sheet-pin-0"><input type="checkbox" data-select-row value="{{ u.id }}" aria-label="Select {{ r.code }}"></td>
                 <td class="sheet-pin sheet-pin-1">
                   {{ sheet_ui.id_cell(r.code, alive=u.active, locked=not r.editable, owner=u.owner, noun=m.unit,
-                                      alive_title='Active', dead_title='Discarded') }}
+                                      alive_title='Active', dead_title='Discarded',
+                                      stage=r.stage[0], stage_title=r.stage[1]) }}
                 </td>
                 <td><input class="font-medium" name="genotype" form="{{ f }}" value="{{ u.genotype }}" title="{{ u.genotype }}" list="stock-genotypes" data-autosave="1" aria-label="Genotype" {% if locked %}disabled{% endif %}></td>
                 <td>
@@ -230,6 +231,7 @@
         </form>
       {% endfor %}
       <div class="dt-bottom-bar">
+        {{ sheet_ui.quick_add(url_for('stocks.save_unit', key=key), 'New ' ~ m.unit, new_payload) }}
         <span class="dt-bottom-count dt-count">{{ rows|length }} {{ m.units }}</span>
         <div class="dt-bottom-spacer"></div>
         <div class="dt-pagination">
@@ -404,12 +406,12 @@
     <div class="dt-scroll">
       <table class="dt sheet-table">
         <thead><tr>
-          <th class="dt-sortable" data-sort-key="genotype" style="width: 320px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
-          <th class="dt-sortable" data-sort-key="alias" style="width: 140px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Short name<span class="dt-sort-indicator"></span></span></th>
-          <th class="dt-sortable" data-sort-key="source" style="width: 110px;"><span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Source<span class="dt-sort-indicator"></span></span></th>
-          <th class="dt-sortable" data-sort-key="stock_number" style="width: 110px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Stock #<span class="dt-sort-indicator"></span></span></th>
-          <th class="dt-sortable" data-sort-key="vials" style="width: 90px;"><span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}{{ m.units|capitalize }}<span class="dt-sort-indicator"></span></span></th>
-          <th style="min-width: 180px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+          <th class="dt-sortable" data-sort-key="genotype" style="width: 272px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="alias" style="width: 120px;"><span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Short name<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="source" style="width: 92px;"><span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Source<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="stock_number" style="width: 92px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Stock #<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="vials" style="width: 76px;"><span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}{{ m.units|capitalize }}<span class="dt-sort-indicator"></span></span></th>
+          <th style="min-width: 152px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
           <th class="sheet-pin sheet-pin-end" style="width: 100px;"><span class="sr-only">Actions</span></th>
         </tr></thead>
         <tbody>
@@ -589,13 +591,13 @@
     <div class="dt-scroll">
       <table class="dt sheet-table">
         <thead><tr>
-          <th class="dt-sortable" data-sort-key="genotype" style="width: 280px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
-          <th class="dt-sortable" data-sort-key="frozen" style="width: 110px;"><span class="dt-col-head">{{ icon('snowflake', 'dt-col-icon') }}Frozen<span class="dt-sort-indicator"></span></span></th>
-          <th style="width: 90px;"><span class="dt-col-head">{{ icon('vials', 'dt-col-icon') }}Vials left</span></th>
-          <th style="width: 160px;"><span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Where</span></th>
-          <th style="width: 150px;"><span class="dt-col-head">{{ icon('check', 'dt-col-icon') }}Thaw test</span></th>
-          <th style="width: 80px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
-          <th style="min-width: 160px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+          <th class="dt-sortable" data-sort-key="genotype" style="width: 240px;"><span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Genotype<span class="dt-sort-indicator"></span></span></th>
+          <th class="dt-sortable" data-sort-key="frozen" style="width: 92px;"><span class="dt-col-head">{{ icon('snowflake', 'dt-col-icon') }}Frozen<span class="dt-sort-indicator"></span></span></th>
+          <th style="width: 76px;"><span class="dt-col-head">{{ icon('vials', 'dt-col-icon') }}Vials left</span></th>
+          <th style="width: 136px;"><span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Where</span></th>
+          <th style="width: 128px;"><span class="dt-col-head">{{ icon('check', 'dt-col-icon') }}Thaw test</span></th>
+          <th style="width: 68px;"><span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner</span></th>
+          <th style="min-width: 136px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
           <th class="sheet-pin sheet-pin-end" style="width: 120px;"><span class="sr-only">Actions</span></th>
         </tr></thead>
         <tbody>
