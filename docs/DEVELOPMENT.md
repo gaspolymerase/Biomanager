@@ -1176,7 +1176,14 @@ website, the desktop app's update check and the server set-up stay on the
 last release) and the image gets no `:latest` tag. Try the candidate, then
 tag the release. A version's notes for the labs are
 `docs/release-notes/<version>.md` (a candidate uses its release's), put
-above the list of files on the release page.
+above the list of files on the release page. Its few-line summary goes in
+`app/whats_new.py` `NOTES` (new, works differently, fixed):
+`tests/test_whats_new.py` fails until the newest release notes have one.
+Each person sees it once after the update (`users.whats_new_seen`, revision
+0016; a new account is stamped when its welcome tour ends), and Help →
+What's new opens it again. A server knows its version from the `VERSION`
+file the release workflow writes into the image (`BIOMANAGER_VERSION`
+build arg); a build from source says `server` and shows none.
 
 **Signed builds.** The release workflow signs and notarises the Mac apps
 (`scripts/sign-macos.sh`, entitlements in `desktop/entitlements.plist`) and

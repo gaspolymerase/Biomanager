@@ -128,6 +128,8 @@
                 <a class="menu-item" role="menuitem"
                    href="{{ url_for('feedback.index', **({'from': request.full_path.rstrip('?')} if request.endpoint and not request.endpoint.startswith('feedback.') else {})) }}"
                    data-label="Send feedback" title="Something went wrong, an idea or a question">{{ icon('mail') }} Send feedback</a>
+                <a class="menu-item" role="menuitem" href="#whats-new" data-whats-new-open
+                   data-label="What's new" title="What changed in this version">{{ icon('sparkle') }} What's new</a>
               </div>
             </div>
           </div>
@@ -265,6 +267,10 @@
       </div>
 
       <script id="tab-icon-rules" type="application/json">{{ tab_icon_rules | tojson }}</script>
+
+      {# What's new: once after an update, and from Help (app/whats_new.py). #}
+      {% from "_whats_new.html" import whats_new_dialog with context %}
+      {{ whats_new_dialog(whats_new_due or whats_new_current(), whats_new_due|length > 0) }}
 
     {% else %}
       {# ---- Sign in / register ---- #}

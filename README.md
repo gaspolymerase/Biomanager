@@ -713,6 +713,11 @@ app also checks by itself, at most once a day; turn that off with
 **Check for Updates Automatically**. The check sends nothing but the app's
 version.
 
+After an update (the desktop app's, or the lab server's), the first page
+each person opens shows a short **What's new**: what is new, what works
+differently and what was fixed, with a link to the full release notes.
+**Got it** closes it for good; **Help → What's new** opens it again.
+
 The window keeps you signed in and keeps your tabs from one launch to
 the next, as a browser does.
 

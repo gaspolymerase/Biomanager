@@ -194,6 +194,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: BIOMANAGER_VERSION=${{ env.VERSION }}
           tags: |
             ${{ env.IMAGE }}:${{ env.VERSION }}
             ${{ env.PRERELEASE != 'true' && format('{0}:latest', env.IMAGE) || '' }}
@@ -208,7 +209,7 @@ jobs:
       - name: Image files
         run: |
           for arch in amd64 arm64; do
-            docker buildx build --platform "linux/$arch" -t "$IMAGE:$VERSION" \
+            docker buildx build --platform "linux/$arch" -t "$IMAGE:$VERSION" --build-arg BIOMANAGER_VERSION="$VERSION" \
               --output "type=docker,dest=biomanager-image-$arch.tar" .
             gzip -9 "biomanager-image-$arch.tar"
           done

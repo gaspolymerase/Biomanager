@@ -352,6 +352,9 @@ app.register_blueprint(devices.bp)
 # Project groups: a layer between a person and the lab (app/groups.py).
 from . import groups as project_groups  # noqa: E402
 app.register_blueprint(project_groups.bp)
+# What's new: a short note once after an update (app/whats_new.py).
+from . import whats_new  # noqa: E402
+app.register_blueprint(whats_new.bp)
 # Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
 app.register_blueprint(lab_calendar.bp)
 # Setting up a lab server from the desktop app (app/server_setup.py).
