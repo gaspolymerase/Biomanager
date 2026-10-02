@@ -8,7 +8,8 @@
 Puts promo/out/daily/dayNN-zh.mp4 (16:9, with its voice, music and
 subtitles) on the same portrait card as the note's cover: the clip's title
 and subtitle above, its three points and the brand below (feature-clips.py's
-Layout). Writes promo/out/daily/dayNN-xhs.mp4, which post-pack.py uses as
+Layout); for day 0 it is promo/out/explainer/explainer.mp4, on the tour's card.
+Writes promo/out/daily/dayNN-xhs.mp4, which post-pack.py uses as
 xhs.mp4 in place of the silent clip.
 """
 from __future__ import annotations
@@ -43,7 +44,8 @@ def seconds(video: Path) -> float:
 
 
 def make(day: dict, meta: dict, colours, tmp: Path) -> Path | None:
-    source = DAILY / f"day{day['day']:02d}-zh.mp4"
+    source = (ROOT / "promo/out/explainer/explainer.mp4" if day["day"] == 0
+              else DAILY / f"day{day['day']:02d}-zh.mp4")
     if not source.exists():
         return None
     layout = fc.Layout(CANVAS, meta.get("title_zh", day["clip"]), meta.get("subtitle_zh", ""), "zh",
@@ -84,7 +86,7 @@ def main():
     info = fc.titles()
     clips, _ = fc.load_clips()
     order = list(clips)
-    for day in board["days"]:
+    for day in [{"day": 0, "clip": "tour"}, *board["days"]]:   # day 0, the launch, shows the tour
         if args.days and day["day"] not in args.days:
             continue
         meta = info.get(day["clip"], {})

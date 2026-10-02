@@ -7,7 +7,8 @@ Chinese narration with subtitles, music and sound.
 
 The storyboard is promo/explainer.json: an intro, one scene per feature
 (a chapter card, then that clip's footage while its lines are read), and
-an outro. The narration is macOS's own Mandarin voice (`say`); the music
+an outro. The narration is BioManager's own Qwen3-TTS voice (zh-a, see
+scripts/qwen-voice.py) or a macOS voice (`say`); the music
 and the sounds are made here, so nothing in the video needs a licence.
 
 Writes promo/out/explainer/explainer.mp4 (1920×1080, 30 fps, AAC) and
@@ -401,6 +402,8 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="explainer-"))
     segments, events, narration, sfx_at, pops_at = [], [], [], [], []
     t = 0.0
+    if board["voice"].startswith("qwen:"):
+        prefetch([(board["voice"], line) for scene in board["scenes"] for line in scene["lines"]])
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": W, "height": H})
