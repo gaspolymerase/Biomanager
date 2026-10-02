@@ -1313,10 +1313,7 @@ def cage_genotype_auto(cage) -> str:
 
 def share_lock(cage) -> str:
     """Why this person can't make the cage shared or personal ("" if they
-    can): only a breeder cage can be shared, and only its owner or an admin
-    decides."""
-    if not access.can_be_shared(cage):
-        return "Only breeder cages can be shared"
+    can): its owner or an admin decides."""
     if not access.can_set_sharing(cage):
         return f"Only {cage.owner or 'its owner'} or an admin can change this"
     return ""
@@ -1340,11 +1337,23 @@ def cage_sheet_values(cage) -> dict:
         "date_give_birth": cage.date_give_birth.isoformat() if cage.date_give_birth else "",
         "wean_due": wean,
         "wean_state": wean_state,
-        # Why the Shared cell can't be changed here, if it can't: only a
-        # breeder cage can be shared, and only by its owner or an admin.
+        # Why the Shared cell can't be changed here, if it can't: only its
+        # owner or an admin shares a cage.
         "share_lock": share_lock(cage),
         "breeding": "1" if is_breeder_purpose(cage.purpose) else "0",
     }
+
+
+def cage_purpose_chips(cage_rows) -> list[tuple[str, str, int]]:
+    """(key, label, how many) for each purpose the listed cages have, most
+    used first; the key is the purpose in lower case, as rows carry it."""
+    counts: dict[str, list] = {}
+    for r in cage_rows:
+        label = (r.get("purpose") or "").strip()
+        if label:
+            entry = counts.setdefault(label.lower(), [label, 0])
+            entry[1] += 1
+    return sorted(((key, label, n) for key, (label, n) in counts.items()), key=lambda c: (-c[2], c[1].lower()))
 
 
 def cage_sheet_row(cage) -> dict:
@@ -1434,15 +1443,12 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
             "all_cages": count_of(select(func.count(CageRecord.id))),
             "my_mice": count_of(select(func.count(MouseRecord.id)).where(MouseRecord.owner == me)),
             "my_cages": count_of(select(func.count(CageRecord.id)).where(CageRecord.owner == me)),
-            "shared_cages": count_of(select(func.count(CageRecord.id)).where(
-                CageRecord.is_shared.is_(True),
-                func.lower(func.trim(CageRecord.purpose)).in_(sorted(access.SHAREABLE_PURPOSES)))),
+            "shared_cages": count_of(select(func.count(CageRecord.id)).where(CageRecord.is_shared.is_(True))),
         }
         my_groups = project_groups.ids_of()
         if my_groups:
             group_cages = select(CageRecord.id).where(
-                CageRecord.is_shared.is_(True), CageRecord.share_group_id.in_(sorted(my_groups)),
-                func.lower(func.trim(CageRecord.purpose)).in_(sorted(access.SHAREABLE_PURPOSES)))
+                CageRecord.is_shared.is_(True), CageRecord.share_group_id.in_(sorted(my_groups)))
             totals["group_mice"] = count_of(select(func.count(MouseRecord.id)).where(
                 MouseRecord.owner.in_(sorted(project_groups.colleagues())) | MouseRecord.cage_id_fk.in_(group_cages)))
         mice, hidden_mice = [], 0
@@ -1581,6 +1587,9 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
             "active_count": sum(1 for r in cage_rows if r["active"]),
             "breeding_count": sum(1 for r in cage_rows if r["can_breed"]),
             "mine_count": sum(1 for r in cage_rows if r["mine"]),
+            # A chip for each purpose the cages have: all the experiment
+            # cages, all the breeder ones…
+            "purposes": cage_purpose_chips(cage_rows),
             "location_notes_used": any(r["cage_location"] for r in cage_rows),
         },
         "can_edit_presets": access.can_edit_presets(),
@@ -1762,6 +1771,7 @@ def home_dashboard():
         # ---- Upcoming calendar events ------------------------------------
         upcoming_events = db_session.scalars(
             select(CalendarEvent)
+            .where(lab_calendar.event_visible_clause())
             .where(CalendarEvent.event_date >= today)
             .where(CalendarEvent.event_date <= today + timedelta(days=14))
             .order_by(CalendarEvent.event_date.asc())
@@ -4017,7 +4027,7 @@ def bulk_cages():
                         continue
                     cage.owner = value
                 elif action == "shared":
-                    # Only a breeder cage, and only by its owner or an admin.
+                    # Only by its owner or an admin.
                     if not access.can_set_sharing(cage):
                         unshareable += 1
                         continue
@@ -4054,8 +4064,8 @@ def bulk_cages():
     elif not blocked and not unshareable:
         flash("Nothing was changed.", "error")
     if unshareable:
-        flash(f"{unshareable} {noun(unshareable)} left as they were: only a breeder cage can be shared, "
-              "and only by its owner or an admin.", "error")
+        flash(f"{unshareable} {noun(unshareable)} left as they were: only a cage's owner or an admin "
+              "can share it or make it personal.", "error")
     if blocked:
         flash("Not retired: " + "; ".join(blocked) + ". Move or end its mice first.", "error")
     return redirect(back)
@@ -4627,6 +4637,10 @@ def _serialize_calendar_event(e: CalendarEvent) -> dict:
             "owner": e.owner or "",
             "animalId": e.animal_id_fk,
             "eventType": e.event_type or "",
+            # Whose event: "0" its owner's alone, "1" the lab's, "g<id>" a group's.
+            "audience": project_groups.record_value(e),
+            "audienceLabel": project_groups.label(e.is_shared, e.share_group_id, personal="", lab=""),
+            "readOnly": has_request_context() and g.get("user") is not None and not lab_calendar.event_can_edit(e),
         },
     }
 
@@ -4645,8 +4659,18 @@ def task_visible_clause(user=None):
 
 def task_can_edit(t, user=None) -> bool:
     """A lab to-do is anyone's to tick off and change, a group's its
-    members'; a personal one its owner's. Admins: any."""
+    members' (and admins'); a personal one its owner's alone, not even an
+    admin's."""
+    if lab_calendar.task_is_personal(t):
+        return (t.owner or "") == access.username(user)
     return access.can_edit(t, user, shared=project_groups.record_shared_with(t, user))
+
+
+def task_can_manage(t, user=None) -> bool:
+    """Delete it or change whose it is: its owner (a shared one also an admin)."""
+    if lab_calendar.task_is_personal(t):
+        return (t.owner or "") == access.username(user)
+    return access.can_manage(t, user)
 
 
 def task_denied(t) -> str:
@@ -4718,7 +4742,9 @@ def calendar_items(db_session, start: date | None, end: date | None, owner: str 
         ev_q = ev_q.where(CalendarEvent.owner == owner)
         tk_q = tk_q.where(TaskItem.owner == owner)
     else:
-        # Someone's own to-dos are theirs; the lab's and a group's are shared.
+        # Someone's own events and to-dos are theirs; the lab's and a
+        # group's are shared.
+        ev_q = ev_q.where(lab_calendar.event_visible_clause())
         tk_q = tk_q.where(task_visible_clause())
     events = db_session.scalars(ev_q.order_by(CalendarEvent.event_date)).all()
     repeats = lab_calendar.repeats_by_event(db_session, [e.id for e in events])
@@ -5097,6 +5123,10 @@ def calendar_item_create():
                 description=payload.get("body", "") or payload.get("description", ""),
                 owner=owner,
             )
+            # The lab's ("1", the usual), a project group's ("g<id>") or yours ("0").
+            refused = project_groups.apply(row, payload.get("audience", "1"))
+            if refused:
+                return jsonify({"ok": False, "error": refused}), 403
         # "Change this one only": one date of a repeating event becomes an
         # event of its own (this one), and the series skips that date.
         split = payload.get("split_from") if kind != "task" else None
@@ -5107,8 +5137,9 @@ def calendar_item_create():
                 select(CalendarRepeat).where(CalendarRepeat.event_id_fk == series.id))
             if repeat is None or day is None:
                 return jsonify({"ok": False, "error": "That event does not repeat."}), 404
-            if not lab_calendar._can_edit(series.owner):
-                return jsonify({"ok": False, "error": "Only the person who added this event can change it."}), 403
+            if not lab_calendar.event_can_edit(series):
+                return jsonify({"ok": False, "error": "Only the person who added this event, or an admin, "
+                                                      "can change it."}), 403
             row.event_type, row.animal_id_fk = series.event_type, series.animal_id_fk
             skip = {d for d in (repeat.skip or "").split(",") if d} | {day.isoformat()}
             repeat.skip = ",".join(sorted(skip))
@@ -5154,7 +5185,7 @@ def calendar_item_update(item_key: str):
             if not task_can_edit(row):
                 return jsonify({"ok": False, "error": task_denied(row)}), 403
             if "audience" in payload and project_groups.differs(row, payload["audience"]):
-                if not access.can_manage(row):
+                if not task_can_manage(row):
                     return jsonify({"ok": False, "error": f"Only {row.owner or 'its owner'} or an admin can "
                                                           "change whose to-do it is."}), 403
                 refused = project_groups.apply(row, payload["audience"])
@@ -5178,6 +5209,13 @@ def calendar_item_update(item_key: str):
             row = db_session.get(CalendarEvent, row_id)
             if row is None:
                 return jsonify({"ok": False}), 404
+            if not lab_calendar.event_can_edit(row):
+                return jsonify({"ok": False, "error": "Only the person who added this event, or an admin, "
+                                                      "can change it."}), 403
+            if "audience" in payload and project_groups.differs(row, payload["audience"]):
+                refused = project_groups.apply(row, payload["audience"])
+                if refused:
+                    return jsonify({"ok": False, "error": refused}), 403
             if "title" in payload: row.title = (payload["title"] or "").strip() or row.title
             if "body" in payload: row.description = payload["body"] or ""
             if "backgroundColor" in payload: row.color = payload["backgroundColor"] or ""
@@ -5232,9 +5270,11 @@ def calendar_item_delete(item_key: str):
         row = db_session.get(TaskItem if kind == "task" else CalendarEvent, row_id)
         if row is None:
             return jsonify({"ok": False}), 404
-        if kind == "task" and not access.can_manage(row):
-            return jsonify({"ok": False, "error": f"Only {row.owner or 'its owner'} or an admin can delete "
-                                                  "this to-do."}), 403
+        if kind == "task" and not task_can_manage(row):
+            return jsonify({"ok": False, "error": f"Only {row.owner or 'its owner'} can delete this to-do."}), 403
+        if kind != "task" and not lab_calendar.event_can_edit(row):
+            return jsonify({"ok": False, "error": "Only the person who added this event, or an admin, "
+                                                  "can delete it."}), 403
         if kind != "task":
             lab_calendar.delete_repeat(db_session, row_id)
         db_session.delete(row)

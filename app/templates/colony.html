@@ -451,6 +451,14 @@
                   Mine <span class="dt-chip-count">{{ cs.mine_count }}</span>
                 </button>
               </div>
+              {% if cs.purposes|length > 1 %}
+                <div class="dt-chips" role="group" aria-label="Purpose">
+                  {% for key, label, n in cs.purposes %}
+                    <button type="button" class="dt-chip" data-cage-card-filter="purpose:{{ key }}" aria-pressed="false"
+                            title="Every {{ label|lower }} cage">{{ label }} <span class="dt-chip-count">{{ n }}</span></button>
+                  {% endfor %}
+                </div>
+              {% endif %}
               <div class="dt-toolbar-spacer"></div>
               <a class="dt-toolbar-btn" href="{{ url_for('labels.cage_cards', scope=scope) }}"
                  title="Printable cards for the cages in this scope">{{ icon('qrcode') }} Cage cards</a>
@@ -495,6 +503,14 @@
                   Mine <span class="dt-chip-count">{{ cs.mine_count }}</span>
                 </button>
               </div>
+              {% if cs.purposes|length > 1 %}
+                <div class="dt-chips" role="group" aria-label="Purpose">
+                  {% for key, label, n in cs.purposes %}
+                    <button type="button" class="dt-chip" data-dt-filter="purpose:{{ key }}" aria-pressed="false"
+                            title="Every {{ label|lower }} cage">{{ label }} <span class="dt-chip-count">{{ n }}</span></button>
+                  {% endfor %}
+                </div>
+              {% endif %}
               <div class="dt-toolbar-spacer"></div>
               {{ sheet_ui.tools() }}
               <button type="button" class="dt-toolbar-btn" data-cage-expand-all aria-pressed="true"
@@ -563,6 +579,7 @@
                     <tr id="cage-{{ cage.id }}" data-id="{{ cage.id }}" data-cage-row-id="{{ cage.id }}" data-cage_id="{{ cage.cage_id }}"
                         data-active="{{ 'true' if cage.active else 'false' }}"
                         data-breeding="{{ cage.breeding }}" data-mine="{{ 'true' if cage.mine else 'false' }}"
+                        data-purpose="{{ (cage.purpose or '')|trim|lower }}"
                         data-rack_name="{{ cage.rack_name }}" data-mice="{{ cage.live_count }}"
                         data-wean_due="{{ cage.wean_due }}"
                         data-mouse-ids="{{ cage.mice|map(attribute='mouse_id')|join(' ') }}"
@@ -631,7 +648,7 @@
                                  {% if locked %}disabled{% endif %}></td>
                       <td>{{ sheet_ui.owner_cell(cage.owner, f, locked or not cage.can_reassign) }}</td>
                       <td>
-                        {# Only a breeder cage can be shared, by its owner or an admin. #}
+                        {# Any cage can be shared, by its owner or an admin (a breeder cage starts shared). #}
                         <select class="scope-pill" name="is_shared" form="{{ f }}" data-autosave="1" aria-label="Shared"
                                 data-scope="{{ sharing.scope_of(cage.share_value) }}" data-share-lock="{{ cage.share_lock }}"
                                 {% if cage.share_lock %}title="{{ cage.share_lock }}"{% endif %}
@@ -660,6 +677,7 @@
                         <article class="cage-detail-body{% if locked %} is-locked{% endif %}" aria-label="Cage {{ cage.cage_id }}"
                                  data-cage-card="{{ cage.id }}" data-active="{{ 'true' if cage.active else 'false' }}"
                                  data-breeding="{{ cage.breeding }}" data-mine="{{ 'true' if cage.mine else 'false' }}"
+                                 data-purpose="{{ (cage.purpose or '')|trim|lower }}"
                                  data-search="{{ [cage.cage_id, cage.rack_name, cage.position, cage.purpose, cage.owner,
                                                   cage.genotype_summary, cage.genotype_auto, cage.cage_location, cage.notes]
                                                  | select | join(' ') | lower }} {{ cage.mice|map(attribute='mouse_id')|join(' ')|lower }}">
@@ -2149,7 +2167,9 @@ function weanDue(born) {
     const q = (cardsPanel.querySelector('[data-cage-card-search]').value || '').trim().toLowerCase();
     let shown = 0;
     grid.querySelectorAll('[data-cage-card]').forEach((card) => {
-      const ok = (!cardFilter || (cardFilter === 'breeding' ? card.dataset.breeding === '1' : card.dataset[cardFilter] === 'true'))
+      const byPurpose = cardFilter.startsWith('purpose:') ? cardFilter.slice(8) : null;
+      const ok = (!cardFilter || (byPurpose !== null ? (card.dataset.purpose || '') === byPurpose
+        : cardFilter === 'breeding' ? card.dataset.breeding === '1' : card.dataset[cardFilter] === 'true'))
         && (!q || card.dataset.search.includes(q));
       card.hidden = !ok;
       if (ok) shown += 1;
@@ -2250,8 +2270,13 @@ function weanDue(born) {
     }
     const rack = row.querySelector('select[name="rack_id"]');
     row.dataset.rack_name = rack && rack.value ? rack.selectedOptions[0].textContent.trim() : '';
-    // Only a breeder cage can be shared, by its owner or an admin: the
-    // server says why not (share_lock) and what it is now.
+    if ('purpose' in values) {
+      row.dataset.purpose = String(values.purpose || '').trim().toLowerCase();
+      const card = document.querySelector(`[data-cage-card="${row.dataset.id}"]`);
+      if (card) card.dataset.purpose = row.dataset.purpose;
+    }
+    // Only its owner or an admin shares a cage: the server says why not
+    // (share_lock) and what it is now.
     const shared = row.querySelector('select[name="is_shared"]');
     if (shared && !shared.closest('tr').classList.contains('is-locked')) {
       const lock = values.share_lock || '';

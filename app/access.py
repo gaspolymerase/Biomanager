@@ -5,7 +5,7 @@ The lab model this encodes:
   * You manage your own colony. A record you own is yours to edit or delete.
   * Shared resources are everyone's. Breeder cages are the case that matters
     in practice — the whole lab picks mice out of them, so the whole lab has
-    to be able to edit them. Shared with a project group (app/groups.py)
+    to be able to edit them; they start shared, and any other cage can be. Shared with a project group (app/groups.py)
     instead, they are its members' to edit.
   * Unowned records stay open. Records predating ownership have an empty
     owner, and locking the lab out of its own history helps nobody.
@@ -22,11 +22,11 @@ from __future__ import annotations
 
 from flask import g
 
-# The cage purpose that can be shared with the lab: a breeder cage, which
-# starts out shared (app/models.py) and stays so unless its owner or an
-# admin switches it to personal. Every other cage is its owner's. Matched
-# case-insensitively against a trimmed value.
-SHAREABLE_PURPOSES = {"breeder"}
+# The cage purpose that starts out shared with the lab: a breeder cage
+# (app/models.py), which stays so unless its owner or an admin makes it
+# personal. Any other cage starts personal, and its owner or an admin may
+# share it. Matched case-insensitively against a trimmed value.
+STARTS_SHARED_PURPOSES = {"breeder"}
 
 
 def current_user():
@@ -82,13 +82,13 @@ def is_unowned(record) -> bool:
 
 
 def can_be_shared(cage) -> bool:
-    """Only a breeder cage can be shared with the lab."""
-    return cage is not None and (getattr(cage, "purpose", "") or "").strip().lower() in SHAREABLE_PURPOSES
+    """Any cage can be shared, with the lab or a project group."""
+    return cage is not None
 
 
 def is_shared_cage(cage) -> bool:
-    """A breeder cage its owner hasn't made personal (shared with the lab or
-    with a project group)."""
+    """A cage shared with the lab or with a project group (a breeder cage
+    starts so; any other once its owner shares it)."""
     return can_be_shared(cage) and bool(getattr(cage, "is_shared", False))
 
 
@@ -100,9 +100,9 @@ def cage_shared_with(cage, user=None) -> bool:
 
 
 def can_set_sharing(cage, user=None) -> bool:
-    """Who may make a breeder cage shared or personal: its owner or an
-    admin (anyone while it has no owner), not everyone who may edit it
-    because it is shared."""
+    """Who may make a cage shared or personal: its owner or an admin
+    (anyone while it has no owner), not everyone who may edit it because
+    it is shared."""
     return can_be_shared(cage) and can_manage(cage, user)
 
 
@@ -234,9 +234,9 @@ SCOPES = (
     ("all", "Everyone"),
 )
 SCOPE_HINTS = {
-    "mine": "Your own mice, and the shared breeder cages you work in",
+    "mine": "Your own mice, and the shared cages you work in",
     "groups": "The mice and cages of everyone in your project groups, and the cages shared with them",
-    "shared": "The shared breeder cages you work in: the lab's and your groups'",
+    "shared": "The shared cages you work in: the lab's and your groups'",
     "all": "Every mouse in the lab (you still edit only your own)",
 }
 VALID_SCOPES = {key for key, _ in SCOPES}

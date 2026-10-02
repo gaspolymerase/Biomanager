@@ -5,6 +5,7 @@ from datetime import date, datetime
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy import event
 from sqlalchemy import false as sa_false
+from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -115,6 +116,10 @@ class CalendarEvent(Base):
     animal_id_fk: Mapped[int | None] = mapped_column(ForeignKey("animals.id"), nullable=True)
     event_type: Mapped[str] = mapped_column(String(80), default="experiment")
     description: Mapped[str] = mapped_column(Text, default="")
+    # Shared: everyone sees it (with a group, its members); only its owner and
+    # admins change it. Not shared: its owner's alone (app/app.py).
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=True, server_default=sa_true(), index=True)
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     animal: Mapped[AnimalRecord | None] = relationship(back_populates="events")
@@ -274,10 +279,9 @@ class CageRecord(Base):
     # Who manages this cage. Empty means unowned, which stays editable by
     # everyone so existing cages are not locked away — see app/access.py.
     owner: Mapped[str] = mapped_column(String(120), default="", index=True)
-    # Whether a breeder cage is shared with the lab (it starts so, see
-    # _breeder_cages_start_shared below; its owner may turn it off). Only a
-    # breeder cage can be shared, so on any other cage this is ignored
-    # (app/access.py is_shared_cage).
+    # Whether the cage is shared with the lab (or, with share_group_id, a
+    # project group). A breeder cage starts so (_breeder_cages_start_shared
+    # below), any other cage personal; its owner or an admin decides.
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     # Shared with one project group (app/groups.py) rather than the lab;
     # empty: the lab. No foreign key: deleting a group clears it here.
@@ -301,12 +305,15 @@ class CageRecord(Base):
 
 @event.listens_for(CageRecord.purpose, "set")
 def _breeder_cages_start_shared(cage, value, oldvalue, _initiator):
-    """A cage that becomes a breeder cage starts out shared with the lab;
-    its owner or an admin can then make it personal."""
+    """A cage that becomes a breeder cage starts out shared with the lab, and
+    one that stops being one starts personal again; its owner or an admin
+    can then share it or not."""
     def breeder(v):
         return isinstance(v, str) and v.strip().lower() == "breeder"
     if breeder(value) and not breeder(oldvalue):
         cage.is_shared = True
+    elif breeder(oldvalue) and not breeder(value):
+        cage.is_shared, cage.share_group_id = False, None
 
 
 class MouseRecord(Base):

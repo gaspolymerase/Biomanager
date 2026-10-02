@@ -72,6 +72,36 @@ def _can_edit(owner: str) -> bool:
     return access.is_admin() or (owner or "") == _me()
 
 
+# ---------------------------------------------------------------- whose events and to-dos
+
+def event_visible_clause(user=None):
+    """The events a person sees: their own, the lab's (shared), and their
+    project groups' (app/groups.py). Someone's own unshared event is theirs
+    alone, an admin's too."""
+    from . import groups
+    me = access.username(user)
+    mine = sorted(groups.ids_of(user))
+    clause = (CalendarEvent.owner == me) | (CalendarEvent.is_shared.is_(True) & CalendarEvent.share_group_id.is_(None))
+    if mine:
+        clause = clause | (CalendarEvent.is_shared.is_(True) & CalendarEvent.share_group_id.in_(mine))
+    return clause
+
+
+def event_can_edit(event, user=None) -> bool:
+    """A shared event is changed by its owner or an admin; a personal one by
+    its owner only."""
+    if event is None:
+        return False
+    me = access.username(user)
+    if not event.is_shared:
+        return bool(me) and (event.owner or "") == me
+    return access.is_admin(user) or (bool(me) and (event.owner or "") == me)
+
+
+def task_is_personal(task) -> bool:
+    return not task.is_shared and bool((task.owner or "").strip())
+
+
 def _date(raw) -> date | None:
     try:
         return date.fromisoformat(str(raw or "").strip()[:10]) if raw else None
@@ -231,8 +261,8 @@ def skip_occurrence(event_id: int):
         event = s.get(CalendarEvent, event_id)
         if repeat is None or event is None or day is None:
             return _refuse("That event does not repeat.", 404)
-        if not _can_edit(event.owner):
-            return _refuse("Only the person who added this event can change it.", 403)
+        if not event_can_edit(event):
+            return _refuse("Only the person who added this event, or an admin, can change it.", 403)
         skip = [d for d in (repeat.skip or "").split(",") if d]
         if day.isoformat() not in skip:
             skip.append(day.isoformat())
@@ -627,9 +657,11 @@ def cover_report(session, features: dict, zebrafish: dict | None) -> list[dict]:
     for a in absences:
         lo, hi = max(a.start_date, today), a.end_date
         jobs = [(i["due"], i["title"]) for i in agenda if i["owner"] == a.owner and lo <= i["due"] <= hi]
+        # Their shared to-dos; personal ones only to themselves.
         jobs += [(t.due_date, t.title) for t in session.scalars(select(TaskItem).where(
             TaskItem.owner == a.owner, TaskItem.done_at.is_(None),
-            TaskItem.due_date >= lo, TaskItem.due_date <= hi))]
+            TaskItem.due_date >= lo, TaskItem.due_date <= hi))
+            if t.is_shared or a.owner == _me()]
         for b in session.scalars(select(EquipmentBooking).options(selectinload(EquipmentBooking.equipment)).where(
                 EquipmentBooking.owner == a.owner,
                 EquipmentBooking.start_at >= datetime.combine(lo, datetime.min.time()),

@@ -250,6 +250,93 @@ class TodoTests(GroupCase):
         self.assertIn(f'<option value="g{self.gid}">', html)
 
 
+class EventTests(GroupCase):
+    """Calendar events: personal (its owner's alone), the lab's or a group's
+    (seen by those it is for, changed by its owner and admins)."""
+
+    def event(self, client, audience=None, title=None):
+        title = title or uniq("event")
+        body = {"kind": "event", "title": title, "start": "2026-10-05T09:00:00", "end": "2026-10-05T10:00:00",
+                "isAllday": False}
+        if audience is not None:
+            body["audience"] = audience
+        r = client.post("/calendar/items", json=body)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        return r.get_json()["item"]["raw"]["rowId"], title
+
+    def titles(self, client):
+        data = client.get("/calendar/events.json?start=2026-10-01&end=2026-10-10").get_json()
+        items = data if isinstance(data, list) else data["items"]
+        return {i["title"] for i in items if i.get("kind") == "event"}
+
+    def test_an_event_is_the_labs_unless_chosen_otherwise(self):
+        eid, title = self.event(self.m)
+        self.assertEqual(one("select is_shared from calendar_events where id=?", eid), 1)
+        self.assertIn(title, self.titles(self.o))
+
+    def test_a_shared_event_is_changed_by_its_owner_and_admins_only(self):
+        eid, title = self.event(self.m, "1")
+        self.assertEqual(self.o.post(f"/calendar/items/event-{eid}", json={"title": "mine"}).status_code, 403)
+        self.assertEqual(self.o.post(f"/calendar/items/event-{eid}/delete").status_code, 403)
+        self.assertEqual(self.a.post(f"/calendar/items/event-{eid}", json={"title": "Moved"}).status_code, 200)
+        self.assertEqual(one("select title from calendar_events where id=?", eid), "Moved")
+
+    def test_a_personal_event_is_its_owners_alone_not_even_an_admins(self):
+        eid, title = self.event(self.m, "0")
+        self.assertIn(title, self.titles(self.m))
+        self.assertNotIn(title, self.titles(self.o))
+        self.assertNotIn(title, self.titles(self.a))
+        self.assertEqual(self.a.post(f"/calendar/items/event-{eid}", json={"title": "x"}).status_code, 403)
+        self.assertEqual(self.a.post(f"/calendar/items/event-{eid}/delete").status_code, 403)
+
+    def test_a_group_event_is_seen_by_its_members(self):
+        eid, title = self.event(self.m, f"g{self.gid}")
+        self.assertIn(title, self.titles(self.c))
+        self.assertNotIn(title, self.titles(self.o))
+        self.assertEqual(self.c.post(f"/calendar/items/event-{eid}", json={"title": "x"}).status_code, 403)
+
+    def test_events_a_lab_already_had_stay_shared(self):
+        from app.models import CalendarEvent
+        from datetime import date
+        title = uniq("old")
+        with SessionLocal() as s:     # as older code (meeting rotations) makes them
+            s.add(CalendarEvent(title=title, event_date=date(2026, 10, 3), owner=self.member))
+            s.commit()
+        self.assertEqual(one("select is_shared from calendar_events where title=?", title), 1)
+
+
+class PersonalTodoTests(GroupCase):
+    def test_an_admin_neither_sees_nor_changes_a_personal_to_do(self):
+        title = uniq("private job")
+        r = self.m.post("/calendar/items", json={"kind": "task", "title": title, "start": "2026-10-05T00:00:00",
+                                                 "isAllday": True})
+        tid = r.get_json()["item"]["raw"]["rowId"]
+        data = self.a.get("/calendar/events.json?start=2026-10-01&end=2026-10-10").get_json()
+        items = data if isinstance(data, list) else data["items"]
+        self.assertNotIn(title, {i["title"] for i in items})
+        for url, body in ((f"/calendar/items/task-{tid}", {"title": "x"}), (f"/calendar/items/task-{tid}/toggle", {}),
+                          (f"/calendar/items/task-{tid}/delete", {})):
+            self.assertEqual(self.a.post(url, json=body).status_code, 403, url)
+        self.assertEqual(one("select title from tasks where id=?", tid), title)
+
+
+class CageSharingTests(GroupCase):
+    def test_an_experiment_cage_can_be_shared_with_a_group(self):
+        cage = self.make_cage(self.m, purpose="Experiments")
+        self.assertEqual(one("select is_shared from mouse_cages where id=?", cage), 0)
+        self.assertSaved(self.autosave(self.m, f"/colony/cages/{cage}/update", {"is_shared": f"g{self.gid}"}))
+        self.assertSaved(self.autosave(self.c, f"/colony/cages/{cage}/update", {"notes": "dosed"}))
+
+    def test_the_cage_sheet_filters_by_purpose(self):
+        self.make_cage(self.m, purpose="Experiments")
+        self.make_cage(self.m, purpose="Breeder")
+        html = self.get_ok(self.m, "/colony?view=cages&scope=all")
+        self.assertIn('data-dt-filter="purpose:experiments"', html)
+        self.assertIn('data-dt-filter="purpose:breeder"', html)
+        self.assertIn('data-cage-card-filter="purpose:experiments"', html)
+        self.assertIn('data-purpose="experiments"', html)
+
+
 class NotebookTests(GroupCase):
     def test_a_page_shared_with_a_group_opens_for_its_members(self):
         r = self.m.post("/notebook/api/pages/new", json={"title": uniq("plan")})

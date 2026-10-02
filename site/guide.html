@@ -379,8 +379,10 @@
     <section id="mice">
       <h2>Mouse colony</h2>
       <p>Tabs across the top: <b>Mice</b>, <b>Cages</b>, <b>Litters</b>, <b>Breeders</b>, <b>Experiments</b>, <b>Strains</b> and
-        <b>Dropdowns</b>. The <b>My colony / Shared / Everyone</b> switch changes what you <i>see</i>, never what you may edit:
-        <i>My colony</i> is yours plus the lab's shared breeder cages, <i>Shared</i> just those, <i>Everyone</i> every cage.</p>
+        <b>Dropdowns</b>. The <b>My colony / My groups / Shared / Everyone</b> switch changes what you <i>see</i>, never what you may
+        edit: <i>My colony</i> is yours plus the shared cages you work in, <i>My groups</i> your <a href="#groups">project groups'</a>,
+        <i>Shared</i> just the shared cages, <i>Everyone</i> every cage. In the Cages tab, a chip for each purpose (<i>Experiments</i>,
+        <i>Breeder</i>…) shows only those cages.</p>
       <figure class="gshot"><a href="assets/screenshots/mice.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/mice.webp" alt="The mouse sheet" loading="lazy" width="2000" height="1250"></a><figcaption>The mouse sheet</figcaption></figure>
 
       <h3>Racks and cages</h3>
@@ -647,8 +649,10 @@
           protocols under way.</li>
         <li><b>New event</b> offers an event, a to-do (due today, tomorrow, next week, or a date), <b>Book equipment</b>, <b>Time away</b>
           and <b>Start a protocol</b>. Drag an event, to-do or booking to move it.</li>
-        <li><b>Whose to-do</b>: yours, the lab's (everyone sees it and can tick it off) or one of your
-          <a href="#groups">project groups'</a>. Other people's own to-dos stay theirs.</li>
+        <li><b>Who sees it</b>, for an event or a to-do: <i>Only me</i>, <i>Everyone in the lab</i> or one of your
+          <a href="#groups">project groups</a>. Your own is seen by nobody else, admins included. A shared event is changed only by
+          whoever added it and admins; a shared to-do anyone it is for can tick off. A new event starts as the lab's, a new to-do as
+          yours.</li>
         <li><b>Repeats</b>: an event every N days, weeks or months, or every month on the same weekday (<i>the first Monday</i>), until a
           date. <b>Delete this one</b> takes out a single date and <b>Change this one only</b> moves or changes it alone; Save changes every
           repeat.</li>
@@ -759,10 +763,10 @@
       <h2>Who can do what</h2>
       <ul>
         <li><b>You edit what you own</b> — your mice, cages, vials, plasmids and items.</li>
-        <li><b>Shared breeder cages and anything marked lab common</b> belong to the whole lab. Only a cage whose purpose is
-          <i>Breeder</i> can be shared: it starts out <i>Shared</i>, and only its owner or an admin can make it <i>Personal</i>
-          (or shared again) or give it to someone else. Every other cage, a <i>Breeding</i> one included, is its owner's; admins
-          and animal care can still see and change every cage.</li>
+        <li><b>Shared cages and anything marked lab common</b> belong to the whole lab. A cage whose purpose is <i>Breeder</i>
+          starts out <i>Shared</i>; any other cage (an experiment cage, a <i>Breeding</i> one) starts <i>Personal</i>. Only its owner or
+          an admin shares a cage, makes it personal or gives it to someone else; admins and animal care can still see and change every
+          cage.</li>
         <li><b>Everyone sees the lab's databases</b>, because a census with holes is not a census.</li>
         <li><b>Personal databases</b> (<i>Just you</i> on their tile) are seen only by their owner and admins; a
           <a href="#groups">project group's</a> by its members and admins.</li>
@@ -787,9 +791,9 @@
           under <b>Shared with</b> in its dialog. Everyone in the lab still sees them.</li>
         <li><b>A group's database.</b> When you make a database, <b>Who is it for?</b> offers your groups: only their members (and admins)
           see it, and they are told it was added. <b>Share with the group</b> on the Databases page gives one of your own to a group.</li>
-        <li><b>A group's to-dos.</b> On the calendar, a to-do can be yours, the lab's or a group's (<b>Whose to-do</b>). The lab's and
-          a group's show on the calendar and Home of everyone they are for, and any of them can tick one off; only its maker or an admin
-          deletes it.</li>
+        <li><b>A group's events and to-dos.</b> On the calendar, <b>Who sees it</b> offers your groups: the group's members see it on
+          their calendar (and a to-do on Home), and any of them can tick a to-do off; only its maker or an admin changes an event or
+          deletes a to-do.</li>
         <li><b>Notebook.</b> <b>Share</b> on a page offers your groups as well as people, to view or to edit; a template can be for a group
           (<b>Who can use it</b>).</li>
         <li><b>The colony.</b> <b>My groups</b>, beside My colony, shows the mice and cages of everyone in your groups.</li>

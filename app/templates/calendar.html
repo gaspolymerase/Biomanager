@@ -182,14 +182,18 @@
         <input type="date" name="due_custom" id="biocal-due-custom" class="field mt-2 w-auto" hidden aria-label="Due date">
       </div>
 
-      {# Whose to-do: yours, the lab's (anyone may tick it off) or a project group's (app/groups.py). #}
-      <label class="mt-3 block" data-for="task">
-        <span class="field-label">Whose to-do</span>
-        <select name="audience" id="cal-task-audience" class="field mt-1 w-auto">
-          <option value="0">Mine</option>
-          <option value="1">The lab's: anyone can tick it off</option>
-          {% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">{{ name }}’s: its members can tick it off</option>{% endfor %}
+      {# Whose it is (app/groups.py): yours alone, the lab's or a project group's.
+         A shared event is everyone's to see, its owner's and admins' to change;
+         a shared to-do anyone it is for may tick off. #}
+      <label class="mt-3 block" data-for="task event">
+        <span class="field-label">Who sees it</span>
+        <select name="audience" id="cal-audience" class="field mt-1 w-auto">
+          <option value="0">Only me</option>
+          <option value="1">Everyone in the lab</option>
+          {% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">{{ name }}</option>{% endfor %}
         </select>
+        <span class="cal-hint" data-for="task">Anyone who sees a shared to-do can tick it off.</span>
+        <span class="cal-hint" data-for="event">Only you and the lab's admins can change a shared event.</span>
       </label>
 
       {# Booking: an instrument and a slot. #}

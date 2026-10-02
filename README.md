@@ -93,7 +93,8 @@ The most complete module, built around how a mouse room actually works.
 - **Cages** — every cage with its rack position, purpose, the mice
   inside (with the sex breakdown), litter born and the P21 weaning date
   side by side, then its genotype and owner. Type over a cage's number to
-  renumber it; its mice go with it.
+  renumber it; its mice go with it. A chip for each purpose (Experiments,
+  Breeder…) shows just those cages.
   Each cage shows its mice beneath it, to edit right there and wean
   (**Close all** folds them to one row each), or switch to **Cards**: a
   card per cage with its mice and its actions, as on a rack.
@@ -315,9 +316,10 @@ database has a name of its own (one another database has is refused), so
   genotyping, sac reminders), fly and worm flips, organism schedules and
   reagent expiry filled in for you. Shows your **Google Calendar** and any
   **ICS subscription** alongside.
-  - **Whose to-do**: a to-do is yours, the lab's (everyone sees it and
-    anyone can tick it off) or one of your project groups' (its members
-    see it and tick it off). Someone else's own to-dos stay theirs.
+  - **Who sees it**: an event or to-do is yours alone, the lab's or one
+    of your project groups'. Your own is seen by nobody else, admins
+    included. A shared event is everyone's to see, its owner's and the
+    admins' to change; a shared to-do anyone it is for can tick off.
   - **Repeating events**: every day, week or month, or every month on the
     same weekday ("the first Monday"), until a date. One date can be taken
     out (**Delete this one**) or changed on its own (**Change this one
@@ -896,16 +898,16 @@ track.
   so nobody else on the network can claim it first.
 - **New sign-ups wait for an admin's approval.**
 - **You edit what you own.** Your mice, cages and records are yours.
-  **Shared breeder cages and anything marked lab common belong to the
-  whole lab.** Only a Breeder cage can be shared: it starts out shared, and
-  only its owner or an admin can make it personal or give it away; every
-  other cage is its owner's. Admins can change anything.
+  **Shared cages and anything marked lab common belong to the whole lab.**
+  A Breeder cage starts out shared; any other cage starts personal. Only a
+  cage's owner or an admin shares it, makes it personal or gives it away.
+  Admins can change anything.
 - **Project groups.** Some of the lab working on one project can be a
   group (**More → Project groups**): an admin makes it and picks its
   members, and the group's leads may add and remove people; someone can be
   in several groups. Wherever something can be shared with the lab, it can
-  be shared with one of your groups instead: a breeder cage, a breeding
-  tank or a lab stock vial is then its members' to edit, as is a plasmid
+  be shared with one of your groups instead: a cage, a breeding tank or a
+  lab stock vial is then its members' to edit, as is a plasmid
   or reagent shared with it (everyone still sees them). A database made
   for a group is seen only by its members (and admins), a group's to-dos
   are on their calendars for any of them to tick off, and a notebook page

@@ -933,8 +933,8 @@ def mouse_display_row(mouse: MouseRecord, current_username: str | None = None, c
 
 # Cage purposes that make a cage a breeding cage: the Breeders tab lists
 # them and cage cards offer birth / genotyping / weaning on them. Labs
-# write it either way, so both spellings mean the same thing here. (Only a
-# "breeder" cage can be shared with the lab: app/access.py SHAREABLE_PURPOSES.)
+# write it either way, so both spellings mean the same thing here. (A
+# "breeder" cage starts out shared with the lab: app/access.py.)
 BREEDER_PURPOSES = {"breeder", "breeding"}
 
 

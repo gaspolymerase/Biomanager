@@ -183,8 +183,8 @@ class GiveBirthGenotypingTests(AppTestCase):
         self.assertIsNone(one("select date_give_birth from mouse_cages where id=?", cage))
 
     def test_a_breeder_cage_in_any_case_is_shared_but_a_breeding_one_is_its_owners(self):
-        # Only a breeder cage can be shared (access.SHAREABLE_PURPOSES), so a
-        # member may record a birth in someone else's, not in their breeding cage.
+        # Only a breeder cage starts shared (access.STARTS_SHARED_PURPOSES), so
+        # a member may record a birth in someone else's, not in their breeding cage.
         for purpose, shared in (("Breeder", True), ("BREEDER", True), ("Breeding", False)):
             with self.subTest(purpose=purpose):
                 cage = self.make_cage(self.o, purpose=purpose)

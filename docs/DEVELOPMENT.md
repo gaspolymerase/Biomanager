@@ -285,15 +285,18 @@ Who may change what lives in one place, `app/access.py`:
 
 - **You manage your own colony.** A record whose `owner` is you is yours to
   edit or delete.
-- **Shared breeder cages are everyone's.** Only a cage whose `purpose` is
-  breeder (`access.SHAREABLE_PURPOSES`) can be shared: `is_shared_cage()` is
-  breeder *and* `mouse_cages.is_shared`. A cage that becomes a breeder cage
-  starts shared (a `set` event on `CageRecord.purpose` in `models.py`;
-  revision 0013 set the flag on the breeder cages a lab already had, which
-  were shared by purpose before). Turning it off or on, or giving the cage
+- **Shared cages are everyone's.** Any cage can be shared
+  (`mouse_cages.is_shared`, `access.is_shared_cage()`). A cage that becomes
+  a breeder cage (`access.STARTS_SHARED_PURPOSES`) starts shared and one
+  that stops being one starts personal (a `set` event on
+  `CageRecord.purpose` in `models.py`; revision 0013 set the flag on the
+  breeder cages a lab already had, and 0015 cleared it on the other cages,
+  where it meant nothing before). Turning it off or on, or giving the cage
   to someone else, is `access.can_set_sharing()` / `can_manage()` (owner or
   admin; animal care may also reassign), not everyone a shared cage lets
-  edit. The whole lab can edit a shared cage and pick mice out of it.
+  edit. The whole lab can edit a shared cage and pick mice out of it. The
+  cage sheet has a chip for each purpose its cages have
+  (`cage_purpose_chips()`).
 - **Unowned records stay open**, so records predating ownership don't lock
   anyone out.
 - **Lab common** (`is_shared`) on inventory items and plasmids
@@ -340,11 +343,17 @@ refuses a group the person isn't in; admins: any), and the
 Memberships are read once per request (`groups._cache`, `forget()` after a
 change).
 
-To-dos: `task_visible_clause()` (app.py) is the person's own, the lab's
-(`is_shared`, no group) and their groups'; that is what the calendar,
-Home's to-do card and the phone feed show. `task_can_edit()` lets the lab or
-the group tick off and change a shared one; deleting it, or changing whose
-it is, is its owner's or an admin's (`access.can_manage`). A member's copy
+To-dos and events: `task_visible_clause()` (app.py) and
+`lab_calendar.event_visible_clause()` are the person's own, the lab's
+(`is_shared`, no group) and their groups'; that is what the calendar, Home
+and the phone feed show. A personal one is its owner's alone, admins
+included. `task_can_edit()` lets the lab or the group tick off and change a
+shared to-do; deleting it, or changing whose it is, is its owner's or an
+admin's (`task_can_manage()`). A shared event is changed by its owner or an
+admin (`lab_calendar.event_can_edit()`). Events default to the lab's
+(`calendar_events.is_shared` defaults true, and revision 0015 left every
+existing event shared); to-dos to their owner's. Away soon lists someone's
+shared to-dos, not their personal ones. A member's copy
 of the lab (`lab_copy.member_view`) leaves out the databases of groups they
 are not in, and keeps pages shared with their groups.
 
