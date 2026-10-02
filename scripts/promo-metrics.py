@@ -33,7 +33,7 @@ PROJECT = "638885"   # BioManager's PostHog project (app/telemetry.py's key belo
 # A personal API key that may read the project ("Query: read"), kept on this
 # computer only: never in the repository.
 KEY_FILE = Path.home() / ".config/biomanager/posthog-personal-key"
-COUNT_FROM = "2026-10-01 04:00:00"   # UTC
+COUNT_FROM = "2026-10-01 04:05:00"   # UTC: after the v1.0.0 tag's upgrade check (04:01-04:03), the last CI run with heartbeats on
 
 # The week-1 bar. Below it on most lines: change something before carrying on.
 # Stars and downloads count from the last numbers taken before the launch day.
