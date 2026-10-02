@@ -14,7 +14,7 @@ from), and writes promo/out/packs/<date>-day<N>/:
     post.md               every platform's text, with a checklist
     x.mp4, linkedin.mp4, facebook.mp4    16:9, English (the day's own video if made)
     bilibili.mp4          16:9, Chinese (the day's own video if made)
-    xhs.mp4, xhs-cover.png               3:4, Chinese title
+    xhs.mp4, xhs-cover.png               3:4, Chinese title (the day's own video if made)
     clip.gif              for GitHub and the README
 
 The media come from scripts/feature-clips.py (promo/out/<clip>/); a pack
@@ -124,10 +124,11 @@ def pack(post: dict, data: dict, when: date, ver: str, record: bool) -> Path:
             missing.append(name)
     # The day's own video (scripts/daily-video.py), where it has been made,
     # instead of the plain clip: English for X, LinkedIn and Facebook, Chinese
-    # and its cover for Bilibili.
+    # and its cover for Bilibili, and its 3:4 version (scripts/xhs-video.py)
+    # for Xiaohongshu.
     daily = OUT / "daily"
     for name, src in (("x.mp4", "en.mp4"), ("linkedin.mp4", "en.mp4"), ("facebook.mp4", "en.mp4"),
-                      ("bilibili.mp4", "zh.mp4"), ("bilibili-cover.png", "cover-zh.png")):
+                      ("bilibili.mp4", "zh.mp4"), ("bilibili-cover.png", "cover-zh.png"), ("xhs.mp4", "xhs.mp4")):
         made = daily / f"day{day:02d}-{src}"
         if made.exists():
             shutil.copy2(made, folder / name)
