@@ -1142,6 +1142,15 @@ class SampleSourceTests(InventoryCase):
         self.assertIn('source-chip-kind">Mouse', html)
         self.assertIn(f'title="Open mouse {mouse_id} in the colony"', html)
 
+    def test_a_mouse_number_too_big_for_the_database_is_no_mouse_not_an_error(self):
+        name = uniq("S-big")
+        r = self.post(self.a, f"/inventory/{self.key}/items/save", data={
+            "id": "", "name": name, "attr_source_kind": "mouse", "attr_source_ref": "99999999999"})
+        self.assertFlash(r, "There is no mouse 99999999999 in the colony", "warning")
+        self.assertEqual(len(items_named(self.key, name)), 1)
+        html = self.get_ok(self.a, f"/inventory/{self.key}")   # and the sheet still opens
+        self.assertIn('title="No mouse 99999999999 in the colony"', html)
+
     def test_a_sample_from_a_missing_mouse_is_saved_with_a_warning(self):
         ref = "99" + uniq("").replace("x", "0")  # digits no colony mouse has
         name = uniq("S-ghost")

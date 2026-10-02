@@ -35,7 +35,7 @@ from . import inventory_service as svc
 from .db import SessionLocal
 from . import lab, notify
 from .lab import lab_audience
-from .formutil import form_changed
+from .formutil import MAX_ID, form_changed
 from .models import InventoryItem, InventoryModule, InventoryRack
 
 bp = Blueprint("inventory", __name__, url_prefix="/inventory")
@@ -279,6 +279,15 @@ def _grid_payload(mv, racks, items) -> dict:
 MOUSE_SOURCE_KINDS = ("mouse", "colony")
 
 
+def _mouse_number(ref: str) -> int | None:
+    """The mouse ID a typed source names, or None: not a number, or one
+    beyond what the database holds (no colony mouse, not an error)."""
+    ref = str(ref or "").strip()
+    if ref.isascii() and ref.isdigit() and int(ref) <= MAX_ID:
+        return int(ref)
+    return None
+
+
 def _mouse_links(session, rows_attrs: list[dict], fields: list[dict]) -> dict[str, int]:
     """{mouse ID typed as a source: that mouse's row id}, for linking the
     source chip to the colony."""
@@ -289,9 +298,9 @@ def _mouse_links(session, rows_attrs: list[dict], fields: list[dict]) -> dict[st
         for f in fields:
             src = attrs.get(f["key"])
             if f["type"] == "source" and isinstance(src, dict) and src.get("kind") in MOUSE_SOURCE_KINDS:
-                ref = str(src.get("ref") or "").strip()
-                if ref.isdigit():
-                    refs.add(int(ref))
+                number = _mouse_number(src.get("ref"))
+                if number is not None:
+                    refs.add(number)
     if not refs:
         return {}
     return {str(mid): rid for mid, rid in session.execute(
@@ -506,8 +515,9 @@ def _plasmid_options(session) -> list[tuple[int, str]]:
 def _mouse_exists(session, ref: str) -> bool:
     from .models import MouseRecord
 
-    return ref.isdigit() and session.scalar(
-        select(MouseRecord.id).where(MouseRecord.mouse_id == int(ref))) is not None
+    number = _mouse_number(ref)
+    return number is not None and session.scalar(
+        select(MouseRecord.id).where(MouseRecord.mouse_id == number)) is not None
 
 
 def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = False) -> tuple[str | None, list[str]]:
