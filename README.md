@@ -847,7 +847,8 @@ A walk-through for a mouse colony. The other modules work the same way.
 <details>
 <summary><b>🍼 When a litter is born</b></summary>
 
-Open the breeding cage and choose **Litter born today**. The weaning and
+Open the breeding cage, choose **Litter born** and confirm the date of birth
+(today unless you change it). The weaning and
 genotyping dates appear on Home and the calendar when they come due. At
 weaning, add the pups with **Add many** and move them to their new cages.
 </details>

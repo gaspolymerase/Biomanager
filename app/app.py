@@ -4111,13 +4111,20 @@ def cage_give_birth(cage_row_id: int):
         if blocked:
             return blocked
         if cage is not None:
-            today = date.today()
+            # The date the person confirmed in the Litter born dialog (today
+            # when a form sends none).
+            refused = future_birth(request.form, "date_give_birth", "A litter's birth date")
+            if refused:
+                flash(refused, "error")
+                return _back_to_colony("cages")
+            born = parse_date(request.form.get("date_give_birth")) or date.today()
             before = cage.date_give_birth
-            cage.date_give_birth = today
+            cage.date_give_birth = born
             db_session.commit()
-            wean = fmt_day(today + timedelta(days=WEAN_OFFSET_DAYS))
-            flash(f"Recorded a litter born today in cage {cage.cage_id}: weaning is due {wean}.", "success")
-            if before and before != today:
+            wean = fmt_day(born + timedelta(days=WEAN_OFFSET_DAYS))
+            when = "today" if born == date.today() else f"on {fmt_day(born)}"
+            flash(f"Recorded a litter born {when} in cage {cage.cage_id}: weaning is due {wean}.", "success")
+            if before and before != born:
                 # The cage holds one litter date: say what the new one replaced,
                 # so a litter still waiting to be weaned isn't forgotten.
                 flash(f"It replaces the litter born {fmt_day(before)} (weaning was due "
