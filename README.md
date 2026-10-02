@@ -91,9 +91,9 @@ The most complete module, built around how a mouse room actually works.
   green dot shows which is which.
 - **Cages** — every cage with its rack position, purpose, owner, the mice
   inside (with the sex breakdown), litter born and the P21 weaning date.
-  Open a cage (its arrow, number or mice count, or **Open all**) to edit
-  its mice right there and wean, or switch to **Cards**: a card per cage
-  with its mice and its actions, as on a rack.
+  Each cage shows its mice beneath it, to edit right there and wean
+  (**Close all** folds them to one row each), or switch to **Cards**: a
+  card per cage with its mice and its actions, as on a rack.
 - **Litters** — record a birth once, and the weaning date (P21) and
   genotyping date (about P28) follow from it. **Wean** starts filled with
   the cage's pups, females and males apart; weaning before P18 asks first,
