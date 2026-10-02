@@ -124,11 +124,11 @@ for number, name, background, supplier, desc in (
 
 # cage, owner client, owner, rack, position, purpose, gave birth (days ago)
 CAGES = [
-    ("101", sam, "sam", rack_a, "A1", "Breeding", 12),
-    ("102", sam, "sam", rack_a, "A2", "Breeding", 17),
+    ("101", sam, "sam", rack_a, "A1", "Breeder", 12),
+    ("102", sam, "sam", rack_a, "A2", "Breeder", 17),
     ("103", sam, "sam", rack_a, "A3", "Experiments", None),
     ("104", sam, "sam", rack_a, "A4", "Experiments", None),
-    ("105", jordan, "jordan", rack_a, "B1", "Breeding", 5),
+    ("105", jordan, "jordan", rack_a, "B1", "Breeder", 5),
     ("106", jordan, "jordan", rack_a, "B2", "Stock", None),
     ("107", jordan, "jordan", rack_a, "B3", "Experiments", None),
     ("108", priya, "priya", rack_a, "C1", "Stock", None),

@@ -1294,26 +1294,37 @@ def cage_genotype_auto(cage) -> str:
     return " · ".join(f"{name} ×{n}" if n > 1 else name for name, n in ordered)
 
 
+def share_lock(cage) -> str:
+    """Why this person can't make the cage shared or personal ("" if they
+    can): only a breeder cage can be shared, and only its owner or an admin
+    decides."""
+    if not access.can_be_shared(cage):
+        return "Only breeder cages can be shared"
+    if not access.can_set_sharing(cage):
+        return f"Only {cage.owner or 'its owner'} or an admin can change this"
+    return ""
+
+
 def cage_sheet_values(cage) -> dict:
     """The cage's cells as the sheet shows them. The update route returns
     these after a save; static/sheet.js writes them back into the row and
     refreshes each `<name>_was` copy."""
     wean, wean_state = cage_wean_due(cage)
-    purpose = (cage.purpose or "").strip().lower()
     return {
         "rack_id": cage.rack_id_fk or "",
         "position": cage_position_label(cage),
         "purpose": cage.purpose or "",
         "owner": cage.owner or "",
-        "is_shared": "1" if cage.is_shared else "0",
+        "is_shared": "1" if access.is_shared_cage(cage) else "0",
         "cage_location": cage.cage_location or "",
         "genotype_summary": cage.genotype_summary or "",
         "notes": cage.notes or "",
         "date_give_birth": cage.date_give_birth.isoformat() if cage.date_give_birth else "",
         "wean_due": wean,
         "wean_state": wean_state,
-        # Breeder (and stock) cages are shared whatever the flag says.
-        "shared_implied": "1" if purpose in access.SHARED_PURPOSES else "0",
+        # Why the Shared cell can't be changed here, if it can't: only a
+        # breeder cage can be shared, and only by its owner or an admin.
+        "share_lock": share_lock(cage),
         "breeding": "1" if is_breeder_purpose(cage.purpose) else "0",
     }
 
@@ -1351,6 +1362,8 @@ def cage_sheet_row(cage) -> dict:
         "shared": access.is_shared_cage(cage),
         "mine": access.owns(cage),
         "can_edit": access.can_edit_cage(cage),
+        # Giving it to someone else is its owner's, an admin's or animal care's.
+        "can_reassign": access.can_manage(cage) or access.is_care(),
         "can_breed": is_breeder_purpose(cage.purpose),
         "live_count": len(living),
         "total_count": len(cage.mice),
@@ -1402,7 +1415,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
             "my_mice": count_of(select(func.count(MouseRecord.id)).where(MouseRecord.owner == me)),
             "my_cages": count_of(select(func.count(CageRecord.id)).where(CageRecord.owner == me)),
             "shared_cages": count_of(select(func.count(CageRecord.id)).where(
-                CageRecord.is_shared.is_(True) | func.lower(func.trim(CageRecord.purpose)).in_(sorted(access.SHARED_PURPOSES)))),
+                CageRecord.is_shared.is_(True),
+                func.lower(func.trim(CageRecord.purpose)).in_(sorted(access.SHAREABLE_PURPOSES)))),
         }
         mice, hidden_mice = [], 0
         if active_view == "mice":
@@ -2080,7 +2094,7 @@ def export_my_data():
             zf.writestr("cages.csv", csv_text([
                 ["cage_id", "purpose", "location", "rack", "row", "column", "shared", "litter_born", "notes"],
                 *([c.cage_id, c.purpose, c.cage_location, c.rack.name if c.rack else "", c.rack_row or "",
-                   c.rack_col or "", "yes" if c.is_shared else "no", iso(c.date_give_birth), c.notes]
+                   c.rack_col or "", "yes" if access.is_shared_cage(c) else "no", iso(c.date_give_birth), c.notes]
                   for c in cages)]))
 
             weights = db_session.scalars(
@@ -3836,10 +3850,19 @@ def apply_cage_form(db_session, cage, form) -> str | None:
         if refused:
             return refused
         cage.date_give_birth = parse_date(form.get("date_give_birth"))
-    if "is_shared" in form:
-        cage.is_shared = (form.get("is_shared") or "").strip() in ("1", "on", "true", "yes")
+    # Sharing is for a breeder cage only, and is its owner's (or an
+    # admin's) to decide; on any other cage the field means nothing.
+    if "is_shared" in form and access.can_be_shared(cage):
+        shared = (form.get("is_shared") or "").strip() in ("1", "on", "true", "yes")
+        if shared != bool(cage.is_shared):
+            if not access.can_set_sharing(cage):
+                return f"Only {cage.owner or 'its owner'} or an admin can make cage {cage.cage_id} shared or personal."
+            cage.is_shared = shared
     if "owner" in form and form_changed(form, "owner"):
         owner = (form.get("owner") or "").strip()
+        if owner != (cage.owner or "") and not (access.can_manage(cage) or access.is_care()):
+            # Else anyone could take a shared cage and then make it personal.
+            return f"Only {cage.owner or 'its owner'} or an admin can give cage {cage.cage_id} to someone else."
         if owner and owner not in current_lab_usernames(db_session):
             return f"“{owner}” is not a lab member. Pick a username from the list."
         cage.owner = owner
@@ -3895,7 +3918,7 @@ def bulk_cages():
         flash("Pick an action.", "error")
         return redirect(back)
     ids = [int(v) for v in form.getlist("selected_ids") if v.isdigit()]
-    changed = skipped = 0
+    changed = skipped = unshareable = 0
     blocked: list[str] = []
     with SessionLocal() as db_session:
         rack = None
@@ -3922,8 +3945,15 @@ def bulk_cages():
                 if action == "purpose":
                     cage.purpose = value
                 elif action == "owner":
+                    if value != (cage.owner or "") and not (access.can_manage(cage) or access.is_care()):
+                        skipped += 1
+                        continue
                     cage.owner = value
                 elif action == "shared":
+                    # Only a breeder cage, and only by its owner or an admin.
+                    if not access.can_set_sharing(cage):
+                        unshareable += 1
+                        continue
                     cage.is_shared = value == "1"
                 elif action == "rack":
                     if rack is not None and cage.rack_id_fk == rack.id:
@@ -3953,8 +3983,11 @@ def bulk_cages():
               + (f" {skipped} skipped — not yours to edit." if skipped else ""), "success")
     elif skipped:
         flash(f"Nothing changed — {skipped} {noun(skipped)} are not yours to edit.", "error")
-    elif not blocked:
+    elif not blocked and not unshareable:
         flash("Nothing was changed.", "error")
+    if unshareable:
+        flash(f"{unshareable} {noun(unshareable)} left as they were: only a breeder cage can be shared, "
+              "and only by its owner or an admin.", "error")
     if blocked:
         flash("Not retired: " + "; ".join(blocked) + ". Move or end its mice first.", "error")
     return redirect(back)

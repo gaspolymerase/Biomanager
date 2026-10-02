@@ -850,8 +850,10 @@ track.
   so nobody else on the network can claim it first.
 - **New sign-ups wait for an admin's approval.**
 - **You edit what you own.** Your mice, cages and records are yours.
-  **Breeder cages and anything marked shared belong to the whole lab.**
-  Admins can change anything.
+  **Shared breeder cages and anything marked lab common belong to the
+  whole lab.** Only a Breeder cage can be shared: it starts out shared, and
+  only its owner or an admin can make it personal or give it away; every
+  other cage is its owner's. Admins can change anything.
 - **Roles for a facility** (Manage users → role): **Animal care**
   (technicians, vets) may change any lab's animals, cages, tanks and
   vials, but not other people's experiments, notebook pages or settings

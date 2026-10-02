@@ -288,7 +288,7 @@ class Notifications(AppTestCase):
         self.assertIn("scope=all", moved[0][2])             # a link to them
 
     def test_putting_a_mouse_in_someone_elses_cage_tells_the_cage_owner(self):
-        cage = self.make_cage(self.o, uniq("C"), owner=self.other, purpose="Breeding")
+        cage = self.make_cage(self.o, uniq("C"), owner=self.other, purpose="Breeder")
         code = one("select cage_id from mouse_cages where id=?", cage)
         mouse = self.make_mouse(self.m, self.member)
         before = len(notes_for(self.member))
@@ -336,7 +336,7 @@ class Notifications(AppTestCase):
         self.assertEqual(notes_for(quiet, "genotyping"), [])
 
     def test_picking_from_a_breeder_cage_is_told_once(self):
-        colony = self.make_colony(self.m, self.member, n_mice=1, purpose="Breeding")
+        colony = self.make_colony(self.m, self.member, n_mice=1, purpose="Breeder")
         self.o.post(f"/colony/mice/{colony['mice'][0]}/pick")
         picked = notes_for(self.member, "picked")
         self.assertEqual(len(picked), 1)

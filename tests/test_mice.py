@@ -366,11 +366,13 @@ class MousePermissionTests(Case):
         self.assertSaved(self.autosave(self.m, update_url(mid), sheet_form(mid, note="picked up")))
         self.assertEqual(mouse(mid)["note"], "picked up")
 
-    def test_member_can_edit_a_mouse_in_a_cage_marked_shared(self):
+    def test_member_can_edit_a_mouse_in_a_shared_breeder_cage_only(self):
         cage = uniq("C")
         cage_row = self.make_cage(self.o, cage, purpose="Experiments")
-        self.autosave(self.o, f"/colony/cages/{cage_row}/update", {"is_shared": "1"})
+        self.autosave(self.o, f"/colony/cages/{cage_row}/update", {"is_shared": "1"})   # not a breeder cage: no
         mid = self.make_mouse(self.o, self.other, cage=cage)
+        self.assertRefused(self.autosave(self.m, update_url(mid), card_form(mid, note="shared")))
+        self.autosave(self.o, f"/colony/cages/{cage_row}/update", {"purpose": "Breeder"})  # starts shared
         self.assertSaved(self.autosave(self.m, update_url(mid), card_form(mid, note="shared")))
 
     def test_admin_can_edit_anyones_mouse(self):
