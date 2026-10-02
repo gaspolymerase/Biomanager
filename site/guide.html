@@ -823,7 +823,8 @@
           instead of cutting it. For a Zebra, <b>Download for Zebra (.zpl)</b> gives the labels in its own language; or an admin adds the Zebra's
           address on the lab's network once (under <b>Send labels straight to a Zebra</b>), and <b>Send to Zebra</b> prints them at once.</dd>
       </dl>
-      <div class="note">Phones reach a <b>server</b>, not the desktop app: the app on one computer is private to that computer.</div>
+      <div class="note">Phones reach a <b>server</b>, or a desktop that shares its lab on the network (<a href="#devices">Devices</a>):
+        otherwise the app on one computer is private to that computer.</div>
       <figure class="gshot gshot-phone"><a href="assets/screenshots/phone-cage.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/phone-cage.webp" alt="A cage opened on a phone after scanning its card" loading="lazy" width="780" height="1333"></a><figcaption>A cage opened on a phone after scanning its card</figcaption></figure>
       <figure class="gshot"><a href="assets/screenshots/cage-cards.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/cage-cards.webp" alt="Printable cage cards" loading="lazy" width="2000" height="1250"></a><figcaption>Printable cage cards</figcaption></figure>
     </section>
@@ -866,6 +867,30 @@
         server if it's ever lost (<a href="server.html#move">how</a>): treat a computer holding one like the server itself.
         A member's copy holds what they can see in the app: no one's password, not other people's private notebook pages or
         personal databases, not the Audit log. Guests can't keep a copy.</p>
+      <h3 id="devices">One lab on many devices</h3>
+      <p>One device holds the lab's <b>master copy</b>; every other one works on it through its address, so nothing is ever
+        merged and nothing written in two places is lost. <b>Settings → Devices</b> shows which device it is, and every
+        computer linked to the lab (by a key from <b>Copies of the lab</b>): how it uses the lab, its version, when it was last
+        heard from.</p>
+      <ul>
+        <li><b>A lab server</b> is the master copy unless an admin hands it on.</li>
+        <li><b>Open the lab in this window</b> (a linked desktop): the app's window opens the lab itself, as a browser
+          would, and the computer keeps its daily copy. <b>Go → This Computer's BioManager</b> comes back to its own.</li>
+        <li><b>Share this lab on the network</b> (a desktop, admins): the computer becomes the master for every device on the
+          same network, which opens the address it shows and signs in with an account there. It must stay on and awake. The
+          connection isn't encrypted, so share only on a network you trust; for anywhere else, a lab server. Its own pages
+          (setting up a server, its copies, its devices) are never offered to another device.</li>
+        <li><b>Make it the master</b> (on the master, admins): for a linked desktop with an admin's key, open now, on the same
+          version. Within a minute it freezes the master (read only, so no change is lost), takes a last copy, keeps its own
+          data in <code>backups/before-taking-over-….db</code>, and shares the lab on its network. The old master stays read
+          only, with a banner pointing everyone there. Everyone signs in again with their lab account. Sign-ins to other
+          services (Google Calendar) are not carried and are connected again.</li>
+        <li><b>Give the master copy back</b> (on the desktop holding it): its database and new files go back; the other device
+          keeps what it had in <code>backups/before-taking-back-….db</code> and is the master again. The desktop turns read only
+          and opens the lab there; <b>Go back to this computer's own lab</b> restores what it had before it took over.</li>
+        <li>If the computer holding the master copy is lost, an admin on the old master chooses <b>Make this the master
+          again</b>: what was changed on the lost computer since is not there.</li>
+      </ul>
       <h3>Everyone</h3>
       <p><b>Export</b> on any sheet downloads what it shows as CSV, which opens in Excel. On the Mice sheet, <b>Export → Excel</b>
         is a workbook that <b>Import from Excel</b> reads back. A note that starts with <code>=</code> stays text in every export,

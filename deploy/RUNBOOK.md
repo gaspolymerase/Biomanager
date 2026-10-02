@@ -155,6 +155,19 @@ the backups that was not on it: off-site, or an admin's Mac.
    `/etc/biomanager/watchdog.env` back; otherwise subscribe to the new one.
 6. Check you can sign in, then run a restore test: `docker compose exec backup restore-test.sh`.
 
+## The app says it is read only
+
+"Read only: the lab's master copy is now on …" means an admin handed the
+lab's master copy to a desktop (Settings → Devices): people work there, and
+this server shows the lab as it was. It comes back when that desktop uses
+**Give the master copy back**. If that computer is lost, an admin here
+chooses **Make this the master again** under Settings → Devices (what was
+changed on it since is not here). "…is moving to …" lasts a minute while the
+desktop takes its last copy; if it stays, **Cancel the hand-over** there.
+Taking the copy back first keeps what the server had, in the app's own
+volume: `docker compose exec app ls -lt /data/backups` lists the
+`before-taking-back-<time>.db` files (a copy in the desktop app's format).
+
 ## Moving to another server
 
 The same as [The server is lost](#the-server-is-lost), but first take a

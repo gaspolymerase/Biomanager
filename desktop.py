@@ -19,6 +19,8 @@ from app.app import app
 
 # Only this machine can reach the desktop app (it binds 127.0.0.1 on a random
 # port), so creating its first account does not need the server setup code.
+# Sharing the lab on the network (app/devices.py) listens there as well, and
+# marks those requests, which never get the desktop's own pages.
 app.config["LOCAL_SETUP"] = True
 
 
@@ -84,11 +86,18 @@ def main() -> int:
     # (Settings → Keep a copy of your lab server; app/lab_copy.py).
     from app import lab_copy
     lab_copy.start_background(app)
+    # Share this computer's lab on the network again if it was shared, and
+    # say hello to the lab it is linked to (app/devices.py).
+    from app import devices
+    devices.start_background(app)
 
     import desktop_menu
+    desktop_menu._state["local_url"] = url
+    # The lab another device holds, if this window opens it (Settings →
+    # Devices → Open the lab in this window); else this computer's own.
     window = webview.create_window(
         "BioManager",
-        url,
+        devices.window_url() or url,
         width=1280,
         height=820,
         min_size=(960, 600),

@@ -69,7 +69,10 @@ _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 @bp.before_request
 def desktop_only():
-    if not current_app.config.get("LOCAL_SETUP"):
+    # Only the person at the desktop: not a device that reaches a desktop
+    # sharing its lab on the network (app/devices.py).
+    from . import devices
+    if not current_app.config.get("LOCAL_SETUP") or not devices.on_this_computer():
         abort(404)
 
 

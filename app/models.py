@@ -397,6 +397,13 @@ class LabCopyKey(Base):
     last_bytes: Mapped[int] = mapped_column(Integer, default=0)       # size of the last copy it took
     uses: Mapped[int] = mapped_column(Integer, default=0)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # What the computer last said about itself (app/devices.py): how it uses
+    # the lab ("copy", "window", "master"), its version, and where it shares
+    # the lab when it is the master; when it was last heard from.
+    device_role: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    device_version: Mapped[str] = mapped_column(String(40), default="", server_default="")
+    device_url: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class UserIdentity(Base):

@@ -266,6 +266,17 @@
     {% endif %}
 
     {% include "api/_card.html" %}
+    {# Which device holds the lab's master copy (app/devices.py). #}
+    <article class="card lg:col-span-2" id="devices">
+      <header class="card-head"><h2>{{ icon('database') }} Devices</h2></header>
+      <div class="flex flex-wrap items-center gap-3 p-4">
+        <p class="m-0 min-w-[240px] flex-1 text-[12.5px] leading-snug text-muted">
+          Which device holds the lab's master copy: the lab server, or a desktop that shares its lab on the network. Every
+          other one works on it there. Hand it to another computer, share this computer's lab, or open the lab in this window.
+        </p>
+        <a class="btn" href="{{ url_for('devices.page') }}">{{ icon('database') }} Devices</a>
+      </div>
+    </article>
     {% include "lab_copy/_cards.html" %}
     {% if config.LOCAL_SETUP %}
       {# Only the desktop app sets servers up (app/server_setup.py). #}

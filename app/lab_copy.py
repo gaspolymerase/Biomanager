@@ -93,8 +93,14 @@ def settings_card() -> dict | None:
     """What Settings shows about copies (None: nothing, on the desktop app
     there is the other card)."""
     user = g.get("user")
-    if user is None or current_app.config.get("LOCAL_SETUP"):
+    if user is None:
         return None
+    if current_app.config.get("LOCAL_SETUP"):
+        # A desktop makes keys only while it shares its lab on the network
+        # (app/devices.py), and only for the person at the computer.
+        from . import devices
+        if not devices.share_url() or not devices.on_this_computer():
+            return None
     with SessionLocal() as s:
         allowed = may_keep_copies(s, user)
         stmt = select(LabCopyKey).order_by(LabCopyKey.created_at.desc())
@@ -129,7 +135,8 @@ def make_key():
         key = new_key()
         s.add(LabCopyKey(user_id_fk=g.user.id, label=label, key_hash=key_hash(key)))
         s.commit()
-    base = (os.environ.get("BIOMANAGER_BASE_URL") or request.host_url).rstrip("/")
+    from . import devices
+    base = (devices.share_url() or os.environ.get("BIOMANAGER_BASE_URL") or request.host_url).rstrip("/")
     # Shown on this page only: never stored, never in a redirect.
     return render_template("lab_copy/key.html", key=key, label=label, server=base)
 
@@ -331,7 +338,11 @@ def snapshot():
         k, user = _authorised(s)
         s.expunge(user)
         now = datetime.utcnow()
-        if k.last_used_at is not None and (now - k.last_used_at).total_seconds() < MIN_SECONDS_BETWEEN:
+        # The last copy of a hand-over (app/devices.py) is never made to wait.
+        from . import devices
+        handing_over = devices.state(s).get("key_id") == k.id and devices.phase(s) == devices.FROZEN
+        if (not handing_over and k.last_used_at is not None
+                and (now - k.last_used_at).total_seconds() < MIN_SECONDS_BETWEEN):
             abort(429)
         k.last_used_at = now
         k.uses = (k.uses or 0) + 1
@@ -573,9 +584,12 @@ def pull() -> dict:
 
 
 def due() -> bool:
+    from . import devices
     with SessionLocal() as s:
         cfg, st = config(s), status(s)
-    if not cfg["server"] or not cfg["key"]:
+        # A desktop holding the master copy has nothing newer to copy.
+        holds_master = bool(devices.came_from(s)) and devices.sharing(s)
+    if not cfg["server"] or not cfg["key"] or holds_master:
         return False
     last = st.get("last_ok")
     if not last:
@@ -625,7 +639,8 @@ def inject_desktop():
 
 
 def _desktop_only():
-    if not current_app.config.get("LOCAL_SETUP"):
+    from . import devices
+    if not current_app.config.get("LOCAL_SETUP") or not devices.on_this_computer():
         abort(404)
     if g.get("user") is None:
         abort(redirect(url_for("login")))

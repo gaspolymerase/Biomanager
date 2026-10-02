@@ -346,6 +346,9 @@ app.register_blueprint(guests.bp)
 
 # Copies of the lab's database on every desktop app (app/lab_copy.py).
 app.register_blueprint(lab_copy.bp)
+# The devices that work on the lab, and which holds its master copy (app/devices.py).
+from . import devices  # noqa: E402
+app.register_blueprint(devices.bp)
 # Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
 app.register_blueprint(lab_calendar.bp)
 # Setting up a lab server from the desktop app (app/server_setup.py).
