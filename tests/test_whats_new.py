@@ -37,7 +37,8 @@ class WhichNotes(unittest.TestCase):
         self.assertEqual(whats_new.due("1.0.3", (1, 0, 3)), [])
         with mock.patch.dict(whats_new.NOTES, {"9.0.0": {"new": ["later"]}}):
             self.assertNotIn("9.0.0", [n["version"] for n in whats_new.due("1.0.2", (1, 0, 3))])
-        self.assertEqual(whats_new.due("", None), [])           # a build that names no release
+        with mock.patch.object(whats_new, "running", return_value=None):  # a build that names no release
+            self.assertEqual(whats_new.due("", None), [])
 
     def test_bold_is_bold_and_the_rest_is_escaped(self):
         self.assertEqual(str(whats_new.rich("**Got it** <script>")), "<b>Got it</b> &lt;script&gt;")
