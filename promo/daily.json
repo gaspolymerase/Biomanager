@@ -1,225 +1,614 @@
 {
-  "voices": {"zh": ["Tingting", 205], "en": ["Samantha", 185]},
+  "voices": {
+    "zh": [
+      "qwen:zh-a",
+      0
+    ],
+    "en": [
+      "qwen:en-b",
+      0
+    ]
+  },
   "days": [
-    {"day": 1, "clip": "import",
-     "zh": {"hook": "换软件，最怕重新录数据？",
-            "lines": ["把原来的 Excel 表直接拖进来，不用改格式。",
-                      "列名按意思自动匹配：DOB 就是出生日期，Cage # 就是笼号，Male、m 都会变成 M。",
-                      "先预览再导入，哪一行会被跳过都写清楚，导错了还能一键撤销。"],
-            "bullets": ["列名按意思匹配", "日期、性别写法自动整理", "整批导入可撤销"]},
-     "en": {"hook": "Switching software means retyping everything?",
-            "lines": ["Drop in the Excel sheet you already keep, as it is.",
-                      "Columns are matched by meaning: DOB is the date of birth, Cage number is the cage, and Male or m becomes M.",
-                      "You see a preview first, with every skipped row explained, and the whole import can be undone."],
-            "bullets": ["Columns matched by meaning", "Dates and sexes tidied", "One batch you can undo"]}},
-    {"day": 2, "clip": "links",
-     "zh": {"hook": "这管样本，是哪只鼠的？",
-            "lines": ["在 BioManager 里，所有数据都是连在一起的。",
-                      "从小鼠身上取的肝脏、血清，在样本库里直接链接回这只鼠，点一下就回到它。",
-                      "写 qPCR 实验记录时，输入 @mouse 16，这只鼠的基因型、笼号随手可见。"],
-            "bullets": ["样本链接回来源动物", "记录本里 @ 小鼠、质粒、订单", "点一下就打开那条记录"]},
-     "en": {"hook": "Which mouse did this sample come from?",
-            "lines": ["In BioManager, your records are connected.",
-                      "Liver and serum samples link back to the mouse they came from, one click away.",
-                      "In a qPCR notebook page, type @mouse 16, and that mouse's genotype and cage are right there."],
-            "bullets": ["Samples link to their animal", "@mention mice, plasmids, orders", "One click opens the record"]}},
-    {"day": 3, "clip": "cards",
-     "zh": {"hook": "查一笼的信息，还要跑回电脑？",
-            "lines": ["BioManager 可以打印笼卡、鱼缸卡、果蝇管标签，每张都带二维码。",
-                      "在鼠房用手机相机一扫，这个笼子就打开了，当场就能改。",
-                      "普通打印机和 Brother、Zebra 标签机都支持。"],
-            "bullets": ["每张笼卡带二维码", "任何手机相机都能扫", "支持 Brother / Zebra"]},
-     "en": {"hook": "Walking back to a computer to look up a cage?",
-            "lines": ["BioManager prints cage, tank and vial cards, each with a QR code.",
-                      "Scan one with any phone camera at the rack, and that cage opens, ready to edit.",
-                      "Any printer works, and so do Brother and Zebra label printers."],
-            "bullets": ["A QR code on every card", "Any phone camera scans it", "Brother and Zebra printers"]}},
-    {"day": 4, "clip": "plasmid",
-     "zh": {"hook": "质粒图谱，一定要用付费软件吗？",
-            "lines": ["上传 GenBank、FASTA 或 SnapGene 文件，自动生成可交互的质粒图谱。",
-                      "环形图、线性图和序列一起看，特征和酶切位点都能编辑。",
-                      "每一管放在哪个盒子、哪个位置，也记得清清楚楚。"],
-            "bullets": ["GenBank / SnapGene 直接上传", "图谱可交互、可编辑", "每管都有存放位置"]},
-     "en": {"hook": "Do plasmid maps need a paid licence?",
-            "lines": ["Upload a GenBank, FASTA or SnapGene file, and get an interactive plasmid map.",
-                      "Circular map, linear map and sequence side by side, with features you can edit.",
-                      "And every tube has an address: the box and the position it sits in."],
-            "bullets": ["GenBank and SnapGene files", "An editable, interactive map", "Every tube has an address"]}},
-    {"day": 5, "clip": "experiment",
-     "zh": {"hook": "给药前，还在按计算器算剂量？",
-            "lines": ["方案只写一次，比如他莫昔芬每千克 75 毫克，第一到第五天。",
-                      "每只鼠的剂量和体积按最新体重自动计算，每天早上提醒你。",
-                      "体重曲线自动画好，组间差异自动标星号，一键导出给 Prism 或 R。"],
-            "bullets": ["剂量按体重自动算", "体重曲线 + 显著性星号", "导出 Excel 给 Prism / R"]},
-     "en": {"hook": "Still working out doses on a calculator?",
-            "lines": ["Write the regimen once: tamoxifen, seventy-five milligrams per kilogram, days one to five.",
-                      "Each mouse's dose and volume come from its latest weight, and you're reminded each morning.",
-                      "The body weight chart draws itself, with stars where groups differ, and exports for Prism or R."],
-            "bullets": ["Doses from body weight", "A chart with significance stars", "Export for Prism or R"]}},
-    {"day": 6, "clip": "datasheet",
-     "zh": {"hook": "一张柱状图加 t 检验，还要开 Prism？",
-            "lines": ["在电子实验记录本里粘贴数据，直接出柱状图、点图或箱线图。",
-                      "误差棒、t 检验、方差分析和多重比较自动完成，星号自动标好。",
-                      "图可以下载成 SVG 或 PNG，数据和方法都在同一页。"],
-            "bullets": ["粘贴即出图", "t 检验 / 方差分析自动做", "SVG / PNG 下载"]},
-     "en": {"hook": "Opening Prism for one bar chart and a t-test?",
-            "lines": ["Paste your numbers into a data sheet in the notebook, and get a bar, dot or box plot.",
-                      "Error bars, t-tests, ANOVA and corrected pairwise comparisons are done for you, stars included.",
-                      "Download the plot as SVG or PNG, with the data and methods on the same page."],
-            "bullets": ["Paste and plot", "t-test and ANOVA built in", "SVG and PNG downloads"]}},
-    {"day": 7, "clip": "orders",
-     "zh": {"hook": "谁订了这个试剂？到了吗？放哪了？",
-            "lines": ["订单从申请、下单到收货，在看板上拖一下就改状态。",
-                      "到货时一键加入试剂、抗体或病毒库存，信息全部带过去。",
-                      "快过期、快用完的东西，首页会提醒你。"],
-            "bullets": ["订单看板，拖动改状态", "到货一键入库", "过期和用完提醒"]},
-     "en": {"hook": "Who ordered it? Has it arrived? Where is it?",
-            "lines": ["Orders move from requested to ordered to received: just drag the card.",
-                      "When the box arrives, add it to reagents, antibodies or viruses, with everything filled in.",
-                      "Anything expiring or running low shows up on Home."],
-            "bullets": ["An orders board", "Received goes into stock", "Expiry warnings on Home"]}},
-    {"day": 8, "clip": "new-database",
-     "zh": {"hook": "不养小鼠的实验室，怎么办？",
-            "lines": ["点添加数据库，用你自己的叫法：爪蟾叫 frog，住的叫 tank，一窝叫 clutch。",
-                      "勾选需要的功能：交配、基因分型、体重、冻存。",
-                      "几分钟就有一个专属数据库，不用写代码。"],
-            "bullets": ["用你自己的叫法", "需要什么勾什么", "不用写代码"]},
-     "en": {"hook": "Not a mouse lab?",
-            "lines": ["Choose Add database and describe your organism in your own words: a frog, in a tank, laid in clutches.",
-                      "Tick what it needs: crosses, genotyping, body weights, cryo stocks.",
-                      "A few minutes later, it's a database of its own, with no code."],
-            "bullets": ["Your own words", "Tick what it needs", "No code at all"]}},
-    {"day": 9, "clip": "home",
-     "zh": {"hook": "今天哪窝该断奶？哪些该剪尾巴？",
-            "lines": ["每天早上打开首页，今天要做的事都列好了。",
-                      "超过 30 周的老鼠、要断奶的窝、基因分型队列、该翻的果蝇、快过期的试剂。",
-                      "还有三种布局：卡片、时间轴，和按走路顺序排好的冰箱视图。"],
-            "bullets": ["今天要做什么一目了然", "断奶 · 基因分型 · 翻管 · 过期", "三种首页布局"]},
-     "en": {"hook": "Which litters need weaning today?",
-            "lines": ["Open Home in the morning, and today's work is listed.",
-                      "Mice past thirty weeks, weanings due, the genotyping queue, vials to flip, and reagents expiring.",
-                      "Three layouts: cards, a timeline, and your freezers in the order you'd walk the room."],
-            "bullets": ["Today's work, listed", "Weaning, genotyping, flips, expiry", "Three Home layouts"]}},
-    {"day": 10, "clip": "flies",
-     "zh": {"hook": "几百管果蝇，靠记性翻管？",
-            "lines": ["翻管时间跟着温度走：25 度每 14 天，18 度每 28 天。",
-                      "每个架子一张格子图，上次翻、下次该翻一眼看到，过期标红。",
-                      "翻完点一下 Flipped today，就记好了。"],
-            "bullets": ["翻管周期随温度变化", "架子格子图，过期标红", "一键记录已翻管"]},
-     "en": {"hook": "Hundreds of fly vials, and only your memory?",
-            "lines": ["Flip schedules follow temperature: every fourteen days at twenty-five degrees, twenty-eight at eighteen.",
-                      "Each rack's grid shows the last flip and the next one, in red when it's overdue.",
-                      "Flip them, press Flipped today, and it's recorded."],
-            "bullets": ["Schedules follow temperature", "Overdue racks in red", "Flipped today, one click"]}},
-    {"day": 11, "clip": "sign",
-     "zh": {"hook": "电子记录本，也能像纸质本一样签名？",
-            "lines": ["想让一页成为正式记录，就签名：确认身份，内容存下指纹，页面锁定。",
-                      "同事可以作为见证人签名。",
-                      "要改只能修订并写理由，每个版本和签名都留在记录里。"],
-            "bullets": ["签名锁定页面", "同事见证", "修订留痕"]},
-     "en": {"hook": "Can an electronic notebook be signed like paper?",
-            "lines": ["When a page should be your record, sign it: its exact text is fingerprinted, and the page is locked.",
-                      "A lab mate can witness it.",
-                      "To change it, you amend it with a reason, and every version and signature stays on record."],
-            "bullets": ["Sign and lock a page", "A lab mate witnesses", "Amendments keep a trail"]}},
-    {"day": 12, "clip": "protocol",
-     "zh": {"hook": "边做实验边翻步骤，还要另开计时器？",
-            "lines": ["实验方案有版本号，做实验时会记下用的是哪一版。",
-                      "Run mode 用大字一步一步带你做，每一步打勾自动记时间。",
-                      "步骤里写了孵育 30 分钟，旁边就有计时按钮，到点会响。"],
-            "bullets": ["方案有版本", "Run mode 一步一步做", "步骤自带计时器"]},
-     "en": {"hook": "Juggling a protocol, a phone and a timer?",
-            "lines": ["Protocols have numbered versions, and each experiment records the one it followed.",
-                      "Run mode walks you through one step at a time, in large type, timing each tick.",
-                      "Any step that says incubate thirty minutes gets a timer button that rings when it's done."],
-            "bullets": ["Versioned protocols", "Run mode, step by step", "Timers in every step"]}},
-    {"day": 13, "clip": "calendar",
-     "zh": {"hook": "实验室的日程，能自己排好吗？",
-            "lines": ["断奶、基因分型、翻果蝇、试剂过期，都会自动出现在日历上。",
-                      "实验时间线写一次，改第 0 天，后面的步骤全部跟着挪。",
-                      "预约仪器时间冲突，会直接告诉你是谁占着。"],
-            "bullets": ["日程自动生成", "实验时间线一起挪", "仪器预约防冲突"]},
-     "en": {"hook": "A lab calendar that fills itself in?",
-            "lines": ["Weanings, genotyping, fly flips and expiry dates appear on the calendar by themselves.",
-                      "Write a protocol timeline once; move day zero, and every step moves with it.",
-                      "Book the confocal, and a double booking is refused, saying who has it."],
-            "bullets": ["Dates filled in for you", "Timelines that move together", "No double bookings"]}},
-    {"day": 14, "clip": "undo",
-     "zh": {"hook": "批量改错了，Ctrl+Z 也救不回来？",
-            "lines": ["勾选多行，一次改一批：改状态、加进实验。",
-                      "每次批量操作都能撤销，而且不会覆盖别人之后的修改。",
-                      "每条记录的每次改动都留痕：谁、什么时候、改了什么。"],
-            "bullets": ["批量修改", "一键撤销", "完整修改记录"]},
-     "en": {"hook": "Changed a whole cage of mice by mistake?",
-            "lines": ["Tick rows and change them together: a status, or the experiment they're in.",
-                      "Every batch can be undone, without overwriting anyone's later edits.",
-                      "And every change is recorded: who, when, and exactly what."],
-            "bullets": ["Batch changes", "Undo any batch", "A full change history"]}},
-    {"day": 15, "clip": "search",
-     "zh": {"hook": "那个质粒在哪？那只鼠在哪笼？",
-            "lines": ["按 Command K，小鼠、质粒、订单、实验记录一起搜。",
-                      "每个页面都是一个标签页，可以拖动排序。",
-                      "明天打开，标签还在。"],
-            "bullets": ["⌘K 搜索全部", "标签页可拖动", "标签自动保存"]},
-     "en": {"hook": "Where is that plasmid? Which cage is that mouse in?",
-            "lines": ["Press Command K to search mice, plasmids, orders and notebook pages at once.",
-                      "Every page opens as a tab you can reorder.",
-                      "And your tabs are still there tomorrow."],
-            "bullets": ["⌘K searches everything", "Tabs you can reorder", "Tabs kept for tomorrow"]}},
-    {"day": 16, "clip": "qpcr",
-     "zh": {"hook": "qPCR 做完，又要重新搭 Excel 公式？",
-            "lines": ["把酶标仪读数粘到孔板热图上，标好空白和标准品，浓度按标准曲线自动算。",
-                      "粘贴 qPCR 的 Ct 值，自动算出倍数变化。",
-                      "全在实验记录本里，和你的实验步骤放在一起。"],
-            "bullets": ["孔板热图 + 标准曲线", "自动算 ΔΔCt", "就在记录本里"]},
-     "en": {"hook": "Rebuilding the same Excel formulas after every qPCR?",
-            "lines": ["Paste plate reader values onto a well heatmap, mark blanks and standards, and read concentrations off the curve.",
-                      "Paste Ct values, and get delta delta Ct fold changes.",
-                      "All inside the notebook, next to your methods."],
-            "bullets": ["Plate heatmap, standard curve", "ΔΔCt fold changes", "Right in the notebook"]}},
-    {"day": 17, "clip": "looks",
-     "zh": {"hook": "谁说实验室软件，都长得像上个世纪？",
-            "lines": ["BioManager 用的是 Mac 风格的界面，还有完整的深色模式。",
-                      "每个人可以换自己的 App 图标：小鼠、斑马鱼、果蝇。",
-                      "选一个颜色，整个软件的主题色都跟着变。"],
-            "bullets": ["Mac 风格界面", "完整深色模式", "自选图标和配色"]},
-     "en": {"hook": "Lab software that's nice to look at?",
-            "lines": ["BioManager follows the look of a Mac app, with a full dark mode.",
-                      "Each person can pick their own app icon: a mouse, a zebrafish, a fly.",
-                      "Choose a colour, and the whole app follows it."],
-            "bullets": ["A Mac-style interface", "Full dark mode", "Your own icon and colour"]}},
-    {"day": 18, "clip": "phone",
-     "zh": {"hook": "在鼠房，用手机就能管？",
-            "lines": ["全组可以共用一个实验室服务器，用浏览器登录，手机也行。",
-                      "在手机上，表格自动变成一张张卡片，点一下就能改。",
-                      "可以用学校账号登录，服务器每晚自动备份。"],
-            "bullets": ["全组共用服务器", "手机上自动变卡片", "学校账号登录，每晚备份"]},
-     "en": {"hook": "Run the lab from your phone at the rack?",
-            "lines": ["The whole lab can share one server and sign in from a browser, phones included.",
-                      "On a phone, every sheet becomes a stack of cards you can tap to edit.",
-                      "Sign in with your institution's account, and the server backs up every night."],
-            "bullets": ["One server for the lab", "Sheets become cards on phones", "Nightly backups"]}},
-    {"day": 19, "clip": "labels",
-     "zh": {"hook": "标签机买了，软件却不支持？",
-            "lines": ["打印时选 Print on：普通纸张，或者 Brother、Zebra 标签机的尺寸。",
-                      "标签按尺寸自动排版，冻存管标签也有。",
-                      "Zebra 可以下载 ZPL 文件，或者直接发送到网络上的打印机。"],
-            "bullets": ["Brother / Zebra 尺寸", "按尺寸自动排版", "直接发送到 Zebra"]},
-     "en": {"hook": "Got a label printer your software ignores?",
-            "lines": ["Choose Print on: a sheet for any printer, or a Brother or Zebra roll.",
-                      "Labels are laid out to fit, cryo-tube labels included.",
-                      "For a Zebra, download ZPL, or send the labels straight to the printer on your network."],
-            "bullets": ["Brother and Zebra sizes", "Laid out to fit", "Send to Zebra"]}},
-    {"day": 20, "clip": "tour",
-     "zh": {"hook": "三周，二十个功能",
-            "lines": ["三周，每天一个功能，谢谢每一个试用和反馈的朋友。",
-                      "BioManager 会一直免费开源。",
-                      "接下来做什么，由你们决定：在软件里点 Feedback，或者在评论区告诉我。"],
-            "bullets": ["永久免费开源", "软件内 Feedback 反馈", "评论区告诉我你要的功能"]},
-     "en": {"hook": "Three weeks, twenty features",
-            "lines": ["Three weeks, one feature a day. Thank you to everyone who tried it and sent feedback.",
-                      "BioManager stays free and open source.",
-                      "What comes next is up to you: press Feedback in the app, or tell me in the comments."],
-            "bullets": ["Free and open source, forever", "Feedback, right in the app", "Tell us what's next"]}}
+    {
+      "day": 1,
+      "clip": "import",
+      "zh": {
+        "hook": "换软件，最怕重新录数据？",
+        "lines": [
+          "把原来的 Excel 表直接拖进来，不用改格式。",
+          "列名按意思自动匹配：DOB 就是出生日期，Cage # 就是笼号，Male、m 都会变成 M。",
+          "先预览再导入，哪一行会被跳过都写清楚，导错了还能一键撤销。"
+        ],
+        "bullets": [
+          "列名按意思匹配",
+          "日期、性别写法自动整理",
+          "整批导入可撤销"
+        ]
+      },
+      "en": {
+        "hook": "Switching software means retyping everything?",
+        "lines": [
+          "Drop in the Excel sheet you already keep, as it is.",
+          "Columns are matched by meaning: DOB is the date of birth, Cage number is the cage, and Male or m becomes M.",
+          "You see a preview first, with every skipped row explained, and the whole import can be undone."
+        ],
+        "bullets": [
+          "Columns matched by meaning",
+          "Dates and sexes tidied",
+          "One batch you can undo"
+        ]
+      }
+    },
+    {
+      "day": 2,
+      "clip": "links",
+      "zh": {
+        "hook": "这管样本，是哪只鼠的？",
+        "lines": [
+          "在 BioManager 里，所有数据都是连在一起的。",
+          "从小鼠身上取的肝脏、血清，在样本库里直接链接回这只鼠，点一下就回到它。",
+          "写 qPCR 实验记录时，输入 @mouse 16，这只鼠的基因型、笼号随手可见。"
+        ],
+        "bullets": [
+          "样本链接回来源动物",
+          "记录本里 @ 小鼠、质粒、订单",
+          "点一下就打开那条记录"
+        ]
+      },
+      "en": {
+        "hook": "Which mouse did this sample come from?",
+        "lines": [
+          "In BioManager, your records are connected.",
+          "Liver and serum samples link back to the mouse they came from, one click away.",
+          "In a qPCR notebook page, type @mouse 16, and that mouse's genotype and cage are right there."
+        ],
+        "bullets": [
+          "Samples link to their animal",
+          "@mention mice, plasmids, orders",
+          "One click opens the record"
+        ]
+      }
+    },
+    {
+      "day": 3,
+      "clip": "cards",
+      "zh": {
+        "hook": "查一笼的信息，还要跑回电脑？",
+        "lines": [
+          "BioManager 可以打印笼卡、鱼缸卡、果蝇管标签，每张都带二维码。",
+          "在鼠房用手机相机一扫，这个笼子就打开了，当场就能改。",
+          "普通打印机和 Brother、Zebra 标签机都支持。"
+        ],
+        "bullets": [
+          "每张笼卡带二维码",
+          "任何手机相机都能扫",
+          "支持 Brother / Zebra"
+        ]
+      },
+      "en": {
+        "hook": "Walking back to a computer to look up a cage?",
+        "lines": [
+          "BioManager prints cage, tank and vial cards, each with a QR code.",
+          "Scan one with any phone camera at the rack, and that cage opens, ready to edit.",
+          "Any printer works, and so do Brother and Zebra label printers."
+        ],
+        "bullets": [
+          "A QR code on every card",
+          "Any phone camera scans it",
+          "Brother and Zebra printers"
+        ]
+      }
+    },
+    {
+      "day": 4,
+      "clip": "plasmid",
+      "zh": {
+        "hook": "质粒图谱，一定要用付费软件吗？",
+        "lines": [
+          "上传 GenBank、FASTA 或 SnapGene 文件，自动生成可交互的质粒图谱。",
+          "环形图、线性图和序列一起看，特征和酶切位点都能编辑。",
+          "每一管放在哪个盒子、哪个位置，也记得清清楚楚。"
+        ],
+        "bullets": [
+          "GenBank / SnapGene 直接上传",
+          "图谱可交互、可编辑",
+          "每管都有存放位置"
+        ]
+      },
+      "en": {
+        "hook": "Do plasmid maps need a paid licence?",
+        "lines": [
+          "Upload a GenBank, FASTA or SnapGene file, and get an interactive plasmid map.",
+          "Circular map, linear map and sequence side by side, with features you can edit.",
+          "And every tube has an address: the box and the position it sits in."
+        ],
+        "bullets": [
+          "GenBank and SnapGene files",
+          "An editable, interactive map",
+          "Every tube has an address"
+        ]
+      }
+    },
+    {
+      "day": 5,
+      "clip": "experiment",
+      "zh": {
+        "hook": "给药前，还在按计算器算剂量？",
+        "lines": [
+          "方案只写一次，比如他莫昔芬每千克 75 毫克，第一到第五天。",
+          "每只鼠的剂量和体积按最新体重自动计算，每天早上提醒你。",
+          "体重曲线自动画好，组间差异自动标星号，一键导出给 Prism 或 R。"
+        ],
+        "bullets": [
+          "剂量按体重自动算",
+          "体重曲线 + 显著性星号",
+          "导出 Excel 给 Prism / R"
+        ]
+      },
+      "en": {
+        "hook": "Still working out doses on a calculator?",
+        "lines": [
+          "Write the regimen once: tamoxifen, seventy-five milligrams per kilogram, days one to five.",
+          "Each mouse's dose and volume come from its latest weight, and you're reminded each morning.",
+          "The body weight chart draws itself, with stars where groups differ, and exports for Prism or R."
+        ],
+        "bullets": [
+          "Doses from body weight",
+          "A chart with significance stars",
+          "Export for Prism or R"
+        ]
+      }
+    },
+    {
+      "day": 6,
+      "clip": "datasheet",
+      "zh": {
+        "hook": "一张柱状图加 t 检验，还要开 Prism？",
+        "lines": [
+          "在电子实验记录本里粘贴数据，直接出柱状图、点图或箱线图。",
+          "误差棒、t 检验、方差分析和多重比较自动完成，星号自动标好。",
+          "图可以下载成 SVG 或 PNG，数据和方法都在同一页。"
+        ],
+        "bullets": [
+          "粘贴即出图",
+          "t 检验 / 方差分析自动做",
+          "SVG / PNG 下载"
+        ]
+      },
+      "en": {
+        "hook": "Opening Prism for one bar chart and a t-test?",
+        "lines": [
+          "Paste your numbers into a data sheet in the notebook, and get a bar, dot or box plot.",
+          "Error bars, t-tests, ANOVA and corrected pairwise comparisons are done for you, stars included.",
+          "Download the plot as SVG or PNG, with the data and methods on the same page."
+        ],
+        "bullets": [
+          "Paste and plot",
+          "t-test and ANOVA built in",
+          "SVG and PNG downloads"
+        ]
+      }
+    },
+    {
+      "day": 7,
+      "clip": "orders",
+      "zh": {
+        "hook": "谁订了这个试剂？到了吗？放哪了？",
+        "lines": [
+          "订单从申请、下单到收货，在看板上拖一下就改状态。",
+          "到货时一键加入试剂、抗体或病毒库存，信息全部带过去。",
+          "快过期、快用完的东西，首页会提醒你。"
+        ],
+        "bullets": [
+          "订单看板，拖动改状态",
+          "到货一键入库",
+          "过期和用完提醒"
+        ]
+      },
+      "en": {
+        "hook": "Who ordered it? Has it arrived? Where is it?",
+        "lines": [
+          "Orders move from requested to ordered to received: just drag the card.",
+          "When the box arrives, add it to reagents, antibodies or viruses, with everything filled in.",
+          "Anything expiring or running low shows up on Home."
+        ],
+        "bullets": [
+          "An orders board",
+          "Received goes into stock",
+          "Expiry warnings on Home"
+        ]
+      }
+    },
+    {
+      "day": 8,
+      "clip": "new-database",
+      "zh": {
+        "hook": "不养小鼠的实验室，怎么办？",
+        "lines": [
+          "点添加数据库，用你自己的叫法：爪蟾叫 frog，住的叫 tank，一窝叫 clutch。",
+          "勾选需要的功能：交配、基因分型、体重、冻存。",
+          "几分钟就有一个专属数据库，不用写代码。"
+        ],
+        "bullets": [
+          "用你自己的叫法",
+          "需要什么勾什么",
+          "不用写代码"
+        ]
+      },
+      "en": {
+        "hook": "Not a mouse lab?",
+        "lines": [
+          "Choose Add database and describe your organism in your own words: a frog, in a tank, laid in clutches.",
+          "Tick what it needs: crosses, genotyping, body weights, cryo stocks.",
+          "A few minutes later, it's a database of its own, with no code."
+        ],
+        "bullets": [
+          "Your own words",
+          "Tick what it needs",
+          "No code at all"
+        ]
+      }
+    },
+    {
+      "day": 9,
+      "clip": "home",
+      "zh": {
+        "hook": "今天哪窝该断奶？哪些该剪尾巴？",
+        "lines": [
+          "每天早上打开首页，今天要做的事都列好了。",
+          "超过 30 周的老鼠、要断奶的窝、基因分型队列、该翻的果蝇、快过期的试剂。",
+          "还有三种布局：卡片、时间轴，和按走路顺序排好的冰箱视图。"
+        ],
+        "bullets": [
+          "今天要做什么一目了然",
+          "断奶 · 基因分型 · 翻管 · 过期",
+          "三种首页布局"
+        ]
+      },
+      "en": {
+        "hook": "Which litters need weaning today?",
+        "lines": [
+          "Open Home in the morning, and today's work is listed.",
+          "Mice past thirty weeks, weanings due, the genotyping queue, vials to flip, and reagents expiring.",
+          "Three layouts: cards, a timeline, and your freezers in the order you'd walk the room."
+        ],
+        "bullets": [
+          "Today's work, listed",
+          "Weaning, genotyping, flips, expiry",
+          "Three Home layouts"
+        ]
+      }
+    },
+    {
+      "day": 10,
+      "clip": "flies",
+      "zh": {
+        "hook": "几百管果蝇，靠记性翻管？",
+        "lines": [
+          "翻管时间跟着温度走：25 度每 14 天，18 度每 28 天。",
+          "每个架子一张格子图，上次翻、下次该翻一眼看到，过期标红。",
+          "翻完点一下 Flipped today，就记好了。"
+        ],
+        "bullets": [
+          "翻管周期随温度变化",
+          "架子格子图，过期标红",
+          "一键记录已翻管"
+        ]
+      },
+      "en": {
+        "hook": "Hundreds of fly vials, and only your memory?",
+        "lines": [
+          "Flip schedules follow temperature: every fourteen days at twenty-five degrees, twenty-eight at eighteen.",
+          "Each rack's grid shows the last flip and the next one, in red when it's overdue.",
+          "Flip them, press Flipped today, and it's recorded."
+        ],
+        "bullets": [
+          "Schedules follow temperature",
+          "Overdue racks in red",
+          "Flipped today, one click"
+        ]
+      }
+    },
+    {
+      "day": 11,
+      "clip": "sign",
+      "zh": {
+        "hook": "电子记录本，也能像纸质本一样签名？",
+        "lines": [
+          "想让一页成为正式记录，就签名：确认身份，内容存下指纹，页面锁定。",
+          "同事可以作为见证人签名。",
+          "要改只能修订并写理由，每个版本和签名都留在记录里。"
+        ],
+        "bullets": [
+          "签名锁定页面",
+          "同事见证",
+          "修订留痕"
+        ]
+      },
+      "en": {
+        "hook": "Can an electronic notebook be signed like paper?",
+        "lines": [
+          "When a page should be your record, sign it: its exact text is fingerprinted, and the page is locked.",
+          "A lab mate can witness it.",
+          "To change it, you amend it with a reason, and every version and signature stays on record."
+        ],
+        "bullets": [
+          "Sign and lock a page",
+          "A lab mate witnesses",
+          "Amendments keep a trail"
+        ]
+      }
+    },
+    {
+      "day": 12,
+      "clip": "protocol",
+      "zh": {
+        "hook": "边做实验边翻步骤，还要另开计时器？",
+        "lines": [
+          "实验方案有版本号，做实验时会记下用的是哪一版。",
+          "Run mode 用大字一步一步带你做，每一步打勾自动记时间。",
+          "步骤里写了孵育 30 分钟，旁边就有计时按钮，到点会响。"
+        ],
+        "bullets": [
+          "方案有版本",
+          "Run mode 一步一步做",
+          "步骤自带计时器"
+        ]
+      },
+      "en": {
+        "hook": "Juggling a protocol, a phone and a timer?",
+        "lines": [
+          "Protocols have numbered versions, and each experiment records the one it followed.",
+          "Run mode walks you through one step at a time, in large type, timing each tick.",
+          "Any step that says incubate thirty minutes gets a timer button that rings when it's done."
+        ],
+        "bullets": [
+          "Versioned protocols",
+          "Run mode, step by step",
+          "Timers in every step"
+        ]
+      }
+    },
+    {
+      "day": 13,
+      "clip": "calendar",
+      "zh": {
+        "hook": "实验室的日程，能自己排好吗？",
+        "lines": [
+          "断奶、基因分型、翻果蝇、试剂过期，都会自动出现在日历上。",
+          "实验时间线写一次，改第 0 天，后面的步骤全部跟着挪。",
+          "预约仪器时间冲突，会直接告诉你是谁占着。"
+        ],
+        "bullets": [
+          "日程自动生成",
+          "实验时间线一起挪",
+          "仪器预约防冲突"
+        ]
+      },
+      "en": {
+        "hook": "A lab calendar that fills itself in?",
+        "lines": [
+          "Weanings, genotyping, fly flips and expiry dates appear on the calendar by themselves.",
+          "Write a protocol timeline once; move day zero, and every step moves with it.",
+          "Book the confocal, and a double booking is refused, saying who has it."
+        ],
+        "bullets": [
+          "Dates filled in for you",
+          "Timelines that move together",
+          "No double bookings"
+        ]
+      }
+    },
+    {
+      "day": 14,
+      "clip": "undo",
+      "zh": {
+        "hook": "批量改错了，Ctrl+Z 也救不回来？",
+        "lines": [
+          "勾选多行，一次改一批：改状态、加进实验。",
+          "每次批量操作都能撤销，而且不会覆盖别人之后的修改。",
+          "每条记录的每次改动都留痕：谁、什么时候、改了什么。"
+        ],
+        "bullets": [
+          "批量修改",
+          "一键撤销",
+          "完整修改记录"
+        ]
+      },
+      "en": {
+        "hook": "Changed a whole cage of mice by mistake?",
+        "lines": [
+          "Tick rows and change them together: a status, or the experiment they're in.",
+          "Every batch can be undone, without overwriting anyone's later edits.",
+          "And every change is recorded: who, when, and exactly what."
+        ],
+        "bullets": [
+          "Batch changes",
+          "Undo any batch",
+          "A full change history"
+        ]
+      }
+    },
+    {
+      "day": 15,
+      "clip": "search",
+      "zh": {
+        "hook": "那个质粒在哪？那只鼠在哪笼？",
+        "lines": [
+          "按 Command K，小鼠、质粒、订单、实验记录一起搜。",
+          "每个页面都是一个标签页，可以拖动排序。",
+          "明天打开，标签还在。"
+        ],
+        "bullets": [
+          "⌘K 搜索全部",
+          "标签页可拖动",
+          "标签自动保存"
+        ]
+      },
+      "en": {
+        "hook": "Where is that plasmid? Which cage is that mouse in?",
+        "lines": [
+          "Press Command K to search mice, plasmids, orders and notebook pages at once.",
+          "Every page opens as a tab you can reorder.",
+          "And your tabs are still there tomorrow."
+        ],
+        "bullets": [
+          "⌘K searches everything",
+          "Tabs you can reorder",
+          "Tabs kept for tomorrow"
+        ]
+      }
+    },
+    {
+      "day": 16,
+      "clip": "qpcr",
+      "zh": {
+        "hook": "qPCR 做完，又要重新搭 Excel 公式？",
+        "lines": [
+          "把酶标仪读数粘到孔板热图上，标好空白和标准品，浓度按标准曲线自动算。",
+          "粘贴 qPCR 的 Ct 值，自动算出倍数变化。",
+          "全在实验记录本里，和你的实验步骤放在一起。"
+        ],
+        "bullets": [
+          "孔板热图 + 标准曲线",
+          "自动算 ΔΔCt",
+          "就在记录本里"
+        ]
+      },
+      "en": {
+        "hook": "Rebuilding the same Excel formulas after every qPCR?",
+        "lines": [
+          "Paste plate reader values onto a well heatmap, mark blanks and standards, and read concentrations off the curve.",
+          "Paste Ct values, and get delta delta Ct fold changes.",
+          "All inside the notebook, next to your methods."
+        ],
+        "bullets": [
+          "Plate heatmap, standard curve",
+          "ΔΔCt fold changes",
+          "Right in the notebook"
+        ]
+      }
+    },
+    {
+      "day": 17,
+      "clip": "looks",
+      "zh": {
+        "hook": "谁说实验室软件，都长得像上个世纪？",
+        "lines": [
+          "BioManager 用的是 Mac 风格的界面，还有完整的深色模式。",
+          "每个人可以换自己的 App 图标：小鼠、斑马鱼、果蝇。",
+          "选一个颜色，整个软件的主题色都跟着变。"
+        ],
+        "bullets": [
+          "Mac 风格界面",
+          "完整深色模式",
+          "自选图标和配色"
+        ]
+      },
+      "en": {
+        "hook": "Lab software that's nice to look at?",
+        "lines": [
+          "BioManager follows the look of a Mac app, with a full dark mode.",
+          "Each person can pick their own app icon: a mouse, a zebrafish, a fly.",
+          "Choose a colour, and the whole app follows it."
+        ],
+        "bullets": [
+          "A Mac-style interface",
+          "Full dark mode",
+          "Your own icon and colour"
+        ]
+      }
+    },
+    {
+      "day": 18,
+      "clip": "phone",
+      "zh": {
+        "hook": "在鼠房，用手机就能管？",
+        "lines": [
+          "全组可以共用一个实验室服务器，用浏览器登录，手机也行。",
+          "在手机上，表格自动变成一张张卡片，点一下就能改。",
+          "可以用学校账号登录，服务器每晚自动备份。"
+        ],
+        "bullets": [
+          "全组共用服务器",
+          "手机上自动变卡片",
+          "学校账号登录，每晚备份"
+        ]
+      },
+      "en": {
+        "hook": "Run the lab from your phone at the rack?",
+        "lines": [
+          "The whole lab can share one server and sign in from a browser, phones included.",
+          "On a phone, every sheet becomes a stack of cards you can tap to edit.",
+          "Sign in with your institution's account, and the server backs up every night."
+        ],
+        "bullets": [
+          "One server for the lab",
+          "Sheets become cards on phones",
+          "Nightly backups"
+        ]
+      }
+    },
+    {
+      "day": 19,
+      "clip": "labels",
+      "zh": {
+        "hook": "标签机买了，软件却不支持？",
+        "lines": [
+          "打印时选 Print on：普通纸张，或者 Brother、Zebra 标签机的尺寸。",
+          "标签按尺寸自动排版，冻存管标签也有。",
+          "Zebra 可以下载 ZPL 文件，或者直接发送到网络上的打印机。"
+        ],
+        "bullets": [
+          "Brother / Zebra 尺寸",
+          "按尺寸自动排版",
+          "直接发送到 Zebra"
+        ]
+      },
+      "en": {
+        "hook": "Got a label printer your software ignores?",
+        "lines": [
+          "Choose Print on: a sheet for any printer, or a Brother or Zebra roll.",
+          "Labels are laid out to fit, cryo-tube labels included.",
+          "For a Zebra, download ZPL, or send the labels straight to the printer on your network."
+        ],
+        "bullets": [
+          "Brother and Zebra sizes",
+          "Laid out to fit",
+          "Send to Zebra"
+        ]
+      }
+    },
+    {
+      "day": 20,
+      "clip": "tour",
+      "zh": {
+        "hook": "三周，二十个功能",
+        "lines": [
+          "三周，每天一个功能，谢谢每一个试用和反馈的朋友。",
+          "BioManager 会一直免费开源。",
+          "接下来做什么，由你们决定：在软件里点 Feedback，或者在评论区告诉我。"
+        ],
+        "bullets": [
+          "永久免费开源",
+          "软件内 Feedback 反馈",
+          "评论区告诉我你要的功能"
+        ]
+      },
+      "en": {
+        "hook": "Three weeks, twenty features",
+        "lines": [
+          "Three weeks, one feature a day. Thank you to everyone who tried it and sent feedback.",
+          "BioManager stays free and open source.",
+          "What comes next is up to you: press Feedback in the app, or tell me in the comments."
+        ],
+        "bullets": [
+          "Free and open source, forever",
+          "Feedback, right in the app",
+          "Tell us what's next"
+        ]
+      }
+    }
   ]
 }

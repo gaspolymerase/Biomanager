@@ -15,8 +15,10 @@ cover.png (Bilibili's 16:9 cover).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -53,11 +55,47 @@ def duration(path: Path) -> float:
 # Narration
 # ---------------------------------------------------------------------------
 
+# A voice is a macOS voice for `say` ("Tingting"), or "qwen:<name>": one of
+# BioManager's own voices in promo/voices/, read by Qwen3-TTS
+# (scripts/qwen-voice.py, in its own environment). Qwen lines are made in one
+# batch first (prefetch) and kept in promo/out/tts-cache/.
+TTS_CACHE = ROOT / "promo/out/tts-cache"
+TTS_PYTHON = os.environ.get("BIOMANAGER_TTS_PYTHON", str(Path.home() / ".cache/biomanager-tts/venv/bin/python"))
+
+
+def qwen_file(voice: str, text: str) -> Path:
+    name = voice.split(":", 1)[1]
+    return TTS_CACHE / f"{name}-{hashlib.sha1(text.encode()).hexdigest()[:16]}.wav"
+
+
+def prefetch(pairs):
+    """Make every (voice, text) line that a Qwen voice reads, in one run of the model."""
+    jobs = [{"voice": v.split(":", 1)[1], "text": t, "out": str(qwen_file(v, t))}
+            for v, t in dict.fromkeys(pairs) if v.startswith("qwen:") and not qwen_file(v, t).exists()]
+    if not jobs:
+        return
+    TTS_CACHE.mkdir(parents=True, exist_ok=True)
+    listing = TTS_CACHE / "jobs.json"
+    listing.write_text(json.dumps(jobs, ensure_ascii=False))
+    subprocess.run([TTS_PYTHON, str(ROOT / "scripts/qwen-voice.py"), str(listing)], check=True)
+
+
 def speak(text: str, voice: str, rate: int, tmp: Path) -> np.ndarray:
-    aiff, raw = tmp / "line.aiff", tmp / "line.raw"
-    run("say", "-v", voice, "-r", rate, "-o", aiff, text)
-    run(FFMPEG, "-y", "-loglevel", "error", "-i", aiff, "-ac", "1", "-ar", SR, "-f", "f32le", raw)
-    return np.fromfile(raw, dtype=np.float32)
+    raw = tmp / "line.raw"
+    if voice.startswith("qwen:"):
+        src = qwen_file(voice, text)
+        if not src.exists():
+            prefetch([(voice, text)])
+    else:
+        src = tmp / "line.aiff"
+        run("say", "-v", voice, "-r", rate, "-o", src, text)
+    run(FFMPEG, "-y", "-loglevel", "error", "-i", src, "-ac", "1", "-ar", SR, "-f", "f32le", raw)
+    audio = np.fromfile(raw, dtype=np.float32)
+    if voice.startswith("qwen:") and audio.size:
+        # Every line at the same loudness, whatever the model made: about -20 dBFS RMS, peaks under -1 dB.
+        rms = float(np.sqrt(np.mean(audio ** 2))) or 1.0
+        audio = audio * min(0.1 / rms, 0.89 / max(1e-6, float(np.abs(audio).max())))
+    return audio
 
 
 # ---------------------------------------------------------------------------

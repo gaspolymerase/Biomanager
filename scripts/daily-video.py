@@ -8,7 +8,9 @@
 Each video, about 40 seconds: the day's question on an animated card, the
 feature's footage while its lines are read (with subtitles), three points
 to remember, and a closing card with the website. The storyboard is
-promo/daily.json; the titles come from promo/posts.json. Cards, music,
+promo/daily.json, whose "voices" are BioManager's own Qwen3-TTS voices
+("qwen:zh-a", see scripts/qwen-voice.py) or a macOS voice; the titles come
+from promo/posts.json. Cards, music,
 sounds and mixing are scripts/explainer-video.py's.
 
 Writes promo/out/daily/dayNN-zh.mp4 (Bilibili), dayNN-en.mp4 (X, LinkedIn,
@@ -268,6 +270,10 @@ def main():
     voices = board["voices"]
     OUT.mkdir(parents=True, exist_ok=True)
     days = [d for d in board["days"] if not args.days or d["day"] in args.days]
+    langs = [args.lang] if args.lang else ["zh", "en"]
+    # Qwen voices read every line of these days in one run of the model.
+    ev.prefetch([(voices[lang][0], text) for d in days for lang in langs
+                 for text in [d[lang]["hook"], *d[lang]["lines"], WORDS[lang]["outro"]]])
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": W, "height": H})
@@ -275,7 +281,7 @@ def main():
             if not (ROOT / "promo/out" / day["clip"] / "plain.mp4").exists():
                 print(f"day {day['day']}: no footage for {day['clip']}; run feature-clips.py --plain first", flush=True)
                 continue
-            for lang in [args.lang] if args.lang else ["zh", "en"]:
+            for lang in langs:
                 with tempfile.TemporaryDirectory(prefix="daily-") as tmp:
                     final, seconds = make(page, day, lang, voices, titles, Path(tmp))
                 print(f"day {day['day']:2d} {lang}: {final.name} {seconds:.1f} s", flush=True)

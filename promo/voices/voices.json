@@ -1,0 +1,12 @@
+{
+  "zh-a": {
+    "language": "chinese",
+    "text": "大家好！今天想跟你们分享一个超好用的实验室小工具，真的能帮你省下好多时间。",
+    "designed_from": "二十多岁的年轻女生，声音明亮、清脆、有活力，语速稍快，带着笑意，像在给朋友安利好东西的科普博主，普通话标准。"
+  },
+  "en-b": {
+    "language": "english",
+    "text": "Hi everyone! Today I want to share a really handy little tool for the lab. It honestly saves so much time.",
+    "designed_from": "A young female voice, warm and friendly but full of energy, crisp diction, lively rhythm, like an enthusiastic PhD student explaining something she loves. Neutral American accent."
+  }
+}
