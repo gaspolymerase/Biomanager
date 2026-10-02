@@ -371,6 +371,8 @@
         <li><b>Its address follows its name.</b> Rename <i>Antibodies</i> to <i>Primary antibodies</i> and it moves to
           <code>…/inventory/primary_antibodies</code>. The old address keeps working, so printed labels, bookmarks, links in
           messages and <code>@antibodies 5</code> in notebook pages still find it.</li>
+        <li><b>Every database has a name of its own.</b> A name another database has (in any case, the built-in ones included) is
+          refused, so <code>@</code> and a database's name in a notebook page always means one database.</li>
       </ul></div>
 
     <section id="mice">
@@ -409,7 +411,8 @@
 
       <h3>Breeding: from litter to weaning</h3>
       <p>On the <b>Cages</b> tab, open a breeding cage (its arrow or mice count) or find its card under <b>Cards</b>:
-        <b>Litter born today</b>, <b>Genotyping</b> and <b>Wean</b> are there.</p>
+        <b>Litter born today</b>, <b>Genotyping</b> and <b>Wean</b> are there. New litters are numbered L-1, L-2, L-3… (type
+        your own ID instead if you like).</p>
       <ol class="steps-list">
         <li><b>Litter born today</b> records the birth. BioManager works out weaning (P21) and genotyping (P28, or the day chosen in
           <a href="#setup">Lab setup</a>), which appear on Home and the calendar when due — the same list in both. A cage holds one
@@ -557,7 +560,9 @@
     <section id="plasmids">
       <h2>Plasmids</h2>
       <ul>
-        <li>Show them as a table, by storage box, or as a list; chips for <i>Mine</i>, <i>Has sequence</i>, <i>In a box</i>.</li>
+        <li>Show them as a <b>Table</b>, by storage <b>Boxes</b>, or as a <b>List</b>; chips for <i>Mine</i>, <i>Has sequence</i>, <i>In a box</i>.</li>
+        <li><b>Sequence</b>, beside each plasmid's number in the table, opens its sequence and map (<b>Add sequence</b> when it has
+          none yet); the number opens the same page.</li>
         <li><b>New plasmid</b> takes a name, backbone, insert, resistance, owner and a box position (blank takes the next free one) —
           or paste a list of names to make several. Drop in a SnapGene <code>.dna</code>, GenBank, FASTA or plain-text sequence.</li>
         <li>Open a plasmid to see its sequence and features on an interactive map you can edit (edits save themselves), full screen if

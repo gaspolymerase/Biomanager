@@ -202,6 +202,17 @@ class CageNumber(AppTestCase):
         self.assertIn(f'name="cage_id_was" value="{self.code}"', html)
 
 
+class PlasmidSequenceButton(AppTestCase):
+    def test_each_plasmid_says_sequence_beside_its_number(self):
+        pid = self.make_plasmid(self.a)
+        number = one("select plasmid_id from plasmids where id=?", pid)
+        html = self.get_ok(self.a, "/plasmids")
+        cell = html[html.index(f'aria-label="Select plasmid {number}"'):]
+        button = re.search(r'<a href="([^"]+)" class="plasmid-seq-btn[^"]*"[^>]*>(.*?)</a>', cell, re.S)
+        self.assertEqual(button.group(1), f"/plasmid/{number}")
+        self.assertIn("Add sequence", button.group(2))        # none yet
+
+
 class LayoutSwitches(AppTestCase):
     def test_plasmids_switch_layouts_above_the_sheet(self):
         html = self.get_ok(self.a, "/plasmids")

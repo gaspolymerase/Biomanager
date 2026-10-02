@@ -23,9 +23,6 @@ from sqlalchemy import select
 from .models import (DatabaseAlias, Experiment, InventoryItem, InventoryModule, OrganismModule, StockModule)
 
 MODELS = {"inventory": InventoryModule, "stocks": StockModule, "organisms": OrganismModule}
-# /organisms/<key> sends a fly or worm database on to /stocks/<key>, so the
-# two kinds share one set of addresses.
-SHARED = {"stocks": ("organisms",), "organisms": ("stocks",)}
 MAX_KEY = 60
 
 
@@ -65,14 +62,20 @@ def aliases_by_key(session, kind: str) -> dict[str, int]:
     return {a.old_key: a.module_id for a in session.scalars(select(DatabaseAlias).where(DatabaseAlias.kind == kind))}
 
 
+# What "@mouse 12", "@plasmid 4" and "@order 7" already mean in a notebook page.
+MENTION_WORDS = frozenset({"mouse", "plasmid", "order"})
+
+
 def taken(session, kind: str, key: str, module=None) -> bool:
-    """Whether another database has, or had, this address: a live key, an
-    old one someone's labels still carry, or a word the app's own pages use."""
+    """Whether another database, of any kind, has or had this address: a
+    live key, an old one someone's labels still carry, or a word the app's
+    own pages or @links use. One address per database across the app, so
+    "@<key> 5" in a notebook page never means two."""
     from .organisms import RESERVED_KEYS
-    if key in RESERVED_KEYS:
+    if key in RESERVED_KEYS or key in MENTION_WORDS:
         return True
     mine = module.id if module is not None else None
-    for k in (kind, *SHARED.get(kind, ())):
+    for k in MODELS:
         model = MODELS[k]
         other = session.scalar(select(model.id).where(model.key == key))
         if other is not None and not (k == kind and other == mine):
@@ -81,6 +84,26 @@ def taken(session, kind: str, key: str, module=None) -> bool:
         if alias is not None and not (k == kind and alias.module_id == mine):
             return True
     return False
+
+
+def name_clash(session, label: str, kind: str | None = None, module=None, builtin: str | None = None) -> str:
+    """The name of another database already called `label` (whatever the
+    case), or "". Every database has a name of its own: the sidebar, search
+    and "@<name> 5" in a notebook page never mean two. `module` (of `kind`)
+    or `builtin` (colony, zebrafish, plasmids) is the one being named."""
+    from .inventory_service import BUILTIN_DATABASES, builtin_labels
+    want = (label or "").strip().casefold()
+    if not want:
+        return ""
+    for k, model in MODELS.items():
+        for row in session.scalars(select(model)):
+            if (row.label or "").strip().casefold() == want and not (
+                    module is not None and k == kind and row.id == module.id):
+                return row.label
+    for key, name in builtin_labels(session).items():
+        if key != builtin and want in (name.strip().casefold(), BUILTIN_DATABASES[key][1].casefold()):
+            return name
+    return ""
 
 
 def free_key(session, kind: str, label: str, module=None) -> str:

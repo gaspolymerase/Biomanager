@@ -1458,7 +1458,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
                            | LitterRecord.id.in_(with_living))
                 hidden_litters = count_of(select(func.count(LitterRecord.id)).where(~visible))
                 litter_query = litter_query.where(visible)
-            litters = db_session.scalars(litter_query).all()
+            # L-2 before L-10: by number, not letter by letter.
+            litters = sorted(db_session.scalars(litter_query).all(), key=lambda l: positions.place_order(l.litter_id or ""))
         strains = db_session.scalars(select(StrainRecord).order_by(StrainRecord.strain_name)).all()
         dropdowns = dropdown_options_map(db_session)
         dropdown_records = dropdown_records_map(db_session)

@@ -1503,6 +1503,14 @@
 @layer components {
 
   .plasmid-view-switcher .dt-chip.is-active { @apply bg-surface text-ink shadow-xs; }
+  /* The plasmid number, then a button that says Sequence. */
+  .plasmid-id-cell { @apply flex items-center gap-1.5; }
+  .plasmid-seq-btn {
+    @apply inline-flex h-5.5 shrink-0 items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-1.5
+           text-[11px] font-semibold text-brand-700 no-underline hover:border-brand-400 hover:bg-brand-100 hover:no-underline;
+  }
+  .plasmid-seq-btn svg { @apply size-3; }
+  .plasmid-seq-btn.is-empty { @apply border-dashed border-sand-300 bg-transparent font-medium text-muted hover:text-ink-soft; }
 
   .plasmid-view { @apply hidden; }
   .plasmid-view.is-active { @apply block; }

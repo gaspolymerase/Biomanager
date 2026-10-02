@@ -343,6 +343,10 @@ def rename_builtin(key: str):
         return redirect(url_for("organisms.index"))
     label = (request.form.get("label") or "").strip()[:80]
     with SessionLocal() as session:
+        clash = database_keys.name_clash(session, label, builtin=key)
+        if clash:
+            flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
+            return redirect(url_for("organisms.configure_builtin", key=key))
         inventories.set_setting(session, f"db_label:{key}", label)
         session.commit()
     flash(f"Renamed to {label or inventories.BUILTIN_DATABASES[key][0]}.", "success")
@@ -411,6 +415,10 @@ def new_module():
             spec = _spec_from_form(request.form)
             if not spec["label"]:
                 flash("Give the database a name.", "error")
+                return redirect(url_for("organisms.new_module"))
+            clash = database_keys.name_clash(session, spec["label"])
+            if clash:
+                flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
                 return redirect(url_for("organisms.new_module"))
             spec["key"] = svc.unique_key(session, spec["label"])
             module = svc.create_module(session, spec, created_by=g.user.username)
@@ -2005,7 +2013,12 @@ def configure(key: str):
             return denied
         form = request.form
 
-        module.label = (form.get("label") or module.label).strip()
+        label = (form.get("label") or module.label).strip()
+        clash = database_keys.name_clash(session, label, "organisms", module)
+        if clash and label.casefold() != (module.label or "").casefold():
+            flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
+            return _redirect_back(module.key, "settings")
+        module.label = label
         module.label_plural = (form.get("label_plural") or module.label).strip()
         module.icon = (form.get("icon") or module.icon).strip()
         if "blurb" in form:

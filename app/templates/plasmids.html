@@ -86,8 +86,8 @@
             <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
               <input type="checkbox" data-select-all aria-label="Select all visible plasmids">
             </th>
-            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="pid" style="width: 72px; min-width: 72px;"
-                title="Plasmid number. The dot is green while the plasmid has a place in a box.">
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="pid" style="width: 172px; min-width: 172px;"
+                title="Plasmid number. The dot is green while the plasmid has a place in a box; Sequence opens its sequence and map.">
               <span class="dt-col-head">{{ icon('plasmid', 'dt-col-icon') }}Plasmid<span class="dt-sort-indicator"></span></span>
             </th>
             <th class="dt-sortable" data-sort-key="name" style="width: 204px;">
@@ -146,10 +146,17 @@
                 <input type="checkbox" data-select-row value="{{ p.id }}" aria-label="Select plasmid {{ p.plasmid_id }}">
               </td>
               <td class="sheet-pin sheet-pin-1">
-                <a href="{{ url_for('plasmid_page', number=p.plasmid_id) }}" class="sheet-link" title="Open the page of plasmid #{{ p.plasmid_id }} (sequence map)">
-                  {{ sheet_ui.id_cell('#' ~ p.plasmid_id, alive=r.stored, locked=locked, owner=p.owner, noun='plasmid',
-                                      alive_title='In a box', dead_title='Not stored') }}
-                </a>
+                <div class="plasmid-id-cell">
+                  <a href="{{ url_for('plasmid_page', number=p.plasmid_id) }}" class="sheet-link" title="Open the page of plasmid #{{ p.plasmid_id }} (sequence map)">
+                    {{ sheet_ui.id_cell('#' ~ p.plasmid_id, alive=r.stored, locked=locked, owner=p.owner, noun='plasmid',
+                                        alive_title='In a box', dead_title='Not stored') }}
+                  </a>
+                  {# Said in words: the number opens the sequence too, but nobody guesses that. #}
+                  <a href="{{ url_for('plasmid_page', number=p.plasmid_id) }}" class="plasmid-seq-btn{% if not r.length %} is-empty{% endif %}"
+                     title="{{ ('Open the sequence and map of #' ~ p.plasmid_id ~ ' (' ~ r.length ~ ' bp)') if r.length else ('#' ~ p.plasmid_id ~ ' has no sequence yet: add one on its page') }}">
+                    {{ icon('dna') }}{{ 'Sequence' if r.length else 'Add sequence' }}
+                  </a>
+                </div>
               </td>
               <td><input class="font-medium" form="{{ f }}" name="name" value="{{ p.name }}" title="{{ p.name }}" data-autosave="1" aria-label="Name" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="backbone" value="{{ p.backbone }}" data-autosave="1" aria-label="Backbone" {% if locked %}disabled{% endif %}></td>

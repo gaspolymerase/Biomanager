@@ -1196,12 +1196,19 @@ class ModuleLifecycleTests(InventoryCase):
         self.assertFlash(r, "Give the inventory a name.", "error")
         self.assertEqual(count("inventory_modules"), before)
 
-    def test_two_inventories_with_the_same_name_get_different_keys(self):
+    def test_two_inventories_whose_names_make_the_same_address_get_different_keys(self):
         label = uniq("Equipment ")
         k1 = self.new_module(self.a, "custom", label)
-        k2 = self.new_module(self.a, "custom", label)
+        k2 = self.new_module(self.a, "custom", label + "!")
         self.assertNotEqual(k1, k2)
-        self.assertEqual(count("inventory_modules", "label=?", label), 2)
+        self.assertTrue(k2.startswith(k1 + "_"), (k1, k2))
+
+    def test_a_second_inventory_may_not_have_the_same_name(self):
+        label = uniq("Equipment ")
+        self.new_module(self.a, "custom", label)
+        r = self.post(self.a, "/inventory/new", data={"preset": "custom", "label": label, "audience": "lab"})
+        self.assertFlash(r, f"already a database called {label}", "error")
+        self.assertEqual(count("inventory_modules", "label=?", label), 1)
 
     def test_the_new_module_and_configure_pages_render(self):
         self.assertIn("antibodies", self.get_ok(self.m, "/inventory/new?preset=antibodies"))

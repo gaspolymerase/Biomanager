@@ -140,8 +140,11 @@ sample's `organism:<key>` source). Notebook `@<key> n` text is never
 rewritten (signed pages can't change): `_mention_modules(with_old=True)`
 knows the old keys, the page's `#nb-mention-types` lists them (`old`), and
 backlinks search every key a database has had. New keys (`free_key`) avoid
-reserved words, live keys and old ones, across organisms and stocks (they
-share `/organisms/<key>`). Organism codes keep the first key's stem
+reserved words, the @-words `mouse`, `plasmid` and `order`, and live and old
+keys of every kind (inventories, stocks and organisms), so `@<key> n` means
+one database. Names are unique the same way: `database_keys.name_clash`
+(any case, built-in names included) is checked by each create and rename
+route and by Lab setup. Organism codes keep the first key's stem
 (`first_key`). Plasmids: the page is `/plasmid/<number>`; `/plasmids/<row
 id>` redirects there, and the writes stay under `/plasmids/<row id>/…`.
 

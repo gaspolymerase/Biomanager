@@ -1024,7 +1024,7 @@ def weaning_due(session, start: date, end: date) -> list[dict]:
 
 
 def weaning_title(item: dict) -> str:
-    """"Litter L-2601 · cage 12", or "Cage 12" before the pups are entered."""
+    """"Litter L-12 · cage 12", or "Cage 12" before the pups are entered."""
     parts = []
     if item["litter"] is not None:
         parts.append(f"Litter {item['litter'].litter_id}")
@@ -1234,20 +1234,16 @@ def breeder_mice(session, current_username: str | None, current_role: str | None
 
 
 def next_litter_id(session) -> str:
-    """The next litter ID in the lab's own pattern: after L-2620 comes
-    L-2621 (the prefix and zero padding of the newest litter whose ID ends
-    in a number), and plain 1, 2, 3 for a lab that has none yet."""
+    """The next litter ID: L-1, L-2, L-3… one past the highest L-number the
+    lab has (litters named another way, imported ones, don't count), and
+    never one that is taken."""
     session.flush()
-    rows = session.scalars(select(LitterRecord).order_by(LitterRecord.id.desc())).all()
-    numbered = [m for m in (re.fullmatch(r"(.*?)(\d+)", (r.litter_id or "").strip()) for r in rows) if m]
-    if not numbered:
-        return "1"
-    prefix, width = numbered[0].group(1), len(numbered[0].group(2))
-    taken = {(r.litter_id or "").strip() for r in rows}
-    n = max(int(m.group(2)) for m in numbered if m.group(1) == prefix) + 1
-    while f"{prefix}{n:0{width}d}" in taken:
+    codes = {(code or "").strip() for code in session.scalars(select(LitterRecord.litter_id))}
+    numbers = [int(m.group(1)) for m in (re.fullmatch(r"[Ll]-(\d+)", code) for code in codes) if m]
+    n = max(numbers, default=0) + 1
+    while f"L-{n}" in codes:
         n += 1
-    return f"{prefix}{n:0{width}d}"
+    return f"L-{n}"
 
 
 def generate_litter_id(session, cage: CageRecord | None) -> str:

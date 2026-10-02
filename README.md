@@ -98,7 +98,8 @@ The most complete module, built around how a mouse room actually works.
   (**Close all** folds them to one row each), or switch to **Cards**: a
   card per cage with its mice and its actions, as on a rack.
 - **Litters** — record a birth once, and the weaning date (P21) and
-  genotyping date (about P28) follow from it. **Wean** starts filled with
+  genotyping date (about P28) follow from it. New litters are numbered
+  L-1, L-2, L-3… **Wean** starts filled with
   the cage's pups, females and males apart; weaning before P18 asks first,
   and a weaned litter leaves every list. Birth dates in the future are
   refused.
@@ -241,6 +242,8 @@ Each tube keeps its miniprep's concentration (ng/µL) and 260/280, and a
 plasmid can be **Lab common**: anyone can edit it, while its owner still
 decides whose it is. A plasmid's page lists the notebook pages that
 `@plasmid` it, and its address is its number (plasmid #12 is `/plasmid/12`).
+In the sheet, **Sequence** beside a plasmid's number opens its sequence and
+map (**Add sequence** when it has none yet).
 
 <p align="center">
   <img src="docs/screenshots/plasmid-map.webp" alt="A plasmid map with features, restriction sites and the sequence view" width="100%">
@@ -265,7 +268,9 @@ change:
 Each inventory can keep **your own stock** apart from **lab common
 stock**, and statuses and categories can be renamed without losing items.
 Renaming a database moves it to its new name's address; the old one keeps
-working, so printed labels, bookmarks and `@mentions` still find it.
+working, so printed labels, bookmarks and `@mentions` still find it. Every
+database has a name of its own (one another database has is refused), so
+`@` and a name in a notebook page always means one database.
 
 - **Filter orders by status** — one tap shows only what is requested,
   ordered, received or cancelled.
