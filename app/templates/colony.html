@@ -496,8 +496,8 @@
               </div>
               <div class="dt-toolbar-spacer"></div>
               {{ sheet_ui.tools() }}
-              <button type="button" class="dt-toolbar-btn" data-cage-expand-all aria-pressed="false"
-                      title="Show the mice of every cage on this page">{{ icon('chevron-down') }} <span>Open all</span></button>
+              <button type="button" class="dt-toolbar-btn" data-cage-expand-all aria-pressed="true"
+                      title="Fold every cage to its row, or open them all again">{{ icon('chevron-down') }} <span>Close all</span></button>
               <a class="dt-toolbar-btn" href="{{ url_for('labels.cage_cards', scope=scope) }}"
                  title="Printable cards for the cages in this scope">{{ icon('qrcode') }} Cage cards</a>
               <button type="button" class="btn btn-primary" data-record-edit="cage-dialog"
@@ -566,12 +566,12 @@
                         data-wean_due="{{ cage.wean_due }}"
                         data-mouse-ids="{{ cage.mice|map(attribute='mouse_id')|join(' ') }}"
                         data-genotypes="{{ cage.genotype_auto }}"
-                        class="{% if not cage.active %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
+                        class="is-expanded{% if not cage.active %} is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
                       <td class="sheet-pin sheet-pin-0">
                         <input type="checkbox" data-select-row value="{{ cage.id }}" aria-label="Select cage {{ cage.cage_id }}">
                       </td>
                       <td class="sheet-pin sheet-pin-1 cage-id-cell">
-                        <button type="button" class="cage-expand" data-cage-expand="{{ cage.id }}" aria-expanded="false"
+                        <button type="button" class="cage-expand" data-cage-expand="{{ cage.id }}" aria-expanded="true"
                                 aria-controls="cage-detail-{{ cage.id }}" title="Show the mice in cage {{ cage.cage_id }}"
                                 aria-label="Show the mice in cage {{ cage.cage_id }}">{{ icon('chevron-right') }}</button>
                         {{ sheet_ui.id_cell(cage.cage_id, alive=cage.active, locked=locked, owner=cage.owner, noun='cage',
@@ -644,9 +644,10 @@
                         </div>
                       </td>
                     </tr>
-                    {# The cage's mice and its per-cage actions. It travels with
-                       its row when the sheet sorts or pages (data-detail-for). #}
-                    <tr class="cage-detail" id="cage-detail-{{ cage.id }}" data-detail-for="{{ cage.id }}" hidden>
+                    {# The cage's mice and its per-cage actions, open unless the
+                       person chose Close all. It travels with its row when the
+                       sheet sorts or pages (data-detail-for). #}
+                    <tr class="cage-detail" id="cage-detail-{{ cage.id }}" data-detail-for="{{ cage.id }}">
                       <td colspan="14">
                         <article class="cage-detail-body{% if locked %} is-locked{% endif %}" aria-label="Cage {{ cage.cage_id }}"
                                  data-cage-card="{{ cage.id }}" data-active="{{ 'true' if cage.active else 'false' }}"
@@ -2102,17 +2103,26 @@ function weanDue(born) {
     if (ident) toggle(ident.closest('tr').dataset.cageRowId);
   });
 
-  // Open all / Close all: every cage the sheet shows now (this page, this filter).
+  // Every cage shows open, with its mice, unless this person chose Close
+  // all (remembered on this computer). Open all / Close all sets every cage
+  // at once; the arrow, number or count still opens or closes one.
+  const OPEN_KEY = 'cages:open';
   const all = sheet.querySelector('[data-cage-expand-all]');
+  const setAll = (open) => {
+    sheet.querySelectorAll('tbody tr[data-cage-row-id]').forEach((row) => setOpen(row.dataset.cageRowId, open));
+    if (all) {
+      all.setAttribute('aria-pressed', open ? 'true' : 'false');
+      all.querySelector('span').textContent = open ? 'Close all' : 'Open all';
+    }
+  };
+  let startOpen = true;
+  try { startOpen = localStorage.getItem(OPEN_KEY) !== 'closed'; } catch (_) {}
+  if (!startOpen) setAll(false);
   if (all) {
     all.addEventListener('click', () => {
       const open = all.getAttribute('aria-pressed') !== 'true';
-      sheet.querySelectorAll('tbody tr[data-cage-row-id]').forEach((row) => {
-        if (!row.hidden && row.offsetParent !== null) setOpen(row.dataset.cageRowId, open);
-        else if (!open) setOpen(row.dataset.cageRowId, false);
-      });
-      all.setAttribute('aria-pressed', open ? 'true' : 'false');
-      all.querySelector('span').textContent = open ? 'Close all' : 'Open all';
+      setAll(open);
+      try { localStorage.setItem(OPEN_KEY, open ? 'open' : 'closed'); } catch (_) {}
     });
   }
 

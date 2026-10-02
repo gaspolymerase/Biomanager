@@ -387,7 +387,10 @@ class CageSheetTests(Case):
         first_cells = between(tr, 'sheet-pin-1', "</td>")
         self.assertIn(f'data-cage-expand="{cid}"', first_cells)
         self.assertIn(f'data-cage-open="{cid}"', tr)
-        self.assertIn("data-cage-expand-all", self.html)                   # Open all
+        self.assertIn("data-cage-expand-all", self.html)                   # Close all / Open all
+        # Each cage shows open, its mice beneath it, until someone chooses Close all.
+        self.assertIn(f'<tr class="cage-detail" id="cage-detail-{cid}" data-detail-for="{cid}">', self.html)
+        self.assertIn(f'data-cage-expand="{cid}" aria-expanded="true"', tr)
         # Cards: a layout beside Table and Rack grid; each cage's panel is a
         # card with what it is and its own buttons, and filters of its own.
         self.assertIn('data-layout="cards"', self.html)
