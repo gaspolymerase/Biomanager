@@ -152,11 +152,11 @@ class SetupSurvey(LabSettingsCase):
     def test_unticking_an_inventory_hides_it_and_ticking_brings_it_back(self):
         self.survey(self.a, inventory__antibodies=False)
         self.assertEqual(one("select count(*) from inventory_modules where kind='antibodies' "
-                             "and private_to='' and enabled=true"), 0)
+                             "and private_to='' and share_group_id is null and enabled=true"), 0)
         self.assertNotIn("Antibodies", self.get_ok(self.m, "/home").split("home-dbs")[1].split("</section>")[0])
         self.survey(self.a)
         self.assertGreater(one("select count(*) from inventory_modules where kind='antibodies' "
-                               "and private_to='' and enabled=true"), 0)
+                               "and private_to='' and share_group_id is null and enabled=true"), 0)
 
     def test_a_database_switched_on_later_is_announced_to_the_lab(self):
         self.survey(self.a, stock__worm=False)
@@ -343,7 +343,8 @@ class Notifications(AppTestCase):
         self.assertIn(f"{self.other} took mouse", picked[0][0])
 
     def test_an_order_arriving_tells_whoever_placed_it(self):
-        orders = one("select key from inventory_modules where kind='orders' and private_to='' order by id")
+        orders = one("select key from inventory_modules where kind='orders' and private_to='' "
+                     "and share_group_id is null order by id")
         oid = self.make_item(self.m, orders, uniq("Taq"), status="requested")
         name = one("select name from inventory_items where id=?", oid)
         self.autosave(self.a, f"/inventory/{orders}/items/{oid}/update", {"status": "received"})

@@ -121,8 +121,11 @@ class PagesRender(AppTestCase):
         self.assertAllRender(self.a, urls + [f"/inventory/{k}/configure" for k in keys],
                              ok=lambda code: code == 200)
         # A member opens the lab's inventories and their own, not other
-        # people's personal ones (those are not found, by design).
-        mine = [k for (k,) in rows("select key from inventory_modules where private_to in ('', ?)", self.member)]
+        # people's personal ones or other project groups' (those are not
+        # found, by design).
+        mine = [k for (k,) in rows("select key from inventory_modules where private_to in ('', ?) and "
+                                   "(share_group_id is null or share_group_id in (select group_id_fk "
+                                   "from lab_group_members where username = ?))", self.member, self.member)]
         self.assertAllRender(self.m, [f"/inventory/{k}" for k in mine] + [f"/inventory/{k}?scope=mine" for k in mine],
                              ok=lambda code: code == 200)
 
