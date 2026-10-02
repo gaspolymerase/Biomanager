@@ -545,6 +545,14 @@ def inject_icon():
 
 
 @app.context_processor
+def inject_life_stage():
+    """`life_stage('mouse', days)` and `life_stage_title('mouse', stage)`:
+    the colour of an animal's dot and what it means (app/life_stage.py)."""
+    from . import life_stage
+    return {"life_stage": life_stage.stage, "life_stage_title": life_stage.describe}
+
+
+@app.context_processor
 def inject_user():
     user = g.get("user")
     unread = 0
@@ -1311,6 +1319,7 @@ def cage_sheet_values(cage) -> dict:
     refreshes each `<name>_was` copy."""
     wean, wean_state = cage_wean_due(cage)
     return {
+        "cage_id": cage.cage_id,
         "rack_id": cage.rack_id_fk or "",
         "position": cage_position_label(cage),
         "purpose": cage.purpose or "",
@@ -2775,11 +2784,13 @@ def create_mouse():
 @login_required
 @next_number_retried
 def create_blank_mouse():
+    """An empty mouse, the sheet's bottom New mouse button: back to the
+    sheet it came from (its scope kept), where it is the row to type in."""
     with SessionLocal() as db_session:
         mouse = MouseRecord(mouse_id=next_mouse_id(db_session), owner=g.user.username)
         db_session.add(mouse)
         db_session.commit()
-    return redirect(url_for("colony", view="mice"))
+    return autosave_response("mice")
 
 
 @app.route("/colony/mice/<int:mouse_row_id>/update", methods=["POST"])
@@ -3835,11 +3846,35 @@ def mouse_rack_payload(db_session, cages) -> dict:
 CAGE_TEXT_FIELDS = ("purpose", "notes", "card_id", "genotype_summary", "location_detail", "room")
 
 
+def renumber_cage(db_session, cage, raw) -> str | None:
+    """Give `cage` the number typed over it in the cage sheet. Its mice
+    follow (they point at the cage, not at its number); a number another
+    cage has, or none at all, is refused."""
+    code = (raw or "").strip()
+    if code == cage.cage_id:
+        return None
+    if not code:
+        return f"Cage {cage.cage_id} needs a number; it was left as it was."
+    if code.lower() == "new":
+        return "“new” takes the next free number for a new cage; type the number you want instead."
+    if len(code) > 80:
+        return "A cage number can be at most 80 characters."
+    taken = db_session.scalar(select(CageRecord.id).where(CageRecord.cage_id == code, CageRecord.id != cage.id))
+    if taken:
+        return f"There is already a cage {code}; cage {cage.cage_id} kept its number."
+    cage.cage_id = code
+    return None
+
+
 def apply_cage_form(db_session, cage, form) -> str | None:
     """Write a cage form onto `cage`; return an error message instead of
     saving something wrong. Rack, position and location note also change
     from the mouse sheet and the rack grid, so they are only written when
     they differ from the row's `_was` copy (app/formutil.py)."""
+    if "cage_id" in form and form_changed(form, "cage_id"):
+        refused = renumber_cage(db_session, cage, form.get("cage_id"))
+        if refused:
+            return refused
     for field in CAGE_TEXT_FIELDS:
         if field in form:
             setattr(cage, field, (form.get(field) or "").strip())

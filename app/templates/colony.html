@@ -152,51 +152,51 @@
                 <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
                   <input type="checkbox" data-select-all aria-label="Select all visible mice">
                 </th>
-                <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="mouse_id" style="width: 76px; min-width: 76px;"
-                    title="Mouse ID. The dot is green while the mouse is alive.">
+                <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="mouse_id" style="width: 64px; min-width: 64px;"
+                    title="Mouse ID. The dot is blue for a mouse under 8 weeks, green from 8 to 30 weeks, red past 30 weeks, and grey once it is not alive.">
                   <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mouse<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="gender" style="width: 64px;">
+                <th class="dt-sortable" data-sort-key="gender" style="width: 56px;">
                   <span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}Sex<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="age" style="width: 68px;" title="Age from the litter's date of birth">
+                <th class="dt-sortable" data-sort-key="age" style="width: 56px;" title="Age from the litter's date of birth">
                   <span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="status" style="width: 128px;" title="What the mouse is for: experiment, breeder, geno…">
+                <th class="dt-sortable" data-sort-key="status" style="width: 108px;" title="What the mouse is for: experiment, breeder, geno…">
                   <span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status<span class="dt-sort-indicator"></span></span>
                 </th>
                 {% for n in range(1, 5) %}
-                  <th class="dt-sortable" data-sort-key="transgene_{{ n }}" style="width: 136px;"
+                  <th class="dt-sortable" data-sort-key="transgene_{{ n }}" style="width: 116px;"
                       {% if n > 2 and not sheet.tg_used[n - 1] %}data-default-hidden="1"{% endif %}>
                     <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Transgene {{ n }}<span class="dt-sort-indicator"></span></span>
                   </th>
                 {% endfor %}
-                <th class="dt-sortable" data-sort-key="cage_id" style="width: 72px;" title="Type “new” to allocate the next cage">
+                <th class="dt-sortable" data-sort-key="cage_id" style="width: 60px;" title="Type “new” to allocate the next cage">
                   <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}Cage<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cage_rack" style="width: 104px;" title="The cage's rack">
+                <th class="dt-sortable" data-sort-key="cage_rack" style="width: 88px;" title="The cage's rack">
                   <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cage_position" style="width: 84px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
+                <th class="dt-sortable" data-sort-key="cage_position" style="width: 72px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
                   <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="owner" style="width: 76px;">
+                <th class="dt-sortable" data-sort-key="owner" style="width: 64px;">
                   <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="litter_id" style="width: 116px;">
+                <th class="dt-sortable" data-sort-key="litter_id" style="width: 100px;">
                   <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}Litter<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 132px;">
+                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 112px;">
                   <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="date_of_death" style="width: 132px;">
+                <th class="dt-sortable" data-sort-key="date_of_death" style="width: 112px;">
                   <span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Died<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cage_location" style="width: 128px;" title="Free-text location note for the cage (room, shelf…)"
+                <th class="dt-sortable" data-sort-key="cage_location" style="width: 108px;" title="Free-text location note for the cage (room, shelf…)"
                     {% if not sheet.location_notes_used %}data-default-hidden="1"{% endif %}>
                   <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location note<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="note" style="min-width: 220px;">
+                <th class="dt-sortable" data-sort-key="note" style="min-width: 188px;">
                   <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Note<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
@@ -215,9 +215,11 @@
                     <input type="checkbox" class="mouse-select" value="{{ row.id }}" aria-label="Select mouse {{ row.mouse_id }}">
                   </td>
                   <td class="sheet-pin sheet-pin-1">
+                    {% set st = life_stage('mouse', row.age_days) %}
                     <span class="sheet-id">
-                      <span class="life-dot{% if row.active %} is-alive{% endif %}"
-                            title="{{ 'Alive' if row.active else 'Not alive' }}"></span>
+                      <span class="life-dot{% if row.active %} is-alive{% endif %}"{% if st %} data-stage="{{ st }}"{% endif %}
+                            data-alive-title="Alive{% if st %} · {{ life_stage_title('mouse', st) }}{% endif %}"
+                            title="{{ ('Alive' ~ (' · ' ~ life_stage_title('mouse', st) if st else '')) if row.active else 'Not alive' }}"></span>
                       <span class="ident">{{ row.mouse_id }}</span>
                       {% if locked %}<span class="sheet-lock" title="{{ row.owner }}’s mouse: read only">{{ icon('lock') }}</span>{% endif %}
                     </span>
@@ -326,11 +328,8 @@
         {% endfor %}
 
         <div class="dt-bottom-bar">
+          {{ sheet_ui.quick_add(url_for('create_blank_mouse'), 'New mouse') }}
           <span class="dt-bottom-count dt-count">{{ mouse_rows|length }} {{ 'mouse' if mouse_rows|length == 1 else 'mice' }}</span>
-          <button type="button" class="dt-bottom-action"
-                  data-mouse-edit data-mouse-payload='{{ {"owner": current_user.username, "status": "experiment"} | tojson }}'>
-            {{ icon('plus') }} New mouse
-          </button>
           <div class="dt-bottom-spacer"></div>
           <div class="dt-pagination">
             <span class="dt-page-label">Page 1</span>
@@ -468,7 +467,7 @@
           {# The cage sheet: one row per cage, laid out like the mouse sheet.
              Cells save as you type (static/sheet.js); the chevron opens a
              sub-row with the cage's mice and its breeding actions. #}
-          <section class="data-table-card sheet cage-sheet" data-table-id="cages-v1"
+          <section class="data-table-card sheet cage-sheet" data-table-id="cages-v2"
                    data-noun="cage" data-noun-plural="cages" data-export-name="cages"
                    data-autosave-sheet data-selection-scope="cages"
                    data-selection-noun="cage" data-selection-noun-plural="cages">
@@ -513,46 +512,46 @@
                     <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
                       <input type="checkbox" data-select-all aria-label="Select all visible cages">
                     </th>
-                    <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="cage_id" style="width: 84px; min-width: 84px;"
+                    <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="cage_id" style="width: 96px; min-width: 96px;"
                         title="Cage ID. The dot is green while the cage holds living mice.">
                       <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}Cage<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="rack_name" style="width: 104px;">
+                    <th class="dt-sortable" data-sort-key="rack_name" style="width: 80px;">
                       <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="position" style="width: 84px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
+                    <th class="dt-sortable" data-sort-key="position" style="width: 60px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
                       <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="purpose" style="width: 128px;" title="Breeder and breeding cages are shared: anyone in the lab can edit them">
+                    <th class="dt-sortable" data-sort-key="purpose" style="width: 96px;" title="What the cage is for. A Breeder cage is shared with the lab unless its owner makes it personal">
                       <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="owner" style="width: 76px;">
-                      <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
-                    </th>
-                    <th class="dt-sortable" data-sort-key="is_shared" style="width: 104px;" title="A shared cage is editable by the whole lab">
-                      <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Shared<span class="dt-sort-indicator"></span></span>
-                    </th>
-                    <th class="dt-sortable" data-sort-key="mice" style="width: 104px;" title="Living mice, by sex">
+                    <th class="dt-sortable" data-sort-key="mice" style="width: 80px;" title="Living mice, by sex">
                       <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mice<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="genotype_summary" style="width: 180px;"
+                    <th class="dt-sortable" data-sort-key="date_give_birth" style="width: 132px;" title="When the cage's litter was born; its pups' litter, if any">
+                      <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Litter born<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="wean_due" style="width: 84px;" title="Litter born + {{ wean_offset_days }} days (P{{ wean_offset_days }})">
+                      <span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Wean due<span class="dt-sort-indicator"></span></span>
+                    </th>
+                    <th class="dt-sortable" data-sort-key="genotype_summary" style="width: 136px;"
                         title="The cage's genotype summary; when empty, what its living mice carry is shown in grey">
                       <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Strain / genotype<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="date_give_birth" style="width: 150px;" title="When the cage's litter was born; its pups' litter, if any">
-                      <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Litter born<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="owner" style="width: 56px;">
+                      <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="wean_due" style="width: 104px;" title="Litter born + {{ wean_offset_days }} days (P{{ wean_offset_days }})">
-                      <span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Wean due<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="is_shared" style="width: 80px;" title="A shared cage is editable by the whole lab">
+                      <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Shared<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="cage_location" style="width: 128px;" title="Free-text location note (room, shelf…)"
+                    <th class="dt-sortable" data-sort-key="cage_location" style="width: 112px;" title="Free-text location note (room, shelf…)"
                         {% if not cs.location_notes_used %}data-default-hidden="1"{% endif %}>
                       <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location note<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="notes" style="min-width: 200px;">
+                    <th class="dt-sortable" data-sort-key="notes" style="min-width: 140px;">
                       <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Note<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="sheet-pin sheet-pin-end" style="width: 104px; min-width: 104px;"><span class="sr-only">Actions</span></th>
+                    <th class="sheet-pin sheet-pin-end" style="width: 64px; min-width: 64px;"><span class="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -574,8 +573,16 @@
                         <button type="button" class="cage-expand" data-cage-expand="{{ cage.id }}" aria-expanded="true"
                                 aria-controls="cage-detail-{{ cage.id }}" title="Show the mice in cage {{ cage.cage_id }}"
                                 aria-label="Show the mice in cage {{ cage.cage_id }}">{{ icon('chevron-right') }}</button>
-                        {{ sheet_ui.id_cell(cage.cage_id, alive=cage.active, locked=locked, owner=cage.owner, noun='cage',
-                                            alive_title='Holds living mice', dead_title='No living mice') }}
+                        {# The cage's number: type over it to renumber the cage (its mice go with it). #}
+                        <span class="sheet-id">
+                          <span class="life-dot{% if cage.active %} is-alive{% endif %}"
+                                data-alive-title="Holds living mice" data-dead-title="No living mice"
+                                title="{{ 'Holds living mice' if cage.active else 'No living mice' }}"></span>
+                          <input class="ident cage-number" name="cage_id" form="{{ f }}" value="{{ cage.cage_id }}" required maxlength="80"
+                                 data-autosave="1" data-autosave-on="change" aria-label="Cage number" title="Cage number: type to change it"
+                                 {% if locked %}disabled{% endif %}>
+                          {% if locked %}<span class="sheet-lock" title="{{ cage.owner or 'Someone else' }}’s cage: read only">{{ icon('lock') }}</span>{% endif %}
+                        </span>
                         {# What decides the dot until the server answers (static/sheet.js). #}
                         <input type="hidden" data-alive-values="1" value="{{ '1' if cage.active else '0' }}" data-cage-alive>
                       </td>
@@ -598,27 +605,12 @@
                           {% endfor %}
                         </select>
                       </td>
-                      <td>{{ sheet_ui.owner_cell(cage.owner, f, locked or not cage.can_reassign) }}</td>
-                      <td>
-                        {# Only a breeder cage can be shared, by its owner or an admin. #}
-                        <select class="scope-pill" name="is_shared" form="{{ f }}" data-autosave="1" aria-label="Shared"
-                                data-scope="{{ 'lab' if cage.shared else 'mine' }}" data-share-lock="{{ cage.share_lock }}"
-                                {% if cage.share_lock %}title="{{ cage.share_lock }}"{% endif %}
-                                {% if locked or cage.share_lock %}disabled{% endif %}>
-                          <option value="0" {% if not cage.shared %}selected{% endif %}>Personal</option>
-                          <option value="1" {% if cage.shared %}selected{% endif %}>Shared</option>
-                        </select>
-                      </td>
                       <td class="sheet-num cage-mice-count" data-cage-open="{{ cage.id }}"
                           title="{{ cage.live_count }} living of {{ cage.total_count }}: click to show them">
                         {% if cage.live_count %}<strong>{{ cage.live_count }}</strong> <span class="cage-sexes">{{ cage.sex_label }}</span>
                         {% elif cage.total_count %}<span class="sheet-empty">0 of {{ cage.total_count }}</span>
                         {% else %}<span class="sheet-empty">empty</span>{% endif %}
                       </td>
-                      <td><input name="genotype_summary" form="{{ f }}" value="{{ cage.genotype_summary }}"
-                                 placeholder="{{ cage.genotype_auto or '–' }}" title="{{ cage.genotype_summary or cage.genotype_auto }}"
-                                 list="strain-name-options" data-autosave="1" aria-label="Strain or genotype"
-                                 {% if locked %}disabled{% endif %}></td>
                       <td>
                         <div class="cage-born-cell">
                           <input type="date" name="date_give_birth" form="{{ f }}" value="{{ cage.date_give_birth }}"
@@ -631,6 +623,21 @@
                         </div>
                       </td>
                       <td class="tabular-nums"><span class="cage-wean" data-cage-wean data-state="{{ cage.wean_state }}">{{ cage.wean_due or '–' }}</span></td>
+                      <td><input name="genotype_summary" form="{{ f }}" value="{{ cage.genotype_summary }}"
+                                 placeholder="{{ cage.genotype_auto or '–' }}" title="{{ cage.genotype_summary or cage.genotype_auto }}"
+                                 list="strain-name-options" data-autosave="1" aria-label="Strain or genotype"
+                                 {% if locked %}disabled{% endif %}></td>
+                      <td>{{ sheet_ui.owner_cell(cage.owner, f, locked or not cage.can_reassign) }}</td>
+                      <td>
+                        {# Only a breeder cage can be shared, by its owner or an admin. #}
+                        <select class="scope-pill" name="is_shared" form="{{ f }}" data-autosave="1" aria-label="Shared"
+                                data-scope="{{ 'lab' if cage.shared else 'mine' }}" data-share-lock="{{ cage.share_lock }}"
+                                {% if cage.share_lock %}title="{{ cage.share_lock }}"{% endif %}
+                                {% if locked or cage.share_lock %}disabled{% endif %}>
+                          <option value="0" {% if not cage.shared %}selected{% endif %}>Personal</option>
+                          <option value="1" {% if cage.shared %}selected{% endif %}>Shared</option>
+                        </select>
+                      </td>
                       <td><input name="cage_location" form="{{ f }}" value="{{ cage.cage_location }}" title="{{ cage.cage_location }}"
                                  list="options-cage_location" data-autosave="1" aria-label="Location note" {% if locked %}disabled{% endif %}></td>
                       <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ cage.notes }}" title="{{ cage.notes }}" placeholder="Add a note"
@@ -724,8 +731,10 @@
                                   {% set mf = 'cage-mouse-update-' ~ mouse.id %}
                                   {% set mlocked = not mouse.editable %}
                                   <tr class="{% if not mouse.active %}is-inactive{% endif %}{% if mlocked %} is-locked{% endif %}">
+                                    {% set st = life_stage('mouse', mouse.age_days) %}
                                     <td>{{ sheet_ui.id_cell(mouse.mouse_id, alive=mouse.active, locked=mlocked, owner=mouse.owner, noun='mouse',
-                                                            alive_title='Alive', dead_title='Not alive') }}</td>
+                                                            alive_title='Alive', dead_title='Not alive',
+                                                            stage=st, stage_title=life_stage_title('mouse', st)) }}</td>
                                     <td>
                                       <select class="sex-pill" name="gender" form="{{ mf }}" data-sex="{{ mouse.gender }}" data-autosave="1"
                                               aria-label="Sex of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}>
@@ -790,6 +799,7 @@
             {% for cage in cage_rows %}
               <form id="cage-update-{{ cage.id }}" method="post" action="{{ url_for('update_cage', cage_row_id=cage.id) }}"
                     data-record-label="cage {{ cage.cage_id }}">
+                <input type="hidden" name="cage_id_was" value="{{ cage.cage_id }}">
                 <input type="hidden" name="rack_id_was" value="{{ cage.rack_id }}">
                 <input type="hidden" name="position_was" value="{{ cage.position }}">
                 <input type="hidden" name="cage_location_was" value="{{ cage.cage_location }}">
@@ -806,11 +816,8 @@
             {% endfor %}
 
             <div class="dt-bottom-bar">
+              {{ sheet_ui.quick_add(url_for('create_cage'), 'New cage', {'count': 1}) }}
               <span class="dt-bottom-count dt-count">{{ cage_rows|length }} {{ 'cage' if cage_rows|length == 1 else 'cages' }}</span>
-              <button type="button" class="dt-bottom-action" data-record-edit="cage-dialog"
-                      data-record-payload='{{ {"purpose": "Experiments", "count": 1} | tojson }}'>
-                {{ icon('plus') }} New cage
-              </button>
               <div class="dt-bottom-spacer"></div>
               <div class="dt-pagination">
                 <span class="dt-page-label">Page 1</span>
@@ -948,25 +955,25 @@
                 <th class="dt-sortable sheet-pin sheet-pin-0" data-sort-key="litter_id" style="width: 96px; min-width: 96px;">
                   <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}Litter<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 132px;" title="The date of birth of every mouse in the litter">
+                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 112px;" title="The date of birth of every mouse in the litter">
                   <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cohort_name" style="width: 150px;">
+                <th class="dt-sortable" data-sort-key="cohort_name" style="width: 128px;">
                   <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Cohort<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="father_info" style="width: 110px;">
+                <th class="dt-sortable" data-sort-key="father_info" style="width: 92px;">
                   <span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}Father<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="mother_info" style="width: 110px;">
+                <th class="dt-sortable" data-sort-key="mother_info" style="width: 92px;">
                   <span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}Mother<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="total_pups" style="width: 72px;">
+                <th class="dt-sortable" data-sort-key="total_pups" style="width: 60px;">
                   <span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Pups<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="mice" style="min-width: 180px;" title="Mice linked to the litter; the dot is green while alive">
+                <th class="dt-sortable" data-sort-key="mice" style="min-width: 152px;" title="Mice linked to the litter; the dot is blue under 8 weeks, green from 8 to 30 weeks, red past 30 weeks, grey once not alive">
                   <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mice<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="notes" style="min-width: 200px;">
+                <th class="dt-sortable" data-sort-key="notes" style="min-width: 168px;">
                   <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
@@ -993,7 +1000,8 @@
                   <td class="whitespace-normal" title="{{ alive }} of {{ litter.mice|length }} alive">
                     {% for mouse in litter.mice %}
                       <a class="litter-mouse" href="{{ url_for('colony', view='mice', scope='all', q=mouse.mouse_id) }}">
-                        <span class="life-dot{% if mouse.active %} is-alive{% endif %}"></span>{{ mouse.mouse_id }}{% if mouse.gender %} {{ mouse.gender }}{% endif %}</a>
+                        {%- set st = life_stage('mouse', mouse.age_days) %}
+                        <span class="life-dot{% if mouse.active %} is-alive{% endif %}"{% if st %} data-stage="{{ st }}"{% endif %}></span>{{ mouse.mouse_id }}{% if mouse.gender %} {{ mouse.gender }}{% endif %}</a>
                     {%- else %}<span class="sheet-empty">none yet</span>{% endfor %}
                   </td>
                   <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ litter.notes }}" title="{{ litter.notes }}" placeholder="Add a note"
@@ -1020,6 +1028,7 @@
                 data-record-label="litter {{ litter.litter_id }}"></form>
         {% endfor %}
         <div class="dt-bottom-bar">
+          {{ sheet_ui.quick_add(url_for('create_litter'), 'New litter', {'scope': scope}) }}
           <span class="dt-bottom-count dt-count">{{ litter_rows|length }} {{ 'litter' if litter_rows|length == 1 else 'litters' }}</span>
           <div class="dt-bottom-spacer"></div>
           <div class="dt-pagination">
@@ -1270,16 +1279,16 @@
                 <th class="dt-sortable sheet-pin sheet-pin-0" data-sort-key="strain_name" style="width: 190px; min-width: 190px;">
                   <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Strain<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="strain_number" style="width: 110px;" title="Stock number, e.g. JAX 007914">
+                <th class="dt-sortable" data-sort-key="strain_number" style="width: 92px;" title="Stock number, e.g. JAX 007914">
                   <span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Number<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="strain_background" style="width: 150px;">
+                <th class="dt-sortable" data-sort-key="strain_background" style="width: 128px;">
                   <span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Background<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="supplier" style="width: 130px;">
+                <th class="dt-sortable" data-sort-key="supplier" style="width: 112px;">
                   <span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Supplier<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="description" style="min-width: 260px;">
+                <th class="dt-sortable" data-sort-key="description" style="min-width: 220px;">
                   <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Description<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
@@ -1323,6 +1332,10 @@
                 data-record-label="strain {{ strain.strain_name }}"></form>
         {% endfor %}
         <div class="dt-bottom-bar">
+          {# A strain needs its name first, so this opens its form. #}
+          <button type="button" class="dt-bottom-action is-primary" data-record-edit="strain-dialog" data-record-payload="{}">
+            {{ icon('plus') }} New strain
+          </button>
           <span class="dt-bottom-count dt-count">{{ strain_rows|length }} {{ 'strain' if strain_rows|length == 1 else 'strains' }}</span>
           <div class="dt-bottom-spacer"></div>
           <div class="dt-pagination">
@@ -1558,7 +1571,7 @@
       <table class="dense-table fit-table" id="wean-rows-table">
         <thead>
           <tr>
-            <th style="min-width:160px">Mice (comma-separated)</th>
+            <th style="min-width:136px">Mice (comma-separated)</th>
             <th>Sex</th>
             <th>Card (new cage)</th>
             <th>Existing cage</th>
@@ -1745,7 +1758,7 @@ function refreshLife(formId, activeFromServer) {
   const dot = row.querySelector('.life-dot');
   if (dot) {
     dot.classList.toggle('is-alive', alive);
-    dot.title = alive ? 'Alive' : 'Not alive';
+    dot.title = alive ? (dot.dataset.aliveTitle || 'Alive') : 'Not alive';
   }
   row.dataset.active = alive ? 'true' : 'false';
   row.classList.toggle('is-inactive', !alive);
@@ -2081,7 +2094,7 @@ function weanDue(born) {
   };
 
   // Open a cage: its mice and per-cage actions in a sub-row. The arrow at
-  // the start of the row, the cage's number and its mice count all do it.
+  // the start of the row and its mice count both do it (the number is for typing).
   const setOpen = (id, open) => {
     const detail = document.getElementById(`cage-detail-${id}`);
     const row = document.getElementById(`cage-${id}`);
@@ -2098,14 +2111,12 @@ function weanDue(born) {
     const button = event.target.closest('[data-cage-expand]');
     if (button) { toggle(button.dataset.cageExpand); return; }
     const count = event.target.closest('[data-cage-open]');
-    if (count) { toggle(count.dataset.cageOpen); return; }
-    const ident = event.target.closest('.cage-id-cell .ident');
-    if (ident) toggle(ident.closest('tr').dataset.cageRowId);
+    if (count) toggle(count.dataset.cageOpen);
   });
 
   // Every cage shows open, with its mice, unless this person chose Close
   // all (remembered on this computer). Open all / Close all sets every cage
-  // at once; the arrow, number or count still opens or closes one.
+  // at once; the arrow or count still opens or closes one.
   const OPEN_KEY = 'cages:open';
   const all = sheet.querySelector('[data-cage-expand-all]');
   const setAll = (open) => {
@@ -2227,6 +2238,14 @@ function weanDue(born) {
     if (flag && typeof active === 'boolean') flag.value = active ? '1' : '0';
     showWean(row, values.wean_due, values.wean_state);
     row.dataset.breeding = values.breeding || '0';
+    // A renumbered cage: its panel and its card say the new number.
+    if (values.cage_id) {
+      row.dataset.cage_id = values.cage_id;
+      const card = document.querySelector(`[data-cage-card="${row.dataset.id}"]`);
+      const title = card && card.querySelector('.cage-detail-title .ident');
+      if (title) title.textContent = values.cage_id;
+      if (card) card.setAttribute('aria-label', `Cage ${values.cage_id}`);
+    }
     const rack = row.querySelector('select[name="rack_id"]');
     row.dataset.rack_name = rack && rack.value ? rack.selectedOptions[0].textContent.trim() : '';
     // Only a breeder cage can be shared, by its owner or an admin: the

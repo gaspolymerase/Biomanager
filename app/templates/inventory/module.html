@@ -167,18 +167,18 @@
               <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
                 <input type="checkbox" data-select-all aria-label="Select all visible {{ m.item_noun_plural }}">
               </th>
-              <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="number" style="width: 76px; min-width: 76px;"
-                  {% if m.statuses %}title="The dot is green while the {{ m.item_noun }} is {{ 'open' if m.kind == 'orders' else 'usable' }} ({{ m.available_statuses | join(', ') }})."{% endif %}>
+              <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="number" style="width: 64px; min-width: 64px;"
+                  {% if m.statuses %}title="The dot is green while the {{ m.item_noun }} is {{ 'open' if m.kind == 'orders' else 'usable' }} ({{ m.available_statuses | join(', ') }}){% if m.has('expiry') %}, red once it has expired{% endif %}."{% endif %}>
                 <span class="dt-col-head">{{ icon(m.icon, 'dt-col-icon') }}#<span class="dt-sort-indicator"></span></span>
               </th>
-              <th class="dt-sortable" data-sort-key="name" style="width: 210px;">
+              <th class="dt-sortable" data-sort-key="name" style="width: 180px;">
                 <span class="dt-col-head">{{ icon('type', 'dt-col-icon') }}{{ m.name_label }}<span class="dt-sort-indicator"></span></span>
               </th>
-              <th class="dt-sortable" data-sort-key="category" style="width: 128px;">
+              <th class="dt-sortable" data-sort-key="category" style="width: 108px;">
                 <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}{{ m.category_label }}<span class="dt-sort-indicator"></span></span>
               </th>
               {% if m.statuses %}
-                <th class="dt-sortable" data-sort-key="status" style="width: 128px;">
+                <th class="dt-sortable" data-sort-key="status" style="width: 108px;">
                   <span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status<span class="dt-sort-indicator"></span></span>
                 </th>
               {% endif %}
@@ -188,35 +188,35 @@
                 </th>
               {% endfor %}
               {% if m.has('sharing') %}
-                <th class="dt-sortable" data-sort-key="is_shared" style="width: 124px;" title="Your own stock, or the lab's common stock that anyone may use and edit">
+                <th class="dt-sortable" data-sort-key="is_shared" style="width: 104px;" title="Your own stock, or the lab's common stock that anyone may use and edit">
                   <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Belongs to<span class="dt-sort-indicator"></span></span>
                 </th>
               {% endif %}
-              <th class="dt-sortable" data-sort-key="owner" style="width: 110px;">
+              <th class="dt-sortable" data-sort-key="owner" style="width: 92px;">
                 <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}{{ 'Requested by' if m.kind == 'orders' else 'Owner' }}<span class="dt-sort-indicator"></span></span>
               </th>
               {% if m.has('supplier') %}
-                <th class="dt-sortable" data-sort-key="vendor" style="width: 132px;"><span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Vendor<span class="dt-sort-indicator"></span></span></th>
-                <th class="dt-sortable" data-sort-key="catalog_number" style="width: 116px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Catalog #<span class="dt-sort-indicator"></span></span></th>
-                <th class="dt-sortable" data-sort-key="lot" style="width: 96px;" data-default-hidden="1"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Lot<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="vendor" style="width: 112px;"><span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Vendor<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="catalog_number" style="width: 100px;"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Catalog #<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="lot" style="width: 80px;" data-default-hidden="1"><span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Lot<span class="dt-sort-indicator"></span></span></th>
               {% endif %}
               {% if m.has('quantity') %}
-                <th class="dt-sortable" data-sort-key="quantity" style="width: 72px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Qty<span class="dt-sort-indicator"></span></span></th>
-                <th style="width: 68px;"><span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}Unit</span></th>
+                <th class="dt-sortable" data-sort-key="quantity" style="width: 60px;"><span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Qty<span class="dt-sort-indicator"></span></span></th>
+                <th style="width: 56px;"><span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}Unit</span></th>
               {% endif %}
               {% if m.has('storage') %}
-                <th class="dt-sortable" data-sort-key="rack_id" style="width: 124px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Box<span class="dt-sort-indicator"></span></span></th>
-                <th class="dt-sortable" data-sort-key="position" style="width: 84px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="rack_id" style="width: 104px;"><span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Box<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="position" style="width: 72px;"><span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span></th>
               {% else %}
-                <th class="dt-sortable" data-sort-key="location_note" style="width: 132px;" {% if m.kind == 'orders' %}data-default-hidden="1"{% endif %}><span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="location_note" style="width: 112px;" {% if m.kind == 'orders' %}data-default-hidden="1"{% endif %}><span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span></th>
               {% endif %}
               {% if m.has('received') %}
-                <th class="dt-sortable" data-sort-key="received_on" style="width: 136px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Received<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="received_on" style="width: 116px;"><span class="dt-col-head">{{ icon('calendar', 'dt-col-icon') }}Received<span class="dt-sort-indicator"></span></span></th>
               {% endif %}
               {% if m.has('expiry') %}
-                <th class="dt-sortable" data-sort-key="expires_on" style="width: 136px;"><span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Expires<span class="dt-sort-indicator"></span></span></th>
+                <th class="dt-sortable" data-sort-key="expires_on" style="width: 116px;"><span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Expires<span class="dt-sort-indicator"></span></span></th>
               {% endif %}
-              <th style="min-width: 200px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
+              <th style="min-width: 168px;"><span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes</span></th>
               {% set actions_width = 170 if m.kind == 'orders' and stock_targets else (120 if order_module or m.kind == 'orders' else 96) %}
               <th class="sheet-pin sheet-pin-end" style="width: {{ actions_width }}px; min-width: {{ actions_width }}px;"><span class="sr-only">Actions</span></th>
             </tr>
@@ -233,14 +233,19 @@
                   data-active="{{ 'false' if r.available == false else 'true' }}"
                   data-expired="{{ 'true' if r.expiry == 'expired' else 'false' }}"
                   data-expiring="{{ 'true' if r.expiry == 'soon' else 'false' }}"
-                  class="{% if locked %}is-locked{% endif %}{% if r.available == false %} is-inactive{% endif %}">
+                  class="{% if locked %}is-locked{% endif %}{% if r.available == false %} is-inactive{% endif %}{% if r.expiry == 'expired' %} is-expired{% endif %}">
                 <td class="sheet-pin sheet-pin-0">
                   <input type="checkbox" data-select-row value="{{ i.id }}" aria-label="Select {{ m.item_noun }} #{{ i.number }}">
                 </td>
                 <td class="sheet-pin sheet-pin-1">
-                  {{ sheet_ui.id_cell(i.number, alive=r.available, locked=locked, owner=i.owner, noun=m.item_noun,
-                                      alive_title=alive_title,
-                                      dead_title=((i.status|capitalize) ~ ' since ' ~ r.ended_on) if r.ended_on else dead_title) }}
+                  {# An expired one's dot is red (a database without statuses shows it then too). #}
+                  {% set expired = r.expiry == 'expired' %}
+                  {{ sheet_ui.id_cell(i.number, alive=(r.available if r.available is not none else (true if expired else none)),
+                                      locked=locked, owner=i.owner, noun=m.item_noun,
+                                      alive_title=alive_title if r.available is not none else '',
+                                      dead_title=((i.status|capitalize) ~ ' since ' ~ r.ended_on) if r.ended_on else dead_title,
+                                      stage='expired' if expired else '',
+                                      stage_title=('Expired ' ~ i.expires_on) if expired else '') }}
                 </td>
                 <td><input class="font-medium" name="name" form="{{ f }}" value="{{ i.name }}" title="{{ i.name }}"{{ rem('name') }} data-autosave="1" aria-label="{{ m.name_label }}" {% if m.kind == 'orders' %}required{% endif %} {% if locked %}disabled{% endif %}></td>
                 <td>
@@ -361,10 +366,16 @@
         </form>
       {% endfor %}
       <div class="dt-bottom-bar">
+        {# An empty row at once, unless a new one needs fields filled in first
+           (an order's name, vendor…): then its form. #}
+        {% if m.required %}
+          <button type="button" class="dt-bottom-action is-primary" data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
+            {{ icon('plus') }} New {{ m.item_noun }}
+          </button>
+        {% else %}
+          {{ sheet_ui.quick_add(url_for('inventory.save_item', key=key), 'New ' ~ m.item_noun, new_payload) }}
+        {% endif %}
         <span class="dt-bottom-count dt-count">{{ rows|length }} {{ m.item_noun if rows|length == 1 else m.item_noun_plural }}</span>
-        <button type="button" class="dt-bottom-action" data-record-edit="item-dialog" data-record-payload='{{ new_payload | tojson }}'>
-          {{ icon('plus') }} New {{ m.item_noun }}
-        </button>
         <div class="dt-bottom-spacer"></div>
         <div class="dt-pagination">
           <span class="dt-page-label">Page 1</span>

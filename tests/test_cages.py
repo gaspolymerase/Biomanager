@@ -390,7 +390,7 @@ class CageSheetTests(Case):
         self.html = self.get_ok(self.m, "/colony?view=cages&scope=all")
 
     def test_the_sheet_renders_as_an_autosaving_table(self):
-        self.assertIn('data-table-id="cages-v1"', self.html)
+        self.assertIn('data-table-id="cages-v2"', self.html)
         self.assertIn("data-autosave-sheet", self.html)
         self.assertIn('data-selection-scope="cages"', self.html)
         self.assertRegex(self.html, r'<label data-new-only>How many\s*<input type="number" name="count" min="1" max="20"')

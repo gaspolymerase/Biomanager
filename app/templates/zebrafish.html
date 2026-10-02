@@ -41,21 +41,28 @@
     {% endfor %}
   </nav>
   {% if active_view == "tanks" %}
-    <nav class="seg seg-sub mb-3" aria-label="Tank views">
-      <a class="seg-item {% if tanks_sub == 'table' %}is-active{% endif %}" href="{{ url_for('zebrafish', view='tanks', mode='table') }}">{{ icon('table') }}Table</a>
-      <a class="seg-item {% if tanks_sub == 'grid' %}is-active{% endif %}" href="{{ url_for('zebrafish', view='tanks', mode='grid') }}">{{ icon('grid') }}Rack grid</a>
-      <a class="seg-item {% if tanks_sub == 'geno' %}is-active{% endif %}" href="{{ url_for('zebrafish', view='tanks', mode='geno') }}">
-        {{ icon('microscope') }}Genotyping queue
-        {% if geno_queue %}<span class="seg-count">{{ geno_queue|length }}</span>{% endif %}
-      </a>
-    </nav>
+    {# Table, rack grid or genotyping queue: on its own line under the tabs,
+       where the mouse database has its layouts. #}
+    <div class="mb-3 flex flex-wrap items-center gap-2.5">
+      <nav class="dt-chips view-switch" aria-label="Tank views">
+        <a class="dt-chip" {% if tanks_sub == 'table' %}aria-current="page"{% endif %} href="{{ url_for('zebrafish', view='tanks', mode='table') }}">{{ icon('table') }}Table</a>
+        <a class="dt-chip" {% if tanks_sub == 'grid' %}aria-current="page"{% endif %} href="{{ url_for('zebrafish', view='tanks', mode='grid') }}">{{ icon('grid') }}Rack grid</a>
+        <a class="dt-chip" {% if tanks_sub == 'geno' %}aria-current="page"{% endif %} href="{{ url_for('zebrafish', view='tanks', mode='geno') }}">
+          {{ icon('microscope') }}Genotyping queue
+          {% if geno_queue %}<span class="dt-chip-count">{{ geno_queue|length }}</span>{% endif %}
+        </a>
+      </nav>
+    </div>
   {% endif %}
 {% endblock %}
 
 {# ---- Shared pieces ------------------------------------------------------ #}
 
-{% macro sheet_bottom(count, noun, noun_plural) %}
+{# add: the New button at its left (sheet_ui.quick_add, or new_bottom when
+   the record needs something first). #}
+{% macro sheet_bottom(count, noun, noun_plural, add='') %}
   <div class="dt-bottom-bar">
+    {{ add }}
     <span class="dt-bottom-count dt-count">{{ count }} {{ noun if count == 1 else noun_plural }}</span>
     <div class="dt-bottom-spacer"></div>
     <div class="dt-pagination">
@@ -68,6 +75,13 @@
       </select>
     </div>
   </div>
+{% endmacro %}
+
+{% macro new_bottom(label, dialog_id, payload) %}
+  <button type="button" class="dt-bottom-action is-primary"
+          data-record-edit="{{ dialog_id }}" data-record-payload="{{ payload | tojson | forceescape }}">
+    {{ icon('plus') }} {{ label }}
+  </button>
 {% endmacro %}
 
 {% macro new_button(label, dialog_id, payload) %}
@@ -202,20 +216,20 @@
         <thead>
           <tr>
             {{ select_all('tanks') }}
-            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="tank_id" style="width: 104px; min-width: 104px;"
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="tank_id" style="width: 88px; min-width: 88px;"
                 title="Tank ID. The dot is green while the tank is in use.">
               <span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank<span class="dt-sort-indicator"></span></span>
             </th>
-            {{ col('rack', 'grid', 'Rack', 130) }}
-            {{ col('position', 'position', 'Position', 84, "Position in the rack, named by the rack's scheme") }}
-            {{ col('purpose', 'tag', 'Purpose', 122, 'Breeding tanks are shared: anyone in the lab can edit them') }}
-            {{ col('line', 'sitemap', 'Line', 190) }}
-            {{ col('fish', 'fish', 'Fish', 64, 'Live fish in the tank') }}
-            {{ col('owner', 'user', 'Owner', 96) }}
-            {{ col('card_id', 'barcode', 'Card', 100) }}
-            {{ col('geno', 'microscope', 'Genotyping', 112, 'Flag the tank for genotyping') }}
-            {{ col('return', 'calendar-clock', 'Return by', 112, 'When a mating tank goes back', hidden=not any_mating) }}
-            {{ col(None, 'note', 'Notes', min=200) }}
+            {{ col('rack', 'grid', 'Rack', 112) }}
+            {{ col('position', 'position', 'Position', 72, "Position in the rack, named by the rack's scheme") }}
+            {{ col('purpose', 'tag', 'Purpose', 104, 'Breeding tanks are shared: anyone in the lab can edit them') }}
+            {{ col('line', 'sitemap', 'Line', 160) }}
+            {{ col('fish', 'fish', 'Fish', 56, 'Live fish in the tank') }}
+            {{ col('owner', 'user', 'Owner', 80) }}
+            {{ col('card_id', 'barcode', 'Card', 84) }}
+            {{ col('geno', 'microscope', 'Genotyping', 96, 'Flag the tank for genotyping') }}
+            {{ col('return', 'calendar-clock', 'Return by', 96, 'When a mating tank goes back', hidden=not any_mating) }}
+            {{ col(None, 'note', 'Notes', min=168) }}
             {% set actions_w = 152 if any_returnable else 124 %}
             <th class="sheet-pin sheet-pin-end" style="width: {{ actions_w }}px; min-width: {{ actions_w }}px;"><span class="sr-only">Actions</span></th>
           </tr>
@@ -306,7 +320,7 @@
         <input type="hidden" name="owner_was" value="{{ tr.row.owner }}">
       </form>
     {% endfor %}
-    {{ sheet_bottom(tank_rows|length, 'tank', 'tanks') }}
+    {{ sheet_bottom(tank_rows|length, 'tank', 'tanks', sheet_ui.quick_add(url_for('zebrafish_create_tank'), 'New tank')) }}
 
     <div class="selbar" data-selection-bar hidden>
       <span class="selbar-count" data-selection-count></span>
@@ -499,14 +513,14 @@
       <table class="dt sheet-table">
         <thead>
           <tr>
-            <th class="dt-sortable sheet-pin sheet-pin-start" data-sort-key="tank_id" style="width: 110px; min-width: 110px;">
+            <th class="dt-sortable sheet-pin sheet-pin-start" data-sort-key="tank_id" style="width: 92px; min-width: 92px;">
               <span class="dt-col-head">{{ icon('tank', 'dt-col-icon') }}Tank<span class="dt-sort-indicator"></span></span>
             </th>
-            {{ col('line', 'sitemap', 'Line', 200) }}
-            {{ col('purpose', 'tag', 'Purpose', 130) }}
-            {{ col('fish', 'fish', 'Fish', 64) }}
-            {{ col('owner', 'user', 'Owner', 96) }}
-            {{ col(None, 'note', 'Notes', min=240) }}
+            {{ col('line', 'sitemap', 'Line', 168) }}
+            {{ col('purpose', 'tag', 'Purpose', 112) }}
+            {{ col('fish', 'fish', 'Fish', 56) }}
+            {{ col('owner', 'user', 'Owner', 80) }}
+            {{ col(None, 'note', 'Notes', min=204) }}
             <th class="sheet-pin sheet-pin-end" style="width: 132px; min-width: 132px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -564,22 +578,22 @@
         <thead>
           <tr>
             {{ select_all('fish rows') }}
-            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="rowid" style="width: 84px; min-width: 84px;"
-                title="Fish row. The dot is green while the fish are alive.">
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="rowid" style="width: 72px; min-width: 72px;"
+                title="Fish row. The dot is blue for fish under 3 months, green from 3 to 18 months, red past 18 months, and grey once they are sac’d.">
               <span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Row<span class="dt-sort-indicator"></span></span>
             </th>
-            {{ col('tank', 'tank', 'Tank', 104) }}
-            {{ col('line', 'sitemap', 'Line', 180) }}
-            {{ col('individual_id', 'tag', 'Individual', 112) }}
-            {{ col('count', 'count', 'Count', 72) }}
-            {{ col('sex', 'sex', 'Sex', 70) }}
-            {{ col('age', 'age', 'Age', 72, 'Age from the date of fertilisation') }}
-            {{ col('status', 'status', 'Status', 118, 'Setting sac stamps the sac date and logs the fish') }}
-            {{ col('date_of_fertilization', 'born', 'Fertilised', 136) }}
-            {{ col('sac_date', 'died', 'Sac’d', 136) }}
-            {{ col('genotype', 'dna', 'Genotype', 180) }}
-            {{ col('owner', 'user', 'Owner', 84, "The tank's owner") }}
-            {{ col(None, 'note', 'Notes', min=200) }}
+            {{ col('tank', 'tank', 'Tank', 88) }}
+            {{ col('line', 'sitemap', 'Line', 152) }}
+            {{ col('individual_id', 'tag', 'Individual', 96) }}
+            {{ col('count', 'count', 'Count', 60) }}
+            {{ col('sex', 'sex', 'Sex', 60) }}
+            {{ col('age', 'age', 'Age', 60, 'Age from the date of fertilisation') }}
+            {{ col('status', 'status', 'Status', 100, 'Setting sac stamps the sac date and logs the fish') }}
+            {{ col('date_of_fertilization', 'born', 'Fertilised', 116) }}
+            {{ col('sac_date', 'died', 'Sac’d', 116) }}
+            {{ col('genotype', 'dna', 'Genotype', 152) }}
+            {{ col('owner', 'user', 'Owner', 72, "The tank's owner") }}
+            {{ col(None, 'note', 'Notes', min=168) }}
             <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -594,8 +608,10 @@
                 class="{% if not fr.alive %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
               <td class="sheet-pin sheet-pin-0"><input type="checkbox" data-select-row value="{{ x.id }}" aria-label="Select fish row {{ x.id }}"></td>
               <td class="sheet-pin sheet-pin-1">
+                {% set st = life_stage('zebrafish', fr.age_days) %}
                 {{ sheet_ui.id_cell('#' ~ x.id, alive=fr.alive, locked=locked, owner=fr.owner, noun='fish',
-                                    alive_title='Alive', dead_title='Sac’d') }}
+                                    alive_title='Alive', dead_title='Sac’d',
+                                    stage=st, stage_title=life_stage_title('zebrafish', st)) }}
               </td>
               <td>
                 <select class="ident font-semibold" form="{{ f }}" name="tank_id_fk" data-autosave="1" aria-label="Tank" {% if locked %}disabled{% endif %}>
@@ -651,7 +667,8 @@
     {% for fr in fish_rows %}
       <form id="ufish-{{ fr.row.id }}" method="post" action="{{ url_for('zebrafish_update_fish', fish_row_id=fr.row.id) }}" data-record-label="fish row #{{ fr.row.id }}"></form>
     {% endfor %}
-    {{ sheet_bottom(fish_rows|length, 'row', 'rows') }}
+    {# Fish need their tank first, so this opens the form. #}
+    {{ sheet_bottom(fish_rows|length, 'row', 'rows', new_bottom('New fish', 'fish-dialog', {'count': 1, 'sex': 'mixed', 'status': 'alive'})) }}
 
     <div class="selbar" data-selection-bar hidden>
       <span class="selbar-count" data-selection-count></span>
@@ -742,22 +759,22 @@
         <thead>
           <tr>
             {{ select_all('clutches') }}
-            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="clutch_id" style="width: 136px; min-width: 136px;">
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="clutch_id" style="width: 116px; min-width: 116px;">
               <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}Clutch<span class="dt-sort-indicator"></span></span>
             </th>
-            {{ col('date_of_fertilization', 'born', 'Fertilised', 136) }}
-            {{ col('age', 'age', 'Age', 70) }}
-            {{ col('line', 'sitemap', 'Line', 180) }}
-            {{ col('father', 'male', 'Male', 90, 'Male parent tank') }}
-            {{ col('mother', 'female', 'Female', 90, 'Female parent tank') }}
-            {{ col('embryo_count', 'egg', 'Embryos', 86) }}
-            {{ col('larvae_count', 'seedling', 'Larvae', 80) }}
-            {{ col('adults_count', 'fish', 'Adults', 80) }}
-            {{ col('owner', 'user', 'Owner', 96) }}
-            {{ col('tank_up', 'tank', 'Tank-up', 112, '5 dpf') }}
-            {{ col('fin_clip', 'microscope', 'Fin clip', 112, '30 dpf') }}
-            {{ col('adult', 'calendar', 'Adult', 112, '90 dpf') }}
-            {{ col(None, 'note', 'Notes', min=200) }}
+            {{ col('date_of_fertilization', 'born', 'Fertilised', 116) }}
+            {{ col('age', 'age', 'Age', 60) }}
+            {{ col('line', 'sitemap', 'Line', 152) }}
+            {{ col('father', 'male', 'Male', 76, 'Male parent tank') }}
+            {{ col('mother', 'female', 'Female', 76, 'Female parent tank') }}
+            {{ col('embryo_count', 'egg', 'Embryos', 72) }}
+            {{ col('larvae_count', 'seedling', 'Larvae', 68) }}
+            {{ col('adults_count', 'fish', 'Adults', 68) }}
+            {{ col('owner', 'user', 'Owner', 80) }}
+            {{ col('tank_up', 'tank', 'Tank-up', 96, '5 dpf') }}
+            {{ col('fin_clip', 'microscope', 'Fin clip', 96, '30 dpf') }}
+            {{ col('adult', 'calendar', 'Adult', 96, '90 dpf') }}
+            {{ col(None, 'note', 'Notes', min=168) }}
             <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -808,7 +825,7 @@
     {% for cr in clutch_rows %}
       <form id="uclutch-{{ cr.row.id }}" method="post" action="{{ url_for('zebrafish_update_clutch', clutch_row_id=cr.row.id) }}" data-record-label="clutch {{ cr.row.clutch_id }}"></form>
     {% endfor %}
-    {{ sheet_bottom(clutch_rows|length, 'clutch', 'clutches') }}
+    {{ sheet_bottom(clutch_rows|length, 'clutch', 'clutches', sheet_ui.quick_add(url_for('zebrafish_create_clutch'), 'New clutch')) }}
 
     <div class="selbar" data-selection-bar hidden>
       <span class="selbar-count" data-selection-count></span>
@@ -878,20 +895,20 @@
         <thead>
           <tr>
             {{ select_all('lines') }}
-            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="name" style="width: 190px; min-width: 190px;"
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="name" style="width: 160px; min-width: 160px;"
                 title="Line name. The dot is green while live fish carry the line.">
               <span class="dt-col-head">{{ icon('fish', 'dt-col-icon') }}Line<span class="dt-sort-indicator"></span></span>
             </th>
-            {{ col('zfin_name', 'database', 'ZFIN name', 210) }}
-            {{ col('background', 'layers', 'Background', 120) }}
-            {{ col('transgene_summary', 'plasmid', 'Transgenes', 220) }}
-            {{ col('allele', 'dna', 'Allele', 150) }}
-            {{ col('iacuc_protocol', 'protocol', 'IACUC #', 110) }}
-            {{ col('parent', 'sitemap', 'Parent line', 180) }}
-            {{ col('owner', 'user', 'Owner', 96, 'The owner (or an admin) may edit or delete the line') }}
-            {{ col('tanks', 'tank', 'Tanks', 70) }}
-            {{ col('live', 'count', 'Live fish', 84) }}
-            {{ col(None, 'note', 'Notes', min=180, hidden=True) }}
+            {{ col('zfin_name', 'database', 'ZFIN name', 180) }}
+            {{ col('background', 'layers', 'Background', 104) }}
+            {{ col('transgene_summary', 'plasmid', 'Transgenes', 188) }}
+            {{ col('allele', 'dna', 'Allele', 128) }}
+            {{ col('iacuc_protocol', 'protocol', 'IACUC #', 92) }}
+            {{ col('parent', 'sitemap', 'Parent line', 152) }}
+            {{ col('owner', 'user', 'Owner', 80, 'The owner (or an admin) may edit or delete the line') }}
+            {{ col('tanks', 'tank', 'Tanks', 60) }}
+            {{ col('live', 'count', 'Live fish', 72) }}
+            {{ col(None, 'note', 'Notes', min=152, hidden=True) }}
             <th class="sheet-pin sheet-pin-end" style="width: 124px; min-width: 124px;"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -944,7 +961,7 @@
     {% for lr in line_rows %}
       <form id="uline-{{ lr.row.id }}" method="post" action="{{ url_for('zebrafish_update_line', line_id=lr.row.id) }}" data-record-label="line {{ lr.row.name }}"></form>
     {% endfor %}
-    {{ sheet_bottom(line_rows|length, 'line', 'lines') }}
+    {{ sheet_bottom(line_rows|length, 'line', 'lines', new_bottom('New line', 'line-dialog', {'owner': me})) }}
 
     <div class="selbar" data-selection-bar hidden>
       <span class="selbar-count" data-selection-count></span>

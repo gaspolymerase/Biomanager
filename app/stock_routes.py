@@ -280,6 +280,7 @@ def module(key: str):
                          "position": svc.position_label(u), "temp": svc.unit_temperature(mv, u),
                          "incubator": u.rack.incubator.name if u.rack and u.rack.incubator else "",
                          "next": nxt, "overdue": bool(nxt and nxt["on"] < today),
+                         "stage": svc.unit_stage(mv, u, today),
                          "payload": unit_payload(mv, u)})
         active_counts = {}
         for u in units:

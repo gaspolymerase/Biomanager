@@ -161,6 +161,33 @@ id>` redirects there, and the writes stay under `/plasmids/<row id>/…`.
 - `static/data-table.js` keeps a sheet's sort in `localStorage`
   (`dt:<id>:sort`, restored before the first render) and its chip in the
   address (`?chip=<spec>`; `?scope=mine` picks the chip reading *Mine*).
+- The page scrolls, not the sheet. `.data-table-card` is `overflow: clip`
+  (not a scroller), so its `.dt-toolbar` sticks to the top of
+  `.shell-scroll` and its `.dt-bottom-bar` to the bottom;
+  `_wireStickyParts` puts their heights on the card as `--dt-toolbar-h`
+  and `--dt-bottom-h` (the selection bar sits above the bottom bar). A
+  table no wider than its card gets `.dt-scroll.is-fit` (`overflow:
+  visible`), and its header row is CSS-sticky under the toolbar; a wider
+  one scrolls sideways in `.dt-scroll`, and its header cells are moved
+  down with `translateY` as the page scrolls.
+- The bottom bar's **New** (`_sheet.html` `quick_add`) is a plain form
+  POST to the database's create route with defaults; every one redirects
+  back to the sheet. On submit `data-table.js` notes the rows' ids in
+  `sessionStorage` (`dt:quick-add`); on the next load the row that wasn't
+  there is put last, its page shown and its first editable cell
+  focused. Records that need a name or a tank first (strains, fish, fish
+  lines, plasmids, inventories with required columns) open their dialog
+  instead.
+- The dot before an ID (`id_cell(..., stage=)`, `.life-dot[data-stage]`)
+  is blue/green/red for a living animal's age: `app/life_stage.py` has
+  the bands (mouse, zebrafish; organism databases from those presets go by
+  `preset_key`), `stock_service.unit_stage` the vial/plate rule (young
+  before `ready_on`, old past the rack's flip interval since set-up or the
+  rack's last flip). `stage="expired"` makes an expired inventory item's
+  dot red. `sheet.js` only toggles `is-alive`, so the stage stays put and
+  a dead animal's dot goes grey.
+- A cell with `data-autosave-on="change"` saves when left, not while
+  typed (the cage number); a refused value goes back to its `_was` copy.
 - Ctrl+K and the unified `@` search (`/notebook/search/all`) rank a query
   that is a record number (`_record_number`: digits, no leading zero) by
   number; anything else by a code equal to it (lot, catalogue number),
@@ -890,12 +917,14 @@ revision 0006); a swap on the rack grid moves the cages in steps.
 `_rack_grid.html` adds a Cards button; `rack-grid.js` shows one
 `data-layout-panel` and fires `layout:change` on the scope. Each cage's
 panel (`article[data-cage-card]` in its `tr.cage-detail`, drawn open; Close
-all is remembered as `cages:open` in `localStorage`, and the row's arrow,
-number or mice count opens or closes one) is also its card: while Cards is
+all is remembered as `cages:open` in `localStorage`, and the row's arrow
+or mice count opens or closes one) is also its card: while Cards is
 shown, `colony.html` moves the articles into `[data-cage-cards]` (marked
 `data-autosave-sheet`, so `sheet.js` saves their fields as before) and
 back into their rows for the table, so nothing is rendered twice. A
-panel's `.cage-card-head` shows only on a card.
+panel's `.cage-card-head` shows only on a card. The cage's number is a
+cell of its form (`cage_id`, with `cage_id_was`): `renumber_cage` refuses
+a blank, `new` or another cage's number; mice follow by `cage_id_fk`.
 
 > Previously this path was broken: `next_mouse_id()` was called per row, and
 > because the session runs with `autoflush=False` the `max()` query could not

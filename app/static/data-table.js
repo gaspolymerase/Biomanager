@@ -110,8 +110,10 @@
       this._applyHidden();
       this._applyResizedWidths();
       this._restoreSort();
+      this._wireQuickAdd();
       this.render();
-      this._revealHashTarget();
+      this._wireStickyParts();
+      if (!this._showFresh()) this._revealHashTarget();
       window.addEventListener('hashchange', () => this._revealHashTarget());
     }
 
@@ -158,6 +160,110 @@
       if (!row || !this.rows.includes(row) || !this.reveal(row)) return;
       requestAnimationFrame(() => row.scrollIntoView({ block: 'center' }));
       row.dispatchEvent(new CustomEvent('dt:revealed', { bubbles: true }));
+    }
+
+    /* The page scrolls, not the table: the toolbar and the bottom bar stick
+       to the window's edges (tailwind.css). Their heights go on the card as
+       --dt-toolbar-h and --dt-bottom-h, for the header row to sit under the
+       toolbar and the selection bar above the bottom bar. A table no wider
+       than its card scrolls with the page (.is-fit), which is what lets its
+       header row stay in view; a wider one scrolls sideways in its card. */
+    _wireStickyParts() {
+      const toolbar = this.card.querySelector(':scope > .dt-toolbar');
+      const bottom = this.card.querySelector(':scope > .dt-bottom-bar');
+      const scroller = this.table && this.table.closest('.dt-scroll');
+      const measure = () => {
+        if (toolbar) this.card.style.setProperty('--dt-toolbar-h', `${toolbar.offsetHeight}px`);
+        if (bottom) this.card.style.setProperty('--dt-bottom-h', `${bottom.offsetHeight}px`);
+        if (scroller) {
+          // Measured as a scroller, so the answer does not depend on itself.
+          scroller.classList.remove('is-fit');
+          scroller.classList.toggle('is-fit', this.table.offsetWidth <= scroller.clientWidth + 1);
+        }
+      };
+      // A table wider than its card scrolls sideways in it, so CSS cannot
+      // pin its header row to the window: the header is moved down instead,
+      // to sit under the toolbar while the rows go by.
+      const head = this.table && this.table.tHead;
+      const page = this.card.closest('.shell-scroll') || window;
+      let shift = 0;
+      const follow = () => {
+        if (!head || !scroller) return;
+        // The header row's own box: moving its cells does not move it.
+        const by = scroller.classList.contains('is-fit') ? 0 : Math.max(0, Math.min(
+          // Under the toolbar, or the top of the page where it doesn't stick (a phone).
+          Math.max(toolbar ? toolbar.getBoundingClientRect().bottom : 0, page === window ? 0 : page.getBoundingClientRect().top)
+            - head.getBoundingClientRect().top,
+          this.table.offsetHeight - head.offsetHeight));
+        if (by === shift) return;
+        shift = by;
+        head.querySelectorAll('th').forEach((th) => { th.style.transform = by ? `translateY(${by}px)` : ''; });
+      };
+      let ticking = false;
+      page.addEventListener('scroll', () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => { ticking = false; follow(); });
+      }, { passive: true });
+      this._measureSticky = () => { measure(); follow(); };
+      measure();
+      if (typeof ResizeObserver === 'function') {
+        let queued = false;
+        const observer = new ResizeObserver(() => {
+          if (queued) return;
+          queued = true;
+          requestAnimationFrame(() => { queued = false; this._measureSticky(); });
+        });
+        [toolbar, bottom, scroller, this.table].forEach((el) => el && observer.observe(el));
+      } else {
+        window.addEventListener('resize', this._measureSticky);
+      }
+    }
+
+    /* The bottom bar's New button (_sheet.html quick_add) makes an empty
+       record and the page reloads. The rows there were are noted first, so
+       the new one is known when the page comes back: it is shown last,
+       its page turned to, and its first cell is ready to type in. */
+    _wireQuickAdd() {
+      const key = 'dt:quick-add';
+      this.card.querySelectorAll('form[data-quick-add]').forEach((form) => {
+        form.addEventListener('submit', () => {
+          const ids = this.original.map((tr) => tr.dataset.id);
+          try { sessionStorage.setItem(key, JSON.stringify({ table: this.id, ids, at: Date.now() })); } catch (_) {}
+        });
+      });
+      let note = null;
+      try { note = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (_) {}
+      if (!note || note.table !== this.id) return;
+      try { sessionStorage.removeItem(key); } catch (_) {}
+      if (Date.now() - (note.at || 0) > 60000) return;
+      const before = new Set(note.ids || []);
+      const fresh = this.original.filter((tr) => !before.has(tr.dataset.id));
+      if (!fresh.length) return;
+      const last = (list) => list.filter((tr) => !fresh.includes(tr)).concat(fresh.filter((tr) => list.includes(tr)));
+      this.original = last(this.original);
+      this.filtered = last(this.filtered);
+      this.fresh = fresh;
+    }
+
+    _showFresh() {
+      const tr = this.fresh && this.fresh[this.fresh.length - 1];
+      if (!tr || !this.reveal(tr)) return false;
+      // The search, chips or a sort may have put it elsewhere: last again.
+      this.filtered = this.filtered.filter((r) => r !== tr).concat([tr]);
+      const size = this.pageSize ? parseInt(this.pageSize.value, 10) : 50;
+      this.page = Math.floor((this.filtered.length - 1) / size);
+      this.render();
+      tr.classList.add('is-fresh');
+      const first = Array.from(tr.querySelectorAll('td:not(.sheet-pin-0) :is(input, select, textarea)'))
+        .find((el) => el.type !== 'checkbox' && el.type !== 'hidden' && !el.disabled && !el.readOnly
+          && el.offsetParent !== null && !el.classList.contains('cage-number'));
+      requestAnimationFrame(() => {
+        tr.scrollIntoView({ block: 'center' });
+        if (first) first.focus({ preventScroll: true });
+      });
+      setTimeout(() => tr.classList.remove('is-fresh'), 2400);
+      return true;
     }
 
     _wireHeaderSort() {

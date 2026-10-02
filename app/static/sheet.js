@@ -108,6 +108,10 @@
     } catch (error) {
       cellsOf(form).forEach((el) => {
         if (el.dataset.dirty === '1' && el.closest('td')) el.closest('td').classList.add('has-error');
+        // A refused number goes back to the one it has, or every later save
+        // of the row would ask for it again.
+        const was = el.dataset.autosaveOn === 'change' && form.querySelector(`[name="${el.name}_was"]`);
+        if (was) el.value = was.value;
       });
       say(card, 'error', `Couldn’t save ${label}: ${error.message}`);
     }
@@ -127,7 +131,10 @@
       input.dataset.previous = input.value;
       input.addEventListener('input', () => {
         input.dataset.dirty = '1';
-        if (input.tagName !== 'SELECT' && input.type !== 'date') queue(input, 450);
+        // data-autosave-on="change": saved when you leave the cell or press
+        // Enter, not while typing (a cage's number: "1", "12" and "120" are
+        // all numbers other cages may have).
+        if (input.tagName !== 'SELECT' && input.type !== 'date' && input.dataset.autosaveOn !== 'change') queue(input, 450);
       });
       input.addEventListener('change', () => {
         input.dataset.dirty = '1';

@@ -42,15 +42,19 @@
   {% for location in boxes | map(attribute='location') | unique %}{% if location %}<option value="{{ location }}"></option>{% endif %}{% endfor %}
 </datalist>
 
+{# Table, boxes or list: above the sheet, where every database has it. #}
+<div class="mb-3 flex flex-wrap items-center gap-2.5">
+  <div class="dt-chips view-switch plasmid-view-switcher" role="group" aria-label="Layout">
+    <button type="button" class="dt-chip plasmid-view-btn is-active" data-view="table" aria-pressed="true">{{ icon('table') }}Table</button>
+    <button type="button" class="dt-chip plasmid-view-btn" data-view="cards" aria-pressed="false" title="Where each plasmid sits in its storage box">{{ icon('grid') }}Boxes</button>
+    <button type="button" class="dt-chip plasmid-view-btn" data-view="list" aria-pressed="false">{{ icon('list') }}List</button>
+  </div>
+</div>
+
 <section class="data-table-card sheet plasmid-sheet" data-table-id="plasmids-v5" data-noun="plasmid" id="plasmids-section"
          data-autosave-sheet data-export-name="plasmids"
          data-selection-scope data-selection-noun="plasmid" data-selection-noun-plural="plasmids">
   <div class="dt-toolbar">
-    <div class="dt-chips plasmid-view-switcher" role="tablist" aria-label="View">
-      <button type="button" class="dt-chip plasmid-view-btn is-active" data-view="table" title="Table" aria-label="Table view">{{ icon('table') }}</button>
-      <button type="button" class="dt-chip plasmid-view-btn" data-view="cards" title="Storage boxes" aria-label="Storage box view">{{ icon('grid') }}</button>
-      <button type="button" class="dt-chip plasmid-view-btn" data-view="list" title="List" aria-label="List view">{{ icon('list') }}</button>
-    </div>
     <div class="dt-toolbar-search">
       {{ icon('search', 'search-icon') }}
       <input type="text" class="dt-search" placeholder="Search name, backbone, insert, owner…" autocomplete="off" aria-label="Search plasmids">
@@ -82,47 +86,47 @@
             <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
               <input type="checkbox" data-select-all aria-label="Select all visible plasmids">
             </th>
-            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="pid" style="width: 84px; min-width: 84px;"
+            <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="pid" style="width: 72px; min-width: 72px;"
                 title="Plasmid number. The dot is green while the plasmid has a place in a box.">
               <span class="dt-col-head">{{ icon('plasmid', 'dt-col-icon') }}Plasmid<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="name" style="width: 240px;">
+            <th class="dt-sortable" data-sort-key="name" style="width: 204px;">
               <span class="dt-col-head">{{ icon('type', 'dt-col-icon') }}Name<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="backbone" style="width: 150px;" title="The vector the insert is cloned into">
+            <th class="dt-sortable" data-sort-key="backbone" style="width: 128px;" title="The vector the insert is cloned into">
               <span class="dt-col-head">{{ icon('layers', 'dt-col-icon') }}Backbone<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="insert_seq" style="width: 170px;">
+            <th class="dt-sortable" data-sort-key="insert_seq" style="width: 144px;">
               <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Insert<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="resistance" style="width: 112px;">
+            <th class="dt-sortable" data-sort-key="resistance" style="width: 96px;">
               <span class="dt-col-head">{{ icon('resistance', 'dt-col-icon') }}Resistance<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="shared" style="width: 112px;" title="Lab common: anyone in the lab can edit it">
+            <th class="dt-sortable" data-sort-key="shared" style="width: 96px;" title="Lab common: anyone in the lab can edit it">
               <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Belongs to<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="owner" style="width: 88px;">
+            <th class="dt-sortable" data-sort-key="owner" style="width: 76px;">
               <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="box" style="width: 150px;" title="The freezer box it is kept in. Add or change boxes in the box view.">
+            <th class="dt-sortable" data-sort-key="box" style="width: 128px;" title="The freezer box it is kept in. Add or change boxes in the box view.">
               <span class="dt-col-head">{{ icon('box', 'dt-col-icon') }}Box<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="position" style="width: 80px;" title="Cell in the box, named the way the box names them (e.g. D7)">
+            <th class="dt-sortable" data-sort-key="position" style="width: 68px;" title="Cell in the box, named the way the box names them (e.g. D7)">
               <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="location" style="width: 150px;" title="Where the tube is when it is not in a box: freezer, shelf…">
+            <th class="dt-sortable" data-sort-key="location" style="width: 128px;" title="Where the tube is when it is not in a box: freezer, shelf…">
               <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="concentration" style="width: 92px;" title="DNA concentration of the tube, ng/µL">
+            <th class="dt-sortable" data-sort-key="concentration" style="width: 80px;" title="DNA concentration of the tube, ng/µL">
               <span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}{{ 'ng/µL'|head }}<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="a260_280" style="width: 80px;" title="Purity: A260/A280 (about 1.8 for clean DNA)">
+            <th class="dt-sortable" data-sort-key="a260_280" style="width: 68px;" title="Purity: A260/A280 (about 1.8 for clean DNA)">
               <span class="dt-col-head">{{ icon('amount', 'dt-col-icon') }}260/280<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="length" style="width: 116px;" title="Sequence length and topology; edit it on the plasmid's page">
+            <th class="dt-sortable" data-sort-key="length" style="width: 100px;" title="Sequence length and topology; edit it on the plasmid's page">
               <span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Sequence<span class="dt-sort-indicator"></span></span>
             </th>
-            <th class="dt-sortable" data-sort-key="notes" style="min-width: 220px;">
+            <th class="dt-sortable" data-sort-key="notes" style="min-width: 188px;">
               <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes<span class="dt-sort-indicator"></span></span>
             </th>
             <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
@@ -252,10 +256,11 @@
   </div>
 
   <div class="dt-bottom-bar">
-    <span class="dt-bottom-count dt-count">{{ rows|length }} {{ 'plasmid' if rows|length == 1 else 'plasmids' }}</span>
-    <button type="button" class="dt-bottom-action" data-record-edit="plasmid-dialog" data-record-payload='{{ new_payload | tojson }}'>
+    {# A plasmid needs its name first, so this opens its form. #}
+    <button type="button" class="dt-bottom-action is-primary" data-record-edit="plasmid-dialog" data-record-payload='{{ new_payload | tojson }}'>
       {{ icon('plus') }} New plasmid
     </button>
+    <span class="dt-bottom-count dt-count">{{ rows|length }} {{ 'plasmid' if rows|length == 1 else 'plasmids' }}</span>
     <div class="dt-bottom-spacer"></div>
     <div class="dt-pagination">
       <span class="dt-page-label">Page 1</span>
@@ -543,12 +548,15 @@
     const VIEW_KEY = 'plasmids:view-mode';
     const section = document.getElementById('plasmids-section');
     if (!section) return;
-    const btns = section.querySelectorAll('.plasmid-view-btn');
+    const btns = document.querySelectorAll('.plasmid-view-btn');
     const panels = section.querySelectorAll('.plasmid-view');
     const searchInput = section.querySelector('.dt-search');
 
     function applyView(name) {
-      btns.forEach((b) => b.classList.toggle('is-active', b.dataset.view === name));
+      btns.forEach((b) => {
+        b.classList.toggle('is-active', b.dataset.view === name);
+        b.setAttribute('aria-pressed', b.dataset.view === name ? 'true' : 'false');
+      });
       panels.forEach((p) => p.classList.toggle('is-active', p.dataset.view === name));
       section.dataset.view = name;
       try { localStorage.setItem(VIEW_KEY, name); } catch (_) {}

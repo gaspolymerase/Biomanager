@@ -103,7 +103,7 @@
    the built-in columns: th.dt-sortable[data-sort-key="attr_<key>"]. #}
 {% macro table_headers(fields) %}
   {% for field in fields if field.show_in_table %}
-    <th class="dt-sortable" data-sort-key="attr_{{ field.key }}" data-sort-type="{{ {'number': 'number', 'date': 'date', 'checkbox': 'number'}.get(field.field_type, 'text') }}" style="width: 130px;">
+    <th class="dt-sortable" data-sort-key="attr_{{ field.key }}" data-sort-type="{{ {'number': 'number', 'date': 'date', 'checkbox': 'number'}.get(field.field_type, 'text') }}" style="width: 112px;">
       <span class="dt-col-head">{{ icon(field_icon(field), 'dt-col-icon') }}{{ field.label|head }}<span class="dt-sort-indicator"></span></span>
     </th>
   {% endfor %}

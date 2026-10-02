@@ -87,10 +87,13 @@ The most complete module, built around how a mouse room actually works.
 
 - **Mice** — a spreadsheet of every animal: ID, sex, age, status,
   transgenes, cage, rack, owner and notes. IDs are assigned in order and
-  never reused. A mouse is alive until it has a date of death, and the
-  green dot shows which is which.
-- **Cages** — every cage with its rack position, purpose, owner, the mice
-  inside (with the sex breakdown), litter born and the P21 weaning date.
+  never reused. A mouse is alive until it has a date of death. The dot
+  before its ID shows its age at a glance: blue under 8 weeks, green from
+  8 to 30 weeks, red past 30 weeks, and grey once it is not alive.
+- **Cages** — every cage with its rack position, purpose, the mice
+  inside (with the sex breakdown), litter born and the P21 weaning date
+  side by side, then its genotype and owner. Type over a cage's number to
+  renumber it; its mice go with it.
   Each cage shows its mice beneath it, to edit right there and wean
   (**Close all** folds them to one row each), or switch to **Cards**: a
   card per cage with its mice and its actions, as on a rack.
@@ -149,7 +152,8 @@ The most complete module, built around how a mouse room actually works.
 Lines, tanks, individual fish, clutches, matings (and returning the fish
 afterwards), water systems with water-quality logs, and a sac log. A tank
 can hold a group with a headcount, or resolve into named individuals.
-The **Experiments** tab, beside Tanks and Fish, works as the mouse
+A fish row's dot is blue under 3 months post fertilisation, green to 18
+months and red after. The **Experiments** tab, beside Tanks and Fish, works as the mouse
 colony's does, with fish in mind: start with a tank's fish rows, or a clutch's
 larvae, record drug in the water, microinjection, a heat shock or an
 injury, and follow survival (how many of those at the start are still
@@ -168,6 +172,9 @@ incubators.
   at 25 °C, every 28 at 18 °C — and they show up on Home when due.
 - **Each rack's grid says when it was last flipped** and when the next is
   due (red when overdue), with a **Flipped today** button beside Edit.
+- A vial's or plate's dot is blue while its progeny are still developing,
+  green once they are adults, and red once it is older than its rack's
+  flip or chunk interval.
 - Frozen-stock records for worms.
 - An **Experiments** tab for vials or plates (a rack's at once), with
   the manipulations flies and worms get: drug in the food or on the plate,
@@ -262,6 +269,9 @@ working, so printed labels, bookmarks and `@mentions` still find it.
 
 - **Filter orders by status** — one tap shows only what is requested,
   ordered, received or cancelled.
+- **Expired is red** — a reagent, antibody or virus past its expiry date
+  has a red dot, number, name and date; **Expired** and **Expiring soon**
+  show only those.
 - **Nothing half-filled** — an order can't be placed without its item,
   vendor, catalogue number and quantity. Configure chooses what any
   inventory requires.
@@ -444,7 +454,11 @@ working, so printed labels, bookmarks and `@mentions` still find it.
       <h4>📊 Spreadsheet-style editing</h4>
       Click a cell and type; it saves as you go. Every table sorts,
       filters, exports to CSV and prints, and keeps your sort and filter
-      (the filter also in its address, for a bookmark). Years of history stay quick:
+      (the filter also in its address, for a bookmark). The page scrolls,
+      not the table: its search and buttons stay at the top of the window
+      and its count at the bottom, with <b>New</b> at the bottom left, which
+      adds an empty row at the end to type in (a strain, fish, line, plasmid
+      or order, which need a name or a tank first, opens its form). Years of history stay quick:
       mice that died, cages emptied, tubes used up and vials discarded
       more than 90 days ago wait behind <b>Show them</b> at the top of
       the sheet, and are still found by search and in every export.
