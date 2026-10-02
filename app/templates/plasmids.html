@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_db_actions.html" import db_actions with context %}
 {% import "_sheet.html" as sheet_ui with context %}
+{% import "_sharing.html" as sharing with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 
 {% block page_actions %}{{ db_actions(url_for('organisms.configure_builtin', key='plasmids'), current_user.role == 'admin') }}{% endblock %}
@@ -163,10 +164,10 @@
               <td><input form="{{ f }}" name="insert_seq" value="{{ p.insert_seq }}" title="{{ p.insert_seq }}" data-autosave="1" aria-label="Insert" {% if locked %}disabled{% endif %}></td>
               <td><input form="{{ f }}" name="resistance" value="{{ p.resistance }}" list="plasmid-resistance" data-autosave="1" aria-label="Resistance" {% if locked %}disabled{% endif %}></td>
               <td>
-                <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ 'lab' if p.is_shared else 'mine' }}" data-autosave="1"
+                {% set share_value = groups_api.value(p) %}
+                <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ sharing.scope_of(share_value) }}" data-autosave="1"
                         aria-label="Belongs to" {% if not r.manageable %}disabled {% if not locked %}title="Only {{ p.owner or 'its owner' }} or an admin can change whose it is"{% endif %}{% endif %}>
-                  <option value="0" {% if not p.is_shared %}selected{% endif %}>Personal</option>
-                  <option value="1" {% if p.is_shared %}selected{% endif %}>Lab common</option>
+                  {{ sharing.sharing_options(share_value, p.share_group_id, lab="Lab common") }}
                 </select>
               </td>
               <td {% if not r.manageable and not locked %}title="Lab common: only {{ p.owner or 'its owner' }} or an admin can change whose it is"{% endif %}>{{ sheet_ui.owner_cell(p.owner, f, not r.manageable) }}</td>
@@ -291,7 +292,7 @@
     </form>
     <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
       <input type="hidden" name="action" value="shared">
-      <select name="value" aria-label="Belongs to"><option value="1">Lab common</option><option value="0">Personal</option></select>
+      <select name="value" aria-label="Belongs to"><option value="1">Lab common</option>{% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">Shared with {{ name }}</option>{% endfor %}<option value="0">Personal</option></select>
       <button type="submit" class="btn btn-sm">Set</button>
     </form>
     <form method="post" action="{{ url_for('bulk_plasmids') }}" class="selbar-group" data-selection-form>
@@ -353,7 +354,7 @@
         <label>Resistance <input name="resistance" list="plasmid-resistance"></label>
         <label>Owner <input name="owner" list="sheet-owners"></label>
         <label>Belongs to
-          <select name="is_shared"><option value="0">Personal: only the owner (and admins) can edit</option><option value="1">Lab common: anyone can edit</option></select>
+          <select name="is_shared"><option value="0">Personal: only the owner (and admins) can edit</option><option value="1">Lab common: anyone can edit</option>{% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">{{ name }}: its members can edit</option>{% endfor %}</select>
         </label>
       </fieldset>
       <fieldset class="record-group">

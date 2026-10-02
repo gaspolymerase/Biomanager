@@ -122,9 +122,11 @@ def get_module(session, key: str) -> InventoryModule | None:
 
 
 def first_of_kind(session, kind: str) -> InventoryModule | None:
-    """The lab's inventory of this kind (never someone's personal one)."""
+    """The lab's inventory of this kind (never someone's personal one, or a
+    project group's)."""
     return session.scalar(select(InventoryModule).where(InventoryModule.kind == kind,
-                                                        InventoryModule.private_to == "")
+                                                        InventoryModule.private_to == "",
+                                                        InventoryModule.share_group_id.is_(None))
                           .order_by(InventoryModule.position, InventoryModule.id))
 
 

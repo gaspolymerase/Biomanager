@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_sheet.html" as sheet_ui with context %}
+{% import "_sharing.html" as sharing with context %}
 
 {% set locked = plasmid.locked %}
 
@@ -111,8 +112,7 @@
       <label>Owner <input name="owner" value="{{ plasmid.owner }}" list="sheet-owners" {% if locked or not plasmid.can_manage %}disabled{% endif %}></label>
       <label>Belongs to
         <select name="is_shared" {% if locked or not plasmid.can_manage %}disabled{% endif %}>
-          <option value="0" {% if not plasmid.is_shared %}selected{% endif %}>Personal</option>
-          <option value="1" {% if plasmid.is_shared %}selected{% endif %}>Lab common: anyone can edit</option>
+          {{ sharing.sharing_options(plasmid.share_value, plasmid.share_group_id, lab="Lab common: anyone can edit") }}
         </select>
       </label>
       <label>Storage location <input name="location" value="{{ plasmid.location }}" placeholder="−80 freezer, shelf 2 (when not in a box)" {% if locked %}disabled{% endif %}></label>

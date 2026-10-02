@@ -31,7 +31,7 @@ from flask import (
 from sqlalchemy import func, select
 
 from .db import SessionLocal
-from . import lab, notify
+from . import lab
 from .lab import lab_audience
 from .formutil import form_changed
 from .models import (
@@ -422,13 +422,7 @@ def new_module():
                 return redirect(url_for("organisms.new_module"))
             spec["key"] = svc.unique_key(session, spec["label"])
             module = svc.create_module(session, spec, created_by=g.user.username)
-            module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
-            if module.private_to and request.form.get("audience") == "lab":
-                flash("It is yours for now: only lab admins add databases for everyone. "
-                      "Ask one to share it with the lab.", "info")
-            if not module.private_to:
-                notify.tell_lab(session, g.user.username,
-                                f"{g.user.display_name or g.user.username} added {module.label} for the lab")
+            lab.set_audience_for_new(session, module, request.form.get("audience", ""))
             svc.recompute_due(session, module)
             session.commit()
             flash(f"Created the {module.label} database.", "success")

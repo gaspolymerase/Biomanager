@@ -35,7 +35,7 @@ from flask import Blueprint, Response, abort, g, jsonify, redirect, request, url
 from sqlalchemy import delete, func, or_, select
 
 from .formutil import like_pattern
-from . import access, notebook_protocols, notify
+from . import access, groups, notebook_protocols, notify
 from .db import SessionLocal
 from .models import (CalendarEvent, NotebookComment, NotebookMeetingSeries, NotebookPage, NotebookPageInfo,
                      NotebookPresence, NotebookRecipe, NotebookShare, NotebookSyncUpdate, NotebookTab,
@@ -159,7 +159,7 @@ def role_for(session, page: NotebookPage, user=None) -> str | None:
         return None
     if owner_of(page) == me:
         return "owner"
-    names = [me] if _is_guest(user) else [me, EVERYONE]
+    names = ([me] if _is_guest(user) else [me, EVERYONE]) + groups.page_share_names(user)
     roles = set(session.scalars(select(NotebookShare.role).where(NotebookShare.page_id_fk == page.id,
                                                                  NotebookShare.username.in_(names))).all())
     if "edit" in roles:
@@ -175,7 +175,7 @@ def shared_page_ids(session, user=None):
     """A select of the ids of pages shared with this person (not their own)."""
     user = user or access.current_user()
     me = access.username(user)
-    names = [me] if _is_guest(user) else [me, EVERYONE]
+    names = ([me] if _is_guest(user) else [me, EVERYONE]) + groups.page_share_names(user)
     return select(NotebookShare.page_id_fk).where(NotebookShare.username.in_(names))
 
 
@@ -916,12 +916,21 @@ def shares_list(page_id: int):
                          .order_by(NotebookShare.created_at)).all()
         names = display_names(s, [r.username for r in rows])
         owner = owner_of(page)
+        def name_of(username):
+            if username == EVERYONE:
+                return "Everyone in the lab"
+            group_id = groups.page_share_group(username)
+            if group_id is not None:
+                return f"{groups.name_of(group_id) or 'A deleted group'} (project group)"
+            return names.get(username, username)
         return jsonify({"ok": True, "role": role, "owner": owner,
                         "owner_name": display_names(s, [owner]).get(owner, owner),
-                        "shares": [{"username": r.username, "role": r.role,
-                                    "name": "Everyone in the lab" if r.username == EVERYONE
-                                    else names.get(r.username, r.username)} for r in rows],
-                        "people": [p for p in people(s) if p["username"] != owner]})
+                        "shares": [{"username": r.username, "role": r.role, "name": name_of(r.username),
+                                    "group": groups.page_share_group(r.username) is not None} for r in rows],
+                        "people": [p for p in people(s) if p["username"] != owner],
+                        # The project groups the owner may share with (app/groups.py).
+                        "groups": [{"username": f"{groups.PAGE_SHARE_PREFIX}{gid}", "name": name}
+                                   for gid, name in groups.choices()]})
 
 
 @bp.post("/api/pages/<int:page_id>/shares")
@@ -932,7 +941,11 @@ def shares_set(page_id: int):
         return _fail("Role is view or edit.")
     with SessionLocal() as s:
         page, _role = load_page(s, page_id, need="owner")
-        if username != EVERYONE:
+        group_id = groups.page_share_group(username)
+        if group_id is not None:
+            if not groups.may_share_with(group_id):
+                return _fail(groups.refusal(group_id), 403)
+        elif username != EVERYONE:
             user = s.scalar(select(UserAccount).where(UserAccount.username == username))
             if user is None or user.disabled:
                 return _fail("No one in the lab by that name.", 404)
@@ -947,9 +960,13 @@ def shares_set(page_id: int):
         row.role = share_role
         if is_new and username != EVERYONE:
             verb = "edit" if share_role == "edit" else "read"
-            notify.send(s, username, f"{g.user.display_name or _me()} shared “{page.title}” with you",
-                        f"You can {verb} it in your notebook, under Shared with me.",
-                        category="notebook", link=page_url(page_id), actor=_me())
+            told = sorted(groups.members_of(group_id) - {_me(), owner_of(page)}) if group_id is not None \
+                else [username]
+            whom = f" ({groups.name_of(group_id)})" if group_id is not None else ""
+            for person in told:
+                notify.send(s, person, f"{g.user.display_name or _me()} shared “{page.title}” with you{whom}",
+                            f"You can {verb} it in your notebook, under Shared with me.",
+                            category="notebook", link=page_url(page_id), actor=_me())
         s.commit()
         return jsonify({"ok": True})
 

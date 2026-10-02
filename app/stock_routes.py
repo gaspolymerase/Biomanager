@@ -17,6 +17,7 @@ from flask import (
 from sqlalchemy import func, select
 
 from . import access, audit, database_keys, positions
+from . import groups as project_groups
 from . import stock_service as svc
 from . import stocks as presets
 from .db import SessionLocal
@@ -82,10 +83,14 @@ def _back(key: str, view: str = "units", message: str = "", error: str = ""):
     return redirect(url_for("stocks.module", key=key, view=view))
 
 
+LAB_PURPOSES = ("stock", "backup", "maintenance", "starved")
+
+
 def can_edit(unit: StockUnit) -> bool:
-    """Stocks, backups and maintenance plates are the lab's; crosses,
-    experiments and progeny belong to whoever set them up."""
-    shared = unit.purpose in ("stock", "backup", "maintenance", "starved")
+    """Stocks, backups and maintenance plates are the lab's (or, shared with
+    a project group, its members'); crosses, experiments and progeny belong
+    to whoever set them up."""
+    shared = unit.purpose in LAB_PURPOSES and project_groups.record_shared_with(unit, shared=True)
     return access.can_edit(unit, shared=shared)
 
 
@@ -148,13 +153,7 @@ def new_module():
                 flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
                 return redirect(url_for("stocks.new_module", kind=kind))
             module = svc.create_module(session, kind, label, created_by=g.user.username)
-            module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
-            if module.private_to and request.form.get("audience") == "lab":
-                flash("It is yours for now: only lab admins add databases for everyone. "
-                      "Ask one to share it with the lab.", "info")
-            if not module.private_to:
-                notify.tell_lab(session, g.user.username,
-                                f"{g.user.display_name or g.user.username} added {module.label} for the lab")
+            lab.set_audience_for_new(session, module, request.form.get("audience", ""))
             session.commit()
             flash(f"Created {module.label}. Add an incubator and a rack to start.", "success")
             return redirect(url_for("stocks.module", key=module.key, view="setup"))
@@ -198,6 +197,7 @@ def unit_values(unit: StockUnit) -> dict:
         "shift_on": iso(unit.shift_on), "shift_to": unit.shift_to or "", "score_on": iso(unit.score_on),
         "generation": unit.attrs_dict.get("generation", ""), "notes": unit.notes or "",
         "rack_id": unit.rack_id_fk or "", "position": svc.position_label(unit),
+        "share_group": project_groups.value_of(True, unit.share_group_id),
     }
 
 
@@ -345,6 +345,13 @@ def _unit_from_form(session, mv, unit: StockUnit, form, placing: bool = True, us
         if owner and owner not in (users if users is not None else _lab_users(session)):
             raise Invalid(f"“{owner}” is not a lab member.")
         unit.owner = owner
+    # Which project group a lab stock is for ("1": the lab's).
+    if "share_group" in form and project_groups.differs(unit, form.get("share_group"), shared=True):
+        if not access.can_manage(unit):
+            raise Invalid(f"Only {unit.owner or 'its owner'} or an admin can change whom it is shared with.")
+        refused = project_groups.apply(unit, form.get("share_group") or "1", set_shared=False)
+        if refused:
+            raise Invalid(refused)
     if changed("purpose"):
         purpose = (form.get("purpose") or "").strip()
         if purpose not in {p["key"] for p in mv.purposes} and purpose != unit.purpose:

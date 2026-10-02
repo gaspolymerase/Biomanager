@@ -2,6 +2,7 @@
 {% from "_db_actions.html" import db_actions with context %}
 {% from "_rack_grid.html" import rack_grid, rack_dialog with context %}
 {% import "_sheet.html" as sheet_ui with context %}
+{% import "_sharing.html" as sharing with context %}
 
 {% set m = module %}
 {% set key = m.key %}
@@ -273,10 +274,10 @@
                 {% endfor %}
                 {% if m.has('sharing') %}
                   <td>
-                    <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ 'lab' if i.is_shared else 'mine' }}" data-autosave="1" aria-label="Belongs to"
+                    {% set share_value = groups_api.value(i) %}
+                    <select class="scope-pill" name="is_shared" form="{{ f }}" data-scope="{{ sharing.scope_of(share_value) }}" data-autosave="1" aria-label="Belongs to"
                             {% if fixed %}disabled {% if not locked %}title="Only {{ i.owner or 'its owner' }} or an admin can make it personal"{% endif %}{% endif %}>
-                      <option value="0" {% if not i.is_shared %}selected{% endif %}>Personal</option>
-                      <option value="1" {% if i.is_shared %}selected{% endif %}>Lab common</option>
+                      {{ sharing.sharing_options(share_value, i.share_group_id, lab="Lab common") }}
                     </select>
                   </td>
                 {% endif %}
@@ -427,7 +428,7 @@
           <form method="post" action="{{ url_for('inventory.bulk', key=key) }}" class="selbar-group" data-selection-form
                 title="Only for {{ m.item_noun_plural }} you own (admins: any)">
             <input type="hidden" name="action" value="shared">
-            <select name="value" aria-label="Belongs to"><option value="1">Lab common</option><option value="0">Personal</option></select>
+            <select name="value" aria-label="Belongs to"><option value="1">Lab common</option>{% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">Shared with {{ name }}</option>{% endfor %}<option value="0">Personal</option></select>
             <button type="submit" class="btn btn-sm">Set</button>
           </form>
         {% endif %}
@@ -534,7 +535,7 @@
                {% if not is_admin %}title="Only an admin can add a {{ m.item_noun }} for someone else"{% endif %}></label>
         {% if m.has('sharing') %}
           <label>Belongs to
-            <select name="is_shared" data-dialog-shared><option value="0">Personal: only me (and admins) can edit</option><option value="1">Lab common: anyone can use and edit</option></select>
+            <select name="is_shared" data-dialog-shared><option value="0">Personal: only me (and admins) can edit</option><option value="1">Lab common: anyone can use and edit</option>{% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">{{ name }}: its members can use and edit</option>{% endfor %}</select>
           </label>
         {% endif %}
       </fieldset>
@@ -631,7 +632,7 @@
       {% if m.statuses %}<label>Status <select name="status">{% for st in m.statuses %}<option value="{{ st }}">{{ st|capitalize }}</option>{% endfor %}</select></label>{% endif %}
       {% if m.has('supplier') %}<label>Vendor <input name="vendor" autocomplete="off"></label>{% endif %}
       {% if m.has('sharing') %}
-        <label>Belongs to <select name="is_shared"><option value="0">Personal</option><option value="1">Lab common</option></select></label>
+        <label>Belongs to <select name="is_shared"><option value="0">Personal</option><option value="1">Lab common</option>{% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">{{ name }}</option>{% endfor %}</select></label>
       {% endif %}
       {% if m.has('storage') %}
         <label>Box <select name="rack_id"><option value="">Not in a box</option>{% for rack in racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select></label>
@@ -816,7 +817,7 @@
         if (toStock && answer.payload) {
           toStock.hidden = String(row.values.status || '').toLowerCase() !== 'received' || answer.payload._locked;
         }
-        if ('is_shared' in row.values) tr.dataset.shared = row.values.is_shared === '1' ? 'true' : 'false';
+        if ('is_shared' in row.values) tr.dataset.shared = row.values.is_shared && row.values.is_shared !== '0' ? 'true' : 'false';
         if ('owner' in row.values) tr.dataset.mine = row.values.owner === page.me ? 'true' : 'false';
         if ('status' in row.values) {
           const status = String(row.values.status || '').toLowerCase();

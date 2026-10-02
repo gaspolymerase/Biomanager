@@ -5,7 +5,8 @@ The lab model this encodes:
   * You manage your own colony. A record you own is yours to edit or delete.
   * Shared resources are everyone's. Breeder cages are the case that matters
     in practice — the whole lab picks mice out of them, so the whole lab has
-    to be able to edit them.
+    to be able to edit them. Shared with a project group (app/groups.py)
+    instead, they are its members' to edit.
   * Unowned records stay open. Records predating ownership have an empty
     owner, and locking the lab out of its own history helps nobody.
   * Admins can do anything, always.
@@ -86,8 +87,16 @@ def can_be_shared(cage) -> bool:
 
 
 def is_shared_cage(cage) -> bool:
-    """A breeder cage its owner hasn't made personal."""
+    """A breeder cage its owner hasn't made personal (shared with the lab or
+    with a project group)."""
     return can_be_shared(cage) and bool(getattr(cage, "is_shared", False))
+
+
+def cage_shared_with(cage, user=None) -> bool:
+    """A shared cage this person may work in: the lab's, or one of their
+    project groups'."""
+    from . import groups
+    return is_shared_cage(cage) and groups.record_shared_with(cage, user)
 
 
 def can_set_sharing(cage, user=None) -> bool:
@@ -108,7 +117,9 @@ def can_edit(record, user=None, shared: bool = False) -> bool:
     if type(record).__name__ in CARE_RECORDS and is_care(user):
         return True
     if type(record).__name__ in LAB_COMMON_RECORDS and getattr(record, "is_shared", False):
-        return True
+        from . import groups
+        if groups.record_shared_with(record, user):
+            return True
     return owns(record, user) or is_unowned(record)
 
 
@@ -120,15 +131,16 @@ def can_manage(record, user=None) -> bool:
 
 
 def can_edit_cage(cage, user=None) -> bool:
-    return can_edit(cage, user, shared=is_shared_cage(cage))
+    return can_edit(cage, user, shared=cage_shared_with(cage, user))
 
 
 def can_edit_mouse(mouse, user=None) -> bool:
     """A mouse is editable if it is yours, unowned, or sitting in a shared
-    breeder cage that the whole lab works out of."""
+    breeder cage that the whole lab (or the person's project group) works
+    out of."""
     if mouse is None:
         return False
-    return can_edit(mouse, user, shared=is_shared_cage(getattr(mouse, "cage", None)))
+    return can_edit(mouse, user, shared=cage_shared_with(getattr(mouse, "cage", None), user))
 
 
 def can_edit_experiment(experiment, user=None) -> bool:
@@ -217,16 +229,25 @@ def reason_denied(record, user=None, noun: str | None = None) -> str:
 
 SCOPES = (
     ("mine", "My colony"),
+    ("groups", "My groups"),
     ("shared", "Shared"),
     ("all", "Everyone"),
 )
 SCOPE_HINTS = {
-    "mine": "Your own mice, and the shared breeder cages",
-    "shared": "The breeder cages everyone works with",
+    "mine": "Your own mice, and the shared breeder cages you work in",
+    "groups": "The mice and cages of everyone in your project groups, and the cages shared with them",
+    "shared": "The shared breeder cages you work in: the lab's and your groups'",
     "all": "Every mouse in the lab (you still edit only your own)",
 }
 VALID_SCOPES = {key for key, _ in SCOPES}
 DEFAULT_SCOPE = "mine"
+
+
+def scopes_for(user=None):
+    """The scope switch: My groups only for someone in a group."""
+    from . import groups
+    has_groups = bool(groups.ids_of(user))
+    return tuple((key, label) for key, label in SCOPES if key != "groups" or has_groups)
 
 
 def resolve_scope(raw: str | None) -> str:
@@ -234,12 +255,22 @@ def resolve_scope(raw: str | None) -> str:
     return scope if scope in VALID_SCOPES else DEFAULT_SCOPE
 
 
-def in_scope(record, scope: str, shared: bool = False, user=None) -> bool:
+def cage_group(cage):
+    """The project group a shared cage is shared with, if any."""
+    return getattr(cage, "share_group_id", None) if is_shared_cage(cage) else None
+
+
+def in_scope(record, scope: str, shared: bool = False, user=None, group_id=None) -> bool:
     """Filter predicate for list views. Applied in Python rather than SQL
-    because 'shared' depends on the cage a mouse happens to sit in."""
+    because 'shared' depends on the cage a mouse happens to sit in.
+    `group_id` is the project group the record (or its cage) is shared with."""
     if scope == "all":
         return True
     if scope == "shared":
         return shared
+    if scope == "groups":
+        from . import groups
+        owner = (getattr(record, "owner", "") or "").strip()
+        return owner in groups.colleagues(user) or groups.in_group(group_id, user)
     # "mine" still shows shared resources — they are part of your working set.
     return owns(record, user) or shared or is_unowned(record)

@@ -128,6 +128,7 @@
           <a class="row-line" href="{{ url_for('calendar') }}">
             <span class="w-20 shrink-0 text-[12px] font-semibold {% if t.overdue %}text-danger-700{% else %}text-muted{% endif %}">{{ t.due | relative_day if t.due else 'no date' }}</span>
             <span class="min-w-0 flex-1 truncate text-ink-soft">{{ t.title }}</span>
+            {% if t.whose %}<span class="badge badge-quiet shrink-0" title="A shared to-do">{{ t.whose }}</span>{% endif %}
           </a>
         {% endfor %}
       </div>

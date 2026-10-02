@@ -257,7 +257,7 @@ PAGE_ROWS = ("notebook_comments", "notebook_page_info", "notebook_presence", "no
              "notebook_sync_updates", "notebook_versions", "record_signatures")
 PERSONAL_DATABASES = ("inventory_modules", "stock_modules", "organism_modules")
 ALIAS_KIND = {"inventory_modules": "inventory", "stock_modules": "stocks", "organism_modules": "organisms"}
-MEMBER_SEES_WHOLE = ("users", "experiments", "notebook_tabs", "notebook_pages")
+MEMBER_SEES_WHOLE = ("users", "experiments", "notebook_tabs", "notebook_pages", "lab_groups", "lab_group_members")
 
 
 def member_view(out, username: str) -> None:
@@ -273,16 +273,21 @@ def member_view(out, username: str) -> None:
     # (app/lab_notebook.accessible_filter), and the rows that hang off them.
     run("CREATE TEMP TABLE seen_pages AS SELECT p.id FROM notebook_pages p "
         "JOIN notebook_tabs t ON t.id = p.tab_id_fk WHERE t.owner_username = :me "
-        "OR p.id IN (SELECT page_id_fk FROM notebook_shares WHERE username IN (:me, :everyone))", everyone="*")
+        "OR p.id IN (SELECT page_id_fk FROM notebook_shares WHERE username IN (:me, :everyone) "
+        "OR username IN (SELECT 'group:' || group_id_fk FROM lab_group_members WHERE username = :me))",
+        everyone="*")
     for table in PAGE_ROWS:
         run(f"DELETE FROM {table} WHERE page_id_fk NOT IN (SELECT id FROM seen_pages)")
     run("DELETE FROM notebook_pages WHERE id NOT IN (SELECT id FROM seen_pages)")
     run("DELETE FROM notebook_tabs WHERE owner_username != :me "
         "AND id NOT IN (SELECT tab_id_fk FROM notebook_pages)")
     run("DROP TABLE seen_pages")
-    # Someone else's personal databases, and everything in them.
+    # Someone else's personal databases, and project groups' they are not
+    # in (app/groups.py), and everything in them.
     for modules in PERSONAL_DATABASES:
-        hidden = f"SELECT id FROM {modules} WHERE private_to != '' AND private_to != :me"
+        hidden = (f"SELECT id FROM {modules} WHERE (private_to != '' AND private_to != :me) "
+                  "OR (private_to = '' AND share_group_id IS NOT NULL AND share_group_id NOT IN "
+                  "(SELECT group_id_fk FROM lab_group_members WHERE username = :me))")
         for table in Base.metadata.sorted_tables:
             if any(fk.parent.name == "module_id_fk" and fk.column.table.name == modules for fk in table.foreign_keys):
                 run(f"DELETE FROM {table.name} WHERE module_id_fk IN ({hidden})")

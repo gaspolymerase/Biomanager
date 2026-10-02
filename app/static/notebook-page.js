@@ -172,7 +172,8 @@
       }
       list.innerHTML = d.templates.map(function (t) {
         var tags = (t.kind && t.kind !== 'note' ? '<span class="badge badge-quiet">' + esc(t.kind_label) + '</span>' : '') +
-          (t.lab ? '<span class="badge badge-brand" title="Everyone in the lab can use it">Lab' + (t.mine ? '' : ' · ' + esc(t.owner_name)) + '</span>' : '');
+          (t.lab ? '<span class="badge badge-brand" title="' + (t.group ? 'Everyone in ' + esc(t.group) + ' can use it' : 'Everyone in the lab can use it') + '">' +
+            (t.group ? esc(t.group) : 'Lab') + (t.mine ? '' : ' · ' + esc(t.owner_name)) + '</span>' : '');
         return '<div class="notebook-template-row"><button type="button" class="notebook-template-pick" data-template="' + t.id + '">' +
           '<span class="notebook-template-icon">' + (t.icon ? esc(t.icon) : icon('file')) + '</span>' +
           '<span class="notebook-template-meta"><span class="notebook-template-title">' + esc(t.title) + ' ' + tags + '</span>' +
@@ -278,16 +279,23 @@
         shared.forEach(function (s) { taken[s.username] = true; });
         var options = d.people.filter(function (p) { return !taken[p.username]; })
           .map(function (p) { return '<option value="' + esc(p.username) + '">' + esc(p.name) + (p.guest ? ' (guest)' : '') + '</option>'; }).join('');
+        // Project groups the page can be shared with, as one choice each.
+        var groupOptions = (d.groups || []).filter(function (grp) { return !taken[grp.username]; })
+          .map(function (grp) { return '<option value="' + esc(grp.username) + '">' + esc(grp.name) + '</option>'; }).join('');
+        if (groupOptions) options = (options ? '<optgroup label="People">' + options + '</optgroup>' : '') +
+          '<optgroup label="Project groups">' + groupOptions + '</optgroup>';
         box.innerHTML =
-          '<p class="nb-muted">People you share with see this page under <b>Shared with me</b>. Editors write in it with you, live.</p>' +
+          '<p class="nb-muted">People you share with see this page under <b>Shared with me</b>. Editors write in it with you, live. Share with a project group and everyone in it can.</p>' +
           '<div class="nb-field-row"><label>Everyone in the lab <select id="nb-share-lab">' +
           '<option value="">can’t see it</option><option value="view"' + (lab && lab.role === 'view' ? ' selected' : '') + '>can view</option>' +
           '<option value="edit"' + (lab && lab.role === 'edit' ? ' selected' : '') + '>can edit</option></select></label></div>' +
-          '<form class="nb-field-row" id="nb-share-add"><select id="nb-share-who" aria-label="Person">' + (options || '<option value="">Everyone already has access</option>') + '</select>' +
+          '<form class="nb-field-row" id="nb-share-add"><select id="nb-share-who" aria-label="Person or project group">' + (options || '<option value="">Everyone already has access</option>') + '</select>' +
           '<select id="nb-share-role" aria-label="Role"><option value="edit">can edit</option><option value="view">can view</option></select>' +
           '<button class="btn btn-primary" type="submit">Share</button></form>' +
           '<ul class="nb-list">' + (shared.length ? shared.map(function (s) {
-            return '<li class="nb-list-row"><span class="nb-avatar" style="background:' + colorFor(s.username) + '">' + esc(initials(s.name)) + '</span><span class="nb-grow">' + esc(s.name) + '</span>' +
+            var avatar = s.group ? '<span class="nb-avatar" style="background:#0d9488">' + icon('users') + '</span>'
+              : '<span class="nb-avatar" style="background:' + colorFor(s.username) + '">' + esc(initials(s.name)) + '</span>';
+            return '<li class="nb-list-row">' + avatar + '<span class="nb-grow">' + esc(s.name) + '</span>' +
               '<select data-share-role="' + esc(s.username) + '"><option value="edit"' + (s.role === 'edit' ? ' selected' : '') + '>can edit</option><option value="view"' + (s.role === 'view' ? ' selected' : '') + '>can view</option></select>' +
               '<button type="button" class="nb-icon-btn" data-share-remove="' + esc(s.username) + '" aria-label="Stop sharing">' + icon('close') + '</button></li>';
           }).join('') : '<li class="nb-muted">Not shared with anyone yet.</li>') + '</ul>';

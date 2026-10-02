@@ -1,0 +1,19 @@
+{# Who a record is shared with: personal, the lab, or one project group
+   (app/groups.py). Import "with context": groups_api comes from it.
+   value: "0" personal, "1" the lab, "g<id>" a group. #}
+{% macro sharing_options(value, group_id=None, lab="Shared", personal="Personal") -%}
+  <option value="0" {% if value == '0' %}selected{% endif %}>{{ personal }}</option>
+  <option value="1" {% if value == '1' %}selected{% endif %}>{{ lab }}</option>
+  {%- set choices = groups_api.choices(current=group_id) %}
+  {%- if choices %}
+  <optgroup label="Project group">
+    {%- for gid, name in choices %}
+    <option value="g{{ gid }}" {% if value == 'g' ~ gid %}selected{% endif %}>{{ name }}</option>
+    {%- endfor %}
+  </optgroup>
+  {%- endif %}
+{%- endmacro %}
+
+{% macro scope_of(value) -%}
+  {{ 'lab' if value == '1' else ('group' if (value or '').startswith('g') else 'mine') }}
+{%- endmacro %}

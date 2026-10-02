@@ -199,6 +199,11 @@ def is_personal(module) -> bool:
     return bool(getattr(module, "private_to", "") or "")
 
 
+def group_of(module):
+    """The project group a database is for (app/groups.py), or None."""
+    return None if is_personal(module) else getattr(module, "share_group_id", None)
+
+
 def can_see(module, user=None) -> bool:
     """May this person open the database at all?
 
@@ -208,6 +213,9 @@ def can_see(module, user=None) -> bool:
     user = user if user is not None else g.get("user")
     if user is not None and not getattr(module, "enabled", True) and user.role != "admin":
         return False
+    if group_of(module):
+        from . import groups
+        return user is not None and (user.role == "admin" or groups.in_group(module.share_group_id, user))
     if not is_personal(module):
         return True
     if user is None:
@@ -216,8 +224,12 @@ def can_see(module, user=None) -> bool:
 
 
 def in_sidebar(module, user=None) -> bool:
-    """Is it one of *their* databases: the lab's, or their own?"""
+    """Is it one of *their* databases: the lab's, their own, or one of their
+    project groups'?"""
     user = user if user is not None else g.get("user")
+    if group_of(module):
+        from . import groups
+        return user is not None and groups.in_group(module.share_group_id, user)
     if not is_personal(module):
         return True
     return user is not None and module.private_to == user.username
@@ -259,12 +271,37 @@ def audience_for_new(session, requested: str, user=None) -> str:
     return user.username
 
 
+def set_audience_for_new(session, module, requested: str, user=None) -> None:
+    """Who a new database is for: the person ("me"), the lab ("lab", when
+    they may) or one of their project groups ("group:<id>"); then tell those
+    it is for. A member who asked for the lab and may not gets their own."""
+    from flask import flash
+    from . import groups, notify
+    user = user if user is not None else g.get("user")
+    group_id = groups.page_share_group(requested or "")
+    who = getattr(user, "display_name", "") or user.username
+    if group_id is not None and groups.may_share_with(group_id, user):
+        module.private_to, module.share_group_id = "", group_id
+        notify.tell_group(session, group_id, user.username,
+                          f"{who} added {module.label} for {groups.name_of(group_id)}")
+        return
+    module.private_to = audience_for_new(session, requested, user)
+    module.share_group_id = None
+    if module.private_to and requested == "lab":
+        flash("It is yours for now: only lab admins add databases for everyone. "
+              "Ask one to share it with the lab.", "info")
+    if not module.private_to:
+        notify.tell_lab(session, user.username, f"{who} added {module.label} for the lab")
+
+
 def lab_audience(session, user=None) -> dict:
     """For a "new database" form: may this person choose the whole lab, and
     which choice starts selected."""
+    from . import groups
     user = user if user is not None else g.get("user")
     may_lab = may_create_lab_database(session, user)
-    return {"may_lab": may_lab, "default": "lab" if (user is not None and user.role == "admin") else "me"}
+    return {"may_lab": may_lab, "default": "lab" if (user is not None and user.role == "admin") else "me",
+            "groups": groups.choices(user)}
 
 
 def can_change_audience(session, module, user=None) -> bool:
@@ -273,8 +310,9 @@ def can_change_audience(session, module, user=None) -> bool:
         return False
     if user.role == "admin":
         return True
-    return is_personal(module) and module.private_to == user.username \
-        and permission(session, "members_share_databases")
+    mine = (is_personal(module) and module.private_to == user.username) \
+        or (bool(group_of(module)) and module.created_by == user.username)
+    return mine and permission(session, "members_share_databases")
 
 
 # ---------------------------------------------------------------- the survey
@@ -282,7 +320,8 @@ def can_change_audience(session, module, user=None) -> bool:
 def _stock_by_kind(session, kind):
     from .models import StockModule
     from sqlalchemy import select
-    return session.scalars(select(StockModule).where(StockModule.kind == kind, StockModule.private_to == "")
+    return session.scalars(select(StockModule).where(StockModule.kind == kind, StockModule.private_to == "",
+                                                     StockModule.share_group_id.is_(None))
                            .order_by(StockModule.position, StockModule.id)).all()
 
 
@@ -290,7 +329,8 @@ def _inventory_by_kind(session, kind):
     from .models import InventoryModule
     from sqlalchemy import select
     return session.scalars(select(InventoryModule).where(InventoryModule.kind == kind,
-                                                         InventoryModule.private_to == "")
+                                                         InventoryModule.private_to == "",
+                                                         InventoryModule.share_group_id.is_(None))
                            .order_by(InventoryModule.position, InventoryModule.id)).all()
 
 
