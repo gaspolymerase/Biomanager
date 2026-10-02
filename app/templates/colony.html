@@ -58,7 +58,7 @@
     </nav>
     {% if scope != 'all' %}
       <span class="text-[12px] text-muted">
-        Showing your animals and the shared breeder cages.
+        Showing your animals and the shared cages you work in.
         <a href="{{ url_for('colony', view=active_view, scope='all') }}">See everyone's</a>.
       </span>
     {% elif current_user.role != 'admin' %}

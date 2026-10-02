@@ -1427,7 +1427,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
     """Build the colony page context.
 
     `scope` filters which slice of the colony is listed — your own animals,
-    the shared breeder cages, or everything. It is a view filter only: what
+    the shared cages, or everything. It is a view filter only: what
     you may *edit* is decided per record by app/access.py, and is the same
     whichever scope you are looking at.
 
@@ -2235,7 +2235,7 @@ def admin_colony_overview():
         for cage in cages:
             living = [m for m in cage.mice if m.date_of_death is None]
             shared = access.is_shared_cage(cage)
-            # A shared breeder cage belongs to the lab, not to one person.
+            # A shared cage belongs to the lab or a group, not to one person.
             key = "__shared__" if shared else (cage.owner or "").strip() or "__unowned__"
             group = groups.setdefault(key, {
                 "owner": key, "cages": [], "mice": 0, "active_cages": 0,
@@ -2264,7 +2264,7 @@ def admin_colony_overview():
 
         ordered = [
             {
-                "label": {"__shared__": "Shared breeder cages",
+                "label": {"__shared__": "Shared cages",
                           "__unowned__": "Unassigned"}.get(name, name),
                 "owner": "" if name.startswith("__") else name,
                 "is_pool": name.startswith("__"),

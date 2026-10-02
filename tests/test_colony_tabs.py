@@ -1101,7 +1101,7 @@ class AdminColonyOverviewTests(AppTestCase):
         shared_code = one("select cage_id from mouse_cages where id=?", shared)
         html = self.get_ok(self.a, "/admin/colony")
         self.assertIn("Colony overview", html)
-        self.assertIn("Shared breeder cages", html)
+        self.assertIn("Shared cages", html)
         self.assertIn(self.member, html)
         self.assertIn(mine["cage"], html)
         self.assertIn(shared_code, html)
