@@ -349,6 +349,9 @@ app.register_blueprint(lab_copy.bp)
 # The devices that work on the lab, and which holds its master copy (app/devices.py).
 from . import devices  # noqa: E402
 app.register_blueprint(devices.bp)
+# Project groups: a layer between a person and the lab (app/groups.py).
+from . import groups as project_groups  # noqa: E402
+app.register_blueprint(project_groups.bp)
 # Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
 app.register_blueprint(lab_calendar.bp)
 # Setting up a lab server from the desktop app (app/server_setup.py).
@@ -628,6 +631,8 @@ NAV_FOOTER: list[dict] = [
 NAV_MORE: list[dict] = [
     {"key": "batches", "label": "Batch history", "icon": "layers", "endpoint": "batches_view",
      "hint": "Changes made many records at a time (Add many, bulk edits, imports), each with Undo"},
+    {"key": "groups", "label": "Project groups", "icon": "users", "endpoint": "groups.page",
+     "hint": "Who works together: groups share animals, stock, databases, to-dos and notebook pages"},
     {"key": "lab-setup", "label": "Lab setup", "icon": "sliders",
      "hint": "What the lab keeps, its name, and what members may do",
      "endpoint": "lab.setup", "admin_only": True},
@@ -681,6 +686,7 @@ TAB_ICON_RULES: list[tuple[str, str]] = [
     ("/admin/colony", "list"),
     ("/settings", "settings"),
     ("/admin/users", "users"),
+    ("/groups", "users"),
     ("/organisms", "database"),
 ]
 
@@ -1307,10 +1313,7 @@ def cage_genotype_auto(cage) -> str:
 
 def share_lock(cage) -> str:
     """Why this person can't make the cage shared or personal ("" if they
-    can): only a breeder cage can be shared, and only its owner or an admin
-    decides."""
-    if not access.can_be_shared(cage):
-        return "Only breeder cages can be shared"
+    can): its owner or an admin decides."""
     if not access.can_set_sharing(cage):
         return f"Only {cage.owner or 'its owner'} or an admin can change this"
     return ""
@@ -1327,18 +1330,30 @@ def cage_sheet_values(cage) -> dict:
         "position": cage_position_label(cage),
         "purpose": cage.purpose or "",
         "owner": cage.owner or "",
-        "is_shared": "1" if access.is_shared_cage(cage) else "0",
+        "is_shared": project_groups.record_value(cage) if access.is_shared_cage(cage) else "0",
         "cage_location": cage.cage_location or "",
         "genotype_summary": cage.genotype_summary or "",
         "notes": cage.notes or "",
         "date_give_birth": cage.date_give_birth.isoformat() if cage.date_give_birth else "",
         "wean_due": wean,
         "wean_state": wean_state,
-        # Why the Shared cell can't be changed here, if it can't: only a
-        # breeder cage can be shared, and only by its owner or an admin.
+        # Why the Shared cell can't be changed here, if it can't: only its
+        # owner or an admin shares a cage.
         "share_lock": share_lock(cage),
         "breeding": "1" if is_breeder_purpose(cage.purpose) else "0",
     }
+
+
+def cage_purpose_chips(cage_rows) -> list[tuple[str, str, int]]:
+    """(key, label, how many) for each purpose the listed cages have, most
+    used first; the key is the purpose in lower case, as rows carry it."""
+    counts: dict[str, list] = {}
+    for r in cage_rows:
+        label = (r.get("purpose") or "").strip()
+        if label:
+            entry = counts.setdefault(label.lower(), [label, 0])
+            entry[1] += 1
+    return sorted(((key, label, n) for key, (label, n) in counts.items()), key=lambda c: (-c[2], c[1].lower()))
 
 
 def cage_sheet_row(cage) -> dict:
@@ -1372,6 +1387,8 @@ def cage_sheet_row(cage) -> dict:
         "location_detail": cage.location_detail,
         "room": cage.room,
         "shared": access.is_shared_cage(cage),
+        "share_value": project_groups.record_value(cage) if access.is_shared_cage(cage) else "0",
+        "share_group_id": cage.share_group_id,
         "mine": access.owns(cage),
         "can_edit": access.can_edit_cage(cage),
         # Giving it to someone else is its owner's, an admin's or animal care's.
@@ -1426,10 +1443,14 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
             "all_cages": count_of(select(func.count(CageRecord.id))),
             "my_mice": count_of(select(func.count(MouseRecord.id)).where(MouseRecord.owner == me)),
             "my_cages": count_of(select(func.count(CageRecord.id)).where(CageRecord.owner == me)),
-            "shared_cages": count_of(select(func.count(CageRecord.id)).where(
-                CageRecord.is_shared.is_(True),
-                func.lower(func.trim(CageRecord.purpose)).in_(sorted(access.SHAREABLE_PURPOSES)))),
+            "shared_cages": count_of(select(func.count(CageRecord.id)).where(CageRecord.is_shared.is_(True))),
         }
+        my_groups = project_groups.ids_of()
+        if my_groups:
+            group_cages = select(CageRecord.id).where(
+                CageRecord.is_shared.is_(True), CageRecord.share_group_id.in_(sorted(my_groups)))
+            totals["group_mice"] = count_of(select(func.count(MouseRecord.id)).where(
+                MouseRecord.owner.in_(sorted(project_groups.colleagues())) | MouseRecord.cage_id_fk.in_(group_cages)))
         mice, hidden_mice = [], 0
         if active_view == "mice":
             query = select(MouseRecord).options(selectinload(MouseRecord.cage).selectinload(CageRecord.rack),
@@ -1438,7 +1459,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
                 hidden_mice = count_of(select(func.count(MouseRecord.id)).where(MouseRecord.date_of_death < recent))
                 query = query.where(MouseRecord.date_of_death.is_(None) | (MouseRecord.date_of_death >= recent))
             mice = [m for m in db_session.scalars(query).all()
-                    if access.in_scope(m, scope, shared=access.is_shared_cage(m.cage))]
+                    if access.in_scope(m, scope, shared=access.cage_shared_with(m.cage),
+                                       group_id=access.cage_group(m.cage))]
         cages, hidden_cages = [], 0
         if active_view == "cages":
             all_cages = db_session.scalars(select(CageRecord).options(
@@ -1449,7 +1471,8 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
                         or any(m.date_of_death and m.date_of_death >= recent for m in c.mice)]
                 hidden_cages = len(all_cages) - len(keep)
                 all_cages = keep
-            cages = [c for c in all_cages if access.in_scope(c, scope, shared=access.is_shared_cage(c))]
+            cages = [c for c in all_cages if access.in_scope(c, scope, shared=access.cage_shared_with(c),
+                                                             group_id=access.cage_group(c))]
         litters, hidden_litters = [], 0
         if active_view == "litters":
             litter_query = select(LitterRecord).options(
@@ -1564,6 +1587,9 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
             "active_count": sum(1 for r in cage_rows if r["active"]),
             "breeding_count": sum(1 for r in cage_rows if r["can_breed"]),
             "mine_count": sum(1 for r in cage_rows if r["mine"]),
+            # A chip for each purpose the cages have: all the experiment
+            # cages, all the breeder ones…
+            "purposes": cage_purpose_chips(cage_rows),
             "location_notes_used": any(r["cage_location"] for r in cage_rows),
         },
         "can_edit_presets": access.can_edit_presets(),
@@ -1745,6 +1771,7 @@ def home_dashboard():
         # ---- Upcoming calendar events ------------------------------------
         upcoming_events = db_session.scalars(
             select(CalendarEvent)
+            .where(lab_calendar.event_visible_clause())
             .where(CalendarEvent.event_date >= today)
             .where(CalendarEvent.event_date <= today + timedelta(days=14))
             .order_by(CalendarEvent.event_date.asc())
@@ -1863,12 +1890,15 @@ def _home_extra_cards(db_session, shown: set, today: date) -> dict:
     me = g.user.username
     out = {"todos": [], "bookings": [], "recent_pages": [], "home_calculators": HOME_CALCULATORS}
     if "todos" in shown:
+        # Yours, and the lab's and your project groups' to-dos.
         rows = db_session.scalars(select(TaskItem).where(
-            TaskItem.owner == me, TaskItem.status != "done",
+            task_visible_clause(), TaskItem.status != "done",
             TaskItem.due_date.is_(None) | (TaskItem.due_date <= today + timedelta(days=7)))
             .order_by(TaskItem.due_date.is_(None), TaskItem.due_date).limit(8)).all()
         out["todos"] = [{"id": t.id, "title": t.title, "due": t.due_date,
-                         "overdue": bool(t.due_date and t.due_date < today)} for t in rows]
+                         "overdue": bool(t.due_date and t.due_date < today),
+                         "whose": project_groups.label(t.is_shared, t.share_group_id, personal="", lab="Lab"),
+                         "can_tick": task_can_edit(t)} for t in rows]
     if "bookings" in shown:
         from .models import EquipmentBooking
         start = datetime.combine(today, datetime.min.time())
@@ -2107,7 +2137,8 @@ def export_my_data():
             zf.writestr("cages.csv", csv_text([
                 ["cage_id", "purpose", "location", "rack", "row", "column", "shared", "litter_born", "notes"],
                 *([c.cage_id, c.purpose, c.cage_location, c.rack.name if c.rack else "", c.rack_row or "",
-                   c.rack_col or "", "yes" if access.is_shared_cage(c) else "no", iso(c.date_give_birth), c.notes]
+                   c.rack_col or "", (project_groups.label(True, c.share_group_id, lab="yes") if access.is_shared_cage(c) else "no"),
+                   iso(c.date_give_birth), c.notes]
                   for c in cages)]))
 
             weights = db_session.scalars(
@@ -2133,7 +2164,7 @@ def export_my_data():
                 ["plasmid_id", "name", "backbone", "insert", "resistance", "owner", "location",
                  "concentration", "a260_280", "lab_common", "notes"],
                 *([p.plasmid_id, p.name, p.backbone, p.insert_seq, p.resistance, p.owner, p.location,
-                   p.concentration, p.a260_280, "yes" if p.is_shared else "", p.notes]
+                   p.concentration, p.a260_280, project_groups.label(p.is_shared, p.share_group_id, personal="", lab="yes"), p.notes]
                   for p in plasmids)]))
 
             tabs = db_session.scalars(
@@ -2460,7 +2491,7 @@ def colony():
     scope = access.resolve_scope(request.args.get("scope"))
     context = colony_context(active_view, scope, show_ended=request.args.get("ended") == "all")
     context["scope"] = scope
-    context["scopes"] = access.SCOPES
+    context["scopes"] = access.scopes_for()
     context["scope_hints"] = access.SCOPE_HINTS
     context["end_statuses"] = sorted(END_STATUSES)
     return render_template("colony.html", **context)
@@ -3891,12 +3922,14 @@ def apply_cage_form(db_session, cage, form) -> str | None:
         cage.date_give_birth = parse_date(form.get("date_give_birth"))
     # Sharing is for a breeder cage only, and is its owner's (or an
     # admin's) to decide; on any other cage the field means nothing.
+    # Shared with the lab ("1") or with one project group ("g<id>").
     if "is_shared" in form and access.can_be_shared(cage):
-        shared = (form.get("is_shared") or "").strip() in ("1", "on", "true", "yes")
-        if shared != bool(cage.is_shared):
+        if project_groups.differs(cage, form.get("is_shared")):
             if not access.can_set_sharing(cage):
                 return f"Only {cage.owner or 'its owner'} or an admin can make cage {cage.cage_id} shared or personal."
-            cage.is_shared = shared
+            refused = project_groups.apply(cage, form.get("is_shared"))
+            if refused:
+                return refused
     if "owner" in form and form_changed(form, "owner"):
         owner = (form.get("owner") or "").strip()
         if owner != (cage.owner or "") and not (access.can_manage(cage) or access.is_care()):
@@ -3965,6 +3998,10 @@ def bulk_cages():
             flash(f"“{value or '(blank)'}” is not a lab member, so no owner was changed. "
                   "Pick a username from the list.", "error")
             return redirect(back)
+        share_group = project_groups.parse(value)[1] if action == "shared" else None
+        if share_group is not None and not project_groups.may_share_with(share_group):
+            flash(project_groups.refusal(share_group), "error")
+            return redirect(back)
         if action == "rack" and value:
             rack = db_session.get(MouseRack, int(value)) if value.isdigit() else None
             if rack is None:
@@ -3973,7 +4010,8 @@ def bulk_cages():
         what = {"purpose": f"set cage purpose = {value or '(blank)'}",
                 "owner": f"set cage owner = {value}",
                 "rack": f"move cages to {rack.name if rack else '(no rack)'}",
-                "shared": "mark cages shared" if value == "1" else "mark cages not shared",
+                "shared": (f"share cages with {project_groups.name_of(share_group)}" if share_group
+                           else "mark cages shared" if value == "1" else "mark cages not shared"),
                 "retire": "retire cages"}[action]
         cages = db_session.scalars(select(CageRecord).where(CageRecord.id.in_(ids))).all() if ids else []
         with audit.batch(db_session, "update", what, "mouse_cages") as batch_row:
@@ -3989,11 +4027,11 @@ def bulk_cages():
                         continue
                     cage.owner = value
                 elif action == "shared":
-                    # Only a breeder cage, and only by its owner or an admin.
+                    # Only by its owner or an admin.
                     if not access.can_set_sharing(cage):
                         unshareable += 1
                         continue
-                    cage.is_shared = value == "1"
+                    project_groups.apply(cage, value)
                 elif action == "rack":
                     if rack is not None and cage.rack_id_fk == rack.id:
                         continue
@@ -4011,6 +4049,7 @@ def bulk_cages():
                     # its rack position is free for the next one.
                     cage.purpose = "Retired"
                     cage.is_shared = False
+                    cage.share_group_id = None
                     cage.active_override = False
                     cage.rack_id_fk = cage.rack_row = cage.rack_col = None
                 changed += 1
@@ -4025,8 +4064,8 @@ def bulk_cages():
     elif not blocked and not unshareable:
         flash("Nothing was changed.", "error")
     if unshareable:
-        flash(f"{unshareable} {noun(unshareable)} left as they were: only a breeder cage can be shared, "
-              "and only by its owner or an admin.", "error")
+        flash(f"{unshareable} {noun(unshareable)} left as they were: only a cage's owner or an admin "
+              "can share it or make it personal.", "error")
     if blocked:
         flash("Not retired: " + "; ".join(blocked) + ". Move or end its mice first.", "error")
     return redirect(back)
@@ -4598,8 +4637,46 @@ def _serialize_calendar_event(e: CalendarEvent) -> dict:
             "owner": e.owner or "",
             "animalId": e.animal_id_fk,
             "eventType": e.event_type or "",
+            # Whose event: "0" its owner's alone, "1" the lab's, "g<id>" a group's.
+            "audience": project_groups.record_value(e),
+            "audienceLabel": project_groups.label(e.is_shared, e.share_group_id, personal="", lab=""),
+            "readOnly": has_request_context() and g.get("user") is not None and not lab_calendar.event_can_edit(e),
         },
     }
+
+
+def task_visible_clause(user=None):
+    """The to-dos a person sees: their own, the lab's, and their project
+    groups' (app/groups.py)."""
+    me = access.username(user)
+    mine = sorted(project_groups.ids_of(user))
+    lab_wide = TaskItem.is_shared.is_(True) & TaskItem.share_group_id.is_(None)
+    clause = (TaskItem.owner == me) | lab_wide
+    if mine:
+        clause = clause | (TaskItem.is_shared.is_(True) & TaskItem.share_group_id.in_(mine))
+    return clause
+
+
+def task_can_edit(t, user=None) -> bool:
+    """A lab to-do is anyone's to tick off and change, a group's its
+    members' (and admins'); a personal one its owner's alone, not even an
+    admin's."""
+    if lab_calendar.task_is_personal(t):
+        return (t.owner or "") == access.username(user)
+    return access.can_edit(t, user, shared=project_groups.record_shared_with(t, user))
+
+
+def task_can_manage(t, user=None) -> bool:
+    """Delete it or change whose it is: its owner (a shared one also an admin)."""
+    if lab_calendar.task_is_personal(t):
+        return (t.owner or "") == access.username(user)
+    return access.can_manage(t, user)
+
+
+def task_denied(t) -> str:
+    if t.is_shared and t.share_group_id:
+        return f"That to-do is {project_groups.name_of(t.share_group_id) or 'a project group'}'s."
+    return f"That to-do is {t.owner or 'someone else'}'s. Ask them, or an admin, to make the change."
 
 
 def _serialize_task(t: TaskItem) -> dict:
@@ -4638,6 +4715,10 @@ def _serialize_task(t: TaskItem) -> dict:
             "status": t.status or "todo",
             "done": is_done,
             "priority": t.priority or "medium",
+            # Whose to-do it is: "0" its owner's, "1" the lab's, "g<id>" a group's.
+            "audience": project_groups.record_value(t),
+            "audienceLabel": project_groups.label(t.is_shared, t.share_group_id, personal="", lab="Lab"),
+            "readOnly": has_request_context() and g.get("user") is not None and not task_can_edit(t),
         },
     }
 
@@ -4660,6 +4741,11 @@ def calendar_items(db_session, start: date | None, end: date | None, owner: str 
     if owner is not None:
         ev_q = ev_q.where(CalendarEvent.owner == owner)
         tk_q = tk_q.where(TaskItem.owner == owner)
+    else:
+        # Someone's own events and to-dos are theirs; the lab's and a
+        # group's are shared.
+        ev_q = ev_q.where(lab_calendar.event_visible_clause())
+        tk_q = tk_q.where(task_visible_clause())
     events = db_session.scalars(ev_q.order_by(CalendarEvent.event_date)).all()
     repeats = lab_calendar.repeats_by_event(db_session, [e.id for e in events])
     items: list[dict] = []
@@ -5021,6 +5107,10 @@ def calendar_item_create():
                 notes=payload.get("body", "") or payload.get("description", ""),
                 owner=owner,
             )
+            # A lab to-do ("1") or a project group's ("g<id>"); else yours.
+            refused = project_groups.apply(row, payload.get("audience", "0"))
+            if refused:
+                return jsonify({"ok": False, "error": refused}), 403
         else:
             row = CalendarEvent(
                 title=title,
@@ -5033,6 +5123,10 @@ def calendar_item_create():
                 description=payload.get("body", "") or payload.get("description", ""),
                 owner=owner,
             )
+            # The lab's ("1", the usual), a project group's ("g<id>") or yours ("0").
+            refused = project_groups.apply(row, payload.get("audience", "1"))
+            if refused:
+                return jsonify({"ok": False, "error": refused}), 403
         # "Change this one only": one date of a repeating event becomes an
         # event of its own (this one), and the series skips that date.
         split = payload.get("split_from") if kind != "task" else None
@@ -5043,8 +5137,9 @@ def calendar_item_create():
                 select(CalendarRepeat).where(CalendarRepeat.event_id_fk == series.id))
             if repeat is None or day is None:
                 return jsonify({"ok": False, "error": "That event does not repeat."}), 404
-            if not lab_calendar._can_edit(series.owner):
-                return jsonify({"ok": False, "error": "Only the person who added this event can change it."}), 403
+            if not lab_calendar.event_can_edit(series):
+                return jsonify({"ok": False, "error": "Only the person who added this event, or an admin, "
+                                                      "can change it."}), 403
             row.event_type, row.animal_id_fk = series.event_type, series.animal_id_fk
             skip = {d for d in (repeat.skip or "").split(",") if d} | {day.isoformat()}
             repeat.skip = ",".join(sorted(skip))
@@ -5087,6 +5182,15 @@ def calendar_item_update(item_key: str):
             row = db_session.get(TaskItem, row_id)
             if row is None:
                 return jsonify({"ok": False}), 404
+            if not task_can_edit(row):
+                return jsonify({"ok": False, "error": task_denied(row)}), 403
+            if "audience" in payload and project_groups.differs(row, payload["audience"]):
+                if not task_can_manage(row):
+                    return jsonify({"ok": False, "error": f"Only {row.owner or 'its owner'} or an admin can "
+                                                          "change whose to-do it is."}), 403
+                refused = project_groups.apply(row, payload["audience"])
+                if refused:
+                    return jsonify({"ok": False, "error": refused}), 403
             if "title" in payload: row.title = (payload["title"] or "").strip() or row.title
             if "body" in payload: row.notes = payload["body"] or ""
             if "backgroundColor" in payload: row.color = payload["backgroundColor"] or ""
@@ -5105,6 +5209,13 @@ def calendar_item_update(item_key: str):
             row = db_session.get(CalendarEvent, row_id)
             if row is None:
                 return jsonify({"ok": False}), 404
+            if not lab_calendar.event_can_edit(row):
+                return jsonify({"ok": False, "error": "Only the person who added this event, or an admin, "
+                                                      "can change it."}), 403
+            if "audience" in payload and project_groups.differs(row, payload["audience"]):
+                refused = project_groups.apply(row, payload["audience"])
+                if refused:
+                    return jsonify({"ok": False, "error": refused}), 403
             if "title" in payload: row.title = (payload["title"] or "").strip() or row.title
             if "body" in payload: row.description = payload["body"] or ""
             if "backgroundColor" in payload: row.color = payload["backgroundColor"] or ""
@@ -5136,6 +5247,8 @@ def calendar_item_toggle(item_key: str):
         row = db_session.get(TaskItem, int(raw_id))
         if row is None:
             return jsonify({"ok": False}), 404
+        if not task_can_edit(row):
+            return jsonify({"ok": False, "error": task_denied(row)}), 403
         if row.done_at is None:
             row.done_at = datetime.utcnow()
             row.status = "done"
@@ -5157,6 +5270,11 @@ def calendar_item_delete(item_key: str):
         row = db_session.get(TaskItem if kind == "task" else CalendarEvent, row_id)
         if row is None:
             return jsonify({"ok": False}), 404
+        if kind == "task" and not task_can_manage(row):
+            return jsonify({"ok": False, "error": f"Only {row.owner or 'its owner'} can delete this to-do."}), 403
+        if kind != "task" and not lab_calendar.event_can_edit(row):
+            return jsonify({"ok": False, "error": "Only the person who added this event, or an admin, "
+                                                  "can delete it."}), 403
         if kind != "task":
             lab_calendar.delete_repeat(db_session, row_id)
         db_session.delete(row)
@@ -5900,8 +6018,20 @@ def audit_log_view():
 
 
 def _templates_visible(me: str):
-    """Your own templates and the lab's."""
-    return (NotebookTemplate.owner_username == me) | NotebookTemplate.lab.is_(True)
+    """Your own templates, the lab's, and your project groups'."""
+    lab_wide = NotebookTemplate.lab.is_(True) & NotebookTemplate.share_group_id.is_(None)
+    mine = sorted(project_groups.ids_of())
+    clause = (NotebookTemplate.owner_username == me) | lab_wide
+    if mine:
+        clause = clause | (NotebookTemplate.lab.is_(True) & NotebookTemplate.share_group_id.in_(mine))
+    return clause
+
+
+def _template_open(template) -> bool:
+    """May this person start a page from it: theirs, the lab's, or a group's
+    they are in."""
+    return template is not None and (template.owner_username == g.user.username
+                                     or project_groups.shared_with(template.lab, template.share_group_id))
 
 
 @app.route("/notebook/templates")
@@ -5923,6 +6053,7 @@ def notebook_templates_list():
                 "kind": t.kind or "note",
                 "kind_label": lab_notebook.KINDS.get(t.kind or "note", "Note"),
                 "lab": bool(t.lab),
+                "group": project_groups.name_of(t.share_group_id) if t.lab and t.share_group_id else "",
                 "mine": t.owner_username == me,
                 "can_delete": t.owner_username == me or (bool(t.lab) and access.is_admin()),
                 "owner_name": names.get(t.owner_username, t.owner_username),
@@ -5938,7 +6069,7 @@ def notebook_templates_list():
 def notebook_template_get(template_id: int):
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or not (template.owner_username == g.user.username or template.lab):
+        if not _template_open(template):
             return jsonify({"ok": False}), 404
         return jsonify({"ok": True, "template": {"id": template.id, "title": template.title, "icon": template.icon,
                                                  "kind": template.kind or "note", "body": template.body or ""}})
@@ -5988,7 +6119,11 @@ def notebook_template_create():
             db_session.add(template)
         template.title, template.icon, template.body = title, icon, body
         template.kind = kind if kind in lab_notebook.KINDS and kind != "daily" else "note"
-        template.lab = request.form.get("lab") == "1"
+        # "1": the lab's; "g<id>": a project group's (app/groups.py).
+        shared, group_id = project_groups.parse(request.form.get("lab"))
+        if group_id is not None and not project_groups.may_share_with(group_id):
+            return jsonify({"ok": False, "error": project_groups.refusal(group_id)}), 403
+        template.lab, template.share_group_id = shared, group_id if shared else None
         db_session.commit()
         return jsonify({
             "ok": True,
@@ -6024,7 +6159,7 @@ def notebook_create_page_from_template():
 
     with SessionLocal() as db_session:
         template = db_session.get(NotebookTemplate, template_id)
-        if template is None or not (template.owner_username == g.user.username or template.lab):
+        if not _template_open(template):
             return jsonify({"ok": False, "error": "template not found"}), 404
 
         if tab_id:
@@ -6676,7 +6811,7 @@ def _plasmid_values(p, box) -> dict:
     return {
         "name": p.name, "backbone": p.backbone, "insert_seq": p.insert_seq,
         "resistance": p.resistance, "owner": p.owner, "location": p.location,
-        "concentration": p.concentration, "a260_280": p.a260_280, "is_shared": "1" if p.is_shared else "0",
+        "concentration": p.concentration, "a260_280": p.a260_280, "is_shared": project_groups.record_value(p),
         "notes": p.notes, "box_id": str(p.box_id_fk or ""), "storage_box": box.name if box else "",
         "position": pbox.label(p, box),
     }
@@ -6948,9 +7083,10 @@ def _make_plasmids(db_session, form, user, count, name, names, requested, parsed
                 owner=owner,
                 location=(form.get("location") or "").strip()[:120],
                 concentration=measures["concentration"], a260_280=measures["a260_280"],
-                is_shared=form.get("is_shared") == "1",
                 notes=(form.get("notes") or "").strip(),
             )
+            if project_groups.apply(record, form.get("is_shared")):
+                record.is_shared, record.share_group_id = False, None
             pbox.put_in(record, box)
             if mode == "exact":
                 refused, _ = pbox.place(db_session, record, box, *start)
@@ -7010,14 +7146,18 @@ def update_plasmid(row_id: int):
         if "name" in form and not form["name"].strip() and (p.name or "").strip():
             return _plasmid_answer(db_session, p, error="A plasmid needs a name.", status=400)
         # Lab common lets anyone edit it; whose it is stays its owner's call.
-        shared = form.get("is_shared") in ("1", "true", "on") if "is_shared" in form else bool(p.is_shared)
+        # "1": the lab's, "g<id>": a project group's (app/groups.py).
+        sharing_changes = "is_shared" in form and project_groups.differs(p, form.get("is_shared"))
         owner_changes = "owner" in form and (form.get("owner") or "").strip()[:120] != (p.owner or "")
-        if (owner_changes or shared != bool(p.is_shared)) and not access.can_manage(p):
+        if (owner_changes or sharing_changes) and not access.can_manage(p):
             owner = (p.owner or "").strip() or "its owner"
             return _plasmid_answer(db_session, p, status=403, error=(
                 f"Plasmid #{p.plasmid_id} is lab common, so you can edit it, but only {owner} or an admin "
                 "can change whose it is."))
-        p.is_shared = shared
+        if sharing_changes:
+            refused = project_groups.apply(p, form.get("is_shared"))
+            if refused:
+                return _plasmid_answer(db_session, p, error=refused, status=403)
         for field, limit in (("name", 200), ("backbone", 200), ("insert_seq", 200),
                              ("resistance", 80), ("owner", 120), ("location", 120)):
             if field in form:
@@ -7151,6 +7291,12 @@ def bulk_plasmids():
         # Whose it is, lab common or not, and deleting: the owner's; the rest:
         # anyone who may edit it.
         allowed = access.can_manage if action in ("owner", "shared", "delete") else access.can_edit
+        share_group = project_groups.parse(value)[1] if action == "shared" else None
+        if share_group is not None and not project_groups.may_share_with(share_group):
+            flash(project_groups.refusal(share_group), "error")
+            return redirect(url_for("plasmids"))
+        common = (f"shared with {project_groups.name_of(share_group)}" if share_group
+                  else "lab common" if value == "1" else "personal")
         editable = [p for p in records if allowed(p)]
         skipped = len(records) - len(editable)
         done, unplaced = 0, 0
@@ -7160,7 +7306,7 @@ def bulk_plasmids():
             "resistance": f"set resistance to {value or 'none'} on {len(editable)} {noun(len(editable))}",
             "move": f"move {len(editable)} {noun(len(editable))} to {target_name or 'no box'}",
             "delete": f"delete {len(editable)} {noun(len(editable))}",
-            "shared": f"make {len(editable)} {noun(len(editable))} {'lab common' if value == '1' else 'personal'}",
+            "shared": f"make {len(editable)} {noun(len(editable))} {common}",
         }
         with audit.batch(db_session, "delete" if action == "delete" else "update",
                          descriptions[action], "plasmids") as batch_row:
@@ -7174,10 +7320,10 @@ def bulk_plasmids():
                 message = f"Set {action} on {done} {noun(done)}."
             elif action == "shared":
                 for p in editable:
-                    p.is_shared = value == "1"
+                    project_groups.apply(p, value)
                     stamp_updated(p)
                     done += 1
-                message = f"Made {done} {noun(done)} {'lab common' if value == '1' else 'personal'}."
+                message = f"Made {done} {noun(done)} {common}."
             elif action == "move":
                 box = target
                 if box is None and target_name:
@@ -7353,7 +7499,8 @@ def plasmid_page(number: int):
             "owner": p.owner,
             "location": p.location,
             "concentration": p.concentration, "a260_280": p.a260_280,
-            "is_shared": bool(p.is_shared), "can_manage": access.can_manage(p),
+            "is_shared": bool(p.is_shared), "share_value": project_groups.record_value(p),
+            "share_group_id": p.share_group_id, "can_manage": access.can_manage(p),
             "notes": p.notes,
             "box_id": p.box_id_fk or "",
             "storage_box": box.name if box else "",
@@ -7800,7 +7947,9 @@ def zf_can_edit(record) -> bool:
     if isinstance(record, FishRecord):
         record = record.tank or record
     if isinstance(record, TankRecord):
-        return access.can_edit(record, shared=zf_tank_shared(record))
+        # A breeding tank shared with a project group is its members'.
+        return access.can_edit(record, shared=zf_tank_shared(record)
+                               and project_groups.record_shared_with(record, shared=True))
     return access.can_edit(record)
 
 
@@ -7809,6 +7958,9 @@ def zf_denied(record) -> str:
     if isinstance(record, FishRecord) and record.tank is not None:
         record = record.tank
     owner = (getattr(record, "owner", "") or "").strip() or "someone else"
+    if isinstance(record, TankRecord) and zf_tank_shared(record) and record.share_group_id:
+        return (f"Tank {record.tank_id} is shared with {project_groups.name_of(record.share_group_id)}, "
+                f"which you are not in. Ask {owner}, or an admin, to make the change.")
     if isinstance(record, TankRecord):
         what = f"Tank {record.tank_id} and its fish belong"
     elif isinstance(record, ClutchRecord):
@@ -8018,6 +8170,7 @@ def _zebrafish_context(active_view: str):
             tank_rows.append({
                 "row": t, "total_fish": total, "position": position, "editable": editable,
                 "mine": t.owner == me, "shared": zf_tank_shared(t), "fish_rows": len(t.fish),
+                "share_group": project_groups.name_of(t.share_group_id) if zf_tank_shared(t) else "",
                 "returnable": returnable, "return_plan": plan,
                 "return_ready": all(p["home"] for p in plan),
                 "return_confirm": zf_return_confirm(t, [(p["fish"].count or 0, p["home_code"]) for p in plan]),
@@ -8027,6 +8180,7 @@ def _zebrafish_context(active_view: str):
                     "purpose": t.purpose, "line_id_fk": t.line_id_fk or "", "owner": t.owner,
                     "rack_id_fk": t.rack_id_fk or "", "position": position, "card_id": t.card_id,
                     "notes": t.notes, "active": "1" if t.active else "0",
+                    "share_group": project_groups.value_of(True, t.share_group_id),
                     "rack_id_fk_was": t.rack_id_fk or "", "position_was": position, "owner_was": t.owner},
             })
 
@@ -8471,6 +8625,14 @@ def zebrafish_update_tank(tank_row_id: int):
                     setattr(t, fld, (form.get(fld) or "").strip())
             if "active" in form:
                 t.active = zf_active_flag(form.get("active"))
+            # Which group a breeding or shared tank is for ("1": the lab's).
+            if "share_group" in form and project_groups.differs(t, form.get("share_group"), shared=True):
+                if not access.can_manage(t):
+                    raise ZfInputError(f"Only {t.owner or 'its owner'} or an admin can change whom tank "
+                                       f"{t.tank_id} is shared with.")
+                refused = project_groups.apply(t, form.get("share_group") or "1", set_shared=False)
+                if refused:
+                    raise ZfInputError(refused)
         except ZfInputError as error:
             s.rollback()
             return zf_reply("tanks", str(error))

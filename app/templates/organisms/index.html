@@ -16,14 +16,27 @@
 {# Personal databases (app/lab.py): a badge in the card header, and the
    share button in its footer for whoever may share it. #}
 {% macro audience_badge(row) %}
-  {% if row.private_to %}
+  {% if not row.private_to and row.share_group_id %}
+    <span class="badge badge-quiet whitespace-nowrap" title="A project group's database: only its members and lab admins see it">
+      {{ icon('users') }} {{ groups_api.name_of(row.share_group_id) or 'A deleted group' }}
+    </span>
+  {% elif row.private_to %}
     <span class="badge badge-brand whitespace-nowrap" title="Only {{ 'you' if row.private_to == current_user.username else row.private_to }} and lab admins see it">
       {{ 'Just you' if row.private_to == current_user.username else 'Personal · ' ~ row.private_to }}
     </span>
   {% endif %}
 {% endmacro %}
 {% macro audience(kind, row, can_share) %}
-  {% if row.private_to and can_share %}
+  {% set to_groups = groups_api.choices() if row.private_to and (row.private_to == current_user.username or current_user.role == 'admin') else [] %}
+  {% if to_groups %}
+    <form method="post" action="{{ url_for('lab.audience', kind=kind, key=row.key) }}" class="flex items-center gap-1">
+      <select name="to" aria-label="Give it to a project group" class="h-7 text-[12px]">
+        {% for gid, name in to_groups %}<option value="group:{{ gid }}">{{ name }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm btn-ghost whitespace-nowrap">{{ icon('users') }} Share with the group</button>
+    </form>
+  {% endif %}
+  {% if (row.private_to or row.share_group_id) and can_share %}
     <form method="post" action="{{ url_for('lab.audience', kind=kind, key=row.key) }}" class="ml-auto"
           data-confirm="Share {{ row.label }} with the whole lab? Everyone will see it in their sidebar.">
       <input type="hidden" name="to" value="lab">

@@ -285,15 +285,18 @@ Who may change what lives in one place, `app/access.py`:
 
 - **You manage your own colony.** A record whose `owner` is you is yours to
   edit or delete.
-- **Shared breeder cages are everyone's.** Only a cage whose `purpose` is
-  breeder (`access.SHAREABLE_PURPOSES`) can be shared: `is_shared_cage()` is
-  breeder *and* `mouse_cages.is_shared`. A cage that becomes a breeder cage
-  starts shared (a `set` event on `CageRecord.purpose` in `models.py`;
-  revision 0013 set the flag on the breeder cages a lab already had, which
-  were shared by purpose before). Turning it off or on, or giving the cage
+- **Shared cages are everyone's.** Any cage can be shared
+  (`mouse_cages.is_shared`, `access.is_shared_cage()`). A cage that becomes
+  a breeder cage (`access.STARTS_SHARED_PURPOSES`) starts shared and one
+  that stops being one starts personal (a `set` event on
+  `CageRecord.purpose` in `models.py`; revision 0013 set the flag on the
+  breeder cages a lab already had, and 0015 cleared it on the other cages,
+  where it meant nothing before). Turning it off or on, or giving the cage
   to someone else, is `access.can_set_sharing()` / `can_manage()` (owner or
   admin; animal care may also reassign), not everyone a shared cage lets
-  edit. The whole lab can edit a shared cage and pick mice out of it.
+  edit. The whole lab can edit a shared cage and pick mice out of it. The
+  cage sheet has a chip for each purpose its cages have
+  (`cage_purpose_chips()`).
 - **Unowned records stay open**, so records predating ownership don't lock
   anyone out.
 - **Lab common** (`is_shared`) on inventory items and plasmids
@@ -303,9 +306,56 @@ Who may change what lives in one place, `app/access.py`:
   its owner, an admin, or anyone while it is unowned.
 - **Admins can do anything.**
 
+- **Project groups** narrow any of these sharings to a group's members
+  (below): `access.cage_shared_with()` is a shared cage this person may
+  work in, and lab common checks `groups.record_shared_with()`.
+
 Visibility is deliberately *not* restricted — a census with holes is not a
-census. The **My colony / Shared / Everyone** switch on the colony page is a
-view filter; edit rights are per record and don't change with it.
+census. The **My colony / My groups / Shared / Everyone** switch on the
+colony page is a view filter (`access.scopes_for()` offers My groups only to
+someone in a group); edit rights are per record and don't change with it.
+
+## Project groups
+
+`app/groups.py`, the **Project groups** page (`/groups`, under More). Tables
+`lab_groups` and `lab_group_members` (`lead`: may add and remove members;
+making groups, renaming, deleting and naming leads is for admins), revision
+0015. A record shared with a group keeps `is_shared` and names the group in
+`share_group_id` (no foreign key; `groups.release()` clears it, and the
+record's `is_shared`, when a group is deleted): `mouse_cages`, `plasmids`,
+`inventory_items` and `tasks`. Breeding tanks and lab stock vials are shared
+by their purpose, so `tanks.share_group_id` and `stock_units.share_group_id`
+only narrow it (`share_group` in their dialogs; `"1"` is the lab). A
+database for a group has an empty `private_to` and a `share_group_id`
+(`lab.group_of()`): `lab.can_see()` and `in_sidebar()` take in its members,
+`first_of_kind()` and the survey's lookups skip it, and
+`lab.set_audience_for_new()` handles `audience=group:<id>` on the three New
+database forms (and `lab_routes.audience` `to=group:<id>`). A notebook page
+is shared with a group by a `notebook_shares` row whose username is
+`group:<id>` (`groups.page_share_names()` in `role_for` and
+`shared_page_ids`); a notebook template with `lab` on and a group is that
+group's.
+
+Forms send sharing as one value, `"0"` personal, `"1"` the lab, `"g<id>"` a
+group: `groups.parse()`, `groups.differs()` and `groups.apply()` (which
+refuses a group the person isn't in; admins: any), and the
+`_sharing.html` macro draws the options (`groups_api` in every template).
+Memberships are read once per request (`groups._cache`, `forget()` after a
+change).
+
+To-dos and events: `task_visible_clause()` (app.py) and
+`lab_calendar.event_visible_clause()` are the person's own, the lab's
+(`is_shared`, no group) and their groups'; that is what the calendar, Home
+and the phone feed show. A personal one is its owner's alone, admins
+included. `task_can_edit()` lets the lab or the group tick off and change a
+shared to-do; deleting it, or changing whose it is, is its owner's or an
+admin's (`task_can_manage()`). A shared event is changed by its owner or an
+admin (`lab_calendar.event_can_edit()`). Events default to the lab's
+(`calendar_events.is_shared` defaults true, and revision 0015 left every
+existing event shared); to-dos to their owner's. Away soon lists someone's
+shared to-dos, not their personal ones. A member's copy
+of the lab (`lab_copy.member_view`) leaves out the databases of groups they
+are not in, and keeps pages shared with their groups.
 
 Admins get **Colony overview** (`/admin/colony`): every cage in the facility
 grouped by who manages it, with occupancy, shared-cage pooling, idle-time

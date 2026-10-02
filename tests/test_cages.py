@@ -297,15 +297,27 @@ class CageUpdateTests(RackMixin, Case):
         values = self.autosave(self.m, update_url(self.cage), {"is_shared": "0"}).get_json()["row"]["values"]
         self.assertEqual((values["is_shared"], cage(self.cage)["is_shared"]), ("0", 0))
 
-    def test_only_a_breeder_cage_can_be_shared(self):
-        # A breeding cage keeps its breeding actions but is its owner's, as
-        # is every purpose but Breeder.
+    def test_any_cage_starts_personal_and_its_owner_can_share_it(self):
+        # Only a breeder cage starts shared; any other its owner may share.
         for purpose in ("Breeding", "Stock", "Experiments"):
             with self.subTest(purpose=purpose):
-                values = self.autosave(self.m, update_url(self.cage),
-                                       {"purpose": purpose, "is_shared": "1"}).get_json()["row"]["values"]
-                self.assertEqual((values["is_shared"], values["share_lock"]), ("0", "Only breeder cages can be shared"))
+                values = self.autosave(self.m, update_url(self.cage), {"purpose": purpose}).get_json()["row"]["values"]
+                self.assertEqual((values["is_shared"], values["share_lock"]), ("0", ""))
+                values = self.autosave(self.m, update_url(self.cage), {"is_shared": "1"}).get_json()["row"]["values"]
+                self.assertEqual(values["is_shared"], "1")
+                self.autosave(self.m, update_url(self.cage), {"is_shared": "0"})
         self.assertEqual(values["breeding"], "0")
+
+    def test_a_cage_that_stops_being_a_breeder_starts_personal_again(self):
+        self.autosave(self.m, update_url(self.cage), {"purpose": "Breeder"})
+        self.assertEqual(cage(self.cage)["is_shared"], 1)
+        self.autosave(self.m, update_url(self.cage), {"purpose": "Experiments"})
+        self.assertEqual(cage(self.cage)["is_shared"], 0)
+
+    def test_someone_else_cannot_share_your_cage(self):
+        r = self.autosave(self.o, update_url(self.cage), {"is_shared": "1"})
+        self.assertNotEqual(r.status_code, 200)
+        self.assertEqual(cage(self.cage)["is_shared"], 0)
 
     def test_a_litter_born_today_is_due_to_wean_in_21_days(self):
         values = self.autosave(self.m, update_url(self.cage), {"date_give_birth": T}).get_json()["row"]["values"]
@@ -525,10 +537,14 @@ class CageBulkTests(RackMixin, Case):
     def test_mark_shared_and_not_shared(self):
         self.autosave(self.m, update_url(self.c1), {"purpose": "Breeder"})
         self.bulk(self.m, "shared", "0")
-        self.assertEqual(cage(self.c1)["is_shared"], 0)
-        self.assertIn("1 cage left as they were: only a breeder cage can be shared", flash_texts(self.m, "error"))
-        self.bulk(self.m, "shared", "1")
-        self.assertEqual((cage(self.c1)["is_shared"], cage(self.c2)["is_shared"]), (1, 0))
+        self.assertEqual((cage(self.c1)["is_shared"], cage(self.c2)["is_shared"]), (0, 0))
+        self.bulk(self.m, "shared", "1")           # any cage, not only a breeder one
+        self.assertEqual((cage(self.c1)["is_shared"], cage(self.c2)["is_shared"]), (1, 1))
+
+    def test_a_batch_leaves_others_cages_sharing_alone(self):
+        theirs = self.make_cage(self.o, purpose="Experiments")
+        self.bulk(self.m, "shared", "1", [theirs])
+        self.assertEqual(cage(theirs)["is_shared"], 0)
 
     def test_member_batch_skips_cages_that_are_not_theirs(self):
         theirs = self.make_cage(self.o, purpose="Experiments")

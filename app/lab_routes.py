@@ -22,7 +22,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
                    session, url_for)
 from sqlalchemy import select
 
-from . import lab, notify, telemetry
+from . import groups, lab, notify, telemetry
 from .db import SessionLocal
 from .models import NotificationRecord, UserAccount
 from .services import WEAN_OFFSET_DAYS
@@ -272,12 +272,28 @@ def audience(kind: str, key: str):
         module = lab.module_for(db_session, kind, key)
         if module is None or not lab.can_see(module):
             abort(404)
+        to = request.form.get("to") or ""
+        group_id = groups.page_share_group(to)
+        if group_id is not None:
+            # Your own database, for one of your project groups.
+            if not (g.user.role == "admin" or module.private_to == g.user.username):
+                flash("Only its owner or a lab admin can give this database to a group.", "error")
+            elif not groups.may_share_with(group_id):
+                flash(groups.refusal(group_id), "error")
+            else:
+                module.private_to, module.share_group_id = "", group_id
+                notify.tell_group(db_session, group_id, g.user.username,
+                                  f"{g.user.display_name or g.user.username} shared {module.label} "
+                                  f"with {groups.name_of(group_id)}")
+                flash(f"{module.label} is now {groups.name_of(group_id)}'s: its members see it.", "success")
+                db_session.commit()
+            referrer = request.referrer or ""
+            return redirect(referrer if referrer.startswith(request.host_url) else url_for("organisms.index"))
         if not lab.can_change_audience(db_session, module):
             flash("Only a lab admin can change who sees this database.", "error")
             return redirect(url_for("organisms.index"))
-        to = request.form.get("to")
         if to == "lab":
-            module.private_to = ""
+            module.private_to, module.share_group_id = "", None
             notify.tell_lab(db_session, g.user.username,
                             f"{g.user.display_name or g.user.username} shared {module.label} with the lab")
             flash(f"{module.label} is now a lab database: everyone sees it.", "success")
@@ -285,7 +301,7 @@ def audience(kind: str, key: str):
             owner = request.form.get("owner") or module.created_by or g.user.username
             if g.user.role != "admin":
                 owner = g.user.username
-            module.private_to = owner
+            module.private_to, module.share_group_id = owner, None
             flash(f"{module.label} is now {'your' if owner == g.user.username else owner + chr(39) + 's'} "
                   "own database.", "success")
         db_session.commit()

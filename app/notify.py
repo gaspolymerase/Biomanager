@@ -466,6 +466,14 @@ def tell_lab(session, actor: str, title: str, message: str = "", link: str = "")
                for name in lab.everyone_but(session, actor))
 
 
+def tell_group(session, group_id: int, actor: str, title: str, message: str = "", link: str = "") -> int:
+    """A "lab" notification for a project group's members but the actor."""
+    from . import groups, lab
+    members = groups.members_of(group_id)
+    return sum(send(session, name, title, message, category="lab", link=link, actor=actor)
+               for name in lab.everyone_but(session, actor) if name in members)
+
+
 # ---------------------------------------------------------------- reading
 
 SIGNUP_TITLE = "Account waiting for approval"

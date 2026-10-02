@@ -774,6 +774,14 @@
         <label>Set up <input type="date" name="set_up_on"></label>
         <label>Owner <input name="owner" list="stock-owners"></label>
         <label>Generation <input name="generation" placeholder="e.g. F2"></label>
+        {% if groups_api.names() %}
+          <label data-show-for="stock backup maintenance starved" title="A lab stock is the lab's to edit, or one project group's">Shared with
+            <select name="share_group">
+              <option value="1">The lab</option>
+              {% for gid, name in groups_api.names().items() %}<option value="g{{ gid }}">{{ name }}</option>{% endfor %}
+            </select>
+          </label>
+        {% endif %}
       </fieldset>
       <fieldset class="record-group" data-show-for="cross progeny">
         <legend>Cross</legend>

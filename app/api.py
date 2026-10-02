@@ -41,7 +41,7 @@ from sqlalchemy.orm import selectinload
 from werkzeug.datastructures import MultiDict
 
 from .formutil import like_pattern
-from . import access, lab
+from . import access, groups, lab
 from .db import SessionLocal
 from .models import (ApiToken, CageRecord, Experiment, FishRecord, InventoryItem, InventoryRack, LitterRecord,
                      MouseRecord, MouseWeight, PlasmidRecord, StockRack, StockUnit, StrainRecord, TankRecord,
@@ -450,6 +450,8 @@ def cage_json(c: CageRecord) -> dict:
     living = sorted(m.mouse_id for m in c.mice if m.date_of_death is None)
     return {
         "cage_id": c.cage_id, "purpose": c.purpose or "", "owner": c.owner or "", "shared": access.is_shared_cage(c),
+        "shared_with": (groups.name_of(c.share_group_id) or None)
+        if access.is_shared_cage(c) and c.share_group_id else None,
         "room": c.room or "", "rack": c.rack.name if c.rack else None,
         "position": _where(c.rack, c.rack_row, c.rack_col) or None, "location": c.cage_location or "",
         "card_id": c.card_id or "", "notes": c.notes or "", "mice": living, "litter_born": _day(c.date_give_birth),
@@ -557,6 +559,7 @@ def plasmid_json(p: PlasmidRecord, sequence: bool = False) -> dict:
     out = {"plasmid_id": p.plasmid_id, "name": p.name or "", "backbone": p.backbone or "", "insert": p.insert_seq or "",
            "resistance": p.resistance or "", "owner": p.owner or "", "location": p.location or "",
            "concentration": p.concentration or "", "a260_280": p.a260_280 or "", "shared": bool(p.is_shared),
+           "shared_with": (groups.name_of(p.share_group_id) or None) if p.is_shared and p.share_group_id else None,
            "box": p.storage_box or "", "notes": p.notes or "", "has_sequence": bool(p.full_sequence),
            "updated_at": _stamp(p.updated_at)}
     if sequence:
@@ -679,7 +682,9 @@ def item_json(mv, i: InventoryItem) -> dict:
     from . import inventory_service as isvc
     attrs = i.attrs_dict
     return {"number": i.number, "name": i.name or "", "category": i.category or "", "status": i.status or "",
-            "owner": i.owner or "", "shared": bool(i.is_shared), "quantity": i.quantity or "", "unit": i.unit or "",
+            "owner": i.owner or "", "shared": bool(i.is_shared),
+            "shared_with": (groups.name_of(i.share_group_id) or None) if i.is_shared and i.share_group_id else None,
+            "quantity": i.quantity or "", "unit": i.unit or "",
             "vendor": i.vendor or "", "catalog_number": i.catalog_number or "", "lot": i.lot or "",
             "box": i.rack.name if i.rack else None, "position": (isvc.rack_label(i) or None) if i.rack else None,
             "location_note": i.location_note or "", "received_on": _day(i.received_on),
@@ -747,7 +752,9 @@ def _item_form(session, module, mv, data: dict, item: InventoryItem | None) -> M
             continue
         form[k] = "" if v is None else str(v)
     if "shared" in data:
-        form["is_shared"] = "1" if data["shared"] else "0"
+        # true keeps a project group's stock its group's (app/groups.py).
+        keep = item is not None and data["shared"] and item.is_shared
+        form["is_shared"] = groups.record_value(item) if keep else ("1" if data["shared"] else "0")
     known = {f["key"]: f for f in mv.fields}
     for k, v in (data.get("fields") or {}).items():
         field = known.get(k)

@@ -5,6 +5,7 @@ from datetime import date, datetime
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy import event
 from sqlalchemy import false as sa_false
+from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -115,6 +116,10 @@ class CalendarEvent(Base):
     animal_id_fk: Mapped[int | None] = mapped_column(ForeignKey("animals.id"), nullable=True)
     event_type: Mapped[str] = mapped_column(String(80), default="experiment")
     description: Mapped[str] = mapped_column(Text, default="")
+    # Shared: everyone sees it (with a group, its members); only its owner and
+    # admins change it. Not shared: its owner's alone (app/app.py).
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=True, server_default=sa_true(), index=True)
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     animal: Mapped[AnimalRecord | None] = relationship(back_populates="events")
@@ -135,6 +140,10 @@ class TaskItem(Base):
     priority: Mapped[str] = mapped_column(String(40), default="medium")
     color: Mapped[str] = mapped_column(String(20), default="")
     owner: Mapped[str] = mapped_column(String(80), default="", index=True)
+    # A lab to-do (everyone's to see and tick off), or with a group that
+    # group's; otherwise its owner's own.
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false(), index=True)
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -270,11 +279,13 @@ class CageRecord(Base):
     # Who manages this cage. Empty means unowned, which stays editable by
     # everyone so existing cages are not locked away — see app/access.py.
     owner: Mapped[str] = mapped_column(String(120), default="", index=True)
-    # Whether a breeder cage is shared with the lab (it starts so, see
-    # _breeder_cages_start_shared below; its owner may turn it off). Only a
-    # breeder cage can be shared, so on any other cage this is ignored
-    # (app/access.py is_shared_cage).
+    # Whether the cage is shared with the lab (or, with share_group_id, a
+    # project group). A breeder cage starts so (_breeder_cages_start_shared
+    # below), any other cage personal; its owner or an admin decides.
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Shared with one project group (app/groups.py) rather than the lab;
+    # empty: the lab. No foreign key: deleting a group clears it here.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     active_override: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str] = mapped_column(Text, default="")
     date_give_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -294,12 +305,15 @@ class CageRecord(Base):
 
 @event.listens_for(CageRecord.purpose, "set")
 def _breeder_cages_start_shared(cage, value, oldvalue, _initiator):
-    """A cage that becomes a breeder cage starts out shared with the lab;
-    its owner or an admin can then make it personal."""
+    """A cage that becomes a breeder cage starts out shared with the lab, and
+    one that stops being one starts personal again; its owner or an admin
+    can then share it or not."""
     def breeder(v):
         return isinstance(v, str) and v.strip().lower() == "breeder"
     if breeder(value) and not breeder(oldvalue):
         cage.is_shared = True
+    elif breeder(oldvalue) and not breeder(value):
+        cage.is_shared, cage.share_group_id = False, None
 
 
 class MouseRecord(Base):
@@ -479,6 +493,9 @@ class PlasmidRecord(Base):
     # Lab common: anyone may edit it; deleting it or changing its owner is
     # still the owner's (or an admin's), as for lab common stock.
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false(), index=True)
+    # Shared with one project group (app/groups.py) rather than the lab;
+    # empty: the lab. No foreign key: deleting a group clears it here.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     # ---- Sequence design (the "working" side of the plasmid record) ------
     # full_sequence: raw nucleotide string (uppercase ACGT/N), no newlines
@@ -582,6 +599,8 @@ class NotebookTemplate(Base):
     # empty: a note. Lab: everyone in the lab can start pages from it.
     kind: Mapped[str] = mapped_column(String(20), default="", server_default="")
     lab: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
+    # With lab on: the template is this project group's rather than the lab's.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -869,6 +888,8 @@ class TankRecord(Base):
     row: Mapped[int | None] = mapped_column(Integer, nullable=True)
     col: Mapped[int | None] = mapped_column(Integer, nullable=True)
     purpose: Mapped[str] = mapped_column(String(40), default="stock", index=True)
+    # A shared purpose's tank or vial is the lab's; with a group, that group's.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     line_id_fk: Mapped[int | None] = mapped_column(ForeignKey("fish_lines.id"), nullable=True)
     owner: Mapped[str] = mapped_column(String(80), default="", index=True)
     card_id: Mapped[str] = mapped_column(String(120), default="")
@@ -1044,6 +1065,8 @@ class OrganismModule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # A personal database: only this user (and admins) see it. Empty: the lab's.
     private_to: Mapped[str] = mapped_column(String(80), default="")
+    # A project group's database: only its members (and admins) see it.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -1455,6 +1478,8 @@ class InventoryModule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # A personal database: only this user (and admins) see it. Empty: the lab's.
     private_to: Mapped[str] = mapped_column(String(80), default="")
+    # A project group's database: only its members (and admins) see it.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -1493,6 +1518,9 @@ class InventoryItem(Base, _JsonAttrs):
     status: Mapped[str] = mapped_column(String(40), default="", index=True)
     owner: Mapped[str] = mapped_column(String(80), default="", index=True)
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Shared with one project group (app/groups.py) rather than the lab;
+    # empty: the lab. No foreign key: deleting a group clears it here.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     quantity: Mapped[str] = mapped_column(String(60), default="")
     unit: Mapped[str] = mapped_column(String(30), default="")
     vendor: Mapped[str] = mapped_column(String(120), default="")
@@ -1548,6 +1576,8 @@ class StockModule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # A personal database: only this user (and admins) see it. Empty: the lab's.
     private_to: Mapped[str] = mapped_column(String(80), default="")
+    # A project group's database: only its members (and admins) see it.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -1615,6 +1645,8 @@ class StockUnit(Base, _JsonAttrs):
     number: Mapped[int] = mapped_column(Integer, index=True)
     genotype: Mapped[str] = mapped_column(String(400), default="", index=True)
     purpose: Mapped[str] = mapped_column(String(40), default="stock", index=True)
+    # A shared purpose's tank or vial is the lab's; with a group, that group's.
+    share_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     # Crosses: the two parents (♀ virgins × ♂; hermaphrodites × males).
     female_genotype: Mapped[str] = mapped_column(String(400), default="")
@@ -1884,8 +1916,38 @@ class NotebookPageInfo(Base):
     body_state: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
+class LabGroup(Base):
+    """A project group: some of the lab's people who share animals, stock,
+    databases, to-dos and notebook pages among themselves (app/groups.py)."""
+    __tablename__ = "lab_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    members: Mapped[list["LabGroupMember"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan", order_by="LabGroupMember.username")
+
+
+class LabGroupMember(Base):
+    """Someone in a project group. A lead may add and remove its members."""
+    __tablename__ = "lab_group_members"
+    __table_args__ = (UniqueConstraint("group_id_fk", "username", name="uq_lab_group_member"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id_fk: Mapped[int] = mapped_column(ForeignKey("lab_groups.id", ondelete="CASCADE"), index=True)
+    username: Mapped[str] = mapped_column(String(80), index=True)
+    lead: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    group: Mapped[LabGroup] = relationship(back_populates="members")
+
+
 class NotebookShare(Base):
-    """Someone else who may open a page. username "*" is the whole lab."""
+    """Someone else who may open a page. username "*" is the whole lab,
+    "group:<id>" a project group's members."""
     __tablename__ = "notebook_shares"
     __table_args__ = (UniqueConstraint("page_id_fk", "username", name="uq_notebook_share"),)
 

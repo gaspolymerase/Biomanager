@@ -2617,11 +2617,16 @@
            bg-sand-100 px-2.5 text-[11.5px] font-semibold text-muted;
   }
   .sheet-table select.scope-pill[data-scope="lab"] { @apply bg-violet-50 text-violet-700; }
+  .sheet-table select.scope-pill[data-scope="group"] { @apply bg-teal-50 text-teal-700; }
   .sheet-table select.scope-pill:focus { @apply ring-2 ring-brand-400/40; }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) :is(.sheet-table select.scope-pill[data-scope="lab"], .cmdk-row-type-antibody) { @apply bg-violet-500/15 text-violet-300; }
   }
   :root[data-theme="dark"] :is(.sheet-table select.scope-pill[data-scope="lab"], .cmdk-row-type-antibody) { @apply bg-violet-500/15 text-violet-300; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .sheet-table select.scope-pill[data-scope="group"] { @apply bg-teal-500/15 text-teal-300; }
+  }
+  :root[data-theme="dark"] .sheet-table select.scope-pill[data-scope="group"] { @apply bg-teal-500/15 text-teal-300; }
 
   /* A box someone else made: shown, not editable. */
   .rack-chips .btn.is-static { @apply cursor-default text-muted hover:bg-surface; }

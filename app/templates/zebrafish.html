@@ -222,7 +222,7 @@
             </th>
             {{ col('rack', 'grid', 'Rack', 112) }}
             {{ col('position', 'position', 'Position', 72, "Position in the rack, named by the rack's scheme") }}
-            {{ col('purpose', 'tag', 'Purpose', 104, 'Breeding tanks are shared: anyone in the lab can edit them') }}
+            {{ col('purpose', 'tag', 'Purpose', 104, 'Breeding tanks are shared: anyone in the lab (or the project group it is shared with) can edit them') }}
             {{ col('line', 'sitemap', 'Line', 160) }}
             {{ col('fish', 'fish', 'Fish', 56, 'Live fish in the tank') }}
             {{ col('owner', 'user', 'Owner', 80) }}
@@ -259,7 +259,8 @@
                          aria-label="Position in the rack" {% if locked %}disabled{% endif %}></td>
               <td>
                 <select class="status-pill" form="{{ f }}" name="purpose" data-status="{{ t.purpose }}" data-autosave="1"
-                        aria-label="Purpose" {% if locked %}disabled{% endif %}>
+                        aria-label="Purpose" {% if locked %}disabled{% endif %}
+                        {% if tr.share_group %}title="Shared with {{ tr.share_group }}: its members can edit it"{% endif %}>
                   {{ options(tank_purpose_options, t.purpose) }}
                 </select>
               </td>
@@ -488,6 +489,14 @@
       <label>State
         <select name="active"><option value="1">In use</option><option value="0">Retired</option></select>
       </label>
+      {% if groups_api.names() %}
+        <label title="A breeding or shared tank is the lab's to edit, or one project group's">Shared with
+          <select name="share_group">
+            <option value="1">The lab</option>
+            {% for gid, name in groups_api.names().items() %}<option value="g{{ gid }}">{{ name }}</option>{% endfor %}
+          </select>
+        </label>
+      {% endif %}
     </fieldset>
     <fieldset class="record-group">
       <legend>Position</legend>

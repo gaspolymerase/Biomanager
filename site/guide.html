@@ -55,6 +55,7 @@
       <li><a href="#notebook">Notebook and utilities</a></li>
       <li class="toc-part">Working as a lab</li>
       <li><a href="#lab">Who can do what</a></li>
+      <li><a href="#groups">Project groups</a></li>
       <li><a href="#people">People and guests</a></li>
       <li><a href="#setup">Lab setup</a></li>
       <li><a href="#phones">Phones and cage cards</a></li>
@@ -378,8 +379,10 @@
     <section id="mice">
       <h2>Mouse colony</h2>
       <p>Tabs across the top: <b>Mice</b>, <b>Cages</b>, <b>Litters</b>, <b>Breeders</b>, <b>Experiments</b>, <b>Strains</b> and
-        <b>Dropdowns</b>. The <b>My colony / Shared / Everyone</b> switch changes what you <i>see</i>, never what you may edit:
-        <i>My colony</i> is yours plus the lab's shared breeder cages, <i>Shared</i> just those, <i>Everyone</i> every cage.</p>
+        <b>Dropdowns</b>. The <b>My colony / My groups / Shared / Everyone</b> switch changes what you <i>see</i>, never what you may
+        edit: <i>My colony</i> is yours plus the shared cages you work in, <i>My groups</i> your <a href="#groups">project groups'</a>,
+        <i>Shared</i> just the shared cages, <i>Everyone</i> every cage. In the Cages tab, a chip for each purpose (<i>Experiments</i>,
+        <i>Breeder</i>…) shows only those cages.</p>
       <figure class="gshot"><a href="assets/screenshots/mice.webp" target="_blank" rel="noopener" title="Open full size"><img src="assets/screenshots/mice.webp" alt="The mouse sheet" loading="lazy" width="2000" height="1250"></a><figcaption>The mouse sheet</figcaption></figure>
 
       <h3>Racks and cages</h3>
@@ -646,6 +649,10 @@
           protocols under way.</li>
         <li><b>New event</b> offers an event, a to-do (due today, tomorrow, next week, or a date), <b>Book equipment</b>, <b>Time away</b>
           and <b>Start a protocol</b>. Drag an event, to-do or booking to move it.</li>
+        <li><b>Who sees it</b>, for an event or a to-do: <i>Only me</i>, <i>Everyone in the lab</i> or one of your
+          <a href="#groups">project groups</a>. Your own is seen by nobody else, admins included. A shared event is changed only by
+          whoever added it and admins; a shared to-do anyone it is for can tick off. A new event starts as the lab's, a new to-do as
+          yours.</li>
         <li><b>Repeats</b>: an event every N days, weeks or months, or every month on the same weekday (<i>the first Monday</i>), until a
           date. <b>Delete this one</b> takes out a single date and <b>Change this one only</b> moves or changes it alone; Save changes every
           repeat.</li>
@@ -717,7 +724,8 @@
         or delete it. A lab mate can <b>Witness</b> it. To change it, its owner <b>Amends</b> it with a reason; the reason and every
         signature stay with the page, each showing whether the page still reads as it did when signed.</p>
       <h3>Working together</h3>
-      <p>Share a page to read or edit; editors type in it at the same time. Comments on a passage, with <code>@name</code> telling that
+      <p>Share a page to read or edit, with people, everyone in the lab or a <a href="#groups">project group</a>; editors type in it
+        at the same time. Comments on a passage, with <code>@name</code> telling that
         person (switch these notices off under <b>Settings → Notifications</b>). <b>Version history</b> keeps every editing session to
         compare or restore. <b>Tags and search</b> work across every page you can open.</p>
       <h3 id="utilities">Utilities</h3>
@@ -755,12 +763,13 @@
       <h2>Who can do what</h2>
       <ul>
         <li><b>You edit what you own</b> — your mice, cages, vials, plasmids and items.</li>
-        <li><b>Shared breeder cages and anything marked lab common</b> belong to the whole lab. Only a cage whose purpose is
-          <i>Breeder</i> can be shared: it starts out <i>Shared</i>, and only its owner or an admin can make it <i>Personal</i>
-          (or shared again) or give it to someone else. Every other cage, a <i>Breeding</i> one included, is its owner's; admins
-          and animal care can still see and change every cage.</li>
+        <li><b>Shared cages and anything marked lab common</b> belong to the whole lab. A cage whose purpose is <i>Breeder</i>
+          starts out <i>Shared</i>; any other cage (an experiment cage, a <i>Breeding</i> one) starts <i>Personal</i>. Only its owner or
+          an admin shares a cage, makes it personal or gives it to someone else; admins and animal care can still see and change every
+          cage.</li>
         <li><b>Everyone sees the lab's databases</b>, because a census with holes is not a census.</li>
-        <li><b>Personal databases</b> (<i>Just you</i> on their tile) are seen only by their owner and admins.</li>
+        <li><b>Personal databases</b> (<i>Just you</i> on their tile) are seen only by their owner and admins; a
+          <a href="#groups">project group's</a> by its members and admins.</li>
         <li><b>Admins</b> can change anything, run Lab setup, approve people, and read the audit log.</li>
         <li><b>Animal care</b> (technicians, vets; a role in <b>Manage users</b>) may change any lab's animals, cages, tanks and vials, but
           not other people's experiments, notebook pages or settings (their own they keep like a member). A <b>Facility manager</b> also runs the racks, rooms, incubators, water systems and each
@@ -769,6 +778,28 @@
           in every database — fish racks and the racks of your own databases too. One with nobody is for admins only.</li>
       </ul>
       <p>When a record isn't yours, BioManager says whose it is instead of just refusing.</p>
+    </section>
+
+    <section id="groups">
+      <h2>Project groups</h2>
+      <p>A group is some of the lab working on one project: a layer between you and the whole lab. <b>More → Project groups</b> lists
+        them and who is in each. An admin makes a group, names it and picks its members; a group's <i>leads</i> may add and remove
+        members too. Someone can be in several groups.</p>
+      <ul>
+        <li><b>Shared with a group.</b> Wherever you choose <i>Shared</i> or <i>Lab common</i>, your groups are offered as well: a breeder
+          cage, a plasmid or a reagent shared with a group is its members' to edit. For a breeding tank or a lab stock vial, pick the group
+          under <b>Shared with</b> in its dialog. Everyone in the lab still sees them.</li>
+        <li><b>A group's database.</b> When you make a database, <b>Who is it for?</b> offers your groups: only their members (and admins)
+          see it, and they are told it was added. <b>Share with the group</b> on the Databases page gives one of your own to a group.</li>
+        <li><b>A group's events and to-dos.</b> On the calendar, <b>Who sees it</b> offers your groups: the group's members see it on
+          their calendar (and a to-do on Home), and any of them can tick a to-do off; only its maker or an admin changes an event or
+          deletes a to-do.</li>
+        <li><b>Notebook.</b> <b>Share</b> on a page offers your groups as well as people, to view or to edit; a template can be for a group
+          (<b>Who can use it</b>).</li>
+        <li><b>The colony.</b> <b>My groups</b>, beside My colony, shows the mice and cages of everyone in your groups.</li>
+      </ul>
+      <p>Deleting a group (admins) makes what was shared with it its owner's own again (a breeding tank or a stock vial the lab's, as
+        its purpose says), and a group's databases their maker's.</p>
     </section>
 
     <section id="people">

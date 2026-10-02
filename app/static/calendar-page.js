@@ -125,6 +125,8 @@
     // A repeat is changed from its dialog, not by dragging one occurrence.
     if (item.raw && item.raw.occurrence) out.isReadOnly = true;
     if (item.kind === 'away' || item.kind === 'protocol' || item.kind === 'agenda' || item.kind === 'auto') out.isReadOnly = true;
+    // Someone else's to-do, or a group's you are not in: shown, not changed.
+    if ((item.kind === 'task' || item.kind === 'event') && item.raw && item.raw.readOnly) out.isReadOnly = true;
     return out;
   }
 
@@ -495,9 +497,10 @@
     const done = it.kind === 'task' && it.raw && it.raw.done;
     const time = it.isAllday ? spanLabel(it) : `${fmtTime(it.start)} – ${fmtTime(it.end)}`;
     const lead = it.kind === 'task'
-      ? `<input type="checkbox" class="biocal-list-cb" data-item-id="${it.id}" ${done ? 'checked' : ''} aria-label="Done">`
+      ? `<input type="checkbox" class="biocal-list-cb" data-item-id="${it.id}" ${done ? 'checked' : ''} ${it.raw && it.raw.readOnly ? 'disabled' : ''} aria-label="Done">`
       : `<span class="cal-list-icon" style="--edge:${painted.borderColor};--fill:${painted.backgroundColor}">${svgIcon(iconFor(it) || 'calendar')}</span>`;
-    const meta = [(it.raw && it.raw.group) || LAYER_NAMES[layerOf(it)], it.body].filter(Boolean).join(' · ');
+    const whose = it.kind === 'task' && it.raw && it.raw.audienceLabel ? `${it.raw.audienceLabel}’s` : '';
+    const meta = [(it.raw && it.raw.group) || LAYER_NAMES[layerOf(it)], whose, it.body].filter(Boolean).join(' · ');
     return `<li class="cal-list-row${done ? ' is-done' : ''}" data-item-id="${it.id}" tabindex="0">
         ${lead}
         <span class="cal-list-time">${time}</span>
@@ -687,12 +690,18 @@
   function openFromItem(item) {
     const raw = item.raw || {};
     switch (item.kind) {
-      case 'event':
       case 'task':
+        if (raw.readOnly) return toast(`${item.title}: ${raw.audienceLabel ? raw.audienceLabel + '’s to-do' : `${raw.owner || 'someone else'}’s to-do`}, read only.`);
+        // falls through
+      case 'event':
+        if (item.kind === 'event' && raw.readOnly) {
+          return toast(`${item.title}${item.body ? ': ' + item.body : ''}. Only ${raw.owner || 'the person who added it'} or an admin can change it.`);
+        }
         return openItem({
           kind: item.kind, id: item.id.split('@')[0], occurrence: raw.occurrence || '', title: item.title,
           start: toLocalInput(new Date(item.start)), end: toLocalInput(new Date(item.end)),
           isAllday: !!item.isAllday, color: item.backgroundColor, body: item.body || '', repeat: raw.repeat || null,
+          audience: raw.audience || '0',
         });
       case 'booking':
         if (item.isReadOnly) return toast(`${item.title}${raw.purpose ? ': ' + raw.purpose : ''}. Only the person who booked it can change it.`);
@@ -725,6 +734,7 @@
     if (v && v.slice(11, 16) !== '00:00') form.elements.isAllday.checked = false;
   }));
 
+  if (form.elements.audience) form.elements.audience.addEventListener('change', () => { form.elements.audience.dataset.touched = '1'; });
   const formError = $('#cal-form-error');
   const delBtn = $('#biocal-delete');
   const delOneBtn = $('#cal-delete-one');
@@ -763,6 +773,8 @@
       form.elements.away_start.value = day;
       form.elements.away_end.value = day;
     }
+    const audience = form.elements.audience;
+    if (audience && !form.elements.id.value && !audience.dataset.touched) audience.value = kind === 'event' ? '1' : '0';
     setKind(kind, !!form.elements.id.value);
   }));
 
@@ -786,6 +798,16 @@
     });
 
     form.elements.title.value = item.title || '';
+    if (form.elements.audience) {
+      const audience = form.elements.audience;
+      // A group the to-do is for but this person can't pick still shows as itself.
+      if (item.audience && !Array.from(audience.options).some((o) => o.value === item.audience)) {
+        audience.add(new Option('A project group’s', item.audience));
+      }
+      // New: an event is the lab's, a to-do yours, unless chosen otherwise.
+      audience.value = item.audience || (kind === 'event' ? '1' : '0');
+      audience.dataset.touched = item.audience ? '1' : '';
+    }
     form.elements.start.value = kind === 'event' ? (item.start || '') : '';
     form.elements.end.value = kind === 'event' ? (item.end || '') : '';
     form.elements.isAllday.checked = !!item.isAllday;
@@ -931,6 +953,7 @@
         isAllday = f.isAllday.checked;
       }
       const payload = { kind, title: f.title.value, start, end, isAllday, backgroundColor: f.color.value, body: f.body.value };
+      if (f.audience) payload.audience = f.audience.value;
       if (kind === 'event') {
         payload.repeat = repeatFreq.value ? { freq: repeatFreq.value, interval: f.repeat_interval.value, until: f.repeat_until.value } : null;
       }
@@ -1023,7 +1046,10 @@
   });
 
   function toggleDone(id) {
-    return postJson(`/calendar/items/${id}/toggle`, {}).then(() => fetchAndRender());
+    return postJson(`/calendar/items/${id}/toggle`, {}).then((j) => {
+      if (j && j.ok === false && j.error) toast(j.error);
+      return fetchAndRender();
+    });
   }
 
   // ================================================================ protocols

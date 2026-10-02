@@ -248,8 +248,9 @@ def _colony_items(session, today, until) -> list[dict]:
 
 
 def _calendar_items(session, today, until) -> list[dict]:
+    from .lab_calendar import event_visible_clause
     events = session.scalars(select(CalendarEvent).where(
-        CalendarEvent.event_date >= today, CalendarEvent.event_date <= until)
+        event_visible_clause(), CalendarEvent.event_date >= today, CalendarEvent.event_date <= until)
         .order_by(CalendarEvent.event_date)).all()
     return [_item("calendar", e.event_date, e.title, today, url_for("calendar"), detail=e.event_type or "")
             for e in events]

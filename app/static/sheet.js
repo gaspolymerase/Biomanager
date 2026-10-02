@@ -142,7 +142,7 @@
         if (input.classList.contains('status-pill')) input.dataset.status = input.value.toLowerCase();
         if (input.classList.contains('sex-pill')) input.dataset.sex = input.value;
         if (input.dataset.scopePill !== undefined || input.classList.contains('scope-pill')) {
-          input.dataset.scope = input.value === '1' ? 'lab' : 'mine';
+          input.dataset.scope = input.value === '1' ? 'lab' : (/^g\d+$/.test(input.value) ? 'group' : 'mine');
         }
         const detail = { input, form: document.getElementById(input.getAttribute('form')), previous };
         const go = input.dispatchEvent(new CustomEvent('sheet:change', { bubbles: true, cancelable: true, detail }));

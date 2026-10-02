@@ -232,7 +232,7 @@
               <div class="min-w-0">
                 <span class="font-medium text-ink">{{ d.label }}</span>
                 <span class="text-[12px] text-muted">{{ d.kind_label }}{% if d.created_by and d.created_by != 'system' %} · added by {{ d.created_by }}{% endif %}</span>
-                {% if d.private_to %}<span class="badge badge-brand">Personal · {{ d.private_to }}</span>{% endif %}
+                {% if d.private_to %}<span class="badge badge-brand">Personal · {{ d.private_to }}</span>{% elif d.share_group_id %}<span class="badge badge-quiet">{{ groups_api.name_of(d.share_group_id) or 'A deleted group' }}</span>{% endif %}
               </div>
               <form method="post" action="{{ url_for('lab.setup') }}">
                 <input type="hidden" name="action" value="module">

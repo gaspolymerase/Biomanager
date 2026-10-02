@@ -144,7 +144,8 @@ def _cage_cards(session) -> dict:
     if ids:
         stmt = stmt.where(CageRecord.id.in_(ids))
     cages = [c for c in session.scalars(stmt).all()
-             if ids or access.in_scope(c, scope, shared=access.is_shared_cage(c))]
+             if ids or access.in_scope(c, scope, shared=access.cage_shared_with(c),
+                                                    group_id=access.cage_group(c))]
     cards = []
     for cage in cages:
         living = [m for m in cage.mice if m.date_of_death is None]

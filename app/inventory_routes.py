@@ -33,9 +33,10 @@ from . import access, audit, database_keys, positions
 from . import inventory as presets
 from . import inventory_service as svc
 from .db import SessionLocal
-from . import lab, notify
+from . import lab
 from .lab import lab_audience
 from .formutil import MAX_ID, form_changed
+from . import groups as project_groups
 from .models import InventoryItem, InventoryModule, InventoryRack
 
 bp = Blueprint("inventory", __name__, url_prefix="/inventory")
@@ -124,7 +125,9 @@ def _back(key: str, **params) -> str:
 
 
 def _can_edit(item: InventoryItem) -> bool:
-    return access.can_edit(item, shared=item.is_shared)
+    """Lab common stock is everyone's to edit; shared with a project group,
+    its members'."""
+    return access.can_edit(item, shared=project_groups.record_shared_with(item))
 
 
 def _can_manage(item: InventoryItem) -> bool:
@@ -175,13 +178,7 @@ def new_module():
                 flash(f"There is already a database called {clash}; give this one a name of its own.", "error")
                 return redirect(url_for("inventory.new_module", preset=preset))
             module = svc.create_module(session, preset, label, created_by=g.user.username)
-            module.private_to = lab.audience_for_new(session, request.form.get("audience", ""))
-            if module.private_to and request.form.get("audience") == "lab":
-                flash("It is yours for now: only lab admins add databases for everyone. "
-                      "Ask one to share it with the lab.", "info")
-            if not module.private_to:
-                notify.tell_lab(session, g.user.username,
-                                f"{g.user.display_name or g.user.username} added {module.label} for the lab")
+            lab.set_audience_for_new(session, module, request.form.get("audience", ""))
             if request.form.get("blurb", "").strip():
                 module.blurb = request.form["blurb"].strip()
             session.commit()
@@ -203,7 +200,7 @@ def _item_payload(mv, item: InventoryItem) -> dict:
         "id": item.id, "_number": item.number, "_label": item.name or f"#{item.number}",
         "_locked": not _can_edit(item), "_manage": _can_manage(item),
         "name": item.name, "category": item.category, "status": item.status, "owner": item.owner,
-        "is_shared": "1" if item.is_shared else "0", "quantity": item.quantity, "unit": item.unit,
+        "is_shared": project_groups.record_value(item), "quantity": item.quantity, "unit": item.unit,
         "vendor": item.vendor, "catalog_number": item.catalog_number, "lot": item.lot,
         "rack_id": item.rack_id_fk or "", "position": svc.rack_label(item),
         "location_note": item.location_note,
@@ -262,7 +259,7 @@ def _grid_payload(mv, racks, items) -> dict:
             "tone": "stock" if i.is_shared else "", "flag": svc.expiry_state(i) == "expired",
             "badge": i.quantity or "",
             "rack": i.rack_id_fk, "row": i.rack_row, "col": i.rack_col,
-            "title": " · ".join(filter(None, [i.name, i.category, i.status, i.owner, "lab common" if i.is_shared else ""])),
+            "title": " · ".join(filter(None, [i.name, i.category, i.status, i.owner, project_groups.label(i.is_shared, i.share_group_id, personal="", lab="lab common")])),
             "search": " ".join(filter(None, [i.name, i.category, i.status, i.owner, i.vendor, i.catalog_number,
                                              *[str(v) for v in i.attrs_dict.values() if isinstance(v, str)]])).lower(),
             "edit": {"data-record-edit": "item-dialog", "data-record-payload": json.dumps(_item_payload(mv, i))},
@@ -553,12 +550,12 @@ def _item_from_form(session, mv, item: InventoryItem, form, creating: bool = Fal
             if not manage:
                 raise Refused(_manage_denied(mv, item, "change who it belongs to"), 403)
             item.owner = owner
-    if "is_shared" in form:
-        shared = form.get("is_shared") in ("1", "true", "on")
-        if shared != bool(item.is_shared):
-            if not manage:
-                raise Refused(_manage_denied(mv, item, "make it personal"), 403)
-            item.is_shared = shared
+    if "is_shared" in form and project_groups.differs(item, form.get("is_shared")):
+        if not manage:
+            raise Refused(_manage_denied(mv, item, "make it personal"), 403)
+        refused = project_groups.apply(item, form.get("is_shared"))
+        if refused:
+            raise Refused(refused, 403)
 
     for name, limit in (("quantity", 60), ("unit", 30), ("vendor", 120), ("catalog_number", 120),
                         ("lot", 120), ("location_note", 200)):
@@ -880,7 +877,8 @@ def duplicate_item(key: str, item_id: int):
         copy = InventoryItem(
             module_id_fk=row.id, number=svc.next_number(session, row.id), name=item.name,
             category=item.category, status=(svc.view(row).statuses or [""])[0], owner=g.user.username,
-            is_shared=item.is_shared, quantity=item.quantity, unit=item.unit, vendor=item.vendor,
+            is_shared=item.is_shared, share_group_id=item.share_group_id, quantity=item.quantity, unit=item.unit,
+            vendor=item.vendor,
             catalog_number=item.catalog_number, lot="", attrs=json.dumps(attrs), notes=item.notes)
         session.add(copy)
         session.commit()
@@ -1153,6 +1151,9 @@ def bulk(key: str):
         mv = svc.view(row)
         if action not in BULK_ACTIONS:
             return _done(key, error="Pick what to do with them.")
+        share_group = project_groups.parse(value)[1] if action == "shared" else None
+        if share_group is not None and not project_groups.may_share_with(share_group):
+            return _done(key, error=project_groups.refusal(share_group))
         items = list(session.scalars(select(InventoryItem).where(
             InventoryItem.module_id_fk == row.id, InventoryItem.id.in_(ids)).order_by(InventoryItem.number)))
         if not items:
@@ -1193,7 +1194,7 @@ def bulk(key: str):
                 elif action == "owner":
                     item.owner = value[:80]
                 elif action == "shared":
-                    item.is_shared = value == "1"
+                    project_groups.apply(item, value)
                 elif action == "field":
                     # Through the dialog's own checks (a number column takes
                     # numbers, a date a date), one column only.
