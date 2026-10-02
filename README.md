@@ -239,8 +239,8 @@ Upload a GenBank, FASTA or SnapGene file and BioManager keeps the sequence
 and its features, with an interactive map you can edit. Plasmid boxes sit
 on the same rack grid as everything else, so every tube has an address.
 Each tube keeps its miniprep's concentration (ng/µL) and 260/280, and a
-plasmid can be **Lab common**: anyone can edit it, while its owner still
-decides whose it is. A plasmid's page lists the notebook pages that
+plasmid can be **Lab common**: anyone can edit it (or, shared with a
+project group, its members), while its owner still decides whose it is. A plasmid's page lists the notebook pages that
 `@plasmid` it, and its address is its number (plasmid #12 is `/plasmid/12`).
 In the sheet, **Sequence** beside a plasmid's number opens its sequence and
 map (**Add sequence** when it has none yet).
@@ -315,6 +315,9 @@ database has a name of its own (one another database has is refused), so
   genotyping, sac reminders), fly and worm flips, organism schedules and
   reagent expiry filled in for you. Shows your **Google Calendar** and any
   **ICS subscription** alongside.
+  - **Whose to-do**: a to-do is yours, the lab's (everyone sees it and
+    anyone can tick it off) or one of your project groups' (its members
+    see it and tick it off). Someone else's own to-dos stay theirs.
   - **Repeating events**: every day, week or month, or every month on the
     same weekday ("the first Monday"), until a date. One date can be taken
     out (**Delete this one**) or changed on its own (**Change this one
@@ -897,6 +900,19 @@ track.
   whole lab.** Only a Breeder cage can be shared: it starts out shared, and
   only its owner or an admin can make it personal or give it away; every
   other cage is its owner's. Admins can change anything.
+- **Project groups.** Some of the lab working on one project can be a
+  group (**More → Project groups**): an admin makes it and picks its
+  members, and the group's leads may add and remove people; someone can be
+  in several groups. Wherever something can be shared with the lab, it can
+  be shared with one of your groups instead: a breeder cage, a breeding
+  tank or a lab stock vial is then its members' to edit, as is a plasmid
+  or reagent shared with it (everyone still sees them). A database made
+  for a group is seen only by its members (and admins), a group's to-dos
+  are on their calendars for any of them to tick off, and a notebook page
+  or template can be shared with a group. The colony's **My groups** view
+  shows the mice and cages of everyone in your groups. Deleting a group
+  makes what was shared with it its owner's own again (a breeding tank or
+  stock vial the lab's).
 - **Roles for a facility** (Manage users → role): **Animal care**
   (technicians, vets) may change any lab's animals, cages, tanks and
   vials, but not other people's experiments, notebook pages or settings
@@ -909,16 +925,17 @@ track.
   university that only speaks SAML (InCommon, eduGAIN) through CILogon
   (deploy/README.md).
 - **Everyone sees every lab database** — a census with holes is not a
-  census. The **My colony / Shared / Everyone** switch filters the view
-  without changing who may edit what.
+  census. The **My colony / My groups / Shared / Everyone** switch filters
+  the view without changing who may edit what.
 - **The lab sees only what it uses.** On first sign-in the admin answers
   four questions: which databases the lab keeps and which functions it
   uses. Everyone then gets exactly those, in the sidebar and on their home
   page. **Lab setup** changes it any time, switches things off (hidden,
   never deleted) and makes someone else an admin.
 - **Your own databases.** Anyone can add a database **just for them**, which
-  only they and the admins see, and share it with the lab later. Admins add
-  databases for the whole lab, and decide whether members may too.
+  only they and the admins see, or for one of their project groups, and
+  share it with a group or the lab later. Admins add databases for the
+  whole lab, and decide whether members may too.
 - **Notifications.** The bell tells you when someone moves or gives you
   animals, records a genotype for yours, or when an order you placed is
   ordered, received or cancelled; you choose which kinds in Settings. New

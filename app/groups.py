@@ -19,7 +19,8 @@ pages are shared with a group by a share whose username is "group:<id>".
 Admins make, rename and delete groups and choose their members on the
 Project groups page; a group's leads may add and remove its members. A
 person may be in several groups. Deleting a group makes what was shared
-with it its owner's again (a group database becomes its creator's own).
+with it its owner's again (a breeding tank or lab stock vial, shared by its
+purpose, the lab's; a group database its creator's own).
 """
 from __future__ import annotations
 
@@ -305,6 +306,13 @@ def _group_or_404(s, group_id: int) -> LabGroup:
 
 def _clean_name(raw) -> str:
     return " ".join(str(raw or "").split())[:NAME_LIMIT]
+
+
+@bp.before_request
+def require_login():
+    if g.get("user") is None:
+        return redirect(url_for("login", next=request.path))
+    return None
 
 
 @bp.route("/groups")

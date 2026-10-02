@@ -13,7 +13,7 @@
       <li>Wherever you choose <b>Shared</b> or <b>Lab common</b>, you can pick one of your groups instead: a breeder cage,
         a breeding tank, a stock vial, a plasmid or a reagent shared with a group is its members’ to edit.
         Everyone in the lab still sees it, as now.</li>
-      <li>A database made for a group (<b>New database</b> → who sees it) is seen by its members only, and admins.</li>
+      <li>A database made for a group (<b>Who is it for?</b> when you add one) is seen by its members only, and admins.</li>
       <li>On the calendar, a to-do can be yours, a group’s or the lab’s. A group’s members see it and can tick it off.</li>
       <li>A notebook page or template can be shared with a group, to view or to edit.</li>
       <li>The colony’s <b>My groups</b> view shows the mice and cages of everyone in your groups.</li>
@@ -33,7 +33,7 @@
           <label class="field-label min-w-[220px] flex-1">Name
             <input name="name" required maxlength="80" placeholder="e.g. Sleep project" autocomplete="off">
           </label>
-          <label class="field-label min-w-[260px] flex-[2]">What it works on <span class="text-muted">(optional)</span>
+          <label class="field-label min-w-[260px] flex-[2]">What it works on, if you like
             <input name="description" maxlength="500" autocomplete="off">
           </label>
         </div>
@@ -74,7 +74,7 @@
         <span class="text-[12px] text-muted">{{ members|length }} member{{ '' if members|length == 1 else 's' }}</span>
       </div>
 
-      <ul class="mt-3 divide-y divide-line rounded-lg border border-line">
+      <ul class="mt-3 divide-y divide-sand-100 rounded-lg border border-hairline">
         {% for m in members %}
           <li class="flex flex-wrap items-center gap-2 px-3 py-2 text-[13px]">
             {{ m.username | owner_badge }}
@@ -130,7 +130,7 @@
             <button type="submit" class="btn">Save</button>
           </form>
           <form method="post" action="{{ url_for('groups.remove', group_id=group.id) }}" class="mt-2"
-                data-confirm="Delete {{ group.name }}? What was shared with it becomes its owner's own again, and its databases their creator's.">
+                data-confirm="Delete {{ group.name }}? What was shared with it becomes its owner's own again (breeding tanks and stock vials the lab's), and its databases their creator's.">
             <button type="submit" class="btn btn-danger">Delete the group</button>
           </form>
         </details>

@@ -559,6 +559,7 @@ def plasmid_json(p: PlasmidRecord, sequence: bool = False) -> dict:
     out = {"plasmid_id": p.plasmid_id, "name": p.name or "", "backbone": p.backbone or "", "insert": p.insert_seq or "",
            "resistance": p.resistance or "", "owner": p.owner or "", "location": p.location or "",
            "concentration": p.concentration or "", "a260_280": p.a260_280 or "", "shared": bool(p.is_shared),
+           "shared_with": (groups.name_of(p.share_group_id) or None) if p.is_shared and p.share_group_id else None,
            "box": p.storage_box or "", "notes": p.notes or "", "has_sequence": bool(p.full_sequence),
            "updated_at": _stamp(p.updated_at)}
     if sequence:

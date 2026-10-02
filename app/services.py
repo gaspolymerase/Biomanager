@@ -14,6 +14,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from sqlalchemy import String, func, inspect, select, text
+from sqlalchemy.orm import load_only
 
 from .db import BASE_DIR, Base, SessionLocal, engine
 from .integrity import ensure_integrity
@@ -791,7 +792,10 @@ def migrate_cage_locations() -> int:
         racks = {r.name.lower(): r for r in session.scalars(select(MouseRack))}
         if not racks:
             return 0
-        for cage in session.scalars(select(CageRecord).where(CageRecord.rack_id_fk.is_(None))):
+        # Only the columns it uses: this runs before Alembic adds newer ones.
+        for cage in session.scalars(select(CageRecord).options(load_only(
+                CageRecord.id, CageRecord.cage_location, CageRecord.rack_id_fk, CageRecord.rack_row,
+                CageRecord.rack_col)).where(CageRecord.rack_id_fk.is_(None))):
             match = pattern.match(cage.cage_location or "")
             rack = racks.get(match.group("rack").strip().lower()) if match else None
             cell = positions.parse(match.group("pos"), rack.naming, rack.rows, rack.cols) if rack else None
@@ -1802,8 +1806,9 @@ def backfill_cage_owners() -> None:
     from collections import Counter
 
     with SessionLocal() as session:
+        # Only the columns it uses: this runs before Alembic adds newer ones.
         cages = session.scalars(
-            select(CageRecord).where(
+            select(CageRecord).options(load_only(CageRecord.id, CageRecord.owner)).where(
                 (CageRecord.owner.is_(None)) | (CageRecord.owner == "")
             )
         ).all()
