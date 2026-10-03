@@ -721,6 +721,11 @@ differently and what was fixed, with a link to the full release notes.
 The window keeps you signed in and keeps your tabs from one launch to
 the next, as a browser does.
 
+On Windows the window is Microsoft Edge WebView2, which Windows 11 has. A
+Windows 10 PC without it gets an offer to download it from Microsoft, and
+BioManager opens in the web browser meanwhile (leave its message open while
+you use it); once it is installed, BioManager opens in its own window again.
+
 Your data lives outside the app, so updating or reinstalling never
 touches it:
 

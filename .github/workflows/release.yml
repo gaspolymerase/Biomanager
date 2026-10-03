@@ -73,6 +73,13 @@ jobs:
           # Linux has no system web view pywebview can rely on; bundle Qt's.
           if [ "$RUNNER_OS" = "Linux" ]; then python -m pip install "pywebview[qt]==5.4"; fi
 
+      # This runner has WebView2 and .NET, as Windows 11 does. If the check that
+      # sends a Windows 10 PC without them to the web browser (desktop_windows.py)
+      # can't find them here, it would do that to every Windows user.
+      - name: The window's parts are found (Windows)
+        if: runner.os == 'Windows'
+        run: python -c "import sys, desktop_windows as d; r = d.missing(); print('missing:', r); sys.exit(1 if r else 0)"
+
       - name: Build
         run: BIOMANAGER_VERSION="${TAG#v}" ./scripts/build-desktop.sh
 

@@ -1219,6 +1219,20 @@ this computer's `desktop-prefs.json` (automatic check, skipped version,
 appearance, zoom) in the data folder. Set `BIOMANAGER_MENU_DUMP=<file>` to
 have a running app write its menu bar there, for checking a build.
 
+**Windows 10** (`desktop_windows.py`). The Windows window is WebView2
+through .NET Framework. Without WebView2 86+ or .NET 4.6.2+, pywebview
+quietly uses Internet Explorer's engine, which can't run the app, so
+`desktop.main()` first asks `missing()` (the same registry keys pywebview
+reads) and without them calls `run_in_browser()`: a message offering
+Microsoft's WebView2 bootstrapper, the app in the default browser, and a
+second message that keeps the process (and Flask) alive until OK. A
+`webview.start()` that raises on Windows ends there too, with the error in
+the message. Before any of it, a frozen build's `unblock()` deletes the
+`Zone.Identifier` stream from its own DLLs: Explorer marks every file
+unpacked from a downloaded zip, and .NET won't load a marked assembly
+(HRESULT 0x80131515). The release workflow's Windows job fails if
+`missing()` finds anything lacking on the runner, which has both.
+
 Build a clickable native app (no terminal needed to launch):
 
 ```bash

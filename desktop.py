@@ -11,6 +11,7 @@ import socket
 import sys
 import threading
 import time
+from pathlib import Path
 from urllib.request import urlopen
 
 import webview
@@ -73,6 +74,12 @@ def _wait_until_ready(url: str, timeout_s: float = 8.0) -> None:
 
 
 def main() -> int:
+    if sys.platform == "win32" and getattr(sys, "frozen", False):
+        # Before pywebview loads .NET, which refuses DLLs a downloaded zip
+        # marked as from the internet (desktop_windows.py).
+        import desktop_windows
+        desktop_windows.unblock(Path(sys._MEIPASS))
+
     # BIOMANAGER_PORT pins the port, so the release workflow can check that a
     # freshly built app answers; otherwise last time's, or any free one.
     port = _choose_port()
@@ -95,9 +102,19 @@ def main() -> int:
     desktop_menu._state["local_url"] = url
     # The lab another device holds, if this window opens it (Settings →
     # Devices → Open the lab in this window); else this computer's own.
+    target = devices.window_url() or url
+    # Windows 10 may lack what the window needs, and pywebview would then use
+    # Internet Explorer's engine, which can't run the app: the web browser
+    # instead (desktop_windows.py).
+    if sys.platform == "win32":
+        import desktop_windows
+        reason = desktop_windows.missing()
+        if reason:
+            desktop_windows.run_in_browser(target, reason)
+            return 0
     window = webview.create_window(
         "BioManager",
-        devices.window_url() or url,
+        target,
         width=1280,
         height=820,
         min_size=(960, 600),
@@ -116,8 +133,13 @@ def main() -> int:
     from app.paths import data_dir
     storage = data_dir() / "window"
     storage.mkdir(parents=True, exist_ok=True)
-    webview.start(desktop_menu.start, (window,), debug=False, menu=menus,
-                  private_mode=False, storage_path=str(storage))
+    try:
+        webview.start(desktop_menu.start, (window,), debug=False, menu=menus,
+                      private_mode=False, storage_path=str(storage))
+    except Exception as error:
+        if sys.platform != "win32":
+            raise
+        desktop_windows.run_in_browser(target, "failed", error)
     return 0
 
 
