@@ -29,6 +29,12 @@ RELEASES_URL = "https://github.com/gaspolymerase/biomanager/releases/tag/v{versi
 
 # Newest first. Each line is plain text; **bold** names a button or a page.
 NOTES: dict[str, dict[str, list[str]]] = {
+    "1.0.5": {
+        "changed": [
+            "BioManager's website is now **biomanager.org**: **Help → User guide** and the app's other links go "
+            "there. The old address still works.",
+        ],
+    },
     "1.0.4": {
         "new": [
             "**What's new**: this note, once after each update. **Help → What's new** opens it again.",
