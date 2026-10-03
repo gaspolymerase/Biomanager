@@ -22,7 +22,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
                    session, url_for)
 from sqlalchemy import select
 
-from . import groups, lab, notify, telemetry
+from . import groups, lab, notify, telemetry, whats_new
 from .db import SessionLocal
 from .models import NotificationRecord, UserAccount
 from .services import WEAN_OFFSET_DAYS
@@ -138,6 +138,7 @@ def setup():
             user = db_session.get(UserAccount, g.user.id)
             if first_run and user.welcomed_at is None:
                 user.welcomed_at = datetime.utcnow()
+                whats_new.stamp(user)
             db_session.commit()
             flash("The lab is set up. Change any of it here whenever you like." if first_run
                   else "Lab setup saved.", "success")
@@ -174,6 +175,7 @@ def welcome():
         if request.method == "POST":
             user = db_session.get(UserAccount, g.user.id)
             user.welcomed_at = datetime.utcnow()
+            whats_new.stamp(user)          # what's new is for those who knew the version before
             db_session.commit()
             from .app import landing_url
             return redirect(landing_url(user, after_welcome=True))

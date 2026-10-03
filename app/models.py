@@ -376,6 +376,8 @@ class UserAccount(Base):
     welcomed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # A temporary account (a guest pass, app/guests.py) stops working then.
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # The newest version whose What's new note they have seen (app/whats_new.py).
+    whats_new_seen: Mapped[str] = mapped_column(String(40), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

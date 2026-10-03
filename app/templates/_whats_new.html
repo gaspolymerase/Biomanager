@@ -1,0 +1,59 @@
+{# What's new (app/whats_new.py): shown once after an update, and from
+   Help → What's new. `notes` is a list of {version, url, sections}. #}
+{% macro whats_new_dialog(notes, open_now) %}
+  <dialog id="whats-new" class="record-dialog record-dialog-narrow whats-new" aria-labelledby="whats-new-title"
+          {% if open_now %}data-open-now="1"{% endif %}>
+    <header class="record-dialog-head">
+      <div>
+        <h3 id="whats-new-title">
+          {% if notes %}What's new in BioManager {{ notes[0].version }}{% else %}What's new{% endif %}
+        </h3>
+        <p class="record-dialog-sub">BioManager was updated. In short:</p>
+      </div>
+      <button type="button" class="modal-close" data-whats-new-done aria-label="Close">{{ icon('close') }}</button>
+    </header>
+    <div class="record-dialog-body whats-new-body">
+      {% for note in notes %}
+        {% if notes|length > 1 %}<h4 class="whats-new-version">{{ note.version }}</h4>{% endif %}
+        {% for title, lines in note.sections %}
+          <section class="whats-new-section">
+            <h5>{{ title }}</h5>
+            <ul>
+              {% for line in lines %}<li>{{ whats_new_rich(line) }}</li>{% endfor %}
+            </ul>
+          </section>
+        {% endfor %}
+      {% else %}
+        <p class="text-[13px] text-muted">Nothing to tell about this version.</p>
+      {% endfor %}
+    </div>
+    <footer class="record-dialog-foot">
+      {% if notes %}
+        <a class="btn btn-ghost" href="{{ notes[0].url }}" target="_blank" rel="noopener">Everything in {{ notes[0].version }}</a>
+      {% endif %}
+      <button type="button" class="btn btn-primary" data-whats-new-done>Got it</button>
+    </footer>
+  </dialog>
+  <script nonce="{{ csp_nonce() }}">
+    (function () {
+      var dialog = document.getElementById('whats-new');
+      if (!dialog || !dialog.showModal) return;
+      var seen = false;
+      function done() {
+        if (dialog.open) dialog.close();
+        if (seen || dialog.dataset.openNow !== '1') return;
+        seen = true;
+        fetch('/whats-new/seen', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } }).catch(function () {});
+      }
+      dialog.querySelectorAll('[data-whats-new-done]').forEach(function (b) { b.addEventListener('click', done); });
+      dialog.addEventListener('cancel', done);           // Esc counts as Got it
+      document.addEventListener('click', function (event) {
+        if (event.target.closest && event.target.closest('[data-whats-new-open]')) {
+          event.preventDefault();
+          dialog.showModal();
+        }
+      });
+      if (dialog.dataset.openNow === '1') window.addEventListener('load', function () { dialog.showModal(); });
+    })();
+  </script>
+{% endmacro %}

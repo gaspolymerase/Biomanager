@@ -24,6 +24,11 @@ COPY migrations migrations
 COPY scripts scripts
 COPY alembic.ini wsgi.py gunicorn.conf.py ./
 
+# The release this image is (the release workflow passes it), for What's new
+# and the anonymous counts; a build from source leaves it out ("server").
+ARG BIOMANAGER_VERSION=""
+RUN if [ -n "$BIOMANAGER_VERSION" ]; then echo "$BIOMANAGER_VERSION" > VERSION; fi
+
 # Everything the app writes lives on /data: the signing key, the setup code
 # and uploads. The code itself is read-only to the app's user.
 RUN useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin biomanager \

@@ -352,6 +352,9 @@ app.register_blueprint(devices.bp)
 # Project groups: a layer between a person and the lab (app/groups.py).
 from . import groups as project_groups  # noqa: E402
 app.register_blueprint(project_groups.bp)
+# What's new: a short note once after an update (app/whats_new.py).
+from . import whats_new  # noqa: E402
+app.register_blueprint(whats_new.bp)
 # Repeats, protocols, equipment, away days and the phone feed (app/lab_calendar.py).
 app.register_blueprint(lab_calendar.bp)
 # Setting up a lab server from the desktop app (app/server_setup.py).
@@ -1424,7 +1427,7 @@ def colony_context(active_view: str, scope: str = access.DEFAULT_SCOPE, show_end
     """Build the colony page context.
 
     `scope` filters which slice of the colony is listed — your own animals,
-    the shared breeder cages, or everything. It is a view filter only: what
+    the shared cages, or everything. It is a view filter only: what
     you may *edit* is decided per record by app/access.py, and is the same
     whichever scope you are looking at.
 
@@ -2232,7 +2235,7 @@ def admin_colony_overview():
         for cage in cages:
             living = [m for m in cage.mice if m.date_of_death is None]
             shared = access.is_shared_cage(cage)
-            # A shared breeder cage belongs to the lab, not to one person.
+            # A shared cage belongs to the lab or a group, not to one person.
             key = "__shared__" if shared else (cage.owner or "").strip() or "__unowned__"
             group = groups.setdefault(key, {
                 "owner": key, "cages": [], "mice": 0, "active_cages": 0,
@@ -2261,7 +2264,7 @@ def admin_colony_overview():
 
         ordered = [
             {
-                "label": {"__shared__": "Shared breeder cages",
+                "label": {"__shared__": "Shared cages",
                           "__unowned__": "Unassigned"}.get(name, name),
                 "owner": "" if name.startswith("__") else name,
                 "is_pool": name.startswith("__"),
@@ -4108,13 +4111,20 @@ def cage_give_birth(cage_row_id: int):
         if blocked:
             return blocked
         if cage is not None:
-            today = date.today()
+            # The date the person confirmed in the Litter born dialog (today
+            # when a form sends none).
+            refused = future_birth(request.form, "date_give_birth", "A litter's birth date")
+            if refused:
+                flash(refused, "error")
+                return _back_to_colony("cages")
+            born = parse_date(request.form.get("date_give_birth")) or date.today()
             before = cage.date_give_birth
-            cage.date_give_birth = today
+            cage.date_give_birth = born
             db_session.commit()
-            wean = fmt_day(today + timedelta(days=WEAN_OFFSET_DAYS))
-            flash(f"Recorded a litter born today in cage {cage.cage_id}: weaning is due {wean}.", "success")
-            if before and before != today:
+            wean = fmt_day(born + timedelta(days=WEAN_OFFSET_DAYS))
+            when = "today" if born == date.today() else f"on {fmt_day(born)}"
+            flash(f"Recorded a litter born {when} in cage {cage.cage_id}: weaning is due {wean}.", "success")
+            if before and before != born:
                 # The cage holds one litter date: say what the new one replaced,
                 # so a litter still waiting to be weaned isn't forgotten.
                 flash(f"It replaces the litter born {fmt_day(before)} (weaning was due "

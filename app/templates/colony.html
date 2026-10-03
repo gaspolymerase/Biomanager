@@ -58,7 +58,7 @@
     </nav>
     {% if scope != 'all' %}
       <span class="text-[12px] text-muted">
-        Showing your animals and the shared breeder cages.
+        Showing your animals and the shared cages you work in.
         <a href="{{ url_for('colony', view=active_view, scope='all') }}">See everyone's</a>.
       </span>
     {% elif current_user.role != 'admin' %}
@@ -712,10 +712,11 @@
                                 {{ icon('plus') }} Add existing mouse
                               </button>
                               <span class="breeding-actions {% if not cage.can_breed %}hidden-row{% endif %}" data-breeding-actions>
-                                <form method="post" action="{{ url_for('cage_give_birth', cage_row_id=cage.id) }}"
-                                      data-confirm="Record a litter born today in cage {{ cage.cage_id }}?">
-                                  <button type="submit" class="btn btn-sm">{{ icon('baby') }} Litter born today</button>
-                                </form>
+                                <button type="button" class="btn btn-sm" data-litter-born
+                                        data-action="{{ url_for('cage_give_birth', cage_row_id=cage.id) }}"
+                                        data-cage-label="{{ cage.cage_id }}" data-born="{{ cage.date_give_birth }}">
+                                  {{ icon('baby') }} Litter born
+                                </button>
                                 <button type="button" class="btn btn-sm" data-genotyping
                                         data-action="{{ url_for('cage_genotyping', cage_row_id=cage.id) }}"
                                         data-father="{{ cage.default_father }}" data-mother="{{ cage.default_mother }}">
@@ -1565,6 +1566,19 @@
   </div>
 </dialog>
 
+{# Litter born: the date is confirmed (today unless changed), never assumed. #}
+<dialog id="litter-born-modal" class="mouse-modal">
+  <form method="dialog" class="modal-topbar">
+    <h3>Litter born <small id="litter-born-cage" class="muted-inline"></small></h3>
+    <button type="submit" class="ghost-button">Close</button>
+  </form>
+  <form method="post" id="litter-born-form" class="modal-grid">
+    <label>Date of birth <input type="date" id="litter-born-date" name="date_give_birth" required></label>
+    <p class="muted-inline col-span-full" id="litter-born-replaces" hidden></p>
+    <button type="submit">Record the litter</button>
+  </form>
+</dialog>
+
 <dialog id="genotyping-modal" class="mouse-modal">
   <form method="dialog" class="modal-topbar">
     <h3>Genotyping</h3>
@@ -1630,6 +1644,24 @@ document.addEventListener('click', (event) => {
     document.getElementById('existing-mouse-target').value = add.dataset.targetLabel || '';
     form.querySelector('input[name="mouse_id"]').value = '';
     dialog.showModal();
+    return;
+  }
+  const born = event.target.closest('[data-litter-born]');
+  if (born) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const now = new Date();
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    document.getElementById('litter-born-form').action = born.dataset.action;
+    document.getElementById('litter-born-cage').textContent = `cage ${born.dataset.cageLabel || ''}`;
+    const day = document.getElementById('litter-born-date');
+    day.value = today;
+    day.max = today;
+    const note = document.getElementById('litter-born-replaces');
+    note.hidden = !born.dataset.born;
+    note.textContent = born.dataset.born
+      ? `This cage already has a litter born ${born.dataset.born}; the new date replaces it. Wean those pups first if they are still here.` : '';
+    document.getElementById('litter-born-modal').showModal();
+    day.focus();
     return;
   }
   const geno = event.target.closest('[data-genotyping]');

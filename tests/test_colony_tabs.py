@@ -177,6 +177,29 @@ class GiveBirthGenotypingTests(AppTestCase):
         self.m.post(f"/colony/cages/{cage}/give-birth")
         self.assertEqual(one("select date_give_birth from mouse_cages where id=?", cage), T)
 
+    def test_the_birth_date_confirmed_in_the_dialog_is_recorded(self):
+        cage = self.make_cage(self.m)
+        r = self.post(self.m, f"/colony/cages/{cage}/give-birth", {"date_give_birth": days_ago(2)})
+        self.assertEqual(one("select date_give_birth from mouse_cages where id=?", cage), days_ago(2))
+        self.assertFlash(r, "Recorded a litter born on", "success")
+
+    def test_a_birth_date_in_the_future_is_refused(self):
+        cage = self.make_cage(self.m)
+        r = self.post(self.m, f"/colony/cages/{cage}/give-birth",
+                      {"date_give_birth": (date.today() + timedelta(days=3)).isoformat()})
+        self.assertFlash(r, "can't be in the future", "error")
+        self.assertIsNone(one("select date_give_birth from mouse_cages where id=?", cage))
+
+    def test_litter_born_asks_for_the_date(self):
+        cage = self.make_cage(self.m, purpose="Breeder")
+        html = self.get_ok(self.m, "/colony?view=cages&scope=all")
+        button = re.search(rf'<button[^>]*data-litter-born\s+data-action="/colony/cages/{cage}/give-birth"[^>]*>(.*?)</button>',
+                           html, re.S)
+        self.assertIsNotNone(button)
+        self.assertIn("Litter born", button.group(1))
+        self.assertNotIn("today", button.group(1))
+        self.assertIn('id="litter-born-date" name="date_give_birth" required', html)
+
     def test_member_cannot_record_a_birth_in_someone_elses_cage(self):
         cage = self.make_cage(self.o, purpose="Experiments")
         self.m.post(f"/colony/cages/{cage}/give-birth")
@@ -1078,7 +1101,7 @@ class AdminColonyOverviewTests(AppTestCase):
         shared_code = one("select cage_id from mouse_cages where id=?", shared)
         html = self.get_ok(self.a, "/admin/colony")
         self.assertIn("Colony overview", html)
-        self.assertIn("Shared breeder cages", html)
+        self.assertIn("Shared cages", html)
         self.assertIn(self.member, html)
         self.assertIn(mine["cage"], html)
         self.assertIn(shared_code, html)

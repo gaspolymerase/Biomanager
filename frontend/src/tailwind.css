@@ -1269,6 +1269,13 @@
   }
   .record-dialog-hint { @apply mr-auto text-[12px] text-muted; }
   .record-dialog-narrow { @apply w-[min(460px,calc(100vw-2rem))]; }
+
+  /* What's new after an update (app/templates/_whats_new.html). */
+  .whats-new-body { @apply grid gap-3 text-[13px] leading-snug text-ink-soft; }
+  .whats-new-version { @apply border-b border-hairline pb-1 text-[12px] font-semibold text-muted; }
+  .whats-new-section h5 { @apply mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted; }
+  .whats-new-section ul { @apply grid list-disc gap-1 pl-5; }
+  .whats-new-section b { @apply font-semibold text-ink; }
   /* BioDialog (static/dialogs.js): the app's confirm, prompt and alert. */
   .bio-dialog-body { @apply gap-2.5; }
   .bio-dialog-text { @apply m-0 whitespace-pre-line text-[13px] leading-snug text-ink-soft; }
@@ -2955,6 +2962,11 @@
   .cage-mice-table thead th {
     @apply h-7 border-b border-hairline bg-sand-50 px-2 text-left text-[11px] font-semibold text-muted;
   }
+  /* The cage's own small table sits inside a sheet row: its header is not
+     the sheet's, so it must not stick under the sheet's toolbar (where it
+     covered the cage's first mouse). */
+  .dt .cage-mice-table thead th,
+  .dt-scroll.is-fit .dt .cage-mice-table thead th { position: static; top: auto; }
   .cage-mice-table thead th:first-child { @apply rounded-tl-lg; }
   .cage-mice-table thead th:last-child { @apply rounded-tr-lg; }
   /* Hovering the sub-row must not tint every cell of the table in it. */
