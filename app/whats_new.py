@@ -39,6 +39,7 @@ NOTES: dict[str, dict[str, list[str]]] = {
         ],
         "fixed": [
             "In an open cage, the mouse table's header no longer covers the first mouse.",
+            "On a Windows 10 PC without Microsoft Edge WebView2, the desktop app offers to download it and opens in the web browser meanwhile, instead of a blank window.",
         ],
     },
     "1.0.3": {
