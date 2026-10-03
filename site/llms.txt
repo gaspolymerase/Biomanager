@@ -6,4 +6,5 @@
 - [Run it for your lab](https://biomanager.org/server.html): every hosting option with costs and steps
 - [User guide](https://biomanager.org/guide.html): every function, and a path for people coming from Excel
 - [The API](https://biomanager.org/guide.html#api): JSON at /api/v1 on a lab's BioManager, with a personal token (Authorization: Bearer bmt_…, from Settings → API tokens); the reference is /api and the spec /api/v1/openapi.json on that server
+- [中文网站](https://biomanager.org/zh/): the site in Simplified Chinese — [用户指南](https://biomanager.org/zh/guide.html), [实验室服务器](https://biomanager.org/zh/server.html)
 - [Downloads](https://github.com/gaspolymerase/biomanager/releases/latest): desktop apps, Android app, and biomanager-server.tar.gz

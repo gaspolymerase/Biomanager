@@ -1166,6 +1166,64 @@ At 100k mice on SQLite, the mouse and cage sheets take 2–3 s and stream
 step, if a lab needs it, is paging on the server instead of the sheet's
 client-side pages.
 
+## Languages
+
+The app is in English and Simplified Chinese (`app/i18n.py`). Text is
+written in English and wrapped, and the Chinese is looked up by the English:
+
+- **Templates**: `{{ _('Litter born') }}`; a value goes in by name,
+  `{{ _('Sign in with %(provider)s', provider=p.label) }}`; a sentence with
+  markup in it is `{% trans name=value %}…{% endtrans %}`. Don't wrap
+  people's data (names, notes, a database's own field labels).
+- **Python** (flash messages, labels made in code): `gettext("…")` and
+  `ngettext(singular, plural, n)`, imported from `app.i18n`. Not `_`: many
+  modules use `_` as a throwaway name.
+- **Page scripts**: `t("Saved")`, `t("%(n)s mice", {n: 3})` (`base.html`
+  defines it before any page script).
+- **The Chinese**: `app/translations/zh/<area>.json`, `{"English": "中文"}`,
+  one file per area so translations of different pages don't collide; the
+  scripts' words in `js-<area>.json` (sent to the browser). The words come
+  from `docs/i18n-glossary.md`. A text with no entry shows in English.
+- **Which language**: the person's choice in **Settings → Language**
+  (kept per person, `language.<username>` in the settings table), else the
+  language the browser or computer asks for first (`Accept-Language`); the
+  sign-in page has a 中文 / English switch (`POST /language`).
+  `session["lang"]` holds the choice for this browser.
+- **Tests** (`tests/test_i18n.py`): every `_()` in a template and every
+  `gettext("…")` in Python has its Chinese, a translation keeps the
+  `%(name)s` values of its English, and the same English is never given two
+  different Chinese. So adding text to a translated page means adding its
+  Chinese too.
+
+## The website
+
+`site/` is the website, plain HTML and CSS with no build. Two hosts publish it
+from master:
+
+- **biomanager.org**: Cloudflare Pages, connected to this repository (output
+  folder `site`, no build command). Baidu's crawler can read it; GitHub
+  Pages answers Baidu with 403, so the domain lives here.
+- **gaspolymerase.github.io/biomanager**: GitHub Pages, by
+  `.github/workflows/pages.yml`. Every page's canonical address names
+  biomanager.org, so search engines count the two as one site.
+
+**Two languages.** `site/zh/` holds the Chinese pages, one for each English
+page (`zh/index.html`, `zh/guide.html`, `zh/server.html`), with the same
+structure and the same ids, so `guide.html#mice` and `zh/guide.html#mice`
+are the same section. A change to an English page goes into its Chinese page
+in the same piece of work; the words come from `docs/i18n-glossary.md`.
+
+- Each page names its other-language twin (`<link rel="alternate"
+  hreflang>`), and `sitemap.xml` lists every page in both languages.
+- The **中文 / English** link beside Download switches; `site.js` remembers
+  the choice (`localStorage` `bm-lang`).
+- An English page sends someone whose browser asks for Chinese first, and who
+  has not picked a language, to its Chinese twin (an inline script in the
+  head). The Chinese pages never redirect, so a crawler always reads the page
+  it asked for.
+- The Chinese pages carry `Content-Language` and `keywords` for Baidu, which
+  still reads them.
+
 ## Desktop App
 
 **Releasing.** Push a tag: `v1.0.0` builds every app, the server image and

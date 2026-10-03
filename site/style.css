@@ -402,3 +402,9 @@ blockquote.req {
   .guide-body h2 { font-size: 1.6rem; }
   .guide-body h3 { font-size: 1.18rem; }
 }
+
+/* The language link (English ⇄ 中文), beside Download; shown on phones too. */
+.lang-link { margin-left: 18px; font-size: 14px; color: var(--fg-2); white-space: nowrap; }
+.lang-link:hover { color: var(--fg); text-decoration: none; }
+.nav .lang-link + .btn { margin-left: 14px; }
+@media (max-width: 640px) { .lang-link { margin-left: auto; } .nav .lang-link + .btn { margin-left: 12px; } }

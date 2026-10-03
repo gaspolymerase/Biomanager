@@ -1575,7 +1575,7 @@
       {% set all_fields = [] %}
       {% for entity, entity_label in field_entities %}
         {% for field in fields.get(entity, []) %}
-          {% set _ = all_fields.append((entity_label, field)) %}
+          {% set _discard = all_fields.append((entity_label, field)) %}
         {% endfor %}
       {% endfor %}
 

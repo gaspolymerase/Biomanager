@@ -51,7 +51,7 @@
      captured here, then drawn in that order. ---------------------------- #}
 {% set db_links = [] %}
 {% for section in nav_sections if section.label == 'Databases' %}
-  {% for link in section.links %}{% set _ = db_links.append(link) %}{% endfor %}
+  {% for link in section.links %}{% set _discard = db_links.append(link) %}{% endfor %}
 {% endfor %}
 {% set cards = {} %}
 {% if for_you %}{% set c %}
@@ -69,7 +69,7 @@
       {% endfor %}
     </div>
   </section>
-{% endset %}{% set _ = cards.update({"for_you": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"for_you": c}) %}{% endif %}
 {% if db_links %}{% set c %}
   <section class="home-dbs" aria-label="Your databases">
     {% for link in db_links %}
@@ -80,7 +80,7 @@
       </a>
     {% endfor %}
   </section>
-{% endset %}{% set _ = cards.update({"databases": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"databases": c}) %}{% endif %}
 {% if true %}{% set c %}
   <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
 {% if lab_features.colony %}
@@ -115,7 +115,7 @@
   </a>
 {% endif %}
 </section>
-{% endset %}{% set _ = cards.update({"stats": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"stats": c}) %}{% endif %}
 {% if lab_features.calendar %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -136,7 +136,7 @@
       <div class="empty-state">{{ icon('check') }}<p>Nothing to do in the next week.</p></div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"todos": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"todos": c}) %}{% endif %}
 {% if lab_features.colony %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -163,7 +163,7 @@
       </div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"sac": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"sac": c}) %}{% endif %}
 {% if lab_features.colony %}{% set c %}
   {# Upcoming weanings #}
   <article class="card flex flex-col">
@@ -197,7 +197,7 @@
       </div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"weanings": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"weanings": c}) %}{% endif %}
 {% if lab_features.colony %}{% set c %}
   {# Genotyping queue #}
   <article class="card flex flex-col">
@@ -224,7 +224,7 @@
       </div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"geno": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"geno": c}) %}{% endif %}
 {% if has_stocks %}{% set c %}
   {# Fly / worm work due #}
   <article class="card flex flex-col">
@@ -246,7 +246,7 @@
       <div class="empty-state">{{ icon('fly') }}<p>No flips, collections or shifts due in the next two days.</p></div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"stocks": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"stocks": c}) %}{% endif %}
 {% if has_restock %}{% set c %}
   {# Reagents and antibodies to restock #}
   <article class="card flex flex-col">
@@ -271,7 +271,7 @@
       <div class="empty-state">{{ icon('flask') }}<p>Nothing expiring in the next 30 days or marked low.</p></div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"restock": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"restock": c}) %}{% endif %}
 {% if lab_features.zebrafish and zebrafish_due.any %}{% set c %}
   <article class="card flex flex-col">
       <header class="card-head">
@@ -315,7 +315,7 @@
         <div class="empty-state">{{ icon('fish') }}<p>No mating tanks due back and nothing waiting on genotyping.</p></div>
       {% endif %}
     </article>
-{% endset %}{% set _ = cards.update({"zebrafish": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"zebrafish": c}) %}{% endif %}
 {% if organism_due %}{% set c %}
   <article class="card flex flex-col">
       <header class="card-head">
@@ -332,7 +332,7 @@
         {% endfor %}
       </div>
     </article>
-{% endset %}{% set _ = cards.update({"organisms": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"organisms": c}) %}{% endif %}
 {% if lab_features.calendar %}{% set c %}
   {# Upcoming events #}
   <article class="card flex flex-col">
@@ -359,7 +359,7 @@
       </div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"calendar": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"calendar": c}) %}{% endif %}
 {% if lab_features.calendar %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -379,7 +379,7 @@
       <div class="empty-state">{{ icon('calendar-clock') }}<p>No instrument booked in the next week.</p></div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"bookings": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"bookings": c}) %}{% endif %}
 {% if lab_features.notebook %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -399,7 +399,7 @@
       <div class="empty-state">{{ icon('notebook') }}<p>No pages yet.</p></div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"notebook": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"notebook": c}) %}{% endif %}
 {% if true %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -433,7 +433,7 @@
       })();
     </script>
   </article>
-{% endset %}{% set _ = cards.update({"utilities": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"utilities": c}) %}{% endif %}
 {% if has_orders %}{% set c %}
   <article class="card flex flex-col">
     <header class="card-head">
@@ -459,7 +459,7 @@
       </div>
     {% endif %}
   </article>
-{% endset %}{% set _ = cards.update({"orders": c}) %}{% endif %}
+{% endset %}{% set _discard = cards.update({"orders": c}) %}{% endif %}
 
 {% if home_layout == 'tracks' or home_layout == 'freezer' %}
   {# The other layouts keep For you above them. #}

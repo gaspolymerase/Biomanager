@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ 'zh-CN' if current_language() == 'zh' else 'en' }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -27,6 +27,17 @@
     {# The accent that matches the person's app icon (app/appearance.py). #}
     <style id="brand-css">{{ brand_css|safe }}</style>
 
+    {# Page scripts translate their words with t("…"), from app/translations/<lang>/js.json
+       (app/i18n.py); English when there is no entry. #}
+    <script nonce="{{ csp_nonce() }}">
+      window.BM_LANG = {{ current_language()|tojson }};
+      (function (words) {
+        window.t = function (text, values) {
+          var out = Object.prototype.hasOwnProperty.call(words, text) ? words[text] : text;
+          return values ? out.replace(/%\((\w+)\)[sd]/g, function (m, k) { return k in values ? values[k] : m; }) : out;
+        };
+      })({{ js_catalog()|tojson }});
+    </script>
     {# Declarative handlers (data-on-click=…); before any page script registers its actions. #}
     <script src="{{ url_for('static', filename='actions.js') }}?v={{ asset_version('actions.js') }}"></script>
     {# In-app confirm / prompt / alert (BioDialog), for every page script. #}

@@ -68,6 +68,26 @@
     </form>
   </article>
 
+  {# ---- Language (app/i18n.py) ---- #}
+  <article class="card" id="language">
+    <header class="card-head">
+      <h2>{{ icon('type') }} {{ _('Language') }}</h2>
+    </header>
+    <form method="post" class="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="action" value="language">
+      <label class="field-label min-w-[220px]">{{ _('Show BioManager in') }}
+        <select name="language">
+          <option value="" {% if not user_settings.language %}selected{% endif %}>{{ _('Automatic (this computer’s language)') }}</option>
+          {% for code, name in languages.items() %}
+            <option value="{{ code }}" lang="{{ 'zh-CN' if code == 'zh' else code }}" {% if user_settings.language == code %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn">{{ _('Save') }}</button>
+    </form>
+    <p class="mt-2 text-[12px] text-muted">{{ _('Only for you: everyone in the lab chooses their own. Names, notes and other things people type stay as they were written.') }}</p>
+  </article>
+
   {# ---- App icon (app/appearance.py) ---- #}
   {% set chosen_glyph, chosen_color = user_settings.app_icon %}
   <article class="card" id="app-icon">

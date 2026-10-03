@@ -59,7 +59,7 @@
       {% endif %}
 
       {% set recent_pages = [] %}
-      {% for tab in tabs %}{% for page in tab.pages %}{% set _ = recent_pages.append(page) %}{% endfor %}{% endfor %}
+      {% for tab in tabs %}{% for page in tab.pages %}{% set _discard = recent_pages.append(page) %}{% endfor %}{% endfor %}
       {% set recent_pages = recent_pages | sort(attribute='updated_at', reverse=true) %}
       {% if recent_pages %}
         <div class="notebook-section-label">Recents</div>

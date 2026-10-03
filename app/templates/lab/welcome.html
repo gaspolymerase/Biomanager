@@ -7,7 +7,7 @@
 {% block content %}
 {% set lab_databases = [] %}
 {% for section in nav_sections if section.label == 'Databases' %}
-  {% for link in section.links if link.key != 'new-db' %}{% set _ = lab_databases.append(link) %}{% endfor %}
+  {% for link in section.links if link.key != 'new-db' %}{% set _discard = lab_databases.append(link) %}{% endfor %}
 {% endfor %}
 <div class="setup-page">
   <section class="setup-intro">

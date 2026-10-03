@@ -12,7 +12,7 @@
     </header>
     <div class="record-dialog-body">
       {% set offered_keys = offered_cards | map(attribute='key') | list %}
-      {% set by_key = {} %}{% for c in offered_cards %}{% set _ = by_key.update({c.key: c}) %}{% endfor %}
+      {% set by_key = {} %}{% for c in offered_cards %}{% set _discard = by_key.update({c.key: c}) %}{% endfor %}
       <ol class="home-cust-list" data-home-cust-list>
         {% for key in home_cards.order if key in offered_keys %}
           {% set c = by_key[key] %}
