@@ -84,9 +84,9 @@
       "x": "In a spreadsheet, a sample is just a row. In BioManager it knows the mouse it came from: one click opens that mouse.\n\nWrite @mouse 16 in a qPCR notebook page and its genotype and cage show up right there.\n\n{site}",
       "linkedin": "The thing a spreadsheet can't do: connect your records.\n\nIn BioManager, a liver or serum sample in Samples links back to the mouse it came from, and one click opens that mouse in the colony. In the lab notebook, writing @mouse 16 in a qPCR page turns into a link: point at it and you see the mouse's genotype, cage and owner; click it and its record opens. The same works for plasmids, orders and every inventory.\n\nSo the question \"which animal was this from?\" always has an answer.\n\nFree and open source: {site}",
       "xhs_title": "样本是哪只鼠的？一点就知道🔗",
-      "xhs_body": "Excel 里，样本只是一行字，是哪只鼠的全靠备注…\n\nBioManager 里，数据都是连在一起的：\n🧪 肝脏、血清这些样本，直接链接回来源的那只鼠，点一下就打开它\n📓 写 qPCR 实验记录时输入 @mouse 16，这只鼠的基因型、笼号、负责人随手可见\n🧬 质粒、订单、各种库存也一样可以 @\n\n“这个样本是哪只鼠的？”永远有答案\n\n永久免费开源\n官网：gaspolymerase.github.io/biomanager",
-      "bili_title": "样本、小鼠、实验记录互相连通：@mouse 一下就打开那只鼠 | BioManager",
-      "bili_desc": "样本链接回来源动物；记录本里 @mouse、@plasmid、@order 直接链接到记录。永久免费开源：{site}"
+      "xhs_body": "Excel 里，样本只是一行字，是哪只鼠的全靠备注…\n\nBioManager 里，数据都是连在一起的：\n🧪 肝脏、血清这些样本，直接链接回来源的那只鼠，点一下就打开它\n📓 写 qPCR 实验记录时输入 ＠mouse 16，这只鼠的基因型、笼号、负责人随手可见\n🧬 质粒、订单、各种库存也一样可以 ＠\n\n“这个样本是哪只鼠的？”永远有答案\n\n永久免费开源\n官网：gaspolymerase.github.io/biomanager",
+      "bili_title": "样本、小鼠、实验记录互相连通：＠mouse 一下就打开那只鼠 | BioManager",
+      "bili_desc": "样本链接回来源动物；记录本里 ＠mouse、＠plasmid、＠order 直接链接到记录。永久免费开源：{site}"
     },
     {
       "day": 3,
@@ -264,7 +264,7 @@
       "x": "When a notebook page should be the record of your work, sign it: BioManager fingerprints its exact text, freezes any live experiment in it, and locks it. A lab mate can witness it. Changes need an amendment with a reason.\n\nYour choice, page by page. {site}",
       "linkedin": "BioManager's lab notebook lets you sign a page when it should be the record of your work, page by page and only if you choose.\n\nYou confirm who you are, the page's exact text is fingerprinted and kept, any live experiment in it is frozen, and it is locked. A lab mate can witness it. To change it, its owner amends it with a reason, which stays in the record with every signature, and a signed page can't be deleted. Every editing session is kept in the version history, compared line by line and restorable.\n\nFree and open source: {site}",
       "xhs_title": "电子实验记录本也能签名存证✍️",
-      "xhs_body": "纸质实验本要签字、要见证人，电子的呢？\n\nBioManager 实验记录本：\n✍️ 想让这一页成为正式记录，就签名：确认身份，内容指纹存档，页面锁定\n👀 同事可以作为见证人签\n📝 要改只能「修订」并写理由，理由和签名一起留在记录里\n🕓 每次编辑都有版本，逐行对比，随时恢复\n👥 可以和组里人一起实时编辑、评论、@人\n\n签不签由你决定，每页单独选。永久免费开源\n官网：gaspolymerase.github.io/biomanager",
+      "xhs_body": "纸质实验本要签字、要见证人，电子的呢？\n\nBioManager 实验记录本：\n✍️ 想让这一页成为正式记录，就签名：确认身份，内容指纹存档，页面锁定\n👀 同事可以作为见证人签\n📝 要改只能「修订」并写理由，理由和签名一起留在记录里\n🕓 每次编辑都有版本，逐行对比，随时恢复\n👥 可以和组里人一起实时编辑、评论、＠人\n\n签不签由你决定，每页单独选。永久免费开源\n官网：gaspolymerase.github.io/biomanager",
       "bili_title": "电子实验记录本签名存证：锁定、见证、修订留痕 | BioManager",
       "bili_desc": "签名锁定页面并存指纹，见证人，修订需理由，版本历史逐行对比，多人实时协作。{site}"
     },
