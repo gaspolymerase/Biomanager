@@ -16,7 +16,8 @@ from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .db import SessionLocal
-from . import access, lab, positions, security
+from . import access, i18n, lab, positions, security
+from .i18n import gettext
 from .formutil import form_changed
 # Importing this registers the SQLAlchemy flush listener that writes
 # audit_log rows for every tracked change; nothing here calls into it.
@@ -124,6 +125,8 @@ from .services import (
 
 
 app = Flask(__name__)
+# English or Chinese: _() in templates, gettext() in Python (app/i18n.py).
+i18n.init_app(app)
 # See app/security.py: a key from SECRET_KEY, or one made once and kept in
 # the data folder, never a published default.
 app.config["SECRET_KEY"] = security.secret_key()
@@ -330,6 +333,10 @@ def load_current_user():
             g.user = None
             return
         g.user = user
+        # Their language from Settings, read once per sign-in (app/i18n.py).
+        if session.get("lang_for") != user.id:
+            i18n.remember(i18n.preference(db_session, user.username))
+            session["lang_for"] = user.id
 
 
 # Cookies, upload limits, the cross-site check and security headers. After
@@ -1659,7 +1666,7 @@ def hello():
         "hello.html", first_account=first_account, databases=databases, lab_title=lab_title,
         functions=[key for key in ("calendar", "notebook") if features.get(key)],
         needs_setup_code=first_account and security.setup_code_required(),
-        guide_url=lab.GUIDE_URL,
+        guide_url=lab.guide_url(),
     )
 
 
@@ -2007,6 +2014,20 @@ def landing_url(user, after_welcome: bool = False) -> str:
     return url_for(landing)
 
 
+@app.post("/language")
+def choose_language():
+    """The 中文 / English switch (the sign-in page, Settings): this browser's
+    language from now on, and the person's, when they are signed in."""
+    lang = request.form.get("language", "")
+    if g.get("user") is not None:
+        with SessionLocal() as db_session:
+            i18n.set_preference(db_session, g.user.username, lang)
+            db_session.commit()
+    else:
+        i18n.remember(lang)
+    return redirect(security.safe_next(request.form.get("next")) or url_for("index"))
+
+
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
 def settings():
@@ -2040,6 +2061,10 @@ def settings():
                     return jsonify({"ok": True, "icon": app_icon_url(glyph, color),
                                     "brand_css": appearance.brand_css(color)})
                 flash("App icon updated.", "success")
+            elif action == "language":
+                i18n.set_preference(db_session, user.username, request.form.get("language", ""))
+                db_session.commit()
+                flash(gettext("Language saved."), "success")
             elif action == "notifications":
                 for category in notify.CATEGORIES:
                     setattr(user, f"notify_{category}", request.form.get(f"notify_{category}") == "1")
@@ -2078,6 +2103,7 @@ def settings():
             "default_landing": user.default_landing,
             "home_layout": home_layouts.get_layout(db_session, user.username),
             "app_icon": appearance.get_choice(db_session, user.username),
+            "language": i18n.preference(db_session, user.username),
             "role": user.role,
             "created_at": local_time(user.created_at).strftime("%Y-%m-%d") if user.created_at else "",
             "notify_transfer": user.notify_transfer,

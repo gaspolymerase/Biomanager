@@ -2,21 +2,21 @@
    work on one day ruler, a track per kind of work. On a phone it becomes
    a list of days. #}
 {% set t = layout_view %}
-{% set status_words = {'overdue': 'overdue', 'today': 'today', 'soon': 'within 3 days', 'later': 'scheduled'} %}
+{% set status_words = {'overdue': _('overdue'), 'today': _('today'), 'soon': _('within 3 days'), 'later': _('scheduled')} %}
 
-<section class="trk" aria-label="Tracks">
+<section class="trk" aria-label="{{ _('Tracks') }}">
   <div class="trk-head">
     <div class="trk-locus">
       <span class="trk-dim">lab:</span>{{ t.days[0].date.isoformat() }}<span class="trk-dim">..</span>{{ t.until.isoformat() }}
       <span class="trk-dim trk-locus-n">{{ t.span }} d</span>
     </div>
-    <nav class="dt-chips" aria-label="Days shown">
+    <nav class="dt-chips" aria-label="{{ _('Days shown') }}">
       {% for s in t.spans %}
         <a class="dt-chip" href="{{ url_for('home_dashboard', span=s) }}"
-           aria-pressed="{{ 'true' if s == t.span else 'false' }}">{{ s // 7 }} {{ 'week' if s == 7 else 'weeks' }}</a>
+           aria-pressed="{{ 'true' if s == t.span else 'false' }}">{{ ngettext('%(num)s week', '%(num)s weeks', s // 7) }}</a>
       {% endfor %}
     </nav>
-    <div class="trk-legend" aria-label="Colours">
+    <div class="trk-legend" aria-label="{{ _('Colours') }}">
       {% for key, word in status_words.items() %}
         <span><i class="trk-swatch" data-status="{{ key }}"></i>{{ word }}</span>
       {% endfor %}
@@ -26,7 +26,7 @@
   {# The months around the window as a chromosome: weekends are the dark bands. #}
   <div class="trk-ideo">
     <svg viewBox="0 0 1000 46" preserveAspectRatio="xMinYMid meet" role="img"
-         aria-label="{{ t.ideogram.title }}, with the days shown boxed">
+         aria-label="{{ _('%(title)s, with the days shown boxed', title=t.ideogram.title) }}">
       <defs>
         <clipPath id="trk-arms">
           {% for a in t.ideogram.arms %}<rect x="{{ a.x }}" y="12" width="{{ a.w }}" height="16" rx="8"/>{% endfor %}
@@ -47,7 +47,7 @@
     <div class="trk-browser" style="--span: {{ t.span }}">
       <div class="trk-row trk-ruler-row">
         <div class="trk-lab trk-corner">
-          <span class="trk-group">{{ t.total }} {{ 'item' if t.total == 1 else 'items' }}</span>
+          <span class="trk-group">{{ ngettext('%(num)s item', '%(num)s items', t.total) }}</span>
         </div>
         <div class="trk-ruler">
           {% for d in t.days %}
@@ -61,8 +61,8 @@
       {% for tr in t.tracks %}
         <div class="trk-row">
           {% if tr.url %}<a class="trk-lab" href="{{ tr.url }}">{% else %}<div class="trk-lab">{% endif %}
-            <span class="trk-group">{{ tr.group }}</span>
-            <span class="trk-name"><span class="truncate">{{ tr.name }}</span><small>{{ tr.count or '' }}</small></span>
+            <span class="trk-group">{{ tr.group|tr }}</span>
+            <span class="trk-name"><span class="truncate">{{ tr.name|tr }}</span><small>{{ tr.count or '' }}</small></span>
           {% if tr.url %}</a>{% else %}</div>{% endif %}
           <div class="trk-lane" style="height: {{ tr.rows * 26 + 12 }}px">
             {% for d in t.days if d.weekend %}
@@ -80,13 +80,13 @@
           </div>
         </div>
       {% else %}
-        <p class="trk-empty">No databases with dates to show yet.</p>
+        <p class="trk-empty">{{ _('No databases with dates to show yet.') }}</p>
       {% endfor %}
     </div>
 
     <aside class="trk-side">
       <section>
-        <h3 class="trk-side-h">Needs you now <span>{{ t.now_total }}</span></h3>
+        <h3 class="trk-side-h">{{ _('Needs you now') }} <span>{{ t.now_total }}</span></h3>
         {% for i in t.now %}
           <a class="trk-now-item" href="{{ i.url }}">
             <i class="trk-swatch" data-status="{{ i.status }}"></i>
@@ -94,26 +94,26 @@
               <span class="trk-now-title">{{ i.title }}</span>
               {% if i.loc or i.detail %}<span class="trk-now-sub">{{ i.loc.text if i.loc else i.detail }}</span>{% endif %}
             </span>
-            <span class="trk-now-when" data-status="{{ i.status }}">{{ i.status }}</span>
+            <span class="trk-now-when" data-status="{{ i.status }}">{{ i.status|tr }}</span>
           </a>
         {% else %}
-          <p class="trk-side-empty">Nothing overdue or due today.</p>
+          <p class="trk-side-empty">{{ _('Nothing overdue or due today.') }}</p>
         {% endfor %}
       </section>
       {% if t.busy %}
         <section>
-          <h3 class="trk-side-h">Busy days</h3>
+          <h3 class="trk-side-h">{{ _('Busy days') }}</h3>
           {% for b in t.busy %}
             <div class="trk-busy">
-              <b>{{ b.date.strftime('%a %d %b') }} · {{ b.count }} things</b>
+              <b>{{ b.date.strftime('%a %d %b') }} · {{ _('%(n)s things', n=b.count) }}</b>
               <span>{{ b.titles | join(' · ') }}{% if b.count > b.titles|length %} …{% endif %}</span>
             </div>
           {% endfor %}
         </section>
       {% endif %}
       <p class="trk-side-foot">
-        <b>{{ t.counts.overdue }}</b> overdue · <b>{{ t.counts.today }}</b> today ·
-        <b>{{ t.counts.soon }}</b> in the next 3 days · <b>{{ t.counts.later }}</b> later
+        {% trans trimmed overdue=t.counts.overdue, today=t.counts.today, soon=t.counts.soon, later=t.counts.later %}<b>{{ overdue }}</b> overdue · <b>{{ today }}</b> today ·
+        <b>{{ soon }}</b> in the next 3 days · <b>{{ later }}</b> later{% endtrans %}
       </p>
     </aside>
   </div>
@@ -122,17 +122,17 @@
   <div class="trk-list">
     {% for g in t.list %}
       <section class="card flex flex-col">
-        <header class="card-head"><h2>{{ g.label }}</h2><span class="badge badge-quiet">{{ g['items']|length }}</span></header>
+        <header class="card-head"><h2>{{ g.label|tr }}</h2><span class="badge badge-quiet">{{ g['items']|length }}</span></header>
         {% for i in g['items'] %}
           <a class="row-line" href="{{ i.url }}">
             <i class="trk-swatch" data-status="{{ i.status }}"></i>
             <span class="min-w-0 flex-1 truncate text-ink-soft">{{ i.title }}</span>
-            <span class="shrink-0 text-[11.5px] text-muted">{{ t.tracks | selectattr('key', 'equalto', i.track) | map(attribute='group') | first }}</span>
+            <span class="shrink-0 text-[11.5px] text-muted">{{ t.tracks | selectattr('key', 'equalto', i.track) | map(attribute='group') | first | tr }}</span>
           </a>
         {% endfor %}
       </section>
     {% else %}
-      <div class="card empty-state">{{ icon('check') }}<p>Nothing due in the next {{ t.span }} days.</p></div>
+      <div class="card empty-state">{{ icon('check') }}<p>{{ _('Nothing due in the next %(n)s days.', n=t.span) }}</p></div>
     {% endfor %}
   </div>
 </section>

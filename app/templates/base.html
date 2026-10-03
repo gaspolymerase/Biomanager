@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ 'zh-CN' if current_language() == 'zh' else 'en' }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -27,6 +27,17 @@
     {# The accent that matches the person's app icon (app/appearance.py). #}
     <style id="brand-css">{{ brand_css|safe }}</style>
 
+    {# Page scripts translate their words with t("…"), from app/translations/<lang>/js.json
+       (app/i18n.py); English when there is no entry. #}
+    <script nonce="{{ csp_nonce() }}">
+      window.BM_LANG = {{ current_language()|tojson }};
+      (function (words) {
+        window.t = function (text, values) {
+          var out = Object.prototype.hasOwnProperty.call(words, text) ? words[text] : text;
+          return values ? out.replace(/%\((\w+)\)[sd]/g, function (m, k) { return k in values ? values[k] : m; }) : out;
+        };
+      })({{ js_catalog()|tojson }});
+    </script>
     {# Declarative handlers (data-on-click=…); before any page script registers its actions. #}
     <script src="{{ url_for('static', filename='actions.js') }}?v={{ asset_version('actions.js') }}"></script>
     {# In-app confirm / prompt / alert (BioDialog), for every page script. #}
@@ -56,33 +67,33 @@
         <div class="rail-scrim" data-drawer-close aria-hidden="true"></div>
 
         {# ---- Sidebar ---- #}
-        <aside class="rail" aria-label="Sidebar">
+        <aside class="rail" aria-label="{{ _('Sidebar') }}">
           <div class="rail-top">
             <a class="rail-brand" href="{{ url_for('home_dashboard') }}">
               <img src="{{ app_icon_url }}" alt="" data-app-icon>
               <span class="rail-brand-word">BioManager</span>
             </a>
             <button type="button" class="rail-toggle" data-rail-toggle
-                    aria-label="Hide or show the sidebar" title="Hide or show the sidebar">
+                    aria-label="{{ _('Hide or show the sidebar') }}" title="{{ _('Hide or show the sidebar') }}">
               {{ icon('chevrons-right') }}
             </button>
           </div>
 
           {% for section in nav_sections %}
             <div class="rail-group">
-              <div class="rail-group-label">{{ section.label }}</div>
+              <div class="rail-group-label">{{ section.label|tr }}</div>
               {% for item in section.links %}
                 {% if item.url %}
                   <a class="rail-item {% if item.active %}is-active{% endif %}"
-                     href="{{ item.url }}" data-label="{{ item.label }}"
-                     {% if item.hint %}title="{{ item.hint }}"{% endif %}
+                     href="{{ item.url }}" data-label="{{ item.label|tr }}"
+                     {% if item.hint %}title="{{ item.hint|tr }}"{% endif %}
                      {% if item.active %}aria-current="page"{% endif %}>
-                    {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
+                    {{ icon(item.icon) }}<span class="rail-label">{{ item.short|tr }}</span>
                   </a>
                 {% else %}
-                  <button type="button" class="rail-item" data-label="{{ item.label }}"
-                          data-soon="{{ item.soon }}">
-                    {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
+                  <button type="button" class="rail-item" data-label="{{ item.label|tr }}"
+                          data-soon="{{ item.soon|tr if item.soon else item.soon }}">
+                    {{ icon(item.icon) }}<span class="rail-label">{{ item.short|tr }}</span>
                   </button>
                 {% endif %}
               {% endfor %}
@@ -94,16 +105,16 @@
             {% if nav_more %}
               {% set more_active = nav_more | selectattr('active') | list %}
               <div class="rail-menu" data-rail-menu>
-                <button type="button" class="rail-item {% if more_active %}is-active{% endif %}" data-label="More"
+                <button type="button" class="rail-item {% if more_active %}is-active{% endif %}" data-label="{{ _('More') }}"
                         data-rail-menu-toggle aria-haspopup="menu" aria-expanded="false">
-                  {{ icon('ellipsis') }}<span class="rail-label">More</span>{{ icon('chevron-right', 'rail-chev') }}
+                  {{ icon('ellipsis') }}<span class="rail-label">{{ _('More') }}</span>{{ icon('chevron-right', 'rail-chev') }}
                 </button>
                 <div class="menu rail-pop" role="menu" hidden>
                   {% for item in nav_more %}
-                    {% if loop.index0 == 1 %}<div class="menu-rule"></div><div class="rail-pop-head">Lab</div>{% endif %}
+                    {% if loop.index0 == 1 %}<div class="menu-rule"></div><div class="rail-pop-head">{{ _('Lab') }}</div>{% endif %}
                     <a class="menu-item {% if item.active %}is-current{% endif %}" role="menuitem" href="{{ item.url }}"
-                       data-label="{{ item.label }}" {% if item.hint %}title="{{ item.hint }}"{% endif %}>
-                      {{ icon(item.icon) }} {{ item.label }}
+                       data-label="{{ item.label|tr }}" {% if item.hint %}title="{{ item.hint|tr }}"{% endif %}>
+                      {{ icon(item.icon) }} {{ item.label|tr }}
                     </a>
                   {% endfor %}
                 </div>
@@ -111,25 +122,25 @@
             {% endif %}
             {% for item in nav_footer %}
               <a class="rail-item {% if item.active %}is-active{% endif %}"
-                 href="{{ item.url }}" data-label="{{ item.label }}"
-                 {% if item.hint %}title="{{ item.hint }}"{% endif %}>
-                {{ icon(item.icon) }}<span class="rail-label">{{ item.short }}</span>
+                 href="{{ item.url }}" data-label="{{ item.label|tr }}"
+                 {% if item.hint %}title="{{ item.hint|tr }}"{% endif %}>
+                {{ icon(item.icon) }}<span class="rail-label">{{ item.short|tr }}</span>
               </a>
             {% endfor %}
             <div class="rail-menu" data-rail-menu>
               <button type="button" class="rail-item {% if request.endpoint == 'feedback.index' %}is-active{% endif %}"
-                      data-label="Help" data-rail-menu-toggle aria-haspopup="menu" aria-expanded="false">
-                {{ icon('info') }}<span class="rail-label">Help</span>{{ icon('chevron-right', 'rail-chev') }}
+                      data-label="{{ _('Help') }}" data-rail-menu-toggle aria-haspopup="menu" aria-expanded="false">
+                {{ icon('info') }}<span class="rail-label">{{ _('Help') }}</span>{{ icon('chevron-right', 'rail-chev') }}
               </button>
               <div class="menu rail-pop" role="menu" hidden>
                 {# The user guide is on the BioManager website (app/lab.py GUIDE_URL). #}
                 <a class="menu-item" role="menuitem" href="{{ guide_url }}" target="_blank" rel="noopener"
-                   data-label="User guide" data-milestone="guide">{{ icon('info') }} User guide</a>
+                   data-label="{{ _('User guide') }}" data-milestone="guide">{{ icon('info') }} {{ _('User guide') }}</a>
                 <a class="menu-item" role="menuitem"
                    href="{{ url_for('feedback.index', **({'from': request.full_path.rstrip('?')} if request.endpoint and not request.endpoint.startswith('feedback.') else {})) }}"
-                   data-label="Send feedback" title="Something went wrong, an idea or a question">{{ icon('mail') }} Send feedback</a>
+                   data-label="{{ _('Send feedback') }}" title="{{ _('Something went wrong, an idea or a question') }}">{{ icon('mail') }} {{ _('Send feedback') }}</a>
                 <a class="menu-item" role="menuitem" href="#whats-new" data-whats-new-open
-                   data-label="What's new" title="What changed in this version">{{ icon('sparkle') }} What's new</a>
+                   data-label="{{ _("What's new") }}" title="{{ _('What changed in this version') }}">{{ icon('sparkle') }} {{ _("What's new") }}</a>
               </div>
             </div>
           </div>
@@ -145,21 +156,21 @@
 
           {# ---- Tab strip ---- #}
           {% set current_url = request.path + ('?' + request.query_string.decode('utf-8') if request.query_string else '') %}
-          <nav class="topstrip" aria-label="Open tabs">
+          <nav class="topstrip" aria-label="{{ _('Open tabs') }}">
             <div class="wtab-strip">
               <nav class="wtabs" id="app-tabbar" data-user="{{ current_user.id }}"
                    data-current-url="{{ current_url }}"
                    data-current-title="{{ title_text }}"></nav>
               {# "/" sends each person to their own start page (Settings). #}
               <button type="button" class="wtab-add" data-new-tab="{{ url_for('index') }}"
-                      aria-label="New tab" title="New tab, on your start page">{{ icon('plus') }}</button>
+                      aria-label="{{ _('New tab') }}" title="{{ _('New tab, on your start page') }}">{{ icon('plus') }}</button>
             </div>
           </nav>
 
           {# ---- Unified toolbar ---- #}
           <header class="toolbar" id="app-toolbar">
             <button type="button" class="strip-btn drawer-trigger" data-drawer-toggle
-                    aria-label="Show sidebar">{{ icon('menu') }}</button>
+                    aria-label="{{ _('Show sidebar') }}">{{ icon('menu') }}</button>
 
             <div class="min-w-0">
               <div class="toolbar-title">{{ heading_text or title_text }}</div>
@@ -174,9 +185,9 @@
 
             <div class="strip-actions">
               <button type="button" class="omnibox" id="app-global-search"
-                      aria-label="Search everything">
+                      aria-label="{{ _('Search everything') }}">
                 {{ icon('search') }}
-                <span class="omnibox-label">Search</span>
+                <span class="omnibox-label">{{ _('Search') }}</span>
                 <span class="kbd">⌘K</span>
               </button>
 
@@ -184,48 +195,48 @@
               <div class="bell" data-bell data-count-url="{{ url_for('lab.notification_count') }}"
                    data-panel-url="{{ url_for('lab.notification_panel') }}">
                 <button type="button" class="bell-btn" data-bell-toggle aria-haspopup="true" aria-expanded="false"
-                        aria-label="Notifications{% if notification_unread %}: {{ notification_unread }} unread{% endif %}">
+                        aria-label="{% if notification_unread %}{{ _('Notifications: %(count)s unread', count=notification_unread) }}{% else %}{{ _('Notifications') }}{% endif %}">
                   {{ icon('bell') }}
                   <span class="bell-badge" data-bell-count {% if not notification_unread %}hidden{% endif %}>{{ notification_unread if notification_unread < 100 else '99+' }}</span>
                 </button>
                 <div class="menu notif-menu" data-bell-menu hidden>
-                  <div class="notif-loading">Loading…</div>
+                  <div class="notif-loading">{{ _('Loading…') }}</div>
                 </div>
               </div>
 
               <div class="account" data-account>
                 <button type="button" class="account-btn" data-account-toggle
                         aria-haspopup="menu" aria-expanded="false"
-                        aria-label="Account menu for {{ current_user.display_name or current_user.username }}">
+                        aria-label="{{ _('Account menu for %(name)s', name=current_user.display_name or current_user.username) }}">
                   {{ current_user.username | owner_badge }}
                   {{ icon('chevron-down') }}
                 </button>
                 <div class="menu" data-account-menu hidden role="menu">
                   <div class="menu-head">
                     <span class="menu-head-name">{{ current_user.display_name or current_user.username }}</span>
-                    <span class="menu-head-meta">{{ current_user.role_title or current_user.role }}</span>
+                    <span class="menu-head-meta">{{ current_user.role_title or current_user.role|tr }}</span>
                   </div>
                   <div class="menu-rule"></div>
                   <a class="menu-item" href="{{ url_for('settings') }}" role="menuitem">
-                    {{ icon('user-gear') }} Profile &amp; settings
+                    {{ icon('user-gear') }} {{ _('Profile & settings') }}
                   </a>
                   <a class="menu-item" href="{{ url_for('lab.notifications') }}" role="menuitem">
-                    {{ icon('bell') }} Notifications
+                    {{ icon('bell') }} {{ _('Notifications') }}
                   </a>
                   <a class="menu-item" href="{{ url_for('batches_view') }}" role="menuitem">
-                    {{ icon('layers') }} Batch history
+                    {{ icon('layers') }} {{ _('Batch history') }}
                   </a>
                   <a class="menu-item" href="{{ url_for('export_my_data') }}" role="menuitem">
-                    {{ icon('download') }} Export my data
+                    {{ icon('download') }} {{ _('Export my data') }}
                   </a>
                   {# The lab's admin pages: the same list as More in the sidebar. #}
                   {% for item in nav_more[1:] %}
-                    <a class="menu-item" href="{{ item.url }}" role="menuitem">{{ icon(item.icon) }} {{ item.label }}</a>
+                    <a class="menu-item" href="{{ item.url }}" role="menuitem">{{ icon(item.icon) }} {{ item.label|tr }}</a>
                   {% endfor %}
                   <div class="menu-rule"></div>
                   <form method="post" action="{{ url_for('logout') }}">
                     <button type="submit" class="menu-item menu-item-danger" role="menuitem">
-                      {{ icon('sign-out') }} Sign out
+                      {{ icon('sign-out') }} {{ _('Sign out') }}
                     </button>
                   </form>
                 </div>
@@ -241,8 +252,8 @@
               {% if master_notice.text and (master_notice.tone != 'error' or current_user.role == 'admin') %}
                 <div class="devices-banner flash-message flash-{{ {'info': 'info', 'warn': 'warning'}.get(master_notice.tone, 'error') }}" role="status">
                   {{ master_notice.text }}
-                  {% if master_notice.url %}<a href="{{ master_notice.url }}">Open the lab there</a>{% endif %}
-                  {% if current_user.role == 'admin' %}<a href="{{ url_for('devices.page') }}">Devices</a>{% endif %}
+                  {% if master_notice.url %}<a href="{{ master_notice.url }}">{{ _('Open the lab there') }}</a>{% endif %}
+                  {% if current_user.role == 'admin' %}<a href="{{ url_for('devices.page') }}">{{ _('Devices') }}</a>{% endif %}
                 </div>
               {% endif %}
               {% with messages = get_flashed_messages(with_categories=true) %}
@@ -275,7 +286,7 @@
     {% else %}
       {# ---- Sign in / register ---- #}
       <main class="flex min-h-screen flex-col items-center justify-center gap-6 px-5 py-12">
-        <a class="flex flex-col items-center gap-3 no-underline" href="{{ url_for('index') }}" title="About BioManager">
+        <a class="flex flex-col items-center gap-3 no-underline" href="{{ url_for('index') }}" title="{{ _('About BioManager') }}">
           <img src="{{ url_for('static', filename='icon.svg') }}" alt="" class="size-16">
           <span class="text-[17px] font-semibold tracking-[-0.02em] text-ink">BioManager</span>
         </a>
@@ -293,7 +304,7 @@
           {{ self.content() }}
         </div>
 
-        <p class="text-[11px] text-muted">Lab inventory, colonies and notebook in one place.</p>
+        <p class="text-[11px] text-muted">{{ _('Lab inventory, colonies and notebook in one place.') }}</p>
       </main>
     {% endif %}
 

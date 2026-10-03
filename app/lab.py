@@ -632,6 +632,12 @@ def everyone_but(session, username: str) -> list[str]:
 GUIDE_URL = "https://biomanager.org/guide.html"
 
 
+def guide_url() -> str:
+    """The user guide in the page's language (the Chinese one is under /zh/)."""
+    from . import i18n
+    return GUIDE_URL.replace("/guide.html", "/zh/guide.html") if i18n.current() == "zh" else GUIDE_URL
+
+
 def did(session, user, milestone: str) -> bool:
     """Has this person done a one-off thing the data does not show (printed
     cage cards, opened the guide)?"""
@@ -712,7 +718,7 @@ def getting_started(session, user, on_server: bool) -> list[dict]:
         steps.append(step("Invite your lab", "Send members this address. They sign up, and you approve them in Manage users.",
                           url_for("admin_users"), others > 0))
     steps.append(step("Read the user guide", "Ten minutes on everything BioManager does. Help in the sidebar opens it too.",
-                      GUIDE_URL, did(session, user, "guide"), external=True))
+                      guide_url(), did(session, user, "guide"), external=True))
     return steps
 
 
@@ -754,7 +760,7 @@ def member_getting_started(session, user) -> list[dict]:
         steps.append(step("Add a plasmid of yours", "Upload its GenBank or FASTA file to see the map.",
                           url_for("plasmids"), exists(select(PlasmidRecord.id).where(PlasmidRecord.owner == me))))
     steps.append(step("Read the user guide", "Ten minutes on everything BioManager does. Help in the sidebar opens it too.",
-                      GUIDE_URL, did(session, user, "guide"), external=True))
+                      guide_url(), did(session, user, "guide"), external=True))
     return steps
 
 

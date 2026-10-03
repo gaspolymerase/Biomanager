@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block page_title %}{{ heading }}{% endblock %}
-{% block page_heading %}{{ heading }}{% endblock %}
-{% block page_subtitle %}{{ cards|length }} {{ 'card' if not layout else 'label' }}{{ '' if cards|length == 1 else 's' }} · scan the code to open the record{% endblock %}
+{% block page_title %}{{ heading|tr }}{% endblock %}
+{% block page_heading %}{{ heading|tr }}{% endblock %}
+{% block page_subtitle %}{% if layout %}{{ ngettext('%(num)s label', '%(num)s labels', cards|length) }}{% else %}{{ ngettext('%(num)s card', '%(num)s cards', cards|length) }}{% endif %} · {{ _('scan the code to open the record') }}{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ back_url }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> Back</a>
+  <a class="btn" href="{{ back_url }}"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#back"></use></svg> {{ _('Back') }}</a>
   {% if printer and cards %}
     <form method="post" action="{{ url_for('labels.send') }}" class="inline">
       <input type="hidden" name="kind" value="{{ kind }}">
@@ -13,11 +13,11 @@
       <input type="hidden" name="scope" value="{{ request.args.get('scope', '') }}">
       <input type="hidden" name="stock" value="{{ stock }}">
       <input type="hidden" name="back" value="{{ here }}">
-      <button type="submit" class="btn" title="Straight to the Zebra at {{ printer }}">{{ icon('print') }} Send to Zebra</button>
+      <button type="submit" class="btn" title="{{ _('Straight to the Zebra at %(printer)s', printer=printer) }}">{{ icon('print') }} {{ _('Send to Zebra') }}</button>
     </form>
   {% endif %}
   <button type="button" class="btn btn-primary" data-on-click="print">
-    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> Print
+    <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg> {{ _('Print') }}
   </button>
 {% endblock %}
 
@@ -131,52 +131,52 @@
 {% if cards %}
   <form method="get" class="no-print label-setup">
     {% for k, v in base_args.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-    <label>Print on
+    <label>{{ _('Print on') }}
       <select name="stock">
-        {% for key, (name, _size) in stocks.items() %}<option value="{{ key }}" {% if key == stock %}selected{% endif %}>{{ name }}</option>{% endfor %}
+        {% for key, (name, _size) in stocks.items() %}<option value="{{ key }}" {% if key == stock %}selected{% endif %}>{{ name|tr }}</option>{% endfor %}
       </select>
     </label>
     {% if fields %}
       <fieldset class="label-fields">
-        <legend>On each label</legend>
+        <legend>{{ _('On each label') }}</legend>
         <input type="hidden" name="fields_set" value="1">
         {% for key, label in fields %}
-          <label class="label-field"><input type="checkbox" name="f" value="{{ key }}" {% if key in chosen %}checked{% endif %}> {{ label }}</label>
+          <label class="label-field"><input type="checkbox" name="f" value="{{ key }}" {% if key in chosen %}checked{% endif %}> {{ label|tr }}</label>
         {% endfor %}
       </fieldset>
     {% endif %}
-    <label class="label-field"><input type="checkbox" name="wrap" value="1" {% if wrap %}checked{% endif %}> Two lines for long text</label>
-    <button type="submit" class="btn btn-sm">Show</button>
+    <label class="label-field"><input type="checkbox" name="wrap" value="1" {% if wrap %}checked{% endif %}> {{ _('Two lines for long text') }}</label>
+    <button type="submit" class="btn btn-sm">{{ _('Show') }}</button>
     <a class="btn btn-sm btn-ghost" href="{{ request.path }}?{{ dict(base_args, stock=stock, format='zpl', dpi=dpi) | urlencode }}"
-       title="The labels in Zebra's own language, ZPL, for Zebra Setup Utilities or the printer's web page">{{ icon('download') }} Download for Zebra (.zpl)</a>
+       title="{{ _("The labels in Zebra's own language, ZPL, for Zebra Setup Utilities or the printer's web page") }}">{{ icon('download') }} {{ _('Download for Zebra (.zpl)') }}</a>
   </form>
   <p class="no-print mb-4 text-[12.5px] text-muted">
-    Printed {{ printed_on }}. Each code opens its record on this server — scan it with
-    any phone camera on the same network.
+    {% trans trimmed printed_on=printed_on %}Printed {{ printed_on }}. Each code opens its record on this server — scan it with
+    any phone camera on the same network.{% endtrans %}
     {% if layout %}
-      In the print dialog choose the label printer, paper size {{ size[0] }} × {{ size[1] }} mm
-      (the printer's own name for this label), margins <b>None</b> and scale 100%.
+      {% trans trimmed width=size[0], height=size[1] %}In the print dialog choose the label printer, paper size {{ width }} × {{ height }} mm
+      (the printer's own name for this label), margins <b>None</b> and scale 100%.{% endtrans %}
     {% endif %}
   </p>
   {% if left_out %}
     <p class="no-print mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
-      Not on these labels, for lack of room: <b>{{ left_out | join(', ') }}</b>. Tick fewer fields, turn off
-      <b>Two lines for long text</b>, or print on a bigger label.
+      {% trans trimmed fields=left_out | map('tr') | join(', ') %}Not on these labels, for lack of room: <b>{{ fields }}</b>. Tick fewer fields, turn off
+      <b>Two lines for long text</b>, or print on a bigger label.{% endtrans %}
     </p>
   {% endif %}
   {% if can_set_printer %}
     <details class="no-print mb-4 text-[12.5px]">
-      <summary class="cursor-pointer text-muted">{{ 'Zebra on the network: ' ~ printer ~ ' (' ~ dpi ~ ' dpi)' if printer else 'Send labels straight to a Zebra on the network' }}</summary>
+      <summary class="cursor-pointer text-muted">{{ _('Zebra on the network: %(printer)s (%(dpi)s dpi)', printer=printer, dpi=dpi) if printer else _('Send labels straight to a Zebra on the network') }}</summary>
       <form method="post" action="{{ url_for('labels.set_printer') }}" class="label-setup mt-2">
         <input type="hidden" name="back" value="{{ here }}">
-        <label>Its address on the lab's network
+        <label>{{ _("Its address on the lab's network") }}
           <input name="address" value="{{ printer }}" placeholder="192.168.1.50" autocomplete="off">
         </label>
-        <label>Resolution
+        <label>{{ _('Resolution') }}
           <select name="dpi"><option value="203" {% if dpi != 300 %}selected{% endif %}>203 dpi</option><option value="300" {% if dpi == 300 %}selected{% endif %}>300 dpi</option></select>
         </label>
-        <button type="submit" class="btn btn-sm">Save</button>
-        <span class="text-muted">Printed on its own port 9100, from wherever BioManager runs. Leave it empty to remove it.</span>
+        <button type="submit" class="btn btn-sm">{{ _('Save') }}</button>
+        <span class="text-muted">{{ _('Printed on its own port 9100, from wherever BioManager runs. Leave it empty to remove it.') }}</span>
       </form>
     </details>
   {% endif %}
@@ -184,16 +184,17 @@
     {% for card in cards %}
       <div class="label-card">
         <div class="label-body">
-          <div class="label-title">{{ card.title }}</div>
+          {% set title_parts = card.title.split(' ', 1) %}
+          <div class="label-title">{% if title_parts|length == 2 and title_parts[0]|tr != title_parts[0] %}{{ title_parts[0]|tr }} {{ title_parts[1] }}{% else %}{{ card.title }}{% endif %}</div>
           {# A tube label is too small for the names: the values alone. #}
           {% set bare = layout and size[1] < 20 %}
           <div class="label-rows"{% if bare %} style="grid-template-columns: 1fr"{% endif %}>
             {% for key, value in card.rows %}
-              {% if not bare %}<span class="label-key">{{ key }}</span>{% endif %}
+              {% if not bare %}<span class="label-key">{{ _('Set up on') if key == 'Set up' and current_language() != 'en' else key|tr }}</span>{% endif %}
               <span class="label-val">{{ value }}</span>
             {% endfor %}
           </div>
-          {% if card.shared %}<div class="label-flag">Shared</div>{% endif %}
+          {% if card.shared %}<div class="label-flag">{{ _('Shared') }}</div>{% endif %}
         </div>
         {% if card.qr %}
           <div class="label-qr">{{ card.qr | safe }}</div>
@@ -204,7 +205,7 @@
 {% else %}
   <div class="card empty-state">
     <svg class="icon" aria-hidden="true"><use href="/static/icons.svg#print"></use></svg>
-    <p>Nothing to print here yet.</p>
+    <p>{{ _('Nothing to print here yet.') }}</p>
   </div>
 {% endif %}
 {% endblock %}

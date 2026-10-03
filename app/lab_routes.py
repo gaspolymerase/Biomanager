@@ -219,7 +219,7 @@ def guide():
                 lab.mark_did(db_session, user, "guide")
                 db_session.commit()
     anchor = request.args.get("section", "")
-    return redirect(lab.GUIDE_URL + (f"#{anchor}" if anchor.replace("-", "").isalnum() else ""))
+    return redirect(lab.guide_url() + (f"#{anchor}" if anchor.replace("-", "").isalnum() else ""))
 
 
 @bp.route("/milestone/<name>", methods=["POST"])
@@ -261,7 +261,7 @@ def _getting_started():
         if done == len(steps):
             return None
         return {"steps": steps, "done": done, "total": len(steps)}
-    return {"getting_started_card": getting_started_card, "guide_url": lab.GUIDE_URL}
+    return {"getting_started_card": getting_started_card, "guide_url": lab.guide_url()}
 
 
 # ---------------------------------------------------------------- a database: mine or the lab's

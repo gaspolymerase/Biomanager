@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block page_title %}Overview{% endblock %}
-{% block page_heading %}Overview{% endblock %}
-{% block page_subtitle %}Legacy summary view · the current dashboard lives on <a href="{{ url_for('home_dashboard') }}">Home</a>{% endblock %}
+{% block page_title %}{{ _('Overview') }}{% endblock %}
+{% block page_heading %}{{ _('Overview') }}{% endblock %}
+{% block page_subtitle %}{% trans url=url_for('home_dashboard') %}Legacy summary view · the current dashboard lives on <a href="{{ url }}">Home</a>{% endtrans %}{% endblock %}
 
 {% block content %}
 <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
   {% for label, value in [
-    ('Orders', counts.orders), ('Animals', counts.animals), ('Samples', counts.samples),
-    ('Events', counts.events), ('Tasks', counts.tasks), ('Notebook', counts.notebook_entries),
+    (_('Orders'), counts.orders), (_('Animals'), counts.animals), (_('Samples'), counts.samples),
+    (_('Events'), counts.events), (_('Tasks'), counts.tasks), (_('Notebook'), counts.notebook_entries),
   ] %}
     <div class="stat">
       <span class="stat-label">{{ label }}</span>
@@ -19,7 +19,7 @@
 
 <section class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
   <article class="card">
-    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg> Upcoming experiments</h2></header>
+    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg> {{ _('Upcoming experiments') }}</h2></header>
     {% if recent_events %}
       <div class="flex flex-col">
         {% for event in recent_events %}
@@ -30,23 +30,23 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg><p>No events yet.</p></div>
+      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#calendar"></use></svg><p>{{ _('No events yet.') }}</p></div>
     {% endif %}
   </article>
 
   <article class="card">
-    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#list-check"></use></svg> Recent tasks</h2></header>
+    <header class="card-head"><h2><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#list-check"></use></svg> {{ _('Recent tasks') }}</h2></header>
     {% if recent_tasks %}
       <div class="flex flex-col">
         {% for task in recent_tasks %}
           <div class="row-line">
             <span class="min-w-0 flex-1 truncate text-ink">{{ task.title }}</span>
-            <span class="dt-status shrink-0" data-status="{{ task.status }}">{{ task.status }}</span>
+            <span class="dt-status shrink-0" data-status="{{ task.status }}">{{ task.status|tr }}</span>
           </div>
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#list-check"></use></svg><p>No tasks yet.</p></div>
+      <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="/static/icons.svg#list-check"></use></svg><p>{{ _('No tasks yet.') }}</p></div>
     {% endif %}
   </article>
 </section>

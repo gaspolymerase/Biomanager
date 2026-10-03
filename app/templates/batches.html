@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block page_title %}Batches{% endblock %}
-{% block page_heading %}Batch history{% endblock %}
-{% block page_subtitle %}Bulk changes grouped into one act, so you can see them — and take them back{% endblock %}
+{% block page_title %}{{ _('Batches') }}{% endblock %}
+{% block page_heading %}{{ _('Batch history') }}{% endblock %}
+{% block page_subtitle %}{{ _('Bulk changes grouped into one act, so you can see them — and take them back') }}{% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_actions %}
   {% if current_user.role == 'admin' %}
     <a class="btn {% if not show_all %}btn-primary{% endif %}"
-       href="{{ url_for('batches_view', scope='mine') }}">Mine</a>
+       href="{{ url_for('batches_view', scope='mine') }}">{{ _('Mine') }}</a>
     <a class="btn {% if show_all %}btn-primary{% endif %}"
-       href="{{ url_for('batches_view') }}">Everyone</a>
+       href="{{ url_for('batches_view') }}">{{ _('Everyone') }}</a>
   {% endif %}
 {% endblock %}
 
@@ -21,12 +21,12 @@
       <table class="dt" style="min-width: 940px;">
         <thead>
           <tr>
-            <th style="width: 140px;">When</th>
-            <th style="width: 90px;">Action</th>
-            <th style="min-width: 220px;">What</th>
-            <th style="width: 80px;">Records</th>
-            <th style="width: 100px;">By</th>
-            <th style="width: 260px;">Reversible</th>
+            <th style="width: 140px;">{{ _('When') }}</th>
+            <th style="width: 90px;">{{ _('Action') }}</th>
+            <th style="min-width: 220px;">{{ _('What') }}</th>
+            <th style="width: 80px;">{{ _('Records') }}</th>
+            <th style="width: 100px;">{{ _('By') }}</th>
+            <th style="width: 260px;">{{ _('Reversible') }}</th>
             <th style="width: 120px;"></th>
           </tr>
         </thead>
@@ -37,19 +37,19 @@
               <td>
                 <span class="dt-status"
                       data-status="{{ {'create': 'active', 'update': 'ordered', 'delete': 'cancelled'}.get(batch.action, batch.action) }}">
-                  {{ batch.action }}
+                  {{ batch.action|tr }}
                 </span>
               </td>
               <td>
                 <span class="dt-row-name whitespace-normal">{{ batch.description }}</span>
-                {% if batch.table %}<span class="ident ml-1" title="{{ batch.table }}">{{ batch.table | table_label }}</span>{% endif %}
+                {% if batch.table %}<span class="ident ml-1" title="{{ batch.table }}">{{ (batch.table | table_label)|tr }}</span>{% endif %}
               </td>
               <td class="font-medium">{{ batch.count }}</td>
               <td>{% if batch.actor %}{{ batch.actor | owner_badge }}{% endif %}</td>
               <td>
                 {% if batch.undone_at %}
                   <span class="badge badge-quiet">
-                    undone by {{ batch.undone_by }} · {{ (batch.undone_at | local).strftime('%b %d') }}
+                    {{ _('undone by %(who)s · %(when)s', who=batch.undone_by, when=(batch.undone_at | local).strftime('%Y-%m-%d' if current_language() == 'zh' else '%b %d')) }}
                   </span>
                 {% elif batch.blocked %}
                   {% for problem in batch.blocked %}
@@ -57,25 +57,25 @@
                   {% endfor %}
                 {% else %}
                   <span class="text-[11.5px] text-muted">
-                    would
-                    {%- if batch.creates %} delete {{ batch.creates }} created record(s){% endif %}
-                    {%- if batch.updates %}{% if batch.creates %},{% endif %} revert {{ batch.updates }} edit(s){% endif %}
-                    {%- if batch.deletes %}{% if batch.creates or batch.updates %},{% endif %} restore {{ batch.deletes }} deleted record(s){% endif %}
+                    {{ _('would') }}
+                    {%- if batch.creates %} {{ _('delete %(n)s created record(s)', n=batch.creates) }}{% endif %}
+                    {%- if batch.updates %}{% if batch.creates %},{% endif %} {{ _('revert %(n)s edit(s)', n=batch.updates) }}{% endif %}
+                    {%- if batch.deletes %}{% if batch.creates or batch.updates %},{% endif %} {{ _('restore %(n)s deleted record(s)', n=batch.deletes) }}{% endif %}
                   </span>
                 {% endif %}
               </td>
               <td>
                 {% if batch.can_undo %}
                   <form method="post" action="{{ url_for('undo_batch', batch_id=batch.id) }}"
-                        data-confirm="Undo “{{ batch.description }}”? This reverses {{ batch.count }} record(s).">
+                        data-confirm="{{ _('Undo “%(what)s”? This reverses %(n)s record(s).', what=batch.description, n=batch.count) }}">
                     {% if batch.blocked %}
                       <input type="hidden" name="force" value="1">
-                      <button type="submit" class="btn btn-sm btn-danger" title="Reverses anyway, discarding later edits">
-                        Undo anyway
+                      <button type="submit" class="btn btn-sm btn-danger" title="{{ _('Reverses anyway, discarding later edits') }}">
+                        {{ _('Undo anyway') }}
                       </button>
                     {% else %}
                       <button type="submit" class="btn btn-sm">
-                        {{ icon('undo') }} Undo
+                        {{ icon('undo') }} {{ _('Undo') }}
                       </button>
                     {% endif %}
                   </form>
@@ -90,19 +90,19 @@
 
   <div class="inset mt-4 max-w-[760px]">
     <p class="text-[12.5px] leading-snug text-muted">
-      Undo reverses each recorded change: created records are deleted, edits are
+      {% trans trimmed %}Undo reverses each recorded change: created records are deleted, edits are
       put back to their previous values, deleted records are restored from their
       snapshot. A record that was changed <em>again</em> after the batch is flagged,
       because reverting it would throw that later edit away — you can still force
-      it, and the undo is itself recorded here.
+      it, and the undo is itself recorded here.{% endtrans %}
     </p>
   </div>
 {% else %}
   <div class="card empty-state">
     {{ icon('layers') }}
-    <p>No batch operations recorded yet.</p>
+    <p>{{ _('No batch operations recorded yet.') }}</p>
     <a class="btn mt-2" href="{{ url_for('batch_mice') }}">
-      {{ icon('duplicate') }} Add mice in bulk
+      {{ icon('duplicate') }} {{ _('Add mice in bulk') }}
     </a>
   </div>
 {% endif %}

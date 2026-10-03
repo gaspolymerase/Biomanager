@@ -1,7 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- For search engines: the website's pages. Add a page here when the site gets one. -->
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://biomanager.org/</loc></url>
-  <url><loc>https://biomanager.org/guide.html</loc></url>
-  <url><loc>https://biomanager.org/server.html</loc></url>
+<!-- For search engines: the website's pages, each in English and Chinese (site/zh/).
+     Add a page here, in both languages, when the site gets one. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://biomanager.org/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://biomanager.org/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://biomanager.org/"/>
+  </url>
+  <url>
+    <loc>https://biomanager.org/zh/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://biomanager.org/"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://biomanager.org/"/>
+  </url>
+  <url>
+    <loc>https://biomanager.org/guide.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://biomanager.org/guide.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/guide.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://biomanager.org/guide.html"/>
+  </url>
+  <url>
+    <loc>https://biomanager.org/zh/guide.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://biomanager.org/guide.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/guide.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://biomanager.org/guide.html"/>
+  </url>
+  <url>
+    <loc>https://biomanager.org/server.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://biomanager.org/server.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/server.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://biomanager.org/server.html"/>
+  </url>
+  <url>
+    <loc>https://biomanager.org/zh/server.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://biomanager.org/server.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/server.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://biomanager.org/server.html"/>
+  </url>
 </urlset>

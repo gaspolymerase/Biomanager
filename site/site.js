@@ -1,6 +1,14 @@
+// Every page: the English ⇄ 中文 link remembers the choice, so a Chinese
+// browser is not sent back to the Chinese page after picking English.
 // Guide pages: highlight the section being read in the contents, and
 // copy buttons (<button data-copy="id-of-element">).
 (function () {
+  document.querySelectorAll('a[data-lang]').forEach(function (a) {
+    a.addEventListener('click', function () {
+      try { localStorage.setItem('bm-lang', a.dataset.lang); } catch (e) {}
+      if (location.hash && a.getAttribute('href').indexOf('#') < 0) a.href = a.getAttribute('href') + location.hash;
+    });
+  });
   // The contents: always open beside the text on a wide screen; on a phone
   // a closed box above it (it is a screen tall), closed again after a jump.
   var box = document.querySelector('.toc-box');
@@ -32,7 +40,7 @@
       if (!source || !navigator.clipboard) return;
       navigator.clipboard.writeText(source.innerText.trim()).then(function () {
         var was = button.textContent;
-        button.textContent = 'Copied';
+        button.textContent = document.documentElement.lang.indexOf('zh') === 0 ? '已复制' : 'Copied';
         setTimeout(function () { button.textContent = was; }, 1500);
       });
     });

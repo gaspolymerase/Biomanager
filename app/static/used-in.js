@@ -15,12 +15,12 @@
     if (!number) { box.hidden = true; return; }
     box.hidden = false;
     if (code) code.textContent = `@${type} ${number}`;
-    list.textContent = 'Looking…';
+    list.textContent = t('Looking…');
     fetch(`/notebook/backlinks/${encodeURIComponent(type)}/${number}`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data || !data.ok) { list.textContent = ''; return; }
-        if (!data.items.length) { list.textContent = 'No notebook page links it yet.'; return; }
+        if (!data.items.length) { list.textContent = t('No notebook page links it yet.'); return; }
         list.innerHTML = data.items.map((p) => `
           <a class="used-in-row" href="/notebook?tab=${p.tab_id}&page=${p.page_id}">
             <span class="used-in-title">${esc(p.page_title)}</span>

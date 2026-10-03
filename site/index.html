@@ -11,6 +11,12 @@
   <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)">
   <link rel="canonical" href="https://biomanager.org/">
+  <link rel="alternate" hreflang="en" href="https://biomanager.org/">
+  <link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/">
+  <link rel="alternate" hreflang="x-default" href="https://biomanager.org/">
+  <!-- Someone whose browser asks for Chinese first, and who has not picked a language on this site,
+       gets the Chinese page. Search engines index both: each page names the other below. -->
+  <script>try{if(!localStorage.getItem('bm-lang')&&/^zh/i.test((navigator.languages&&navigator.languages[0])||navigator.language||''))location.replace('zh/'+location.pathname.split('/').pop()+location.hash)}catch(e){}</script>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="BioManager">
   <meta property="og:url" content="https://biomanager.org/">
@@ -58,6 +64,7 @@
       <a href="guide.html">User guide</a>
       <a href="#faq">FAQ</a>
     </nav>
+    <a class="lang-link" href="zh/" hreflang="zh-CN" lang="zh-CN" data-lang="zh">中文</a>
     <a class="btn btn-small btn-primary" href="#download">Download</a>
   </div>
 </header>
@@ -402,7 +409,7 @@
 <footer class="footer">
   <div class="wrap footer-inner">
     <div class="brand"><img src="assets/icon.svg" alt="" width="22" height="22">BioManager</div>
-    <p>Released under the <a href="LICENSE">MIT licence</a>. Icons from
+    <p>Released under the <a href="https://github.com/gaspolymerase/biomanager/blob/master/LICENSE">MIT licence</a>. Icons from
       <a href="https://fontawesome.com">Font Awesome Free</a> (CC BY 4.0) and
       <a href="https://game-icons.net">game-icons.net</a> by Delapouite (CC BY 3.0).
       The people and records in the screenshots are made up.</p>
@@ -429,5 +436,6 @@
     u.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); location.href = u.dataset.href; });
   });
 </script>
+<script src="site.js"></script>
 </body>
 </html>

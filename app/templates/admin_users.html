@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block page_title %}Users{% endblock %}
-{% block page_heading %}User management{% endblock %}
-{% block page_subtitle %}Promote, disable and reset passwords for everyone in the lab · {{ users|length }} account{{ '' if users|length == 1 else 's' }}{% endblock %}
+{% block page_title %}{{ _('Users') }}{% endblock %}
+{% block page_heading %}{{ _('User management') }}{% endblock %}
+{% block page_subtitle %}{{ _('Promote, disable and reset passwords for everyone in the lab') }} · {% trans count=users|length %}{{ count }} account{% pluralize %}{{ count }} accounts{% endtrans %}{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('guests.admin') }}">{{ icon('user') }} Guests</a>
+  <a class="btn" href="{{ url_for('guests.admin') }}">{{ icon('user') }} {{ _('Guests') }}</a>
 {% endblock %}
 
 {% block content %}
@@ -15,16 +15,16 @@
       <thead>
         <tr>
           <th style="width: 44px;"></th>
-          <th style="width: 150px;">Username</th>
-          <th style="width: 170px;">Display name</th>
-          <th style="width: 80px;">Short</th>
-          <th style="width: 200px;">Email</th>
-          <th style="width: 140px;">Position</th>
-          <th style="width: 100px;">Role</th>
-          <th style="width: 100px;">Status</th>
-          <th style="width: 120px;">Joined</th>
-          <th style="width: 210px;">Reset password</th>
-          <th>Actions</th>
+          <th style="width: 150px;">{{ _('Username') }}</th>
+          <th style="width: 170px;">{{ _('Display name') }}</th>
+          <th style="width: 80px;">{{ _('Short') }}</th>
+          <th style="width: 200px;">{{ _('Email') }}</th>
+          <th style="width: 140px;">{{ _('Job / position') }}</th>
+          <th style="width: 100px;">{{ _('Role') }}</th>
+          <th style="width: 100px;">{{ _('Status') }}</th>
+          <th style="width: 120px;">{{ _('Joined') }}</th>
+          <th style="width: 210px;">{{ _('Reset password') }}</th>
+          <th>{{ _('Actions') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -37,19 +37,19 @@
             <td class="text-muted">{{ u.email }}</td>
             <td class="text-muted">{{ u.role_title }}</td>
             <td>
-              <span class="badge {{ 'badge-brand' if u.role == 'admin' else 'badge-quiet' }}" {% if roles.get(u.role) %}title="{{ roles[u.role][1] }}"{% endif %}>{{ '—' if u.role == 'pending' else (roles[u.role][0] if roles.get(u.role) else u.role) }}</span>
+              <span class="badge {{ 'badge-brand' if u.role == 'admin' else 'badge-quiet' }}" {% if roles.get(u.role) %}title="{{ roles[u.role][1]|tr }}"{% endif %}>{{ '—' if u.role == 'pending' else (roles[u.role][0]|tr if roles.get(u.role) else u.role) }}</span>
             </td>
             <td>
               {% if u.role == 'pending' %}
-                <span class="badge badge-brand">awaiting approval</span>
+                <span class="badge badge-brand">{{ _('awaiting approval') }}</span>
               {% elif u.disabled %}
-                <span class="badge badge-danger">disabled</span>
+                <span class="badge badge-danger">{{ _('disabled') }}</span>
               {% elif u.expired %}
-                <span class="badge badge-quiet">guest, ended</span>
+                <span class="badge badge-quiet">{{ _('guest, ended') }}</span>
               {% elif u.expires_at %}
-                <span class="badge badge-brand" title="Until {{ (u.expires_at | local).strftime('%Y-%m-%d %H:%M') }}">guest</span>
+                <span class="badge badge-brand" title="{{ _('Until %(time)s', time=(u.expires_at | local).strftime('%Y-%m-%d %H:%M')) }}">{{ _('guest') }}</span>
               {% else %}
-                <span class="dt-status" data-status="active">active</span>
+                <span class="dt-status" data-status="active">{{ _('active') }}</span>
               {% endif %}
             </td>
             <td class="text-muted">{{ u.created_at }}</td>
@@ -57,8 +57,8 @@
               <form method="post" action="{{ url_for('admin_reset_password', user_id=u.id) }}"
                     class="flex items-center gap-1.5">
                 <input type="password" name="new_password" class="field h-7 text-[12px]"
-                       placeholder="new password (≥{{ min_password_length }})" minlength="{{ min_password_length }}" required>
-                <button type="submit" class="btn btn-sm">Set</button>
+                       placeholder="{{ _('new password (≥%(count)s)', count=min_password_length) }}" minlength="{{ min_password_length }}" required>
+                <button type="submit" class="btn btn-sm">{{ _('Set') }}</button>
               </form>
             </td>
             <td>
@@ -66,27 +66,27 @@
                 <div class="flex items-center gap-1.5">
                   {% if u.role == 'pending' %}
                   <form method="post" action="{{ url_for('admin_toggle_disabled', user_id=u.id) }}"
-                        data-confirm="Let {{ u.username }} sign in as a lab member?">
-                    <button type="submit" class="btn btn-sm btn-primary">Approve</button>
+                        data-confirm="{{ _('Let %(name)s sign in as a lab member?', name=u.username) }}">
+                    <button type="submit" class="btn btn-sm btn-primary">{{ _('Approve') }}</button>
                   </form>
                   {% else %}
                   <form method="post" action="{{ url_for('admin_toggle_role', user_id=u.id) }}" class="flex items-center gap-1"
-                        data-confirm="Change {{ u.username }}’s role?">
-                    <select name="role" class="field h-7 text-[12px]" aria-label="Role of {{ u.username }}">
-                      {% for key, (label, hint) in roles.items() %}<option value="{{ key }}" title="{{ hint }}" {% if u.role == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        data-confirm="{{ _('Change %(name)s’s role?', name=u.username) }}">
+                    <select name="role" class="field h-7 text-[12px]" aria-label="{{ _('Role of %(name)s', name=u.username) }}">
+                      {% for key, (label, hint) in roles.items() %}<option value="{{ key }}" title="{{ hint|tr }}" {% if u.role == key %}selected{% endif %}>{{ label|tr }}</option>{% endfor %}
                     </select>
-                    <button type="submit" class="btn btn-sm">Set</button>
+                    <button type="submit" class="btn btn-sm">{{ _('Set') }}</button>
                   </form>
                   <form method="post" action="{{ url_for('admin_toggle_disabled', user_id=u.id) }}"
-                        data-confirm="Toggle this account’s disabled state?">
+                        data-confirm="{{ _('Toggle this account’s disabled state?') }}">
                     <button type="submit" class="btn btn-sm {% if not u.disabled %}btn-danger{% endif %}">
-                      {{ 'Enable' if u.disabled else 'Disable' }}
+                      {{ _('Enable') if u.disabled else _('Disable') }}
                     </button>
                   </form>
                   {% endif %}
                 </div>
               {% else %}
-                <span class="text-[11.5px] text-muted">this is you</span>
+                <span class="text-[11.5px] text-muted">{{ _('this is you') }}</span>
               {% endif %}
             </td>
           </tr>

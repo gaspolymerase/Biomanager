@@ -1,31 +1,31 @@
 {% extends "base.html" %}
 
-{% block page_title %}Notifications{% endblock %}
-{% block page_heading %}Notifications{% endblock %}
-{% block page_subtitle %}What happened to your animals, orders and databases{% endblock %}
+{% block page_title %}{{ _('Notifications') }}{% endblock %}
+{% block page_heading %}{{ _('Notifications') }}{% endblock %}
+{% block page_subtitle %}{{ _('What happened to your animals, orders and databases') }}{% endblock %}
 
 {% block page_actions %}
-  <a class="btn" href="{{ url_for('settings') }}#notifications">{{ icon('settings') }} Choose what you get</a>
+  <a class="btn" href="{{ url_for('settings') }}#notifications">{{ icon('settings') }} {{ _('Choose what you get') }}</a>
   {% if unread %}
     <form method="post" action="{{ url_for('mark_notifications_read') }}">
-      <button type="submit" class="btn btn-primary">{{ icon('check') }} Mark all read</button>
+      <button type="submit" class="btn btn-primary">{{ icon('check') }} {{ _('Mark all read') }}</button>
     </form>
   {% endif %}
 {% endblock %}
 
 {% block content %}
 <div class="mb-3 flex flex-wrap items-center gap-2">
-  <div class="seg" role="tablist" aria-label="Show">
-    <a class="seg-item{% if show != 'unread' %} is-active{% endif %}" href="{{ url_for('lab.notifications', category=category) }}">All</a>
-    <a class="seg-item{% if show == 'unread' %} is-active{% endif %}" href="{{ url_for('lab.notifications', show='unread', category=category) }}">Unread <span class="seg-count">{{ unread }}</span></a>
+  <div class="seg" role="tablist" aria-label="{{ _('Show') }}">
+    <a class="seg-item{% if show != 'unread' %} is-active{% endif %}" href="{{ url_for('lab.notifications', category=category) }}">{{ _('All') }}</a>
+    <a class="seg-item{% if show == 'unread' %} is-active{% endif %}" href="{{ url_for('lab.notifications', show='unread', category=category) }}">{{ _('Unread') }} <span class="seg-count">{{ unread }}</span></a>
   </div>
   <div class="dt-chips flex-wrap">
-    <a class="dt-chip" {% if not category %}aria-current="page"{% endif %} href="{{ url_for('lab.notifications', show=show) }}">Everything</a>
+    <a class="dt-chip" {% if not category %}aria-current="page"{% endif %} href="{{ url_for('lab.notifications', show=show) }}">{{ _('Everything') }}</a>
     {% for key, (label, _hint) in categories.items() %}
-      <a class="dt-chip" {% if category == key %}aria-current="page"{% endif %} href="{{ url_for('lab.notifications', show=show, category=key) }}">{{ label }}</a>
+      <a class="dt-chip" {% if category == key %}aria-current="page"{% endif %} href="{{ url_for('lab.notifications', show=show, category=key) }}">{{ label|tr }}</a>
     {% endfor %}
     {% if current_user.role == 'admin' %}
-      <a class="dt-chip" {% if category == 'account' %}aria-current="page"{% endif %} href="{{ url_for('lab.notifications', show=show, category='account') }}">Accounts</a>
+      <a class="dt-chip" {% if category == 'account' %}aria-current="page"{% endif %} href="{{ url_for('lab.notifications', show=show, category='account') }}">{{ _('Accounts') }}</a>
     {% endif %}
   </div>
 </div>
@@ -37,14 +37,14 @@
       <span class="notif-body">
         <span class="notif-text">{{ n.title }}</span>
         {% if n.message %}<span class="notif-sub">{{ n.message }}</span>{% endif %}
-        <span class="notif-meta">{{ notification_labels.get(n.category, 'General') }} · {{ n.created_at|when }}</span>
+        <span class="notif-meta">{{ notification_labels.get(n.category, 'General')|tr }} · {{ n.created_at|when }}</span>
       </span>
     </a>
   {% else %}
     <div class="empty-state">
       {{ icon('bell') }}
-      <p>{% if show == 'unread' %}No unread notifications.{% else %}No notifications yet.{% endif %}</p>
-      <p class="text-[12.5px] text-muted">You're told here when someone moves or gives you animals, records a genotype for yours, or your order is placed or arrives.</p>
+      <p>{% if show == 'unread' %}{{ _('No unread notifications.') }}{% else %}{{ _('No notifications yet.') }}{% endif %}</p>
+      <p class="text-[12.5px] text-muted">{{ _("You're told here when someone moves or gives you animals, records a genotype for yours, or your order is placed or arrives.") }}</p>
     </div>
   {% endfor %}
 </section>

@@ -9,7 +9,7 @@
   {% if selected and selected not in names %}{% set names = [selected] + names %}{% endif %}
   <link rel="stylesheet" href="{{ url_for('static', filename='icon-picker.css') }}?v={{ asset_version('icon-picker.css') }}">
   <fieldset class="icon-picker"{% if id %} id="{{ id }}"{% endif %}>
-    <legend>{{ label }}</legend>
+    <legend>{{ label|tr }}</legend>
     <div class="icon-picker-grid">
       {% for n in names %}
         <label class="icon-picker-choice" title="{{ n }}">

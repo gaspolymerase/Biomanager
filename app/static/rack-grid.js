@@ -115,7 +115,7 @@
       groups.forEach((name) => {
         const option = document.createElement('option');
         option.value = name;
-        option.textContent = name === NO_GROUP ? 'Not in one' : name;
+        option.textContent = name === NO_GROUP ? t('Not in one') : name;
         groupSelect.appendChild(option);
       });
       if (!groups.length) {
@@ -136,7 +136,7 @@
       select.disabled = !shown.length;
       if (!shown.length) {
         const option = document.createElement('option');
-        option.textContent = 'No racks yet';
+        option.textContent = t('No racks yet');
         select.appendChild(option);
       }
       return shown;
@@ -172,7 +172,7 @@
       el.innerHTML = `
         <span class="rack-tile-top">
           <span class="rack-tile-id">${escapeHtml(item.label)}</span>
-          ${item.flag ? '<span class="rack-tile-flag" aria-label="Needs attention"></span>' : ''}
+          ${item.flag ? `<span class="rack-tile-flag" aria-label="${escapeHtml(t('Needs attention'))}"></span>` : ''}
           ${item.badge ? `<span class="rack-tile-badge">${escapeHtml(item.badge)}</span>` : ''}
         </span>
         ${item.sub || where ? `<span class="rack-tile-foot">${item.sub ? `<span class="rack-tile-sub">${escapeHtml(item.sub)}</span>` : ''}${
@@ -214,14 +214,14 @@
           Object.entries(action.fields || {}).forEach(([name, value]) => {
             rackAction.appendChild(Object.assign(document.createElement('input'), { type: 'hidden', name, value }));
           });
-          const button = Object.assign(document.createElement('button'), { type: 'submit', className: 'btn btn-sm', title: action.title || '' });
+          const button = Object.assign(document.createElement('button'), { type: 'submit', className: 'btn btn-sm', title: action.title ? t(action.title) : '' });
           button.disabled = !!action.done;
-          button.innerHTML = `<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#${escapeHtml(action.icon || 'check')}"></use></svg> ${escapeHtml(action.done ? `${action.label} ✓` : action.label)}`;
+          button.innerHTML = `<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#${escapeHtml(action.icon || 'check')}"></use></svg> ${escapeHtml(action.done ? `${t(action.label)} ✓` : t(action.label))}`;
           rackAction.appendChild(button);
         }
       }
       if (!rack) {
-        grid.innerHTML = `<div class="rack-empty">${escapeHtml(root.dataset.emptyText || 'Add a rack to start placing.')}</div>`;
+        grid.innerHTML = `<div class="rack-empty">${escapeHtml(root.dataset.emptyText || t('Add a rack to start placing.'))}</div>`;
       } else {
         const occupied = items.filter((item) => placedIn(rack, item)).length;
         if (meta) {
@@ -229,7 +229,7 @@
           const note = rack.note && rack.note.text
             ? ` · <span class="rack-note ${{ overdue: 'text-danger-700 font-semibold', due: 'text-warn-700 font-semibold' }[rack.note.tone] || ''}" title="${escapeHtml(rack.note.title || '')}">${escapeHtml(rack.note.text)}</span>`
             : '';
-          meta.innerHTML = `${rack.rows} × ${rack.cols} · ${occupied} of ${rack.rows * rack.cols} filled${note}`;
+          meta.innerHTML = `${rack.rows} × ${rack.cols} · ${escapeHtml(t('%(n)s of %(total)s filled', { n: occupied, total: rack.rows * rack.cols }))}${note}`;
         }
         const scheme = naming(rack.naming);
         const sequential = scheme.mode === 'sequential';
@@ -259,7 +259,7 @@
                 const add = document.createElement('button');
                 add.type = 'button';
                 add.className = 'rack-cell-add';
-                add.setAttribute('aria-label', `New at ${whereText(rack, r, c)}`);
+                add.setAttribute('aria-label', t('New at %(where)s', { where: whereText(rack, r, c) }));
                 add.innerHTML = name + '<svg class="icon" aria-hidden="true"><use href="/static/icons.svg#plus"></use></svg>';
                 add.addEventListener('click', () => { if (!moving) createAt(rack, r, c); });
                 cell.appendChild(add);
@@ -275,7 +275,7 @@
       }
       // Unplaced: no valid position in any rack.
       items.filter((item) => !isPlacedAnywhere(item)).forEach((item) => tray.appendChild(tile(item)));
-      if (!tray.children.length) tray.innerHTML = '<div class="rack-tray-empty">Everything is placed.</div>';
+      if (!tray.children.length) tray.innerHTML = `<div class="rack-tray-empty">${escapeHtml(t('Everything is placed.'))}</div>`;
       applySearch();
     }
 
@@ -297,8 +297,8 @@
       if (!moving) return;
       const item = pickedItem();
       say('saving', item
-        ? `Tap where ${item.label} goes: an empty position, another tile to swap, or Unplaced.`
-        : 'Tap the tile to move.');
+        ? t('Tap where %(item)s goes: an empty position, another tile to swap, or Unplaced.', { item: item.label })
+        : t('Tap the tile to move.'));
     }
     function setMoving(on) {
       moving = on;
@@ -317,7 +317,9 @@
       const where = item.rack ? rackById(item.rack) : null;
       if (holding && where && placedIn(where, item)) { moveTo(holding.id, where, item.row, item.col); return; }
       if (item.locked) {
-        say('error', `${item.label} is ${item.owner ? `${item.owner}'s` : 'someone else\u2019s'}; you may not move it.`);
+        say('error', item.owner
+          ? t('%(item)s is %(owner)s\'s; you may not move it.', { item: item.label, owner: item.owner })
+          : t('%(item)s is someone else’s; you may not move it.', { item: item.label }));
         return;
       }
       picked = item.id;
@@ -358,21 +360,24 @@
       const previous = { rack: item.rack, row: item.row, col: item.col };
       const occupant = rack ? items.find((i) => i !== item && i.rack === rack.id && i.row === r && i.col === c) : null;
       if (occupant && occupant.locked) {
-        say('error', `${whereText(rack, r, c)} holds ${occupant.label}` + (occupant.owner ? ` (${occupant.owner}'s)` : '')
-          + ', which you may not move. Pick an empty position.');
+        say('error', occupant.owner
+          ? t('%(where)s holds %(item)s (%(owner)s\'s), which you may not move. Pick an empty position.',
+              { where: whereText(rack, r, c), item: occupant.label, owner: occupant.owner })
+          : t('%(where)s holds %(item)s, which you may not move. Pick an empty position.',
+              { where: whereText(rack, r, c), item: occupant.label }));
         return;
       }
       const body = new FormData();
       body.append(fields.rack, rack ? rack.id : '');
       body.append(fields.row, rack ? r - 1 + base : '');
       body.append(fields.col, rack ? c - 1 + base : '');
-      say('saving', 'Saving…');
+      say('saving', t('Saving…'));
       try {
         const response = await fetch(moveUrl.replace('{id}', itemId), {
           method: 'POST', body, headers: { 'X-Autosave': '1' },
         });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || result.ok === false) throw new Error(result.error || `The server answered ${response.status}.`);
+        if (!response.ok || result.ok === false) throw new Error(result.error || t('The server answered %(status)s.', { status: response.status }));
         // Mirror the server: the moved item takes the cell, an occupant swaps.
         Object.assign(item, rack ? { rack: rack.id, row: r, col: c } : { rack: null, row: null, col: null });
         if (occupant) Object.assign(occupant, previous);
@@ -388,13 +393,15 @@
         });
         // A swap moves two records: say so, or the second move goes unseen.
         const swapped = occupant
-          ? ` · ${occupant.label} went to ${occupant.rack ? whereText(rackById(occupant.rack), occupant.row, occupant.col) : 'Unplaced'}`
+          ? ' · ' + t('%(item)s went to %(where)s', { item: occupant.label,
+            where: occupant.rack ? whereText(rackById(occupant.rack), occupant.row, occupant.col) : t('Unplaced') })
           : '';
         picked = null;
-        say('saved', (rack ? `Moved ${item.label} to ${whereText(rack, r, c)}` : `Unplaced ${item.label}`) + swapped);
+        say('saved', (rack ? t('Moved %(item)s to %(where)s', { item: item.label, where: whereText(rack, r, c) })
+                           : t('Unplaced %(item)s', { item: item.label })) + swapped);
         render();
       } catch (error) {
-        say('error', `Couldn’t move ${item.label}: ${error.message}`);
+        say('error', t('Couldn’t move %(item)s: %(error)s', { item: item.label, error: error.message }));
       }
     }
 

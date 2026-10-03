@@ -157,14 +157,14 @@
     const setCount = (n) => {
       badge.textContent = n > 99 ? '99+' : String(n);
       badge.hidden = !n;
-      button.setAttribute('aria-label', n ? `Notifications: ${n} unread` : 'Notifications');
+      button.setAttribute('aria-label', n ? t('Notifications: %(count)s unread', { count: n }) : t('Notifications'));
     };
     const load = async () => {
       try {
         const response = await fetch(root.dataset.panelUrl, { credentials: 'same-origin' });
         if (response.ok) menu.innerHTML = await response.text();   // our own escaped template
       } catch (_) {
-        menu.textContent = 'Could not load notifications.';
+        menu.textContent = t('Could not load notifications.');
       }
     };
     const close = () => {
@@ -277,7 +277,7 @@
         const more = [...links(foot), ...[...document.querySelectorAll('[data-rail-pop] a[href]')]
           .filter((a) => a.getAttribute('href').startsWith('/'))
           .map((a) => ({ label: a.dataset.label || a.textContent.trim(), url: a.getAttribute('href') }))];
-        sections.push({ label: 'More', links: more });
+        sections.push({ label: t('More'), links: more });
       }
       api.set_nav(sections);
     };

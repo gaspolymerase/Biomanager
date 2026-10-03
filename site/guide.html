@@ -7,6 +7,12 @@
   <meta name="description" content="How to use BioManager, and how to move your lab in from Excel: the mouse colony, zebrafish, flies, worms, any organism, plasmids, samples, orders, reagents, antibodies, viruses, the calendar and the notebook.">
   <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="https://biomanager.org/guide.html">
+  <link rel="alternate" hreflang="en" href="https://biomanager.org/guide.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://biomanager.org/zh/guide.html">
+  <link rel="alternate" hreflang="x-default" href="https://biomanager.org/guide.html">
+  <!-- Someone whose browser asks for Chinese first, and who has not picked a language on this site,
+       gets the Chinese page. Search engines index both: each page names the other below. -->
+  <script>try{if(!localStorage.getItem('bm-lang')&&/^zh/i.test((navigator.languages&&navigator.languages[0])||navigator.language||''))location.replace('zh/'+location.pathname.split('/').pop()+location.hash)}catch(e){}</script>
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="BioManager">
   <meta property="og:url" content="https://biomanager.org/guide.html">
@@ -30,6 +36,7 @@
       <a href="server.html">Run it for your lab</a>
       <a href="./#faq">FAQ</a>
     </nav>
+    <a class="lang-link" href="zh/guide.html" hreflang="zh-CN" lang="zh-CN" data-lang="zh">中文</a>
     <a class="btn btn-small btn-primary" href="./#download">Download</a>
   </div>
 </header>
@@ -191,6 +198,9 @@
         not (<a href="#counts">what is sent</a>).</p>
       <p>BioManager then makes those databases, the racks and incubators too, and takes you Home. Everyone who joins later gets a
         one-page welcome tour of the lab's databases on first sign-in (<b>Settings → See the welcome tour again</b> brings it back).</p>
+      <p><b>English or 中文.</b> BioManager shows in the language your computer or browser asks for first, English or Simplified
+        Chinese. Choose for yourself under <b>Settings → Language</b>, or with the <b>中文 / English</b> switch on the sign-in
+        page. Everyone in the lab chooses their own; names, notes and everything people type stay as written.</p>
     </section>
 
     <section id="move-in">
@@ -1048,7 +1058,7 @@
 <footer class="footer">
   <div class="wrap footer-inner">
     <div class="brand"><img src="assets/icon.svg" alt="" width="22" height="22">BioManager</div>
-    <p>Released under the <a href="LICENSE">MIT licence</a>. <a href="./">Home</a> · <a href="server.html">Run it for your lab</a> ·
+    <p>Released under the <a href="https://github.com/gaspolymerase/biomanager/blob/master/LICENSE">MIT licence</a>. <a href="./">Home</a> · <a href="server.html">Run it for your lab</a> ·
       <a href="./#download">Download</a> · <a href="https://github.com/gaspolymerase/biomanager/issues">Report a problem</a></p>
   </div>
 </footer>

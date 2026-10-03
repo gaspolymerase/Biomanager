@@ -29,8 +29,8 @@
     if (!bar) return;
 
     const countEl = bar.querySelector('[data-selection-count]');
-    const noun = scope.dataset.selectionNoun || 'record';
-    const nounPlural = scope.dataset.selectionNounPlural || (noun + 's');
+    const noun = scope.dataset.selectionNoun || t('record');
+    const nounPlural = scope.dataset.selectionNounPlural || (scope.dataset.selectionNoun ? noun + 's' : t('records'));
 
     const boxes = () => Array.from(scope.querySelectorAll(ROW_SELECTOR))
       .filter((box) => box.type === 'checkbox');
@@ -41,8 +41,8 @@
       bar.hidden = selected.length === 0;
       if (countEl) {
         countEl.textContent = selected.length === 1
-          ? `1 ${noun} selected`
-          : `${selected.length} ${nounPlural} selected`;
+          ? t('1 %(noun)s selected', { noun: noun })
+          : t('%(n)s %(noun)s selected', { n: selected.length, noun: nounPlural });
       }
       // Rows read as selected, so it is obvious what an action will hit.
       boxes().forEach((box) => {
@@ -164,9 +164,9 @@
     }
     const guard = (edited) => {
       const empty = !input || !input.value.trim();
-      const label = (select.selectedOptions[0] || {}).textContent || 'this column';
+      const label = (select.selectedOptions[0] || {}).textContent || t('this column');
       clear.value = empty ? '1' : '';
-      if (empty) form.dataset.confirm = `Clear ${label.trim()} on {n} rows?`;
+      if (empty) form.dataset.confirm = t('Clear %(column)s on {n} rows?', { column: label.trim() });
       else delete form.dataset.confirm;
       if (edited) delete form.dataset.confirmed;      // a new question for a new value
     };

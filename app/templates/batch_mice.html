@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 
-{% block page_title %}Add mice in bulk{% endblock %}
-{% block page_heading %}Add mice in bulk{% endblock %}
+{% block page_title %}{{ _('Add mice in bulk') }}{% endblock %}
+{% block page_heading %}{{ _('Add mice in bulk') }}{% endblock %}
 {% block page_subtitle %}
   {%- if stage == 'preview' -%}
-    Check the rows, edit anything that differs, then create them
+    {{ _('Check the rows, edit anything that differs, then create them') }}
   {%- else -%}
-    Describe one mouse and say how many — or load a CSV
+    {{ _('Describe one mouse and say how many — or load a CSV') }}
   {%- endif -%}
 {% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_actions %}
   <a class="btn" href="{{ url_for('colony', view='mice') }}">
-    {{ icon('back') }} Back to colony
+    {{ icon('back') }} {{ _('Back to colony') }}
   </a>
 {% endblock %}
 
@@ -31,28 +31,28 @@
 
     <form method="post" action="{{ url_for('batch_mice_preview') }}" class="card">
       <header class="card-head">
-        <h2>{{ icon('duplicate') }} One prototype, many mice</h2>
-        <span class="badge badge-quiet">next ID #{{ next_id }}</span>
+        <h2>{{ icon('duplicate') }} {{ _('One prototype, many mice') }}</h2>
+        <span class="badge badge-quiet">{{ _('next ID #%(id)s', id=next_id) }}</span>
       </header>
 
       <div class="p-4">
         <p class="mb-3.5 text-[12.5px] leading-snug text-muted">
-          Everything here is copied to every mouse. You can change individual
-          rows in the next step — nothing is written until you confirm.
+          {% trans trimmed %}Everything here is copied to every mouse. You can change individual
+          rows in the next step — nothing is written until you confirm.{% endtrans %}
         </p>
 
         <div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-          <label class="field-label">Sex
+          <label class="field-label">{{ _('Sex') }}
             <select name="gender">
-              <option value="">mixed / set per row</option>
+              <option value="">{{ _('mixed / set per row') }}</option>
               <option value="F">F</option>
               <option value="M">M</option>
             </select>
           </label>
-          <label class="field-label">Status
+          <label class="field-label">{{ _('Status') }}
             <input name="status" value="{{ prototype.status }}" list="options-status">
           </label>
-          <label class="field-label">Owner
+          <label class="field-label">{{ _('Owner') }}
             <select name="owner">
               {% for username in usernames %}
                 <option value="{{ username }}" {% if username == prototype.owner %}selected{% endif %}>{{ username }}</option>
@@ -60,67 +60,67 @@
             </select>
           </label>
 
-          <label class="field-label">Transgene 1
+          <label class="field-label">{{ _('Transgene 1') }}
             <input name="transgene_1" list="strain-name-options">
           </label>
-          <label class="field-label">Transgene 2
+          <label class="field-label">{{ _('Transgene 2') }}
             <input name="transgene_2" list="strain-name-options">
           </label>
-          <label class="field-label">Transgene 3
+          <label class="field-label">{{ _('Transgene 3') }}
             <input name="transgene_3" list="strain-name-options">
           </label>
-          <label class="field-label">Transgene 4
+          <label class="field-label">{{ _('Transgene 4') }}
             <input name="transgene_4" list="strain-name-options">
           </label>
-          <label class="field-label">Cage
-            <input name="cage_id" placeholder="number, or 'new'">
+          <label class="field-label">{{ _('Cage') }}
+            <input name="cage_id" placeholder="{{ _("number, or 'new'") }}">
             <span class="field-hint normal-case tracking-normal">
-              <code class="ident">new</code> puts the batch in one fresh cage;
+              {% trans trimmed %}<code class="ident">new</code> puts the batch in one fresh cage;
               with females and males, each sex gets its own. In the preview,
-              <code class="ident">new-2</code>, <code class="ident">new-3</code>… are further new cages.
+              <code class="ident">new-2</code>, <code class="ident">new-3</code>… are further new cages.{% endtrans %}
             </span>
           </label>
-          <label class="field-label">Cage location
+          <label class="field-label">{{ _('Cage location') }}
             <input name="cage_location" list="options-cage_location">
           </label>
-          <label class="field-label">Litter
+          <label class="field-label">{{ _('Litter') }}
             <input name="litter_id">
           </label>
-          <label class="field-label">Date of birth
+          <label class="field-label">{{ _('Date of birth') }}
             <input type="date" name="date_of_birth">
           </label>
-          <label class="field-label sm:col-span-2 lg:col-span-3">Note
+          <label class="field-label sm:col-span-2 lg:col-span-3">{{ _('Note') }}
             <input name="note">
           </label>
         </div>
 
-        <h4>How many?</h4>
+        <h4>{{ _('How many?') }}</h4>
         <div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-          <label class="field-label">Count
+          <label class="field-label">{{ _('Count') }}
             <input type="number" name="count" min="1" max="{{ max_batch }}" value="6">
           </label>
           <div class="sm:col-span-3 flex items-end">
             <p class="text-[12px] leading-snug text-muted">
-              Or split by sex below — that wins over the plain count.
+              {{ _('Or split by sex below — that wins over the plain count.') }}
             </p>
           </div>
-          <label class="field-label">Females
+          <label class="field-label">{{ _('Females') }}
             <input type="number" name="count_female" min="0" max="{{ max_batch }}" placeholder="0">
           </label>
-          <label class="field-label">Males
+          <label class="field-label">{{ _('Males') }}
             <input type="number" name="count_male" min="0" max="{{ max_batch }}" placeholder="0">
           </label>
-          <label class="inline-check sm:col-span-2 self-end text-[12.5px]" title="With Cage set to new, females and males otherwise go into two new cages">
+          <label class="inline-check sm:col-span-2 self-end text-[12.5px]" title="{{ _('With Cage set to new, females and males otherwise go into two new cages') }}">
             <input type="checkbox" name="one_new_cage" value="1">
-            Keep both sexes in one new cage (to breed)
+            {{ _('Keep both sexes in one new cage (to breed)') }}
           </label>
         </div>
       </div>
 
       <footer class="flex items-center justify-between gap-3 border-t border-sand-100 bg-sand-50/60 px-4 py-3">
-        <span class="text-[12px] text-muted">Up to {{ max_batch }} at a time.</span>
+        <span class="text-[12px] text-muted">{{ _('Up to %(n)s at a time.', n=max_batch) }}</span>
         <button type="submit" class="btn btn-primary btn-lg">
-          {{ icon('eye') }} Preview
+          {{ icon('eye') }} {{ _('Preview') }}
         </button>
       </footer>
     </form>
@@ -128,39 +128,39 @@
     <form method="post" action="{{ url_for('batch_mice_preview') }}"
           enctype="multipart/form-data" class="card self-start">
       <header class="card-head">
-        <h2>{{ icon('upload') }} Or load a CSV</h2>
+        <h2>{{ icon('upload') }} {{ _('Or load a CSV') }}</h2>
       </header>
       <div class="flex flex-col gap-3 p-4">
         <p class="text-[12.5px] leading-snug text-muted">
-          Lands in the same preview, so you can fix anything before it is written.
+          {{ _('Lands in the same preview, so you can fix anything before it is written.') }}
         </p>
-        <label class="field-label">CSV file
+        <label class="field-label">{{ _('CSV file') }}
           <input type="file" name="file" accept=".csv,text/csv" required>
         </label>
 
         <div class="inset">
           <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-sand-400">
-            Columns it understands
+            {{ _('Columns it understands') }}
           </p>
           <p class="font-mono text-[11.5px] leading-relaxed text-ink-soft">
             {{ template_headers | join(' · ') }}
           </p>
           <p class="mt-2 text-[11.5px] leading-snug text-muted">
-            Easiest: download the template, fill it in Excel or Sheets and save
+            {% trans trimmed %}Easiest: download the template, fill it in Excel or Sheets and save
             it as CSV. Dates may be written as in Excel (3/14/2026 or
             14/03/2026). A <code class="ident">genotype</code> column with no
             transgene columns goes into Transgene 1; other columns are ignored.
             <strong class="font-semibold text-ink-soft">Leave out mouse IDs</strong>: they are
-            assigned in order from #{{ next_id }}.
+            assigned in order from #{{ next_id }}.{% endtrans %}
           </p>
         </div>
 
         <a class="btn" href="{{ url_for('batch_mice_template') }}" download>
-          {{ icon('download') }} Download a template
+          {{ icon('download') }} {{ _('Download a template') }}
         </a>
 
         <button type="submit" class="btn btn-primary">
-          {{ icon('eye') }} Preview file
+          {{ icon('eye') }} {{ _('Preview file') }}
         </button>
       </div>
     </form>
@@ -170,19 +170,19 @@
 {% else %}
   <form method="post" action="{{ url_for('batch_mice_create') }}" class="data-table-card">
     <div class="dt-toolbar">
-      <span class="badge badge-brand">{{ rows|length }} mice</span>
+      <span class="badge badge-brand">{{ _('%(n)s mice', n=rows|length) }}</span>
       {% if proposed_ids %}
-        <span class="badge">IDs #{{ proposed_ids[0] }} – #{{ proposed_ids[-1] }}</span>
+        <span class="badge">{{ _('IDs #%(first)s – #%(last)s', first=proposed_ids[0], last=proposed_ids[-1]) }}</span>
       {% endif %}
-      <span class="text-[12px] text-muted">assigned in order when you save</span>
+      <span class="text-[12px] text-muted">{{ _('assigned in order when you save') }}</span>
       <span class="text-[12px] text-ok-700" data-fill-note aria-live="polite"></span>
       <div class="dt-toolbar-spacer"></div>
       <button type="button" class="dt-toolbar-btn" data-on-click="batchFill"
-              title="Copies the cell you were in to every row below it (Ctrl+D). With no cell chosen, fills empty cells from the first row.">
-        {{ icon('arrow-down') }} Fill down
+              title="{{ _('Copies the cell you were in to every row below it (Ctrl+D). With no cell chosen, fills empty cells from the first row.') }}">
+        {{ icon('arrow-down') }} {{ _('Fill down') }}
       </button>
       <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">
-        {{ icon('undo') }} Start over
+        {{ icon('undo') }} {{ _('Start over') }}
       </a>
     </div>
 
@@ -190,11 +190,11 @@
       <table class="dense-table fit-table" style="min-width: 1280px;">
         <thead>
           <tr>
-            <th style="width: 70px;">ID</th>
+            <th style="width: 70px;">{{ _('ID') }}</th>
             {% for key, label, width in columns %}
-              <th style="width: {{ width }}px;">{{ label }}</th>
+              <th style="width: {{ width }}px;">{{ label|tr }}</th>
             {% endfor %}
-            <th style="width: 48px;" title="Leave out of this batch">Skip</th>
+            <th style="width: 48px;" title="{{ _('Leave out of this batch') }}">{{ _('Skip') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -225,7 +225,7 @@
               {% endfor %}
               <td>
                 <input type="checkbox" name="rows-{{ r }}-drop" value="1"
-                       aria-label="Skip this row">
+                       aria-label="{{ _('Skip this row') }}">
               </td>
             </tr>
           {% endfor %}
@@ -235,11 +235,11 @@
 
     <div class="dt-bottom-bar">
       <span class="dt-bottom-count">
-        Nothing is written until you press Create.
+        {{ _('Nothing is written until you press Create.') }}
       </span>
       <div class="dt-bottom-spacer"></div>
       <button type="submit" class="btn btn-primary btn-lg">
-        {{ icon('check') }} Create {{ rows|length }} mice
+        {{ icon('check') }} {{ _('Create %(n)s mice', n=rows|length) }}
       </button>
     </div>
   </form>
@@ -281,8 +281,9 @@
         below.forEach((cell) => { cell.value = lastCell.value; });
         const label = lastCell.closest('table').tHead.rows[0].cells[lastCell.closest('td').cellIndex].textContent.trim();
         tell(below.length
-          ? `${label}: “${lastCell.value || 'blank'}” copied to ${below.length} row${below.length === 1 ? '' : 's'} below`
-          : 'That is the last row: nothing below to fill');
+          ? t(below.length === 1 ? '%(label)s: “%(value)s” copied to %(n)s row below' : '%(label)s: “%(value)s” copied to %(n)s rows below',
+              { label, value: lastCell.value || t('blank'), n: below.length })
+          : t('That is the last row: nothing below to fill'));
         lastCell.focus();
         return;
       }
@@ -298,8 +299,8 @@
           if (!cell.value.trim()) { cell.value = source; filled += 1; }
         });
       });
-      tell(filled ? `Filled ${filled} empty cell${filled === 1 ? '' : 's'} from the first row`
-                  : 'Nothing empty to fill. Click a cell first to copy it down.');
+      tell(filled ? t(filled === 1 ? 'Filled %(n)s empty cell from the first row' : 'Filled %(n)s empty cells from the first row', { n: filled })
+                  : t('Nothing empty to fill. Click a cell first to copy it down.'));
     }
     document.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey

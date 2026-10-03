@@ -356,7 +356,8 @@
         const params = new URL(window.location.href).searchParams;
         asked = params.get('chip');
         if (asked === null && params.get('scope') === 'mine') {
-          const mine = chips.find((c) => c.textContent.trim().toLowerCase().startsWith('mine'));
+          const mineWords = ['mine', t('Mine').toLowerCase()];
+          const mine = chips.find((c) => mineWords.some((w) => c.textContent.trim().toLowerCase().startsWith(w)));
           if (mine) asked = mine.dataset.dtFilter || '';
         }
       } catch (_) { /* no URL API */ }
@@ -480,7 +481,7 @@
         this._openMenu(btn, (menu) => {
           const title = document.createElement('div');
           title.className = 'dt-menu-title';
-          title.textContent = 'Columns';
+          title.textContent = t('Columns');
           menu.appendChild(title);
           headers.forEach((th, idx) => {
             const label = this._columnLabel(th);
@@ -502,7 +503,7 @@
           const all = document.createElement('button');
           all.type = 'button';
           all.className = 'dt-menu-action';
-          all.textContent = 'Show all columns';
+          all.textContent = t('Show all columns');
           all.addEventListener('click', () => {
             this.hidden.clear();
             this._saveHiddenCols();
@@ -529,7 +530,7 @@
         this._openMenu(btn, (menu) => {
           const title = document.createElement('div');
           title.className = 'dt-menu-title';
-          title.textContent = 'Sort by';
+          title.textContent = t('Sort by');
           menu.appendChild(title);
           headers.forEach((th) => {
             const item = document.createElement('button');
@@ -546,7 +547,7 @@
             const clear = document.createElement('button');
             clear.type = 'button';
             clear.className = 'dt-menu-action';
-            clear.textContent = 'Original order';
+            clear.textContent = t('Original order');
             clear.addEventListener('click', () => {
               this.sortKey = null;
               try { localStorage.removeItem(`dt:${this.id}:sort`); } catch (_) {}
@@ -688,8 +689,8 @@
         this.tbody.appendChild(row);
       }
       row.firstChild.firstChild.textContent = this.query
-        ? `Nothing matches “${this.search.value.trim()}”.`
-        : `No ${this.nounPlural} match this filter.`;
+        ? t('Nothing matches “%(query)s”.', { query: this.search.value.trim() })
+        : t('No %(nouns)s match this filter.', { nouns: t(this.nounPlural) });
     }
 
     // -------- export & print ---------------------------------------------
@@ -712,7 +713,7 @@
         if (this.hidden.has(idx)) return false;
         if (th.querySelector('input[type=checkbox]')) return false;
         const label = (th.textContent || '').replace(/\s+/g, ' ').trim();
-        return label && label !== 'Actions';
+        return label && label !== 'Actions' && label !== t('Actions');
       }).map(({ th, idx }) => ({ idx, label: (th.textContent || '').replace(/\s+/g, ' ').trim() }));
     }
 
@@ -746,7 +747,7 @@
           const size = this.pageSize;
           const before = size ? size.value : null;
           if (size) {
-            if (!Array.from(size.options).some((o) => o.value === '100000')) size.add(new Option('All', '100000'));
+            if (!Array.from(size.options).some((o) => o.value === '100000')) size.add(new Option(t('All'), '100000'));
             size.value = '100000';
           }
           this.page = 0;
@@ -775,8 +776,10 @@
       this.filtered.slice(start, end).forEach((tr) => { tr.style.display = ''; });
       const total = this.filtered.length;
       if (this.count) {
-        const noun = total === 1 ? this.noun : this.nounPlural;
-        this.count.textContent = `${total} ${noun}${total !== this.rows.length ? ` of ${this.rows.length}` : ''}`;
+        const noun = t(total === 1 ? this.noun : this.nounPlural);
+        this.count.textContent = total !== this.rows.length
+          ? t('%(n)s %(noun)s of %(total)s', { n: total, noun, total: this.rows.length })
+          : t('%(n)s %(noun)s', { n: total, noun });
       }
       this._renderNoMatch(total === 0 && this.rows.length > 0);
       // A detail row (<tr data-detail-for="<row's data-id>">, e.g. a cage's
@@ -794,7 +797,7 @@
         detail.style.display = owner && owner.style.display !== 'none' ? '' : 'none';
       });
       const totalPages = Math.max(1, Math.ceil(total / size));
-      if (this.pageLabel) this.pageLabel.textContent = `Page ${this.page + 1} of ${totalPages}`;
+      if (this.pageLabel) this.pageLabel.textContent = t('Page %(page)s of %(pages)s', { page: this.page + 1, pages: totalPages });
       if (this.prev) this.prev.disabled = this.page === 0;
       if (this.next) this.next.disabled = this.page >= totalPages - 1;
     }

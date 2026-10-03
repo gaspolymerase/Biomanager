@@ -73,11 +73,11 @@
     if (title) {
       title.textContent = isNew
         ? form.dataset.newTitle
-        : (form.dataset.editTitle || 'Edit').replace('{label}', data._label || '');
+        : (form.dataset.editTitle || t('Edit')).replace('{label}', data._label || '');
     }
     const submit = dialog.querySelector('[data-record-submit]');
     if (submit) {
-      submit.textContent = isNew ? (form.dataset.newSubmit || 'Create') : (form.dataset.editSubmit || 'Save');
+      submit.textContent = isNew ? (form.dataset.newSubmit || t('Create')) : (form.dataset.editSubmit || t('Save'));
       submit.hidden = locked;
     }
 

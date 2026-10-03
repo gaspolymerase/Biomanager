@@ -1,70 +1,66 @@
 {% extends "base.html" %}
 
-{% block page_title %}Welcome{% endblock %}
-{% block page_heading %}Welcome{% endblock %}
-{% block page_subtitle %}A minute on how BioManager works for you{% endblock %}
+{% block page_title %}{{ _('Welcome') }}{% endblock %}
+{% block page_heading %}{{ _('Welcome') }}{% endblock %}
+{% block page_subtitle %}{{ _('A minute on how BioManager works for you') }}{% endblock %}
 
 {% block content %}
 {% set lab_databases = [] %}
 {% for section in nav_sections if section.label == 'Databases' %}
-  {% for link in section.links if link.key != 'new-db' %}{% set _ = lab_databases.append(link) %}{% endfor %}
+  {% for link in section.links if link.key != 'new-db' %}{% set _discard = lab_databases.append(link) %}{% endfor %}
 {% endfor %}
 <div class="setup-page">
   <section class="setup-intro">
-    <h2>Welcome{% if lab_name %} to {{ lab_name }}{% endif %}, {{ current_user.display_name or current_user.username }}</h2>
-    <p>BioManager is the lab's shared database. Everyone sees the same records, and you edit the ones you own.</p>
+    <h2>{% if lab_name %}{{ _('Welcome to %(lab)s, %(name)s', lab=lab_name, name=current_user.display_name or current_user.username) }}{% else %}{{ _('Welcome, %(name)s', name=current_user.display_name or current_user.username) }}{% endif %}</h2>
+    <p>{{ _("BioManager is the lab's shared database. Everyone sees the same records, and you edit the ones you own.") }}</p>
   </section>
 
   <section class="setup-step">
-    <header class="setup-step-head"><span class="setup-step-num">1</span><h3>Your lab's databases</h3></header>
+    <header class="setup-step-head"><span class="setup-step-num">1</span><h3>{{ _("Your lab's databases") }}</h3></header>
     {% if lab_databases %}
-      <p class="setup-note">These are in your sidebar, and their news is on your home page.</p>
+      <p class="setup-note">{{ _('These are in your sidebar, and their news is on your home page.') }}</p>
       <div class="tour-dbs">
         {% for link in lab_databases %}
-          <a class="tour-db" href="{{ link.url }}">{{ icon(link.icon) }} <span>{{ link.label }}</span>{% if link.personal %}<span class="badge badge-brand">Just you</span>{% endif %}</a>
+          <a class="tour-db" href="{{ link.url }}">{{ icon(link.icon) }} <span>{{ link.label|tr }}</span>{% if link.personal %}<span class="badge badge-brand">{{ _('Just you') }}</span>{% endif %}</a>
         {% endfor %}
       </div>
     {% else %}
-      <p class="setup-note">The lab hasn't added any databases yet. An admin sets them up under Lab setup.</p>
+      <p class="setup-note">{{ _("The lab hasn't added any databases yet. An admin sets them up under Lab setup.") }}</p>
     {% endif %}
   </section>
 
   {% if may_create %}
     <section class="setup-step">
-      <header class="setup-step-head"><span class="setup-step-num">2</span><h3>Keep something of your own</h3></header>
-      <p class="setup-note">Need a list the lab doesn't have, like your own antibodies, a side project's fly stocks, or a
-        species only you work on? <strong>Add database</strong> in the sidebar makes one. Choose <strong>Just me</strong> and
-        only you, and lab admins, see it.{% if may_share %} Choose <strong>The whole lab</strong> to give it to everyone.{% else %} If it turns out useful to everyone, an admin can share it with the lab.{% endif %}</p>
+      <header class="setup-step-head"><span class="setup-step-num">2</span><h3>{{ _('Keep something of your own') }}</h3></header>
+      <p class="setup-note">{% trans %}Need a list the lab doesn't have, like your own antibodies, a side project's fly stocks, or a species only you work on? <strong>Add database</strong> in the sidebar makes one. Choose <strong>Just me</strong> and only you, and lab admins, see it.{% endtrans %}{% if may_share %} {% trans %}Choose <strong>The whole lab</strong> to give it to everyone.{% endtrans %}{% else %} {{ _('If it turns out useful to everyone, an admin can share it with the lab.') }}{% endif %}</p>
     </section>
   {% endif %}
 
   <section class="setup-step">
-    <header class="setup-step-head"><span class="setup-step-num">{{ 3 if may_create else 2 }}</span><h3>You'll be told when it matters</h3></header>
-    <p class="setup-note">The {{ icon('bell') }} at the top shows what happened while you were away:</p>
+    <header class="setup-step-head"><span class="setup-step-num">{{ 3 if may_create else 2 }}</span><h3>{{ _("You'll be told when it matters") }}</h3></header>
+    <p class="setup-note">{% trans bell=icon('bell') %}The {{ bell }} at the top shows what happened while you were away:{% endtrans %}</p>
     <ul class="tour-list">
-      <li><strong>Transfers:</strong> someone moved your animals or vials, gave you some, or put an animal in your cage or tank.</li>
-      <li><strong>Genotyping:</strong> a genotype was recorded for your animals, or they were marked for genotyping. Once a day you also see what of yours is still waiting.</li>
-      <li><strong>Orders:</strong> an order you placed was ordered, arrived or was cancelled.</li>
-      <li><strong>Lab news:</strong> a database was added for the lab.</li>
+      <li><strong>{{ _('Transfers:') }}</strong> {{ _('someone moved your animals or vials, gave you some, or put an animal in your cage or tank.') }}</li>
+      <li><strong>{{ _('Genotyping:') }}</strong> {{ _('a genotype was recorded for your animals, or they were marked for genotyping. Once a day you also see what of yours is still waiting.') }}</li>
+      <li><strong>{{ _('Orders:') }}</strong> {{ _('an order you placed was ordered, arrived or was cancelled.') }}</li>
+      <li><strong>{{ _('Lab news:') }}</strong> {{ _('a database was added for the lab.') }}</li>
     </ul>
-    <p class="setup-note">Turn any of them off in <a href="{{ url_for('settings') }}#notifications">Settings</a>.</p>
+    <p class="setup-note">{% trans url=url_for('settings') ~ '#notifications' %}Turn any of them off in <a href="{{ url }}">Settings</a>.{% endtrans %}</p>
   </section>
 
   <section class="setup-step">
-    <header class="setup-step-head"><span class="setup-step-num">{{ 4 if may_create else 3 }}</span><h3>At the rack, on your phone</h3></header>
-    <p class="setup-note">Open this same address on your phone and add it to your home screen, or install the
-      BioManager app for Android from the <a href="https://biomanager.org/#download" target="_blank" rel="noopener">download page</a>.{% if lab_features.colony %} Scanning a cage card's QR code opens that cage, with its mice.{% endif %}</p>
+    <header class="setup-step-head"><span class="setup-step-num">{{ 4 if may_create else 3 }}</span><h3>{{ _('At the rack, on your phone') }}</h3></header>
+    <p class="setup-note">{% trans %}Open this same address on your phone and add it to your home screen, or install the BioManager app for Android from the <a href="https://biomanager.org/#download" target="_blank" rel="noopener">download page</a>.{% endtrans %}{% if lab_features.colony %} {{ _("Scanning a cage card's QR code opens that cage, with its mice.") }}{% endif %}</p>
   </section>
 
   <section class="setup-step">
-    <header class="setup-step-head"><span class="setup-step-num">{{ icon('info') }}</span><h3>When you're stuck</h3></header>
-    <p class="setup-note">The <a href="{{ guide_url }}" target="_blank" rel="noopener" data-milestone="guide">user guide</a>
-      explains every part of BioManager, step by step. <strong>Help</strong> at the bottom of the sidebar opens it any time.</p>
+    <header class="setup-step-head"><span class="setup-step-num">{{ icon('info') }}</span><h3>{{ _("When you're stuck") }}</h3></header>
+    <p class="setup-note">{% trans url=guide_url %}The <a href="{{ url }}" target="_blank" rel="noopener" data-milestone="guide">user guide</a> explains every part of BioManager, step by step. <strong>Help</strong> at the bottom of the sidebar opens it any time.{% endtrans %}</p>
   </section>
 
   <form method="post" class="setup-submit">
-    <button type="submit" class="btn btn-primary btn-lg">{{ icon('check') }} Get started</button>
-    <span class="text-[12.5px] text-muted">You can see this again from Settings.</span>
+    <button type="submit" class="btn btn-primary btn-lg">{{ icon('check') }} {{ _('Get started') }}</button>
+    <span class="text-[12.5px] text-muted">{{ _('You can see this again from Settings.') }}</span>
   </form>
 </div>
 {% endblock %}
