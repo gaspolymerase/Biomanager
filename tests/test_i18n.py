@@ -140,3 +140,18 @@ class LabelsThatArriveAsValues(AppTestCase):
         self.assertEqual(self.render("<b>Lab mice</b>"), "&lt;b&gt;Lab mice&lt;/b&gt;")
         self.assertEqual(self.render("GC %"), "GC %")
         self.assertEqual(self.render(None), "")
+
+
+class Plurals(AppTestCase):
+    def test_a_plural_block_takes_its_own_values(self):
+        source = "{% trans count=n, who=w %}{{ who }} has one cage{% pluralize %}{{ who }} has {{ count }} cages{% endtrans %}"
+        with app.test_request_context(headers={"Accept-Language": "en"}):
+            tpl = app.jinja_env.from_string(source)
+            self.assertEqual(tpl.render(n=1, w="Sam"), "Sam has one cage")
+            self.assertEqual(tpl.render(n=3, w="Sam"), "Sam has 3 cages")
+
+    def test_python_plurals_fill_in_their_values(self):
+        with app.test_request_context(headers={"Accept-Language": "en"}):
+            self.assertEqual(i18n.ngettext("%(num)s mouse", "%(num)s mice", 2), "2 mice")
+            self.assertEqual(i18n.ngettext("%(num)s mouse in %(cage)s", "%(num)s mice in %(cage)s", 1, cage="C1"),
+                             "1 mouse in C1")

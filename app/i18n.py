@@ -119,6 +119,20 @@ def ngettext(singular: str, plural: str, n: int, **values) -> str:
 _ = gettext
 
 
+def _lookup(message: str) -> str:
+    """For templates: the translation only. Jinja's newstyle gettext puts the
+    values in (`% variables`) itself, so formatting here too would fail."""
+    return catalog(current()).get(message, message) if current() != DEFAULT else message
+
+
+def _nlookup(singular: str, plural: str, n: int) -> str:
+    if current() != DEFAULT:
+        text = catalog(current()).get(singular if n == 1 else plural) or catalog(current()).get(plural)
+        if text:
+            return text
+    return singular if n == 1 else plural
+
+
 def js_catalog() -> dict[str, str]:
     """The translations page scripts use (`t("…")`), for the page's language."""
     if current() == DEFAULT:
@@ -154,5 +168,5 @@ def translate_value(value) -> str:
 def init_app(app) -> None:
     app.jinja_env.filters["tr"] = translate_value
     app.jinja_env.add_extension("jinja2.ext.i18n")
-    app.jinja_env.install_gettext_callables(gettext, ngettext, newstyle=True)
+    app.jinja_env.install_gettext_callables(_lookup, _nlookup, newstyle=True)
     app.jinja_env.globals.update(languages=LANGUAGES, current_language=current, js_catalog=js_catalog)
