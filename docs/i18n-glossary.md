@@ -80,6 +80,7 @@ code, and units.
 | What's new | 新功能 |
 | Got it | 知道了 |
 | breeders (the mice) | 繁殖鼠 |
+| Breeders (the colony tab: breeding cages) | 繁殖笼 |
 | flip (a vial) | 转管 |
 | lab manager | 实验室主管 |
 | Tour (the website) | 功能导览 |
@@ -89,3 +90,35 @@ code, and units.
 | guest pass | 访客通行码 |
 | Animal care | 动物饲养 |
 | Facility manager | 动物房主管 |
+| chips (filter buttons) | 筛选标签 |
+| Add many | 批量添加 |
+| Import from Excel | 从 Excel 导入 |
+| Batch history | 批量操作记录 |
+| Audit log | 审计日志 |
+| Configure | 配置 |
+| Dropdowns | 下拉选项 |
+| Lab common | 实验室公用 |
+| Rack grid | 笼架视图 |
+| Box grid | 冻存盒视图 |
+| Board (orders) | 看板 |
+| Unplaced | 未放置 |
+| Duplicate | 复制 |
+| Set field | 设置字段 |
+| sac (sacrifice) | 处死 |
+| worm plates / incubator | 培养皿 / 培养箱 |
+| zebrafish clutch | 卵批 |
+| zebrafish line | 品系 |
+| readout / manipulation / cohort | 观测指标 / 处理 / 队列 |
+| Bench mode | 实验台模式 |
+| Protocols (notebook) | 实验流程 |
+| Manage users | 用户管理 |
+| Guests | 访客 |
+| Racks & boxes | 笼架与冻存盒 |
+| Lab setup | 实验室设置 |
+| Colony overview | 鼠群概览 |
+| group lead | 组长 |
+| master copy | 主副本 |
+| API token | API 令牌 |
+| Usage report | 使用报告 |
+| Send feedback | 发送反馈 |
+| Home layouts: Classic / Tracks / Freezer | 经典 / 时间轨 / 俯视 |
