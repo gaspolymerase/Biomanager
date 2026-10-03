@@ -1173,8 +1173,12 @@ written in English and wrapped, and the Chinese is looked up by the English:
 
 - **Templates**: `{{ _('Litter born') }}`; a value goes in by name,
   `{{ _('Sign in with %(provider)s', provider=p.label) }}`; a sentence with
-  markup in it is `{% trans name=value %}…{% endtrans %}`. Don't wrap
-  people's data (names, notes, a database's own field labels).
+  markup in it is `{% trans name=value %}…{% endtrans %}`. A literal `%`
+  inside `_()` is written `%%`. Don't wrap people's data (names, notes).
+- **A label that arrives as a value** (from Python, or a built-in name a lab
+  may have renamed): `{{ item.label|tr }}`, never `_(item.label)`, which
+  would put a lab's text in unescaped and fail on a `%`. Its known values
+  get catalog entries; anything a lab typed stays as typed.
 - **Python** (flash messages, labels made in code): `gettext("…")` and
   `ngettext(singular, plural, n)`, imported from `app.i18n`. Not `_`: many
   modules use `_` as a throwaway name.

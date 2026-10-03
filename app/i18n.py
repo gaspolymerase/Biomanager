@@ -137,7 +137,22 @@ def placeholders(text: str) -> set[str]:
     return set(_PLACEHOLDER.findall(text))
 
 
+def translate_value(value) -> str:
+    """`{{ label|tr }}`: a label that arrives as a value (from Python, or a
+    built-in name a lab may have renamed) in the page's language. The text
+    of a known label gets its translation; anything else — what a lab typed —
+    comes back unchanged. Plain text, so the template still escapes it, and no
+    %-formatting, so "GC %" is safe. (`_(value)` would do neither.)"""
+    if value is None:
+        return ""
+    text = str(value)
+    if current() == DEFAULT:
+        return text
+    return catalog(current()).get(text, text)
+
+
 def init_app(app) -> None:
+    app.jinja_env.filters["tr"] = translate_value
     app.jinja_env.add_extension("jinja2.ext.i18n")
     app.jinja_env.install_gettext_callables(gettext, ngettext, newstyle=True)
     app.jinja_env.globals.update(languages=LANGUAGES, current_language=current, js_catalog=js_catalog)

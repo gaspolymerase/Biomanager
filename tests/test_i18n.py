@@ -98,13 +98,18 @@ class TheTranslations(unittest.TestCase):
         an entry (a template not yet translated has no _() and stays English)."""
         zh = i18n.catalog("zh")
         env = app.jinja_env
-        missing = []
+        missing, unsafe = [], []
         for path in sorted((ROOT / "app" / "templates").rglob("*.html")):
             source = path.read_text(encoding="utf-8")
-            for _lineno, _func, message in env.extract_translations(source):
-                for text in ([message] if isinstance(message, str) else [m for m in message if m]):
+            for lineno, _func, message in env.extract_translations(source):
+                texts = [message] if isinstance(message, str) else list(message or ())
+                if not texts or texts[0] is None:
+                    # _(some_value): unescaped, and a % in it fails. Use |tr.
+                    unsafe.append(f"{path.relative_to(ROOT)}:{lineno}")
+                for text in (m for m in texts if m):
                     if text not in zh:
                         missing.append(f"{path.relative_to(ROOT)}: {text!r}")
+        self.assertEqual(unsafe, [], "_() of a value; use {{ value|tr }} instead:\n" + "\n".join(unsafe[:40]))
         self.assertEqual(missing, [], "\n".join(missing[:40]))
 
     def test_every_gettext_in_python_has_its_chinese(self):
@@ -117,3 +122,21 @@ class TheTranslations(unittest.TestCase):
                 if text not in zh:
                     missing.append(f"{path.name}: {text!r}")
         self.assertEqual(missing, [], "\n".join(missing[:40]))
+
+
+class LabelsThatArriveAsValues(AppTestCase):
+    """`|tr`: a built-in label is translated; what a lab typed comes back as
+    typed, still escaped, and a % in it is harmless."""
+
+    def render(self, value, lang="zh"):
+        with app.test_request_context(headers={"Accept-Language": "zh-CN" if lang == "zh" else "en"}):
+            return app.jinja_env.from_string("{{ v|tr }}").render(v=value)
+
+    def test_a_built_in_label_is_translated(self):
+        self.assertEqual(self.render("Mouse"), "小鼠")
+        self.assertEqual(self.render("Mouse", lang="en"), "Mouse")
+
+    def test_a_labs_own_text_stays_escaped_and_intact(self):
+        self.assertEqual(self.render("<b>Lab mice</b>"), "&lt;b&gt;Lab mice&lt;/b&gt;")
+        self.assertEqual(self.render("GC %"), "GC %")
+        self.assertEqual(self.render(None), "")
