@@ -323,7 +323,7 @@ def _about() -> None:
     import AppKit
     app = AppKit.NSApplication.sharedApplication()
     credits = AppKit.NSAttributedString.alloc().initWithString_(
-        "Your lab's animals, stocks and supplies, in one place.\ngaspolymerase.github.io/biomanager")
+        "Your lab's animals, stocks and supplies, in one place.\nbiomanager.org")
     options = {"ApplicationName": "BioManager", "ApplicationVersion": updates.version(), "Version": "",
                "Credits": credits}
     icon = _icon()

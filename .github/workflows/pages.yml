@@ -1,6 +1,6 @@
 name: pages
 
-# The website, site/, served at https://gaspolymerase.github.io/biomanager/.
+# The website, site/, served at https://biomanager.org/.
 # A push to master that changes site/ publishes it within a minute, so push
 # site changes with the app change they describe.
 

@@ -210,7 +210,7 @@ jobs:
             org.opencontainers.image.description=BioManager lab server (see biomanager-server.tar.gz in the release)
             org.opencontainers.image.version=${{ env.VERSION }}
             org.opencontainers.image.licenses=MIT
-            org.opencontainers.image.url=https://gaspolymerase.github.io/biomanager/server.html
+            org.opencontainers.image.url=https://biomanager.org/server.html
 
       # The same image as files for the release; the layers come from the build's cache.
       - name: Image files
@@ -282,7 +282,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'EOF'
-          **Download** the file for your device below, or from the [website](https://gaspolymerase.github.io/biomanager/#download).
+          **Download** the file for your device below, or from the [website](https://biomanager.org/#download).
 
           | File | For |
           | --- | --- |
@@ -292,7 +292,7 @@ jobs:
           | `BioManager-Linux.AppImage` | Linux, x86-64: mark it executable and open it |
           | `BioManager-Linux.tar.gz` | Linux, the same app as a folder |
           | `BioManager-Android.apk` | Android 7 and later: connects to your lab's BioManager server |
-          | `biomanager-server.tar.gz` | A lab server: the deploy files. [How to set one up](https://gaspolymerase.github.io/biomanager/server.html) |
+          | `biomanager-server.tar.gz` | A lab server: the deploy files. [How to set one up](https://biomanager.org/server.html) |
           | `biomanager-image-amd64.tar.gz` | The lab server's app for Intel/AMD machines, loaded by the bundle's `host/load-image.sh` |
           | `biomanager-image-arm64.tar.gz` | The same for ARM machines, such as Oracle Cloud's free Ampere VMs |
 

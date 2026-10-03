@@ -72,7 +72,7 @@ load its image and restart (your .env and backups are not in the bundle):
     host/load-image.sh && docker compose up -d --build
 
 Step-by-step guides for every way of hosting it:
-https://gaspolymerase.github.io/biomanager/server.html
+https://biomanager.org/server.html
 EOF
 
 # COPYFILE_DISABLE: macOS's tar would add ._ metadata files beside each one.

@@ -34,7 +34,7 @@ from pathlib import Path
 REPO = "gaspolymerase/biomanager"
 LATEST_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases/latest"
-GUIDE_URL = "https://gaspolymerase.github.io/biomanager/guide.html"
+GUIDE_URL = "https://biomanager.org/guide.html"
 ISSUES_URL = f"https://github.com/{REPO}/issues/new"
 CHECK_EVERY = 24 * 3600
 DEFAULT_PREFS = {"check_updates": True, "last_check": 0, "skip_version": "", "appearance": "system", "zoom": 1.0}
