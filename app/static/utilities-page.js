@@ -102,7 +102,7 @@
       <div class="util-group-label">${esc(g.name)}</div>
       ${g.calcs.map((c) => `<a class="util-link" href="#${c.id}" data-util-link="${c.id}"
           data-search="${esc(plain(`${c.title} ${c.blurb} ${g.name} ${ALSO[c.id] || ''}`))}">${esc(c.title)}</a>`).join('')}
-    </div>`).join('') + '<a class="util-link util-link-ref" href="#reference" data-search="reference tables buffers antibiotics vessels plates isotopes gels chemicals molecular weight">Reference tables</a>';
+    </div>`).join('') + `<a class="util-link util-link-ref" href="#reference" data-search="${esc(plain(`reference tables buffers antibiotics vessels plates isotopes gels chemicals molecular weight ${t('Reference tables')}`))}">${esc(t('Reference tables'))}</a>`;
 
   search.addEventListener('input', () => {
     const q = plain(search.value.trim());
@@ -119,7 +119,7 @@
 
   function unitSelect(inp, chosen) {
     const opts = B.UNITS[inp.units] || [];
-    return `<select data-unit="${inp.key}" aria-label="${esc(inp.label)} unit">${opts.map(([u]) =>
+    return `<select data-unit="${inp.key}" aria-label="${esc(t('%(label)s unit', { label: inp.label }))}">${opts.map(([u]) =>
       `<option${u === chosen ? ' selected' : ''}>${esc(u)}</option>`).join('')}</select>`;
   }
 
@@ -136,7 +136,7 @@
     }
     if (inp.type === 'chemical') {
       return `<label class="util-field is-wide"><span>${esc(inp.label)}</span><input data-key="${inp.key}" list="util-chemicals" autocomplete="off"
-        placeholder="Type a name to fill the molecular weight" value="${esc(value)}">${hint}</label>`;
+        placeholder="${esc(t('Type a name to fill the molecular weight'))}" value="${esc(value)}">${hint}</label>`;
     }
     const wide = inp.type === 'text' ? ' is-wide' : '';
     const unit = inp.units ? unitSelect(inp, (saved && saved[`${inp.key}_unit`]) || inp.unit) : '';
@@ -169,7 +169,7 @@
     card.innerHTML = `
       <header class="card-head util-head">
         <div><h2>${esc(calc.title)}</h2><p class="util-blurb">${esc(calc.blurb || '')}</p></div>
-        <button type="button" class="btn btn-sm btn-ghost" data-util-reset title="Back to the example values">Reset</button>
+        <button type="button" class="btn btn-sm btn-ghost" data-util-reset title="${esc(t('Back to the example values'))}">${esc(t('Reset'))}</button>
       </header>
       <form class="util-form" autocomplete="off">${calc.inputs.map((inp) => field(inp, saved)).join('')}</form>
       <div class="util-results" data-util-results></div>`;
@@ -211,7 +211,7 @@
     form.addEventListener('change', update);
     card.querySelector('[data-util-reset]').addEventListener('click', () => { forget(calc.id); open(calc.id); });
     update();
-    document.title = `${calc.title} · Utilities`;
+    document.title = `${calc.title} · ${t('Utilities')}`;
     // Home's Calculators card shows the ones opened last.
     try {
       const recent = JSON.parse(localStorage.getItem(`${KEY}recent`) || '[]').filter((r) => r && r.id !== calc.id);
@@ -222,7 +222,7 @@
   /* ---------------------------------------------------- reference tables */
 
   const chemRows = [...chemicals.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, mw]) => [name, B.fmt(mw, 6)]);
-  refs.innerHTML = [...B.REFERENCES, { id: 'ref-chemicals', title: 'Molecular weights', head: ['Chemical', 'g/mol'], rows: chemRows }]
+  refs.innerHTML = [...B.REFERENCES, { id: 'ref-chemicals', title: t('Molecular weights'), head: [t('Chemical'), 'g/mol'], rows: chemRows }]
     .map((r) => `<section class="util-ref" id="${r.id}"><h3>${esc(r.title)}</h3><div class="util-table-wrap"><table class="util-table">
       <thead><tr>${r.head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
       <tbody>${r.rows.map((row) => `<tr>${row.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('');

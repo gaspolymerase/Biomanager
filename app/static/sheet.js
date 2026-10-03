@@ -70,20 +70,20 @@
       });
     }
     dot.classList.toggle('is-alive', alive);
-    dot.title = alive ? (dot.dataset.aliveTitle || 'Available') : (dot.dataset.deadTitle || 'Not available');
+    dot.title = alive ? (dot.dataset.aliveTitle || t('Available')) : (dot.dataset.deadTitle || t('Not available'));
     row.dataset.active = alive ? 'true' : 'false';
     row.classList.toggle('is-inactive', !alive);
   }
 
   async function save(form, card) {
-    say(card, 'saving', 'Saving…');
-    const label = form.dataset.recordLabel || 'this change';
+    say(card, 'saving', t('Saving…'));
+    const label = form.dataset.recordLabel || t('this change');
     try {
       const response = await fetch(form.action, {
         method: 'POST', body: new FormData(form), headers: { 'X-Autosave': '1' },
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || body.ok === false) throw new Error(body.error || `The server answered ${response.status}.`);
+      if (!response.ok || body.ok === false) throw new Error(body.error || t('The server answered %(status)s.', { status: response.status }));
       const row = body.row || {};
       // What was just saved is what the row now shows (the server's own
       // values below correct it where it changed them).
@@ -104,7 +104,7 @@
       if (tr && 'active' in row) refreshDot(tr, row.active);
       cellsOf(form).forEach((el) => el.closest('td') && el.closest('td').classList.remove('has-error'));
       form.dispatchEvent(new CustomEvent('sheet:saved', { bubbles: true, detail: { form, body } }));
-      say(card, 'saved', 'All changes saved');
+      say(card, 'saved', t('All changes saved'));
     } catch (error) {
       cellsOf(form).forEach((el) => {
         if (el.dataset.dirty === '1' && el.closest('td')) el.closest('td').classList.add('has-error');
@@ -113,7 +113,7 @@
         const was = el.dataset.autosaveOn === 'change' && form.querySelector(`[name="${el.name}_was"]`);
         if (was) el.value = was.value;
       });
-      say(card, 'error', `Couldn’t save ${label}: ${error.message}`);
+      say(card, 'error', t('Couldn’t save %(what)s: %(error)s', { what: label, error: error.message }));
     }
   }
 
@@ -229,10 +229,14 @@
     const nameOf = (row) => { const el = row && row.querySelector('[name="name"]'); return el ? el.value : ''; };
     if (say && filled.length) {
       const a = nameOf(filled[0]); const z = nameOf(filled[filled.length - 1]);
-      say(`Pasted into ${new Set(filled).size} rows${a && z ? `, ${a} to ${z}` : ''}.`
-        + (skipped ? ` ${skipped} value${skipped === 1 ? '' : 's'} had no cell to go in.` : ''));
+      const pastedRows = new Set(filled).size;
+      say((a && z ? t('Pasted into %(n)s rows, %(first)s to %(last)s.', { n: pastedRows, first: a, last: z })
+                  : t('Pasted into %(n)s rows.', { n: pastedRows }))
+        + (skipped ? ' ' + t(skipped === 1 ? '%(n)s value had no cell to go in.' : '%(n)s values had no cell to go in.', { n: skipped }) : ''));
     } else if (say && skipped) {
-      say(`${skipped} pasted value${skipped === 1 ? '' : 's'} had no cell to go in (past the last row, or not a choice there).`);
+      say(t(skipped === 1
+        ? '%(n)s pasted value had no cell to go in (past the last row, or not a choice there).'
+        : '%(n)s pasted values had no cell to go in (past the last row, or not a choice there).', { n: skipped }));
     }
   }
 

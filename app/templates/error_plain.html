@@ -1,23 +1,23 @@
 {# An error page that needs nothing from the database (it may be the
    database that failed): no sidebar, no account menu. #}
 <!doctype html>
-<html lang="en">
+<html lang="{{ 'zh-CN' if current_language() == 'zh' else 'en' }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
-    <title>{{ title }} · BioManager</title>
+    <title>{{ title|tr }} · BioManager</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='tailwind.css') }}">
   </head>
   <body>
     <article class="card mx-auto mt-6 max-w-[520px] p-6">
-      <h1 class="text-[17px]">{{ title }}</h1>
-      <p class="mt-2 text-[13px] leading-snug text-muted">{{ message }}</p>
+      <h1 class="text-[17px]">{{ title|tr }}</h1>
+      <p class="mt-2 text-[13px] leading-snug text-muted">{{ message|tr }}</p>
       <div class="mt-5 flex flex-wrap gap-2">
         {% if request.referrer and request.referrer.startswith(request.host_url) %}
-          <a class="btn btn-primary" href="{{ request.referrer }}">Back</a>
+          <a class="btn btn-primary" href="{{ request.referrer }}">{{ _('Back') }}</a>
         {% endif %}
-        <a class="btn" href="/">Go home</a>
+        <a class="btn" href="/">{{ _('Go home') }}</a>
       </div>
     </article>
   </body>

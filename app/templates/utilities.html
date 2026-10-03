@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 
-{% block page_title %}Utilities{% endblock %}
-{% block page_heading %}Utilities{% endblock %}
-{% block page_subtitle %}Bench calculators and reference tables: solutions, DNA, protein, cells, microbes and more{% endblock %}
+{% block page_title %}{{ _('Utilities') }}{% endblock %}
+{% block page_heading %}{{ _('Utilities') }}{% endblock %}
+{% block page_subtitle %}{{ _('Bench calculators and reference tables: solutions, DNA, protein, cells, microbes and more') }}{% endblock %}
 
 {% block content %}
 {# Every calculator is data in static/bench-calcs.js, drawn by static/utilities-page.js;
    the answers change as you type, and each remembers what you last typed in it. #}
 <div class="util" data-util>
-  <nav class="util-nav card" aria-label="Calculators">
+  <nav class="util-nav card" aria-label="{{ _('Calculators') }}">
     <div class="util-search">
       {{ icon('search') }}
-      <input type="search" placeholder="Find a calculator…" aria-label="Find a calculator" data-util-search autocomplete="off">
+      <input type="search" placeholder="{{ _('Find a calculator…') }}" aria-label="{{ _('Find a calculator') }}" data-util-search autocomplete="off">
     </div>
     <div class="util-list" data-util-list></div>
   </nav>
@@ -20,7 +20,7 @@
     <article class="card util-card" data-util-card aria-live="polite"></article>
 
     <details class="card util-refs" id="reference">
-      <summary class="card-head"><h2>{{ icon('flask') }} Reference tables</h2></summary>
+      <summary class="card-head"><h2>{{ icon('flask') }} {{ _('Reference tables') }}</h2></summary>
       <div class="util-refs-body" data-util-refs></div>
     </details>
   </section>

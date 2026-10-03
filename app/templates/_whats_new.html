@@ -6,32 +6,32 @@
     <header class="record-dialog-head">
       <div>
         <h3 id="whats-new-title">
-          {% if notes %}What's new in BioManager {{ notes[0].version }}{% else %}What's new{% endif %}
+          {% if notes %}{{ _("What's new in BioManager %(version)s", version=notes[0].version) }}{% else %}{{ _("What's new") }}{% endif %}
         </h3>
-        <p class="record-dialog-sub">BioManager was updated. In short:</p>
+        <p class="record-dialog-sub">{{ _('BioManager was updated. In short:') }}</p>
       </div>
-      <button type="button" class="modal-close" data-whats-new-done aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-whats-new-done aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body whats-new-body">
       {% for note in notes %}
         {% if notes|length > 1 %}<h4 class="whats-new-version">{{ note.version }}</h4>{% endif %}
         {% for title, lines in note.sections %}
           <section class="whats-new-section">
-            <h5>{{ title }}</h5>
+            <h5>{{ title|tr }}</h5>
             <ul>
               {% for line in lines %}<li>{{ whats_new_rich(line) }}</li>{% endfor %}
             </ul>
           </section>
         {% endfor %}
       {% else %}
-        <p class="text-[13px] text-muted">Nothing to tell about this version.</p>
+        <p class="text-[13px] text-muted">{{ _('Nothing to tell about this version.') }}</p>
       {% endfor %}
     </div>
     <footer class="record-dialog-foot">
       {% if notes %}
-        <a class="btn btn-ghost" href="{{ notes[0].url }}" target="_blank" rel="noopener">Everything in {{ notes[0].version }}</a>
+        <a class="btn btn-ghost" href="{{ notes[0].url }}" target="_blank" rel="noopener">{{ _('Everything in %(version)s', version=notes[0].version) }}</a>
       {% endif %}
-      <button type="button" class="btn btn-primary" data-whats-new-done>Got it</button>
+      <button type="button" class="btn btn-primary" data-whats-new-done>{{ _('Got it') }}</button>
     </footer>
   </dialog>
   <script nonce="{{ csp_nonce() }}">

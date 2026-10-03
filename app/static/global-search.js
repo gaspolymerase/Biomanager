@@ -16,10 +16,10 @@
   let debounceTimer = null;
 
   const TYPE_LABEL = {
-    mouse: 'Mouse', cage: 'Cage', litter: 'Litter', experiment: 'Experiment', strain: 'Strain',
-    vial: 'Fly / worm', tank: 'Tank', 'fish-line': 'Fish line', clutch: 'Clutch', organism: 'Animal database',
-    plasmid: 'Plasmid', order: 'Order', sample: 'Sample', reagent: 'Reagent', antibody: 'Antibody', virus: 'Virus', primer: 'Primer', 'cell-line': 'Cell line', item: 'Item',
-    page: 'Notebook',
+    mouse: t('Mouse'), cage: t('Cage'), litter: t('Litter'), experiment: t('Experiment'), strain: t('Strain'),
+    vial: t('Fly / worm'), tank: t('Tank'), 'fish-line': t('Fish line'), clutch: t('Clutch'), organism: t('Animal database'),
+    plasmid: t('Plasmid'), order: t('Order'), sample: t('Sample'), reagent: t('Reagent'), antibody: t('Antibody'), virus: t('Virus'), primer: t('Primer'), 'cell-line': t('Cell line'), item: t('Item'),
+    page: t('Notebook'),
   };
 
   function build() {
@@ -29,17 +29,17 @@
     overlayEl.hidden = true;
     overlayEl.innerHTML = `
       <div class="cmdk-backdrop"></div>
-      <div class="cmdk-card" role="dialog" aria-label="Global search">
+      <div class="cmdk-card" role="dialog" aria-label="${escapeHtml(t('Global search'))}">
         <div class="cmdk-input-row">
           <svg class="icon cmdk-icon" aria-hidden="true"><use href="/static/icons.svg#search"></use></svg>
-          <input id="cmdk-input" type="text" placeholder="Search mice, cages, litters, experiments, plasmids, samples, notebook…" autocomplete="off">
+          <input id="cmdk-input" type="text" placeholder="${escapeHtml(t('Search mice, cages, litters, experiments, plasmids, samples, notebook…'))}" autocomplete="off">
           <kbd class="cmdk-kbd">esc</kbd>
         </div>
         <div id="cmdk-results" class="cmdk-results"></div>
         <div class="cmdk-foot">
-          <span><kbd>↑</kbd><kbd>↓</kbd> to navigate</span>
-          <span><kbd>↵</kbd> to open</span>
-          <span><kbd>esc</kbd> to close</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> ${escapeHtml(t('to navigate'))}</span>
+          <span><kbd>↵</kbd> ${escapeHtml(t('to open'))}</span>
+          <span><kbd>esc</kbd> ${escapeHtml(t('to close'))}</span>
         </div>
       </div>
     `;
@@ -58,7 +58,7 @@
     inputEl.value = seed || '';
     activeIndex = 0;
     currentResults = [];
-    resultsEl.innerHTML = '<div class="cmdk-hint">Start typing to search…</div>';
+    resultsEl.innerHTML = `<div class="cmdk-hint">${escapeHtml(t('Start typing to search…'))}</div>`;
     setTimeout(() => inputEl.focus(), 0);
     if (seed) runFetch(seed);
   }
@@ -75,7 +75,7 @@
     if (debounceTimer) clearTimeout(debounceTimer);
     if (!q) {
       currentResults = [];
-      resultsEl.innerHTML = '<div class="cmdk-hint">Start typing to search…</div>';
+      resultsEl.innerHTML = `<div class="cmdk-hint">${escapeHtml(t('Start typing to search…'))}</div>`;
       return;
     }
     debounceTimer = setTimeout(() => runFetch(q), 120);
@@ -98,7 +98,7 @@
 
   function render() {
     if (!currentResults.length) {
-      resultsEl.innerHTML = '<div class="cmdk-empty">No matches.</div>';
+      resultsEl.innerHTML = `<div class="cmdk-empty">${escapeHtml(t('No matches.'))}</div>`;
       return;
     }
     // Group by type, preserving overall ordering.
@@ -184,7 +184,7 @@
     const topbarInput = document.getElementById('app-global-search');
     if (topbarInput) {
       topbarInput.disabled = false;
-      topbarInput.placeholder = 'Search Cmd+K';
+      topbarInput.placeholder = t('Search Cmd+K');
       topbarInput.readOnly = true;
       topbarInput.addEventListener('focus', (event) => {
         event.target.blur();

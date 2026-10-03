@@ -5,10 +5,10 @@
    (`with context` so the macros can call icon()). #}
 
 {% macro view_switch(key, table_label='Table', grid_label='Grid', cards_label=None) %}
-  <div class="dt-chips view-switch" data-view-switch="{{ key }}" role="group" aria-label="Layout">
-    <button type="button" class="dt-chip" data-layout="table">{{ icon('table') }}{{ table_label }}</button>
-    {% if cards_label %}<button type="button" class="dt-chip" data-layout="cards">{{ icon('layers') }}{{ cards_label }}</button>{% endif %}
-    <button type="button" class="dt-chip" data-layout="grid">{{ icon('grid') }}{{ grid_label }}</button>
+  <div class="dt-chips view-switch" data-view-switch="{{ key }}" role="group" aria-label="{{ _('Layout') }}">
+    <button type="button" class="dt-chip" data-layout="table">{{ icon('table') }}{{ table_label|tr }}</button>
+    {% if cards_label %}<button type="button" class="dt-chip" data-layout="cards">{{ icon('layers') }}{{ cards_label|tr }}</button>{% endif %}
+    <button type="button" class="dt-chip" data-layout="grid">{{ icon('grid') }}{{ grid_label|tr }}</button>
   </div>
 {% endmacro %}
 
@@ -17,39 +17,39 @@
                    empty_text='Add a rack to start placing.', hint='', group_label=None) %}
   <div class="rack-view" data-rack-view="{{ key }}" data-move-url="{{ move_url }}"
        data-index-base="{{ index_base }}" data-rack-field="{{ rack_field }}"
-       data-row-field="{{ row_field }}" data-col-field="{{ col_field }}" data-empty-text="{{ empty_text }}">
+       data-row-field="{{ row_field }}" data-col-field="{{ col_field }}" data-empty-text="{{ empty_text|tr }}">
     <div class="rack-bar">
       {% if group_label %}
-        <label class="rack-picker">{{ group_label|capitalize }}
-          <select data-rack-group aria-label="{{ group_label|capitalize }}"></select>
+        <label class="rack-picker">{{ (group_label|capitalize)|tr }}
+          <select data-rack-group aria-label="{{ (group_label|capitalize)|tr }}"></select>
         </label>
       {% endif %}
-      <label class="rack-picker">{{ rack_noun|capitalize }}
-        <select data-rack-select aria-label="{{ rack_noun|capitalize }}"></select>
+      <label class="rack-picker">{{ (rack_noun|capitalize)|tr }}
+        <select data-rack-select aria-label="{{ (rack_noun|capitalize)|tr }}"></select>
       </label>
       <span class="rack-meta" data-rack-meta></span>
       {% if rack_dialog_id %}
-        <button type="button" class="btn btn-sm" data-rack-edit data-record-edit="{{ rack_dialog_id }}" hidden>{{ icon('edit') }} Edit</button>
+        <button type="button" class="btn btn-sm" data-rack-edit data-record-edit="{{ rack_dialog_id }}" hidden>{{ icon('edit') }} {{ _('Edit') }}</button>
         {# A rack's own action (a fly rack's "Flipped today"), filled in by rack-grid.js. #}
         <form method="post" class="contents" data-rack-action hidden></form>
         <button type="button" class="btn btn-sm" data-record-edit="{{ rack_dialog_id }}"
-                data-record-payload='{{ dict({"rows": 8, "cols": 10, "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"}, **(new_rack_payload or {})) | tojson }}'>{{ icon('plus') }} New {{ rack_noun }}</button>
+                data-record-payload='{{ dict({"rows": 8, "cols": 10, "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"}, **(new_rack_payload or {})) | tojson }}'>{{ icon('plus') }} {{ _('New %(noun)s', noun=rack_noun|tr) }}</button>
       {% endif %}
       {# Tap a tile, then where it goes: for touch screens, where dragging
          scrolls the page instead, and for the keyboard. #}
       <button type="button" class="btn btn-sm" data-rack-move aria-pressed="false"
-              title="Tap a tile, then the position it goes to (another tile swaps with it, Unplaced takes it out)">{{ icon('position') }} Move</button>
+              title="{{ _('Tap a tile, then the position it goes to (another tile swaps with it, Unplaced takes it out)') }}">{{ icon('position') }} {{ _('Move') }}</button>
       <span class="rack-status" data-rack-status aria-live="polite"></span>
       <div class="dt-toolbar-search rack-search">
         {{ icon('search', 'search-icon') }}
-        <input type="text" data-rack-search placeholder="Highlight…" autocomplete="off" aria-label="Highlight in the grid">
+        <input type="text" data-rack-search placeholder="{{ _('Highlight…') }}" autocomplete="off" aria-label="{{ _('Highlight in the grid') }}">
       </div>
     </div>
     <div class="rack-body">
       <div class="rack-grid" data-rack-grid></div>
       <aside class="rack-tray" data-rack-tray>
-        <h4>Unplaced</h4>
-        <p>{{ hint or 'Drag onto a cell to place, or back here to take out (on a phone: Move, then tap the tile and its new place). Click a tile to edit it; click an empty cell to add one there.' }}</p>
+        <h4>{{ _('Unplaced') }}</h4>
+        <p>{{ hint|tr if hint else _('Drag onto a cell to place, or back here to take out (on a phone: Move, then tap the tile and its new place). Click a tile to edit it; click an empty cell to add one there.') }}</p>
         <div class="rack-tray-items" data-rack-tray-items></div>
       </aside>
     </div>
@@ -64,78 +64,78 @@
   <dialog id="{{ id }}" class="record-dialog" aria-labelledby="{{ id }}-title">
     <form method="post" data-record-form
           data-create-action="{{ save_action }}" data-update-action="{{ update_action }}"
-          data-new-title="New {{ noun }}" data-edit-title="{{ noun|capitalize }} {label}"
-          data-new-submit="Create {{ noun }}" data-edit-submit="Save">
+          data-new-title="{{ _('New %(noun)s', noun=noun|tr) }}" data-edit-title="{{ _('%(noun)s {label}', noun=(noun|capitalize)|tr) }}"
+          data-new-submit="{{ _('Create %(noun)s', noun=noun|tr) }}" data-edit-submit="{{ _('Save') }}">
       <header class="record-dialog-head">
         <div>
-          <h3 id="{{ id }}-title" data-record-title>New {{ noun }}</h3>
-          <p class="record-dialog-sub">Set its size and how its positions are named, to match the labels on the physical rack.</p>
+          <h3 id="{{ id }}-title" data-record-title>{{ _('New %(noun)s', noun=noun|tr) }}</h3>
+          <p class="record-dialog-sub">{{ _('Set its size and how its positions are named, to match the labels on the physical rack.') }}</p>
         </div>
-        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+        <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
       </header>
       <div class="record-dialog-body">
         <input type="hidden" name="id">
         <input type="hidden" name="return_to" value="grid">
-        <label class="record-wide">Name <input name="name" required autocomplete="off"></label>
+        <label class="record-wide">{{ _('Name') }} <input name="name" required autocomplete="off"></label>
         <fieldset class="record-group">
-          <legend>Size</legend>
-          <label>Rows <input type="number" name="rows" min="1" max="26" required></label>
-          <label>Columns <input type="number" name="cols" min="1" max="40" required></label>
+          <legend>{{ _('Size') }}</legend>
+          <label>{{ _('Rows') }} <input type="number" name="rows" min="1" max="26" required></label>
+          <label>{{ _('Columns') }} <input type="number" name="cols" min="1" max="40" required></label>
           {{ caller() if caller else '' }}
         </fieldset>
         <fieldset class="record-group rack-naming" data-rack-naming>
-          <legend>Position names</legend>
-          <label>Numbering
+          <legend>{{ _('Position names') }}</legend>
+          <label>{{ _('Numbering') }}
             <select name="naming_mode">
-              <option value="grid">Row and column (e.g. D7)</option>
-              <option value="sequential">One number per position (1, 2, 3…)</option>
+              <option value="grid">{{ _('Row and column (e.g. D7)') }}</option>
+              <option value="sequential">{{ _('One number per position (1, 2, 3…)') }}</option>
             </select>
           </label>
-          <label>Start at
+          <label>{{ _('Start at') }}
             <select name="naming_start">
               <option value="1">1</option>
               <option value="0">0</option>
             </select>
           </label>
-          <label data-naming-grid>Rows are
+          <label data-naming-grid>{{ _('Rows are') }}
             <select name="naming_rows">
-              <option value="letters">Letters (A, B, C…)</option>
-              <option value="numbers">Numbers (1, 2, 3…)</option>
+              <option value="letters">{{ _('Letters (A, B, C…)') }}</option>
+              <option value="numbers">{{ _('Numbers (1, 2, 3…)') }}</option>
             </select>
           </label>
-          <label data-naming-grid>Columns are
+          <label data-naming-grid>{{ _('Columns are') }}
             <select name="naming_cols">
-              <option value="numbers">Numbers (1, 2, 3…)</option>
-              <option value="letters">Letters (A, B, C…)</option>
+              <option value="numbers">{{ _('Numbers (1, 2, 3…)') }}</option>
+              <option value="letters">{{ _('Letters (A, B, C…)') }}</option>
             </select>
           </label>
-          <label data-naming-grid>Written as
+          <label data-naming-grid>{{ _('Written as') }}
             <select name="naming_order">
-              <option value="row_col">Row, then column (D7)</option>
-              <option value="col_row">Column, then row (7D)</option>
+              <option value="row_col">{{ _('Row, then column (D7)') }}</option>
+              <option value="col_row">{{ _('Column, then row (7D)') }}</option>
             </select>
           </label>
-          <label data-naming-grid>Between them
+          <label data-naming-grid>{{ _('Between them') }}
             <select name="naming_separator">
-              <option value="">Nothing (D7)</option>
-              <option value="-">Hyphen (D-7)</option>
-              <option value=".">Dot (D.7)</option>
-              <option value=":">Colon (D:7)</option>
-              <option value="/">Slash (D/7)</option>
+              <option value="">{{ _('Nothing (D7)') }}</option>
+              <option value="-">{{ _('Hyphen (D-7)') }}</option>
+              <option value=".">{{ _('Dot (D.7)') }}</option>
+              <option value=":">{{ _('Colon (D:7)') }}</option>
+              <option value="/">{{ _('Slash (D/7)') }}</option>
             </select>
           </label>
-          <p class="rack-naming-example col-span-full">Positions will read <span class="ident" data-naming-example>A1 · D7 · H10</span></p>
+          <p class="rack-naming-example col-span-full">{{ _('Positions will read') }} <span class="ident" data-naming-example>A1 · D7 · H10</span></p>
         </fieldset>
       </div>
       <footer class="record-dialog-foot">
-        <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
-        <button type="submit" class="btn btn-primary" data-record-submit>Create {{ noun }}</button>
+        <button type="button" class="btn" data-on-click="close-dialog">{{ _('Cancel') }}</button>
+        <button type="submit" class="btn btn-primary" data-record-submit>{{ _('Create %(noun)s', noun=noun|tr) }}</button>
       </footer>
     </form>
     <form method="post" class="rack-delete" data-rack-delete="{{ delete_action }}" hidden
-          data-confirm="Delete this {{ noun }}? Everything in it moves to Unplaced; nothing is deleted.">
-      <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash') }} Delete {{ noun }}</button>
-      <span>Nothing inside is deleted. It moves to Unplaced.</span>
+          data-confirm="{{ _('Delete this %(noun)s? Everything in it moves to Unplaced; nothing is deleted.', noun=noun|tr) }}">
+      <button type="submit" class="btn btn-danger btn-sm">{{ icon('trash') }} {{ _('Delete %(noun)s', noun=noun|tr) }}</button>
+      <span>{{ _('Nothing inside is deleted. It moves to Unplaced.') }}</span>
     </form>
   </dialog>
 {% endmacro %}

@@ -22,19 +22,19 @@
 {%- endmacro %}
 
 {% block page_actions %}{{ db_actions(url_for('organisms.configure_builtin', key='colony'), current_user.role == 'admin') }}{% endblock %}
-{% block page_title %}{{ db_labels.get('colony', 'Mouse colony') }} · {{ view_meta.get('label', active_view|title) }}{% endblock %}
-{% block page_heading %}{{ db_labels.get('colony', 'Mouse colony') }}{% endblock %}
-{% block page_subtitle %}{{ view_meta.get('blurb', '') }}{% endblock %}
+{% block page_title %}{{ db_labels.get('colony', 'Mouse colony')|tr }} · {{ view_meta.get('label', active_view|title)|tr }}{% endblock %}
+{% block page_heading %}{{ db_labels.get('colony', 'Mouse colony')|tr }}{% endblock %}
+{% block page_subtitle %}{{ view_meta.get('blurb', '')|tr }}{% endblock %}
 {% block page_shell_class %}shell-page-wide workbench{% endblock %}
 
 {% block page_nav %}
-  <nav class="seg mb-4 max-w-full overflow-x-auto" role="tablist" aria-label="Colony views">
-    {% for view_key, _ in colony_views %}
+  <nav class="seg mb-4 max-w-full overflow-x-auto" role="tablist" aria-label="{{ _('Colony views') }}">
+    {% for view_key, _code in colony_views %}
       {% set meta = colony_view_meta.get(view_key, {}) %}
       <a class="seg-item {% if active_view == view_key %}is-active{% endif %}"
-         href="{{ url_for('colony', view=view_key, scope=scope) }}" title="{{ meta.get('blurb', '') }}"
+         href="{{ url_for('colony', view=view_key, scope=scope) }}" title="{{ meta.get('blurb', '')|tr }}"
          role="tab" aria-selected="{{ 'true' if active_view == view_key else 'false' }}">
-        {{ icon(meta.get('icon', 'table')) }}{{ meta.get('label', view_key|title) }}
+        {{ icon(meta.get('icon', 'table')) }}{{ meta.get('label', view_key|title)|tr }}
       </a>
     {% endfor %}
   </nav>
@@ -42,11 +42,11 @@
   {# Which slice of the colony is listed. A view filter only — what you may
      edit is decided per record, and does not change with the scope. #}
   <div class="mb-4 flex flex-wrap items-center gap-3">
-    <nav class="seg" aria-label="Whose records to show">
+    <nav class="seg" aria-label="{{ _('Whose records to show') }}">
       {% for value, label in scopes %}
         <a class="seg-item {% if scope == value %}is-active{% endif %}"
-           href="{{ url_for('colony', view=active_view, scope=value) }}" title="{{ scope_hints[value] }}">
-          {{ label }}
+           href="{{ url_for('colony', view=active_view, scope=value) }}" title="{{ scope_hints[value]|tr }}">
+          {{ label|tr }}
           <span class="seg-count">
             {%- if value == 'mine' %}{{ totals.my_mice }}
             {%- elif value == 'shared' %}{{ totals.shared_cages }}
@@ -58,30 +58,29 @@
     </nav>
     {% if scope != 'all' %}
       <span class="text-[12px] text-muted">
-        Showing your animals and the shared cages you work in.
-        <a href="{{ url_for('colony', view=active_view, scope='all') }}">See everyone's</a>.
+        {% trans url=url_for('colony', view=active_view, scope='all') %}Showing your animals and the shared cages you work in. <a href="{{ url }}">See everyone's</a>.{% endtrans %}
       </span>
     {% elif current_user.role != 'admin' %}
       <span class="text-[12px] text-muted">
-        Records owned by other people are read-only.
+        {{ _('Records owned by other people are read-only.') }}
       </span>
     {% else %}
       <span class="text-[12px] text-muted">
-        Admin — you can edit anything.
-        <a href="{{ url_for('admin_colony_overview') }}">Colony overview</a>.
+        {% trans url=url_for('admin_colony_overview') %}Admin — you can edit anything. <a href="{{ url }}">Colony overview</a>.{% endtrans %}
       </span>
     {% endif %}
     {# The colony keeps every mouse it ever had: what ended long ago waits behind a link. #}
     {% set hidden_here = hidden[active_view] if active_view in ('mice', 'cages', 'litters') else 0 %}
     {% if hidden_here %}
       <span class="text-[12px] text-muted" data-hidden-ended>
-        {{ '{:,}'.format(hidden_here) }} {{ {'mice': 'mice that ended', 'cages': 'empty cages, unused for', 'litters': 'litters born over a year ago, all ended,'}[active_view] }}
-        {% if active_view != 'litters' %}over {{ hidden.days }} days ago{% endif %} aren't listed.
-        <a href="{{ url_for('colony', view=active_view, scope=scope, ended='all') }}">Show them</a>.
+        {% set n_hidden = '{:,}'.format(hidden_here) %}{% set days = hidden.days %}
+        {% set url = url_for('colony', view=active_view, scope=scope, ended='all') %}
+        {% if active_view == 'mice' %}{% trans %}{{ n_hidden }} mice that ended over {{ days }} days ago aren't listed. <a href="{{ url }}">Show them</a>.{% endtrans %}
+        {% elif active_view == 'cages' %}{% trans %}{{ n_hidden }} empty cages, unused for over {{ days }} days ago aren't listed. <a href="{{ url }}">Show them</a>.{% endtrans %}
+        {% else %}{% trans %}{{ n_hidden }} litters born over a year ago, all ended, aren't listed. <a href="{{ url }}">Show them</a>.{% endtrans %}{% endif %}
       </span>
     {% elif hidden.show_ended %}
-      <span class="text-[12px] text-muted">Showing everything, however long ago it ended.
-        <a href="{{ url_for('colony', view=active_view, scope=scope) }}">Only recent</a>.</span>
+      <span class="text-[12px] text-muted">{% trans url=url_for('colony', view=active_view, scope=scope) %}Showing everything, however long ago it ended. <a href="{{ url }}">Only recent</a>.{% endtrans %}</span>
     {% endif %}
   </div>
 {% endblock %}
@@ -122,28 +121,28 @@
         <div class="dt-toolbar">
           <div class="dt-toolbar-search">
             {{ icon('search', 'search-icon') }}
-            <input type="text" class="dt-search" placeholder="Search ID, genotype, cage, note…"
-                   autocomplete="off" aria-label="Search mice">
+            <input type="text" class="dt-search" placeholder="{{ _('Search ID, genotype, cage, note…') }}"
+                   autocomplete="off" aria-label="{{ _('Search mice') }}">
           </div>
-          <div class="dt-chips" role="group" aria-label="Show">
+          <div class="dt-chips" role="group" aria-label="{{ _('Show') }}">
             <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">
-              All <span class="dt-chip-count">{{ mouse_rows|length }}</span>
+              {{ _('All') }} <span class="dt-chip-count">{{ mouse_rows|length }}</span>
             </button>
             <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false">
-              Alive <span class="dt-chip-count">{{ sheet.active_count }}</span>
+              {{ _('Alive') }} <span class="dt-chip-count">{{ sheet.active_count }}</span>
             </button>
           </div>
           <div class="dt-toolbar-spacer"></div>
           <span class="sheet-save" data-save-status aria-live="polite"></span>
-          <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
-          <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
-          <button type="button" class="dt-toolbar-btn" data-on-click="openExportModal">{{ icon('download') }} Export</button>
-          <button type="button" class="dt-toolbar-btn" data-on-click="printMouseTable">{{ icon('print') }} Print</button>
-          <a class="dt-toolbar-btn" href="{{ sheet_import_url('mice') }}" title="Bring in the Excel or CSV sheet you kept your mice in">{{ icon('import') }} Import from Excel</a>
-          <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">{{ icon('duplicate') }} Add many</a>
+          <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} {{ _('Sort') }}</button>
+          <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} {{ _('Columns') }}</button>
+          <button type="button" class="dt-toolbar-btn" data-on-click="openExportModal">{{ icon('download') }} {{ _('Export') }}</button>
+          <button type="button" class="dt-toolbar-btn" data-on-click="printMouseTable">{{ icon('print') }} {{ _('Print') }}</button>
+          <a class="dt-toolbar-btn" href="{{ sheet_import_url('mice') }}" title="{{ _('Bring in the Excel or CSV sheet you kept your mice in') }}">{{ icon('import') }} {{ _('Import from Excel') }}</a>
+          <a class="dt-toolbar-btn" href="{{ url_for('batch_mice') }}">{{ icon('duplicate') }} {{ _('Add many') }}</a>
           <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                   data-mouse-edit data-mouse-payload='{{ {"owner": current_user.username, "status": "experiment"} | tojson }}'>
-            {{ icon('plus') }} New mouse
+            {{ icon('plus') }} {{ _('New mouse') }}
           </button>
         </div>
 
@@ -152,56 +151,56 @@
             <thead>
               <tr>
                 <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
-                  <input type="checkbox" data-select-all aria-label="Select all visible mice">
+                  <input type="checkbox" data-select-all aria-label="{{ _('Select all visible mice') }}">
                 </th>
                 <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="mouse_id" style="width: 64px; min-width: 64px;"
-                    title="Mouse ID. The dot is blue for a mouse under 8 weeks, green from 8 to 30 weeks, red past 30 weeks, and grey once it is not alive.">
-                  <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mouse<span class="dt-sort-indicator"></span></span>
+                    title="{{ _('Mouse ID. The dot is blue for a mouse under 8 weeks, green from 8 to 30 weeks, red past 30 weeks, and grey once it is not alive.') }}">
+                  <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}{{ _('Mouse') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="gender" style="width: 56px;">
-                  <span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}Sex<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('sex', 'dt-col-icon') }}{{ _('Sex') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="age" style="width: 56px;" title="Age from the litter's date of birth">
-                  <span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}Age<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="age" style="width: 56px;" title="{{ _("Age from the litter's date of birth") }}">
+                  <span class="dt-col-head">{{ icon('age', 'dt-col-icon') }}{{ _('Age') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="status" style="width: 108px;" title="What the mouse is for: experiment, breeder, geno…">
-                  <span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}Status<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="status" style="width: 108px;" title="{{ _('What the mouse is for: experiment, breeder, geno…') }}">
+                  <span class="dt-col-head">{{ icon('status', 'dt-col-icon') }}{{ _('Status') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 {% for n in range(1, 5) %}
                   <th class="dt-sortable" data-sort-key="transgene_{{ n }}" style="width: 116px;"
                       {% if n > 2 and not sheet.tg_used[n - 1] %}data-default-hidden="1"{% endif %}>
-                    <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Transgene {{ n }}<span class="dt-sort-indicator"></span></span>
+                    <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}{{ _('Transgene %(n)s', n=n) }}<span class="dt-sort-indicator"></span></span>
                   </th>
                 {% endfor %}
-                <th class="dt-sortable" data-sort-key="cage_id" style="width: 60px;" title="Type “new” to allocate the next cage">
-                  <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}Cage<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="cage_id" style="width: 60px;" title="{{ _('Type “new” to allocate the next cage') }}">
+                  <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}{{ _('Cage') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cage_rack" style="width: 88px;" title="The cage's rack">
-                  <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="cage_rack" style="width: 88px;" title="{{ _("The cage's rack") }}">
+                  <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}{{ _('Rack') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cage_position" style="width: 72px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
-                  <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="cage_position" style="width: 72px;" title="{{ _("Position in the rack, named by the rack's scheme (e.g. D7)") }}">
+                  <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}{{ _('Position') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="owner" style="width: 64px;">
-                  <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}{{ _('Owner') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="litter_id" data-sort-type="text" style="width: 100px;">
-                  <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}Litter<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}{{ _('Litter') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 112px;">
-                  <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}{{ _('Born') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="date_of_death" style="width: 112px;">
-                  <span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}Died<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('died', 'dt-col-icon') }}{{ _('Died') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="cage_location" style="width: 108px;" title="Free-text location note for the cage (room, shelf…)"
+                <th class="dt-sortable" data-sort-key="cage_location" style="width: 108px;" title="{{ _('Free-text location note for the cage (room, shelf…)') }}"
                     {% if not sheet.location_notes_used %}data-default-hidden="1"{% endif %}>
-                  <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location note<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}{{ _('Location note') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="note" style="min-width: 188px;">
-                  <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Note<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}{{ _('Note') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">Actions</span></th>
+                <th class="sheet-pin sheet-pin-end" style="width: 96px; min-width: 96px;"><span class="sr-only">{{ _('Actions') }}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -214,48 +213,48 @@
                     data-age="{{ row.age_days if row.age_days is not none else '' }}"
                     class="{% if not row.active %}is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
                   <td class="sheet-pin sheet-pin-0">
-                    <input type="checkbox" class="mouse-select" value="{{ row.id }}" aria-label="Select mouse {{ row.mouse_id }}">
+                    <input type="checkbox" class="mouse-select" value="{{ row.id }}" aria-label="{{ _('Select mouse %(id)s', id=row.mouse_id) }}">
                   </td>
                   <td class="sheet-pin sheet-pin-1">
                     {% set st = life_stage('mouse', row.age_days) %}
                     <span class="sheet-id">
                       <span class="life-dot{% if row.active %} is-alive{% endif %}"{% if st %} data-stage="{{ st }}"{% endif %}
-                            data-alive-title="Alive{% if st %} · {{ life_stage_title('mouse', st) }}{% endif %}"
-                            title="{{ ('Alive' ~ (' · ' ~ life_stage_title('mouse', st) if st else '')) if row.active else 'Not alive' }}"></span>
+                            data-alive-title="{{ _('Alive') }}{% if st %} · {{ life_stage_title('mouse', st)|tr }}{% endif %}"
+                            title="{{ (_('Alive') ~ (' · ' ~ life_stage_title('mouse', st)|tr if st else '')) if row.active else _('Not alive') }}"></span>
                       <span class="ident">{{ row.mouse_id }}</span>
-                      {% if locked %}<span class="sheet-lock" title="{{ row.owner }}’s mouse: read only">{{ icon('lock') }}</span>{% endif %}
+                      {% if locked %}<span class="sheet-lock" title="{{ _('%(owner)s’s mouse: read only', owner=row.owner) }}">{{ icon('lock') }}</span>{% endif %}
                     </span>
                   </td>
                   <td>
                     <select class="sex-pill" name="gender" form="{{ f }}" data-sex="{{ row.gender }}" data-autosave="1"
-                            aria-label="Sex" {% if locked %}disabled{% endif %}>
+                            aria-label="{{ _('Sex') }}" {% if locked %}disabled{% endif %}>
                       <option value="" {% if not row.gender %}selected{% endif %}>–</option>
                       {% for g_value in sheet.gender_choices %}
-                        <option value="{{ g_value }}" {% if g_value == row.gender %}selected{% endif %}>{{ 'U' if g_value == 'Unknown' else g_value }}</option>
+                        <option value="{{ g_value }}" {% if g_value == row.gender %}selected{% endif %}>{{ _('U') if g_value == 'Unknown' else g_value|tr }}</option>
                       {% endfor %}
                     </select>
                   </td>
-                  <td class="sheet-num" title="{% if row.age_weeks is not none %}{{ row.age_weeks }} weeks · {{ row.age_days }} days{% endif %}">
-                    {% if row.age_weeks is not none %}{{ row.age_weeks }}<span class="sheet-unit">w</span>{% else %}<span class="sheet-empty">–</span>{% endif %}
+                  <td class="sheet-num" title="{% if row.age_weeks is not none %}{{ _('%(weeks)s weeks · %(days)s days', weeks=row.age_weeks, days=row.age_days) }}{% endif %}">
+                    {% if row.age_weeks is not none %}{{ row.age_weeks }}<span class="sheet-unit">{{ _('w') }}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}
                   </td>
                   <td>
                     <select class="status-pill" name="status" form="{{ f }}" data-status="{{ row.status|lower }}"
-                            data-autosave="1" aria-label="Status" {% if locked %}disabled{% endif %}>
+                            data-autosave="1" aria-label="{{ _('Status') }}" {% if locked %}disabled{% endif %}>
                       <option value="" {% if not row.status %}selected{% endif %}>–</option>
                       {% for s_value in sheet.status_choices %}
-                        <option value="{{ s_value }}" {% if s_value == row.status %}selected{% endif %}>{{ s_value }}</option>
+                        <option value="{{ s_value }}" {% if s_value == row.status %}selected{% endif %}>{{ s_value|tr }}</option>
                       {% endfor %}
                     </select>
                   </td>
                   {% for n in range(1, 5) %}
                     <td><input name="transgene_{{ n }}" form="{{ f }}" value="{{ row['transgene_' ~ n] }}"
-                               list="strain-name-options" data-autosave="1" aria-label="Transgene {{ n }}"
+                               list="strain-name-options" data-autosave="1" aria-label="{{ _('Transgene %(n)s', n=n) }}"
                                {% if locked %}disabled{% endif %}></td>
                   {% endfor %}
                   <td><input class="ident" name="cage_id" form="{{ f }}" value="{{ row.cage_id }}" placeholder="–"
-                             data-autosave="1" aria-label="Cage" {% if locked %}disabled{% endif %}></td>
+                             data-autosave="1" aria-label="{{ _('Cage') }}" {% if locked %}disabled{% endif %}></td>
                   <td>
-                    <select name="cage_rack" form="{{ f }}" data-autosave="1" aria-label="Rack" {% if locked %}disabled{% endif %}>
+                    <select name="cage_rack" form="{{ f }}" data-autosave="1" aria-label="{{ _('Rack') }}" {% if locked %}disabled{% endif %}>
                       <option value="">–</option>
                       {% for rack in sheet.racks %}
                         <option value="{{ rack.id }}" {% if rack.id == row.cage_rack_id %}selected{% endif %}>{{ rack.name }}</option>
@@ -263,37 +262,37 @@
                     </select>
                   </td>
                   <td><input class="ident" name="cage_position" form="{{ f }}" value="{{ row.cage_position }}" placeholder="–"
-                             data-autosave="1" aria-label="Position in the rack" {% if locked %}disabled{% endif %}></td>
+                             data-autosave="1" aria-label="{{ _('Position in the rack') }}" {% if locked %}disabled{% endif %}></td>
                   <td>
                     <div class="owner-cell-wrap{% if row.owner %} has-badge{% endif %}">
                       {% if row.owner %}{{ row.owner | owner_badge }}{% endif %}
                       <input name="owner" form="{{ f }}" value="{{ row.owner }}" list="owner-name-options"
-                             data-autosave="1" aria-label="Owner" {% if locked %}disabled{% endif %}>
+                             data-autosave="1" aria-label="{{ _('Owner') }}" {% if locked %}disabled{% endif %}>
                     </div>
                   </td>
                   <td><input class="ident" name="litter_id" form="{{ f }}" value="{{ row.litter_id }}" placeholder="–"
-                             data-autosave="1" aria-label="Litter" {% if locked %}disabled{% endif %}></td>
+                             data-autosave="1" aria-label="{{ _('Litter') }}" {% if locked %}disabled{% endif %}></td>
                   <td><input type="date" name="date_of_birth" form="{{ f }}" value="{{ row.date_of_birth }}" data-empty="{{ '0' if row.date_of_birth else '1' }}"
                              data-autosave="1" data-original-dob="{{ row.date_of_birth }}" data-original-litter="{{ row.litter_id }}"
-                             aria-label="Date of birth" {% if locked %}disabled{% endif %}></td>
+                             aria-label="{{ _('Date of birth') }}" {% if locked %}disabled{% endif %}></td>
                   <td><input type="date" name="date_of_death" form="{{ f }}" value="{{ row.date_of_death }}" data-empty="{{ '0' if row.date_of_death else '1' }}"
-                             data-autosave="1" aria-label="Date of death" {% if locked %}disabled{% endif %}></td>
+                             data-autosave="1" aria-label="{{ _('Date of death') }}" {% if locked %}disabled{% endif %}></td>
                   <td><input name="cage_location" form="{{ f }}" value="{{ row.cage_location }}" title="{{ row.cage_location }}"
-                             list="options-cage_location" data-autosave="1" aria-label="Location note" {% if locked %}disabled{% endif %}></td>
-                  <td><input class="note-cell" name="note" form="{{ f }}" value="{{ row.note }}" title="{{ row.note }}" placeholder="Add a note"
-                             data-autosave="1" aria-label="Note" {% if locked %}disabled{% endif %}></td>
+                             list="options-cage_location" data-autosave="1" aria-label="{{ _('Location note') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="note-cell" name="note" form="{{ f }}" value="{{ row.note }}" title="{{ row.note }}" placeholder="{{ _('Add a note') }}"
+                             data-autosave="1" aria-label="{{ _('Note') }}" {% if locked %}disabled{% endif %}></td>
                   <td class="sheet-pin sheet-pin-end">
                     <div class="sheet-actions">
-                      <button type="button" class="row-icon-btn" title="Open mouse {{ row.mouse_id }}"
+                      <button type="button" class="row-icon-btn" title="{{ _('Open mouse %(id)s', id=row.mouse_id) }}"
                               data-mouse-edit data-mouse-payload='{{ mouse_payload(row, locked) }}'>
                         {{ icon('edit') }}
                       </button>
                       <form method="post" action="{{ url_for('duplicate_mouse', mouse_row_id=row.id) }}">
-                        <button type="submit" class="row-icon-btn" title="Duplicate mouse {{ row.mouse_id }}">{{ icon('copy') }}</button>
+                        <button type="submit" class="row-icon-btn" title="{{ _('Duplicate mouse %(id)s', id=row.mouse_id) }}">{{ icon('copy') }}</button>
                       </form>
                       <form method="post" action="{{ url_for('delete_mouse', mouse_row_id=row.id) }}"
-                            data-confirm="Delete mouse {{ row.mouse_id }}? This can be undone from Batch history only if it was part of a batch.">
-                        <button type="submit" class="row-icon-btn danger-button" title="Delete mouse {{ row.mouse_id }}"
+                            data-confirm="{{ _('Delete mouse %(id)s? This can be undone from Batch history only if it was part of a batch.', id=row.mouse_id) }}">
+                        <button type="submit" class="row-icon-btn danger-button" title="{{ _('Delete mouse %(id)s', id=row.mouse_id) }}"
                                 {% if locked %}disabled{% endif %}>{{ icon('trash') }}</button>
                       </form>
                     </div>
@@ -301,7 +300,7 @@
                 </tr>
               {% else %}
                 <tr><td class="dt-empty" colspan="20">
-                  No mice here yet. Use <strong>New mouse</strong>, or <strong>Add many</strong> to import a batch.
+                  {{ _('No mice here yet. Use <strong>New mouse</strong>, or <strong>Add many</strong> to import a batch.') }}
                 </td></tr>
               {% endfor %}
             </tbody>
@@ -330,20 +329,20 @@
         {% endfor %}
 
         <div class="dt-bottom-bar">
-          {{ sheet_ui.quick_add(url_for('create_blank_mouse'), 'New mouse') }}
-          <span class="dt-bottom-count dt-count">{{ mouse_rows|length }} {{ 'mouse' if mouse_rows|length == 1 else 'mice' }}</span>
+          {{ sheet_ui.quick_add(url_for('create_blank_mouse'), _('New mouse')) }}
+          <span class="dt-bottom-count dt-count">{{ ngettext('%(num)s mouse', '%(num)s mice', mouse_rows|length) }}</span>
           <div class="dt-bottom-spacer"></div>
           <div class="dt-pagination">
-            <span class="dt-page-label">Page 1</span>
-            <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
-            <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
-            <select class="dt-page-size" aria-label="Rows per page">
+            <span class="dt-page-label">{{ _('Page %(n)s', n=1) }}</span>
+            <button type="button" class="dt-prev" aria-label="{{ _('Previous page') }}">{{ icon('chevron-left') }}</button>
+            <button type="button" class="dt-next" aria-label="{{ _('Next page') }}">{{ icon('chevron-right') }}</button>
+            <select class="dt-page-size" aria-label="{{ _('Rows per page') }}">
               <option value="50">50</option>
               <option value="100" selected>100</option>
               <option value="250">250</option>
-              <option value="100000">All</option>
+              <option value="100000">{{ _('All') }}</option>
             </select>
-            <span>per page</span>
+            <span>{{ _('per page') }}</span>
           </div>
         </div>
 
@@ -354,41 +353,41 @@
 
           <form method="post" action="{{ url_for('bulk_update_mice') }}"
                 class="selbar-group" data-selection-form>
-            <select name="field" aria-label="Field to set">
-              <option value="owner">Owner</option>
-              <option value="status">Status</option>
-              <option value="genotype">Transgenes (“Ai14; Cre”)</option>
-              <option value="cage_id">Cage</option>
-              <option value="note">Note</option>
-              <option value="date_of_death">Date of death</option>
+            <select name="field" aria-label="{{ _('Field to set') }}">
+              <option value="owner">{{ _('Owner') }}</option>
+              <option value="status">{{ _('Status') }}</option>
+              <option value="genotype">{{ _('Transgenes (“Ai14; Cre”)') }}</option>
+              <option value="cage_id">{{ _('Cage') }}</option>
+              <option value="note">{{ _('Note') }}</option>
+              <option value="date_of_death">{{ _('Date of death') }}</option>
             </select>
-            <input name="value" placeholder="new value" list="owner-name-options"
-                   aria-label="New value">
-            <button type="submit" class="btn btn-sm">Set</button>
+            <input name="value" placeholder="{{ _('new value') }}" list="owner-name-options"
+                   aria-label="{{ _('New value') }}">
+            <button type="submit" class="btn btn-sm">{{ _('Set') }}</button>
           </form>
 
           {% if open_experiments %}
             <form method="post" action="{{ url_for('bulk_add_to_experiment') }}"
                   class="selbar-group" data-selection-form>
-              <select name="experiment_id" aria-label="Experiment">
+              <select name="experiment_id" aria-label="{{ _('Experiment') }}">
                 {% for exp in open_experiments %}
                   <option value="{{ exp.id }}">{{ exp.name }}</option>
                 {% endfor %}
               </select>
-              <input name="treatment_group" placeholder="treatment group"
-                     list="options-purpose" aria-label="Treatment group">
-              <button type="submit" class="btn btn-sm btn-primary">Add to experiment</button>
+              <input name="treatment_group" placeholder="{{ _('treatment group') }}"
+                     list="options-purpose" aria-label="{{ _('Treatment group') }}">
+              <button type="submit" class="btn btn-sm btn-primary">{{ _('Add to experiment') }}</button>
             </form>
           {% endif %}
 
           <form method="post" action="{{ url_for('bulk_sac_mice') }}"
                 class="selbar-group" data-selection-form
-                data-confirm="Mark {n} mouse record(s) as sac'd today?">
-            <button type="submit" class="btn btn-sm btn-danger">Sac</button>
+                data-confirm="{{ _("Mark {n} mouse record(s) as sac'd today?") }}">
+            <button type="submit" class="btn btn-sm btn-danger">{{ _('Sac') }}</button>
           </form>
 
           <div class="selbar-spacer"></div>
-          <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+          <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>{{ _('Clear') }}</button>
         </div>
       </section>
 
@@ -396,24 +395,24 @@
       {% set cs = cage_sheet %}
       <div data-layout-scope>
         <div class="mb-3 flex flex-wrap items-center gap-2.5">
-          {{ view_switch('mouse-cages', 'Table', 'Rack grid', 'Cards') }}
-          <div class="rack-chips" role="group" aria-label="Rack settings">
-            <span class="rack-chips-label">Racks</span>
+          {{ view_switch('mouse-cages', _('Table'), _('Rack grid'), _('Cards')) }}
+          <div class="rack-chips" role="group" aria-label="{{ _('Rack settings') }}">
+            <span class="rack-chips-label">{{ _('Racks') }}</span>
             {% for rack in cage_racks.racks %}
-              <button type="button" class="btn btn-sm" title="Size and position names for {{ rack.name }}"
+              <button type="button" class="btn btn-sm" title="{{ _('Size and position names for %(rack)s', rack=rack.name) }}"
                       data-record-edit="mouse-rack-dialog" data-record-payload="{{ rack.edit['data-record-payload'] }}">
                 {{ icon('sliders') }} {{ rack.name }}
               </button>
             {% endfor %}
             <button type="button" class="btn btn-sm" data-record-edit="mouse-rack-dialog"
                     data-record-payload='{{ {"rows": 8, "cols": 10, "naming_mode": "grid", "naming_rows": "letters", "naming_cols": "numbers", "naming_order": "row_col", "naming_separator": "", "naming_start": "1"} | tojson }}'>
-              {{ icon('plus') }} New rack
+              {{ icon('plus') }} {{ _('New rack') }}
             </button>
           </div>
         </div>
         <p class="-mt-1.5 mb-3 text-[12px] text-muted">
-          Set a cage’s <strong>Rack</strong> and <strong>Position</strong> here, in the mouse sheet, or by dragging on the rack grid.
-          Each rack names its positions its own way (A1, 1-1, 37…); change it under the rack’s button above.
+          {{ _('Set a cage’s <strong>Rack</strong> and <strong>Position</strong> here, in the mouse sheet, or by dragging on the rack grid.') }}
+          {{ _('Each rack names its positions its own way (A1, 1-1, 37…); change it under the rack’s button above.') }}
         </p>
 
         <div data-layout-panel="grid" hidden>
@@ -421,7 +420,7 @@
             {{ rack_grid('mouse-cages', cage_racks,
                          url_for('place_cage', cage_row_id=0)|replace('/0/', '/{id}/'),
                          rack_noun='rack', rack_dialog_id='mouse-rack-dialog',
-                         empty_text='No racks yet. Use New rack to add one; cages whose location names it will appear.') }}
+                         empty_text=_('No racks yet. Use New rack to add one; cages whose location names it will appear.')) }}
           </section>
         </div>
 
@@ -434,41 +433,41 @@
             <div class="dt-toolbar">
               <div class="dt-toolbar-search">
                 {{ icon('search', 'search-icon') }}
-                <input type="text" class="dt-search" placeholder="Search cage, mouse, genotype, owner…"
-                       autocomplete="off" aria-label="Search cage cards" data-cage-card-search>
+                <input type="text" class="dt-search" placeholder="{{ _('Search cage, mouse, genotype, owner…') }}"
+                       autocomplete="off" aria-label="{{ _('Search cage cards') }}" data-cage-card-search>
               </div>
-              <div class="dt-chips" role="group" aria-label="Show">
+              <div class="dt-chips" role="group" aria-label="{{ _('Show') }}">
                 <button type="button" class="dt-chip" data-cage-card-filter="" aria-pressed="false">
-                  All <span class="dt-chip-count">{{ cage_rows|length }}</span>
+                  {{ _('All') }} <span class="dt-chip-count">{{ cage_rows|length }}</span>
                 </button>
-                <button type="button" class="dt-chip" data-cage-card-filter="active" aria-pressed="true" title="Cages with living mice">
-                  Active <span class="dt-chip-count">{{ cs.active_count }}</span>
+                <button type="button" class="dt-chip" data-cage-card-filter="active" aria-pressed="true" title="{{ _('Cages with living mice') }}">
+                  {{ _('Active') }} <span class="dt-chip-count">{{ cs.active_count }}</span>
                 </button>
-                <button type="button" class="dt-chip" data-cage-card-filter="breeding" aria-pressed="false" title="Purpose breeder or breeding">
-                  Breeding <span class="dt-chip-count">{{ cs.breeding_count }}</span>
+                <button type="button" class="dt-chip" data-cage-card-filter="breeding" aria-pressed="false" title="{{ _('Purpose breeder or breeding') }}">
+                  {{ _('Breeding') }} <span class="dt-chip-count">{{ cs.breeding_count }}</span>
                 </button>
                 <button type="button" class="dt-chip" data-cage-card-filter="mine" aria-pressed="false">
-                  Mine <span class="dt-chip-count">{{ cs.mine_count }}</span>
+                  {{ _('Mine') }} <span class="dt-chip-count">{{ cs.mine_count }}</span>
                 </button>
               </div>
               {% if cs.purposes|length > 1 %}
-                <div class="dt-chips" role="group" aria-label="Purpose">
+                <div class="dt-chips" role="group" aria-label="{{ _('Purpose') }}">
                   {% for key, label, n in cs.purposes %}
                     <button type="button" class="dt-chip" data-cage-card-filter="purpose:{{ key }}" aria-pressed="false"
-                            title="Every {{ label|lower }} cage">{{ label }} <span class="dt-chip-count">{{ n }}</span></button>
+                            title="{{ _('Every %(purpose)s cage', purpose=label|tr|lower) }}">{{ label|tr }} <span class="dt-chip-count">{{ n }}</span></button>
                   {% endfor %}
                 </div>
               {% endif %}
               <div class="dt-toolbar-spacer"></div>
               <a class="dt-toolbar-btn" href="{{ url_for('labels.cage_cards', scope=scope) }}"
-                 title="Printable cards for the cages in this scope">{{ icon('qrcode') }} Cage cards</a>
+                 title="{{ _('Printable cards for the cages in this scope') }}">{{ icon('qrcode') }} {{ _('Cage cards') }}</a>
               <button type="button" class="btn btn-primary" data-record-edit="cage-dialog"
                       data-record-payload='{{ {"purpose": "Experiments", "count": 1} | tojson }}'>
-                {{ icon('plus') }} New cage
+                {{ icon('plus') }} {{ _('New cage') }}
               </button>
             </div>
             <div class="cage-card-grid sheet-table" data-autosave-sheet data-cage-cards></div>
-            <p class="muted-inline px-3 pb-3" data-cage-cards-none hidden>No cages match.</p>
+            <p class="muted-inline px-3 pb-3" data-cage-cards-none hidden>{{ _('No cages match.') }}</p>
           </section>
         </div>
 
@@ -484,42 +483,42 @@
             <div class="dt-toolbar">
               <div class="dt-toolbar-search">
                 {{ icon('search', 'search-icon') }}
-                <input type="text" class="dt-search" placeholder="Search cage, mouse, genotype, owner…"
-                       autocomplete="off" aria-label="Search cages">
+                <input type="text" class="dt-search" placeholder="{{ _('Search cage, mouse, genotype, owner…') }}"
+                       autocomplete="off" aria-label="{{ _('Search cages') }}">
               </div>
-              <div class="dt-chips" role="group" aria-label="Show">
+              <div class="dt-chips" role="group" aria-label="{{ _('Show') }}">
                 <button type="button" class="dt-chip" data-dt-filter="" aria-pressed="true">
-                  All <span class="dt-chip-count">{{ cage_rows|length }}</span>
+                  {{ _('All') }} <span class="dt-chip-count">{{ cage_rows|length }}</span>
                 </button>
                 <button type="button" class="dt-chip" data-dt-filter="active:true" aria-pressed="false"
-                        title="Cages with living mice">
-                  Active <span class="dt-chip-count">{{ cs.active_count }}</span>
+                        title="{{ _('Cages with living mice') }}">
+                  {{ _('Active') }} <span class="dt-chip-count">{{ cs.active_count }}</span>
                 </button>
                 <button type="button" class="dt-chip" data-dt-filter="breeding:1" aria-pressed="false"
-                        title="Purpose breeder or breeding">
-                  Breeding <span class="dt-chip-count">{{ cs.breeding_count }}</span>
+                        title="{{ _('Purpose breeder or breeding') }}">
+                  {{ _('Breeding') }} <span class="dt-chip-count">{{ cs.breeding_count }}</span>
                 </button>
                 <button type="button" class="dt-chip" data-dt-filter="mine:true" aria-pressed="false">
-                  Mine <span class="dt-chip-count">{{ cs.mine_count }}</span>
+                  {{ _('Mine') }} <span class="dt-chip-count">{{ cs.mine_count }}</span>
                 </button>
               </div>
               {% if cs.purposes|length > 1 %}
-                <div class="dt-chips" role="group" aria-label="Purpose">
+                <div class="dt-chips" role="group" aria-label="{{ _('Purpose') }}">
                   {% for key, label, n in cs.purposes %}
                     <button type="button" class="dt-chip" data-dt-filter="purpose:{{ key }}" aria-pressed="false"
-                            title="Every {{ label|lower }} cage">{{ label }} <span class="dt-chip-count">{{ n }}</span></button>
+                            title="{{ _('Every %(purpose)s cage', purpose=label|tr|lower) }}">{{ label|tr }} <span class="dt-chip-count">{{ n }}</span></button>
                   {% endfor %}
                 </div>
               {% endif %}
               <div class="dt-toolbar-spacer"></div>
               {{ sheet_ui.tools() }}
               <button type="button" class="dt-toolbar-btn" data-cage-expand-all aria-pressed="true"
-                      title="Fold every cage to its row, or open them all again">{{ icon('chevron-down') }} <span>Close all</span></button>
+                      title="{{ _('Fold every cage to its row, or open them all again') }}">{{ icon('chevron-down') }} <span>{{ _('Close all') }}</span></button>
               <a class="dt-toolbar-btn" href="{{ url_for('labels.cage_cards', scope=scope) }}"
-                 title="Printable cards for the cages in this scope">{{ icon('qrcode') }} Cage cards</a>
+                 title="{{ _('Printable cards for the cages in this scope') }}">{{ icon('qrcode') }} {{ _('Cage cards') }}</a>
               <button type="button" class="btn btn-primary" data-record-edit="cage-dialog"
                       data-record-payload='{{ {"purpose": "Experiments", "count": 1} | tojson }}'>
-                {{ icon('plus') }} New cage
+                {{ icon('plus') }} {{ _('New cage') }}
               </button>
             </div>
 
@@ -528,48 +527,48 @@
                 <thead>
                   <tr>
                     <th class="sheet-pin sheet-pin-0" style="width: 40px; min-width: 40px;">
-                      <input type="checkbox" data-select-all aria-label="Select all visible cages">
+                      <input type="checkbox" data-select-all aria-label="{{ _('Select all visible cages') }}">
                     </th>
                     <th class="dt-sortable sheet-pin sheet-pin-1" data-sort-key="cage_id" style="width: 96px; min-width: 96px;"
-                        title="Cage ID. The dot is green while the cage holds living mice.">
-                      <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}Cage<span class="dt-sort-indicator"></span></span>
+                        title="{{ _('Cage ID. The dot is green while the cage holds living mice.') }}">
+                      <span class="dt-col-head">{{ icon('cage', 'dt-col-icon') }}{{ _('Cage') }}<span class="dt-sort-indicator"></span></span>
                     </th>
                     <th class="dt-sortable" data-sort-key="rack_name" style="width: 80px;">
-                      <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}Rack<span class="dt-sort-indicator"></span></span>
+                      <span class="dt-col-head">{{ icon('grid', 'dt-col-icon') }}{{ _('Rack') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="position" style="width: 60px;" title="Position in the rack, named by the rack's scheme (e.g. D7)">
-                      <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}Position<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="position" style="width: 60px;" title="{{ _("Position in the rack, named by the rack's scheme (e.g. D7)") }}">
+                      <span class="dt-col-head">{{ icon('position', 'dt-col-icon') }}{{ _('Position') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="purpose" style="width: 96px;" title="What the cage is for. A Breeder cage is shared with the lab unless its owner makes it personal">
-                      <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Purpose<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="purpose" style="width: 96px;" title="{{ _('What the cage is for. A Breeder cage is shared with the lab unless its owner makes it personal') }}">
+                      <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}{{ _('Purpose') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="mice" style="width: 80px;" title="Living mice, by sex">
-                      <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mice<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="mice" style="width: 80px;" title="{{ _('Living mice, by sex') }}">
+                      <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}{{ _('Mice') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="date_give_birth" style="width: 132px;" title="When the cage's litter was born; its pups' litter, if any">
-                      <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Litter born<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="date_give_birth" style="width: 132px;" title="{{ _("When the cage's litter was born; its pups' litter, if any") }}">
+                      <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}{{ _('Litter born') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="wean_due" style="width: 84px;" title="Litter born + {{ wean_offset_days }} days (P{{ wean_offset_days }})">
-                      <span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}Wean due<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="wean_due" style="width: 84px;" title="{{ _('Litter born + %(days)s days (P%(days)s)', days=wean_offset_days) }}">
+                      <span class="dt-col-head">{{ icon('calendar-clock', 'dt-col-icon') }}{{ _('Wean due') }}<span class="dt-sort-indicator"></span></span>
                     </th>
                     <th class="dt-sortable" data-sort-key="genotype_summary" style="width: 136px;"
-                        title="The cage's genotype summary; when empty, what its living mice carry is shown in grey">
-                      <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Strain / genotype<span class="dt-sort-indicator"></span></span>
+                        title="{{ _("The cage's genotype summary; when empty, what its living mice carry is shown in grey") }}">
+                      <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}{{ _('Strain / genotype') }}<span class="dt-sort-indicator"></span></span>
                     </th>
                     <th class="dt-sortable" data-sort-key="owner" style="width: 56px;">
-                      <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}Owner<span class="dt-sort-indicator"></span></span>
+                      <span class="dt-col-head">{{ icon('user', 'dt-col-icon') }}{{ _('Owner') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="is_shared" style="width: 80px;" title="A shared cage is editable by the whole lab, or by one project group">
-                      <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}Shared<span class="dt-sort-indicator"></span></span>
+                    <th class="dt-sortable" data-sort-key="is_shared" style="width: 80px;" title="{{ _('A shared cage is editable by the whole lab, or by one project group') }}">
+                      <span class="dt-col-head">{{ icon('users', 'dt-col-icon') }}{{ _('Shared') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="dt-sortable" data-sort-key="cage_location" style="width: 112px;" title="Free-text location note (room, shelf…)"
+                    <th class="dt-sortable" data-sort-key="cage_location" style="width: 112px;" title="{{ _('Free-text location note (room, shelf…)') }}"
                         {% if not cs.location_notes_used %}data-default-hidden="1"{% endif %}>
-                      <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}Location note<span class="dt-sort-indicator"></span></span>
+                      <span class="dt-col-head">{{ icon('location', 'dt-col-icon') }}{{ _('Location note') }}<span class="dt-sort-indicator"></span></span>
                     </th>
                     <th class="dt-sortable" data-sort-key="notes" style="min-width: 140px;">
-                      <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Note<span class="dt-sort-indicator"></span></span>
+                      <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}{{ _('Note') }}<span class="dt-sort-indicator"></span></span>
                     </th>
-                    <th class="sheet-pin sheet-pin-end" style="width: 64px; min-width: 64px;"><span class="sr-only">Actions</span></th>
+                    <th class="sheet-pin sheet-pin-end" style="width: 64px; min-width: 64px;"><span class="sr-only">{{ _('Actions') }}</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -586,27 +585,27 @@
                         data-genotypes="{{ cage.genotype_auto }}"
                         class="is-expanded{% if not cage.active %} is-inactive{% endif %}{% if locked %} is-locked{% endif %}">
                       <td class="sheet-pin sheet-pin-0">
-                        <input type="checkbox" data-select-row value="{{ cage.id }}" aria-label="Select cage {{ cage.cage_id }}">
+                        <input type="checkbox" data-select-row value="{{ cage.id }}" aria-label="{{ _('Select cage %(id)s', id=cage.cage_id) }}">
                       </td>
                       <td class="sheet-pin sheet-pin-1 cage-id-cell">
                         <button type="button" class="cage-expand" data-cage-expand="{{ cage.id }}" aria-expanded="true"
-                                aria-controls="cage-detail-{{ cage.id }}" title="Show the mice in cage {{ cage.cage_id }}"
-                                aria-label="Show the mice in cage {{ cage.cage_id }}">{{ icon('chevron-right') }}</button>
+                                aria-controls="cage-detail-{{ cage.id }}" title="{{ _('Show the mice in cage %(id)s', id=cage.cage_id) }}"
+                                aria-label="{{ _('Show the mice in cage %(id)s', id=cage.cage_id) }}">{{ icon('chevron-right') }}</button>
                         {# The cage's number: type over it to renumber the cage (its mice go with it). #}
                         <span class="sheet-id">
                           <span class="life-dot{% if cage.active %} is-alive{% endif %}"
-                                data-alive-title="Holds living mice" data-dead-title="No living mice"
-                                title="{{ 'Holds living mice' if cage.active else 'No living mice' }}"></span>
+                                data-alive-title="{{ _('Holds living mice') }}" data-dead-title="{{ _('No living mice') }}"
+                                title="{{ _('Holds living mice') if cage.active else _('No living mice') }}"></span>
                           <input class="ident cage-number" name="cage_id" form="{{ f }}" value="{{ cage.cage_id }}" required maxlength="80"
-                                 data-autosave="1" data-autosave-on="change" aria-label="Cage number" title="Cage number: type to change it"
+                                 data-autosave="1" data-autosave-on="change" aria-label="{{ _('Cage number') }}" title="{{ _('Cage number: type to change it') }}"
                                  {% if locked %}disabled{% endif %}>
-                          {% if locked %}<span class="sheet-lock" title="{{ cage.owner or 'Someone else' }}’s cage: read only">{{ icon('lock') }}</span>{% endif %}
+                          {% if locked %}<span class="sheet-lock" title="{{ _('%(owner)s’s cage: read only', owner=cage.owner or _('Someone else')) }}">{{ icon('lock') }}</span>{% endif %}
                         </span>
                         {# What decides the dot until the server answers (static/sheet.js). #}
                         <input type="hidden" data-alive-values="1" value="{{ '1' if cage.active else '0' }}" data-cage-alive>
                       </td>
                       <td>
-                        <select name="rack_id" form="{{ f }}" data-autosave="1" aria-label="Rack" {% if locked %}disabled{% endif %}>
+                        <select name="rack_id" form="{{ f }}" data-autosave="1" aria-label="{{ _('Rack') }}" {% if locked %}disabled{% endif %}>
                           <option value="">–</option>
                           {% for rack in cage_racks.racks %}
                             <option value="{{ rack.id }}" {% if rack.id == cage.rack_id %}selected{% endif %}>{{ rack.name }}</option>
@@ -614,42 +613,42 @@
                         </select>
                       </td>
                       <td><input class="ident" name="position" form="{{ f }}" value="{{ cage.position }}" placeholder="–"
-                                 data-autosave="1" aria-label="Position in the rack" {% if locked %}disabled{% endif %}></td>
+                                 data-autosave="1" aria-label="{{ _('Position in the rack') }}" {% if locked %}disabled{% endif %}></td>
                       <td>
                         <select class="status-pill" name="purpose" form="{{ f }}" data-status="{{ cage.purpose|lower }}"
-                                data-autosave="1" aria-label="Purpose" {% if locked %}disabled{% endif %}>
+                                data-autosave="1" aria-label="{{ _('Purpose') }}" {% if locked %}disabled{% endif %}>
                           <option value="" {% if not cage.purpose %}selected{% endif %}>–</option>
                           {% for p_value in cs.purpose_choices %}
-                            <option value="{{ p_value }}" {% if p_value == cage.purpose %}selected{% endif %}>{{ p_value }}</option>
+                            <option value="{{ p_value }}" {% if p_value == cage.purpose %}selected{% endif %}>{{ p_value|tr }}</option>
                           {% endfor %}
                         </select>
                       </td>
                       <td class="sheet-num cage-mice-count" data-cage-open="{{ cage.id }}"
-                          title="{{ cage.live_count }} living of {{ cage.total_count }}: click to show them">
+                          title="{{ _('%(live)s living of %(total)s: click to show them', live=cage.live_count, total=cage.total_count) }}">
                         {% if cage.live_count %}<strong>{{ cage.live_count }}</strong> <span class="cage-sexes">{{ cage.sex_label }}</span>
-                        {% elif cage.total_count %}<span class="sheet-empty">0 of {{ cage.total_count }}</span>
-                        {% else %}<span class="sheet-empty">empty</span>{% endif %}
+                        {% elif cage.total_count %}<span class="sheet-empty">{{ _('0 of %(total)s', total=cage.total_count) }}</span>
+                        {% else %}<span class="sheet-empty">{{ _('empty') }}</span>{% endif %}
                       </td>
                       <td>
                         <div class="cage-born-cell">
                           <input type="date" name="date_give_birth" form="{{ f }}" value="{{ cage.date_give_birth }}"
                                  data-empty="{{ '0' if cage.date_give_birth else '1' }}" data-autosave="1" data-cage-born
-                                 aria-label="Litter born" {% if locked %}disabled{% endif %}>
+                                 aria-label="{{ _('Litter born') }}" {% if locked %}disabled{% endif %}>
                           {% if cage.pup_litter %}
                             <a class="cage-pups" href="{{ url_for('colony', view='litters', q=cage.pup_litter) }}"
-                               title="Pups of litter {{ cage.pup_litter }}, born {{ cage.pup_dob }}">{{ icon('litter') }}{{ cage.pup_litter }}</a>
+                               title="{{ _('Pups of litter %(litter)s, born %(born)s', litter=cage.pup_litter, born=cage.pup_dob) }}">{{ icon('litter') }}{{ cage.pup_litter }}</a>
                           {% endif %}
                         </div>
                       </td>
                       <td class="tabular-nums"><span class="cage-wean" data-cage-wean data-state="{{ cage.wean_state }}">{{ cage.wean_due or '–' }}</span></td>
                       <td><input name="genotype_summary" form="{{ f }}" value="{{ cage.genotype_summary }}"
                                  placeholder="{{ cage.genotype_auto or '–' }}" title="{{ cage.genotype_summary or cage.genotype_auto }}"
-                                 list="strain-name-options" data-autosave="1" aria-label="Strain or genotype"
+                                 list="strain-name-options" data-autosave="1" aria-label="{{ _('Strain or genotype') }}"
                                  {% if locked %}disabled{% endif %}></td>
                       <td>{{ sheet_ui.owner_cell(cage.owner, f, locked or not cage.can_reassign) }}</td>
                       <td>
                         {# Any cage can be shared, by its owner or an admin (a breeder cage starts shared). #}
-                        <select class="scope-pill" name="is_shared" form="{{ f }}" data-autosave="1" aria-label="Shared"
+                        <select class="scope-pill" name="is_shared" form="{{ f }}" data-autosave="1" aria-label="{{ _('Shared') }}"
                                 data-scope="{{ sharing.scope_of(cage.share_value) }}" data-share-lock="{{ cage.share_lock }}"
                                 {% if cage.share_lock %}title="{{ cage.share_lock }}"{% endif %}
                                 {% if locked or cage.share_lock %}disabled{% endif %}>
@@ -657,15 +656,15 @@
                         </select>
                       </td>
                       <td><input name="cage_location" form="{{ f }}" value="{{ cage.cage_location }}" title="{{ cage.cage_location }}"
-                                 list="options-cage_location" data-autosave="1" aria-label="Location note" {% if locked %}disabled{% endif %}></td>
-                      <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ cage.notes }}" title="{{ cage.notes }}" placeholder="Add a note"
-                                 data-autosave="1" aria-label="Note" {% if locked %}disabled{% endif %}></td>
+                                 list="options-cage_location" data-autosave="1" aria-label="{{ _('Location note') }}" {% if locked %}disabled{% endif %}></td>
+                      <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ cage.notes }}" title="{{ cage.notes }}" placeholder="{{ _('Add a note') }}"
+                                 data-autosave="1" aria-label="{{ _('Note') }}" {% if locked %}disabled{% endif %}></td>
                       <td class="sheet-pin sheet-pin-end">
                         <div class="sheet-actions">
-                          <button type="button" class="row-icon-btn" title="Open cage {{ cage.cage_id }}"
+                          <button type="button" class="row-icon-btn" title="{{ _('Open cage %(id)s', id=cage.cage_id) }}"
                                   data-record-edit="cage-dialog" data-record-payload='{{ cage.payload | tojson }}'>{{ icon('edit') }}</button>
                           <a class="row-icon-btn" href="{{ url_for('labels.cage_cards', ids=cage.id) }}" target="_blank"
-                             title="Print the card for cage {{ cage.cage_id }}">{{ icon('print') }}</a>
+                             title="{{ _('Print the card for cage %(id)s', id=cage.cage_id) }}">{{ icon('print') }}</a>
                         </div>
                       </td>
                     </tr>
@@ -674,7 +673,7 @@
                        sheet sorts or pages (data-detail-for). #}
                     <tr class="cage-detail" id="cage-detail-{{ cage.id }}" data-detail-for="{{ cage.id }}">
                       <td colspan="14">
-                        <article class="cage-detail-body{% if locked %} is-locked{% endif %}" aria-label="Cage {{ cage.cage_id }}"
+                        <article class="cage-detail-body{% if locked %} is-locked{% endif %}" aria-label="{{ _('Cage %(id)s', id=cage.cage_id) }}"
                                  data-cage-card="{{ cage.id }}" data-active="{{ 'true' if cage.active else 'false' }}"
                                  data-breeding="{{ cage.breeding }}" data-mine="{{ 'true' if cage.mine else 'false' }}"
                                  data-purpose="{{ (cage.purpose or '')|trim|lower }}"
@@ -685,42 +684,42 @@
                           <div class="cage-card-head">
                             <span class="cage-card-where">{{ icon('location') }}
                               {%- if cage.rack_name %} {{ cage.rack_name }}{% if cage.position %} · {{ cage.position }}{% endif %}
-                              {%- elif cage.cage_location %} {{ cage.cage_location }}{% else %} No rack{% endif %}</span>
-                            {% if cage.purpose %}<span class="status-pill-static" data-status="{{ cage.purpose|lower }}">{{ cage.purpose }}</span>{% endif %}
+                              {%- elif cage.cage_location %} {{ cage.cage_location }}{% else %} {{ _('No rack') }}{% endif %}</span>
+                            {% if cage.purpose %}<span class="status-pill-static" data-status="{{ cage.purpose|lower }}">{{ cage.purpose|tr }}</span>{% endif %}
                             {% if cage.owner %}{{ cage.owner | owner_badge }}{% endif %}
                             {% if cage.genotype_summary or cage.genotype_auto %}
-                              <span class="cage-card-geno" title="Strain / genotype">{{ cage.genotype_summary or cage.genotype_auto }}</span>
+                              <span class="cage-card-geno" title="{{ _('Strain / genotype') }}">{{ cage.genotype_summary or cage.genotype_auto }}</span>
                             {% endif %}
                             {% if cage.wean_due %}
-                              <span class="cage-wean" data-state="{{ cage.wean_state }}" title="Wean due (P{{ wean_offset_days | int }})">{{ icon('calendar-clock') }} Wean {{ cage.wean_due }}</span>
+                              <span class="cage-wean" data-state="{{ cage.wean_state }}" title="{{ _('Wean due (P%(days)s)', days=wean_offset_days|int) }}">{{ icon('calendar-clock') }} {{ _('Wean %(date)s', date=cage.wean_due) }}</span>
                             {% endif %}
                             <span class="cage-detail-spacer"></span>
-                            <button type="button" class="row-icon-btn" title="Open cage {{ cage.cage_id }}"
+                            <button type="button" class="row-icon-btn" title="{{ _('Open cage %(id)s', id=cage.cage_id) }}"
                                     data-record-edit="cage-dialog" data-record-payload='{{ cage.payload | tojson }}'>{{ icon('edit') }}</button>
                             <a class="row-icon-btn" href="{{ url_for('labels.cage_cards', ids=cage.id) }}" target="_blank"
-                               title="Print the card for cage {{ cage.cage_id }}">{{ icon('print') }}</a>
+                               title="{{ _('Print the card for cage %(id)s', id=cage.cage_id) }}">{{ icon('print') }}</a>
                           </div>
                           <div class="cage-detail-tools">
-                            <span class="cage-detail-title">{{ icon('cage') }} Cage <span class="ident">{{ cage.cage_id }}</span>
-                              <span class="text-muted">· {{ cage.live_count }} alive{% if cage.total_count %} of {{ cage.total_count }}{% endif %}
-                              {%- if cage.genotyping_date %} · genotype by {{ cage.genotyping_date }}{% endif %}</span></span>
+                            <span class="cage-detail-title">{{ icon('cage') }} {% trans id=cage.cage_id %}Cage <span class="ident">{{ id }}</span>{% endtrans %}
+                              <span class="text-muted">· {% if cage.total_count %}{{ _('%(live)s alive of %(total)s', live=cage.live_count, total=cage.total_count) }}{% else %}{{ _('%(live)s alive', live=cage.live_count) }}{% endif %}
+                              {%- if cage.genotyping_date %} · {{ _('genotype by %(date)s', date=cage.genotyping_date) }}{% endif %}</span></span>
                             {% if locked %}
-                              <span class="cage-detail-lock">{{ icon('lock') }} Read only: {{ cage.owner or 'someone else' }}’s cage</span>
+                              <span class="cage-detail-lock">{{ icon('lock') }} {{ _('Read only: %(owner)s’s cage', owner=cage.owner or _('someone else')) }}</span>
                             {% else %}
                               <button type="button" class="btn btn-sm" data-add-existing-mouse
                                       data-action="{{ url_for('add_mouse_from_cage', cage_row_id=cage.id) }}" data-target-label="{{ cage.cage_id }}">
-                                {{ icon('plus') }} Add existing mouse
+                                {{ icon('plus') }} {{ _('Add existing mouse') }}
                               </button>
                               <span class="breeding-actions {% if not cage.can_breed %}hidden-row{% endif %}" data-breeding-actions>
                                 <button type="button" class="btn btn-sm" data-litter-born
                                         data-action="{{ url_for('cage_give_birth', cage_row_id=cage.id) }}"
                                         data-cage-label="{{ cage.cage_id }}" data-born="{{ cage.date_give_birth }}">
-                                  {{ icon('baby') }} Litter born
+                                  {{ icon('baby') }} {{ _('Litter born') }}
                                 </button>
                                 <button type="button" class="btn btn-sm" data-genotyping
                                         data-action="{{ url_for('cage_genotyping', cage_row_id=cage.id) }}"
                                         data-father="{{ cage.default_father }}" data-mother="{{ cage.default_mother }}">
-                                  {{ icon('dna') }} Genotyping
+                                  {{ icon('dna') }} {{ _('Genotyping') }}
                                 </button>
                                 <button type="button" class="btn btn-sm" data-wean
                                         data-distribute-action="{{ url_for('cage_wean_distribute', cage_row_id=cage.id) }}"
@@ -728,22 +727,22 @@
                                         data-target-label="{{ cage.cage_id }}"
                                         data-born="{{ cage.wean_born }}" data-age="{{ cage.wean_age }}"
                                         data-pups="{{ cage.wean_pups | tojson | forceescape }}">
-                                  {{ icon('litter') }} Wean
+                                  {{ icon('litter') }} {{ _('Wean') }}
                                 </button>
                               </span>
                             {% endif %}
                             <span class="cage-detail-spacer"></span>
                             {% if cage.mice %}
-                              <a class="btn btn-sm btn-ghost" href="{{ url_for('colony', view='mice', scope='all', q=cage.cage_id) }}">{{ icon('table') }} In the mouse sheet</a>
+                              <a class="btn btn-sm btn-ghost" href="{{ url_for('colony', view='mice', scope='all', q=cage.cage_id) }}">{{ icon('table') }} {{ _('In the mouse sheet') }}</a>
                             {% endif %}
                           </div>
                           {% if cage.mice %}
                             <table class="cage-mice-table">
                               <thead>
                                 <tr>
-                                  <th>Mouse</th><th>Sex</th><th>Age</th><th>Status</th>
-                                  {% for n in range(1, 5) %}{% if n <= 2 or mouse_sheet.tg_used[n - 1] %}<th>Transgene {{ n }}</th>{% endif %}{% endfor %}
-                                  <th>Owner</th><th>Litter</th><th>Note</th><th><span class="sr-only">Open</span></th>
+                                  <th>{{ _('Mouse') }}</th><th>{{ _('Sex') }}</th><th>{{ _('Age') }}</th><th>{{ _('Status') }}</th>
+                                  {% for n in range(1, 5) %}{% if n <= 2 or mouse_sheet.tg_used[n - 1] %}<th>{{ _('Transgene %(n)s', n=n) }}</th>{% endif %}{% endfor %}
+                                  <th>{{ _('Owner') }}</th><th>{{ _('Litter') }}</th><th>{{ _('Note') }}</th><th><span class="sr-only">{{ _('Open') }}</span></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -753,43 +752,43 @@
                                   <tr class="{% if not mouse.active %}is-inactive{% endif %}{% if mlocked %} is-locked{% endif %}">
                                     {% set st = life_stage('mouse', mouse.age_days) %}
                                     <td>{{ sheet_ui.id_cell(mouse.mouse_id, alive=mouse.active, locked=mlocked, owner=mouse.owner, noun='mouse',
-                                                            alive_title='Alive', dead_title='Not alive',
-                                                            stage=st, stage_title=life_stage_title('mouse', st)) }}</td>
+                                                            alive_title=_('Alive'), dead_title=_('Not alive'),
+                                                            stage=st, stage_title=life_stage_title('mouse', st)|tr) }}</td>
                                     <td>
                                       <select class="sex-pill" name="gender" form="{{ mf }}" data-sex="{{ mouse.gender }}" data-autosave="1"
-                                              aria-label="Sex of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}>
+                                              aria-label="{{ _('Sex of mouse %(id)s', id=mouse.mouse_id) }}" {% if mlocked %}disabled{% endif %}>
                                         <option value="" {% if not mouse.gender %}selected{% endif %}>–</option>
                                         {% for g_value in mouse_sheet.gender_choices %}
-                                          <option value="{{ g_value }}" {% if g_value == mouse.gender %}selected{% endif %}>{{ 'U' if g_value == 'Unknown' else g_value }}</option>
+                                          <option value="{{ g_value }}" {% if g_value == mouse.gender %}selected{% endif %}>{{ _('U') if g_value == 'Unknown' else g_value|tr }}</option>
                                         {% endfor %}
                                       </select>
                                     </td>
-                                    <td class="sheet-num">{% if mouse.age_weeks is not none %}{{ mouse.age_weeks }}<span class="sheet-unit">w</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</td>
+                                    <td class="sheet-num">{% if mouse.age_weeks is not none %}{{ mouse.age_weeks }}<span class="sheet-unit">{{ _('w') }}</span>{% else %}<span class="sheet-empty">–</span>{% endif %}</td>
                                     <td>
                                       <select class="status-pill" name="status" form="{{ mf }}" data-status="{{ mouse.status|lower }}"
                                               data-dead-values="{{ (end_statuses + ['transfer'])|join(',') }}"
-                                              data-autosave="1" aria-label="Status of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}>
+                                              data-autosave="1" aria-label="{{ _('Status of mouse %(id)s', id=mouse.mouse_id) }}" {% if mlocked %}disabled{% endif %}>
                                         <option value="" {% if not mouse.status %}selected{% endif %}>–</option>
                                         {% for s_value in mouse_sheet.status_choices %}
-                                          <option value="{{ s_value }}" {% if s_value == mouse.status %}selected{% endif %}>{{ s_value }}</option>
+                                          <option value="{{ s_value }}" {% if s_value == mouse.status %}selected{% endif %}>{{ s_value|tr }}</option>
                                         {% endfor %}
                                       </select>
                                     </td>
                                     {% for n in range(1, 5) %}
                                       {% if n <= 2 or mouse_sheet.tg_used[n - 1] %}
                                         <td><input name="transgene_{{ n }}" form="{{ mf }}" value="{{ mouse['transgene_' ~ n] }}" list="strain-name-options"
-                                                   data-autosave="1" aria-label="Transgene {{ n }} of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}></td>
+                                                   data-autosave="1" aria-label="{{ _('Transgene %(n)s of mouse %(id)s', n=n, id=mouse.mouse_id) }}" {% if mlocked %}disabled{% endif %}></td>
                                       {% else %}
                                         {# Kept in the form so a save does not clear it. #}
                                       {% endif %}
                                     {% endfor %}
                                     <td>{{ sheet_ui.owner_cell(mouse.owner, mf, mlocked) }}</td>
                                     <td><input class="ident" name="litter_id" form="{{ mf }}" value="{{ mouse.litter_id }}" placeholder="–"
-                                               data-autosave="1" aria-label="Litter of mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}></td>
-                                    <td><input class="note-cell" name="note" form="{{ mf }}" value="{{ mouse.note }}" title="{{ mouse.note }}" placeholder="Add a note"
-                                               data-autosave="1" aria-label="Note on mouse {{ mouse.mouse_id }}" {% if mlocked %}disabled{% endif %}></td>
+                                               data-autosave="1" aria-label="{{ _('Litter of mouse %(id)s', id=mouse.mouse_id) }}" {% if mlocked %}disabled{% endif %}></td>
+                                    <td><input class="note-cell" name="note" form="{{ mf }}" value="{{ mouse.note }}" title="{{ mouse.note }}" placeholder="{{ _('Add a note') }}"
+                                               data-autosave="1" aria-label="{{ _('Note on mouse %(id)s', id=mouse.mouse_id) }}" {% if mlocked %}disabled{% endif %}></td>
                                     <td>
-                                      <button type="button" class="row-icon-btn" title="Open mouse {{ mouse.mouse_id }}"
+                                      <button type="button" class="row-icon-btn" title="{{ _('Open mouse %(id)s', id=mouse.mouse_id) }}"
                                               data-mouse-edit data-mouse-payload='{{ mouse_payload(mouse, mlocked) }}'>{{ icon('edit') }}</button>
                                     </td>
                                   </tr>
@@ -797,13 +796,13 @@
                               </tbody>
                             </table>
                           {% else %}
-                            <p class="cage-detail-empty">No mice in this cage yet.{% if not locked %} Use <strong>Add existing mouse</strong>, or type {{ cage.cage_id }} as a mouse’s cage.{% endif %}</p>
+                            <p class="cage-detail-empty">{{ _('No mice in this cage yet.') }}{% if not locked %} {% trans id=cage.cage_id %}Use <strong>Add existing mouse</strong>, or type {{ id }} as a mouse’s cage.{% endtrans %}{% endif %}</p>
                           {% endif %}
                         </article>
                       </td>
                     </tr>
                   {% else %}
-                    <tr><td class="dt-empty" colspan="14">No cages here yet. Use <strong>New cage</strong>, or type a new cage number on a mouse.</td></tr>
+                    <tr><td class="dt-empty" colspan="14">{{ _('No cages here yet. Use <strong>New cage</strong>, or type a new cage number on a mouse.') }}</td></tr>
                   {% endfor %}
                 </tbody>
               </table>
@@ -818,7 +817,7 @@
                never moves the mouse or touches its dates. #}
             {% for cage in cage_rows %}
               <form id="cage-update-{{ cage.id }}" method="post" action="{{ url_for('update_cage', cage_row_id=cage.id) }}"
-                    data-record-label="cage {{ cage.cage_id }}">
+                    data-record-label="{{ _('cage %(id)s', id=cage.cage_id) }}">
                 <input type="hidden" name="cage_id_was" value="{{ cage.cage_id }}">
                 <input type="hidden" name="rack_id_was" value="{{ cage.rack_id }}">
                 <input type="hidden" name="position_was" value="{{ cage.position }}">
@@ -827,7 +826,7 @@
               </form>
               {% for mouse in cage.mice %}
                 <form id="cage-mouse-update-{{ mouse.id }}" method="post" action="{{ url_for('update_mouse', mouse_row_id=mouse.id) }}"
-                      data-record-label="mouse {{ mouse.mouse_id }}">
+                      data-record-label="{{ _('mouse %(id)s', id=mouse.mouse_id) }}">
                   {% for n in range(3, 5) %}{% if not mouse_sheet.tg_used[n - 1] %}
                     <input type="hidden" name="transgene_{{ n }}" value="{{ mouse['transgene_' ~ n] }}">
                   {% endif %}{% endfor %}
@@ -836,20 +835,20 @@
             {% endfor %}
 
             <div class="dt-bottom-bar">
-              {{ sheet_ui.quick_add(url_for('create_cage'), 'New cage', {'count': 1}) }}
-              <span class="dt-bottom-count dt-count">{{ cage_rows|length }} {{ 'cage' if cage_rows|length == 1 else 'cages' }}</span>
+              {{ sheet_ui.quick_add(url_for('create_cage'), _('New cage'), {'count': 1}) }}
+              <span class="dt-bottom-count dt-count">{{ ngettext('%(num)s cage', '%(num)s cages', cage_rows|length) }}</span>
               <div class="dt-bottom-spacer"></div>
               <div class="dt-pagination">
-                <span class="dt-page-label">Page 1</span>
-                <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
-                <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
-                <select class="dt-page-size" aria-label="Rows per page">
+                <span class="dt-page-label">{{ _('Page %(n)s', n=1) }}</span>
+                <button type="button" class="dt-prev" aria-label="{{ _('Previous page') }}">{{ icon('chevron-left') }}</button>
+                <button type="button" class="dt-next" aria-label="{{ _('Next page') }}">{{ icon('chevron-right') }}</button>
+                <select class="dt-page-size" aria-label="{{ _('Rows per page') }}">
                   <option value="50">50</option>
                   <option value="100" selected>100</option>
                   <option value="250">250</option>
-                  <option value="100000">All</option>
+                  <option value="100000">{{ _('All') }}</option>
                 </select>
-                <span>per page</span>
+                <span>{{ _('per page') }}</span>
               </div>
             </div>
 
@@ -859,44 +858,44 @@
               <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
                 <input type="hidden" name="action" value="purpose">
                 <input type="hidden" name="scope" value="{{ scope }}">
-                <select name="value" aria-label="Purpose">
-                  {% for p_value in cs.purpose_choices %}<option value="{{ p_value }}">{{ p_value }}</option>{% endfor %}
+                <select name="value" aria-label="{{ _('Purpose') }}">
+                  {% for p_value in cs.purpose_choices %}<option value="{{ p_value }}">{{ p_value|tr }}</option>{% endfor %}
                 </select>
-                <button type="submit" class="btn btn-sm">Set purpose</button>
+                <button type="submit" class="btn btn-sm">{{ _('Set purpose') }}</button>
               </form>
               <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
                 <input type="hidden" name="action" value="owner">
                 <input type="hidden" name="scope" value="{{ scope }}">
-                <input name="value" placeholder="owner" list="sheet-owners" aria-label="Owner" required>
-                <button type="submit" class="btn btn-sm">Set owner</button>
+                <input name="value" placeholder="{{ _('owner') }}" list="sheet-owners" aria-label="{{ _('Owner') }}" required>
+                <button type="submit" class="btn btn-sm">{{ _('Set owner') }}</button>
               </form>
               <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
                 <input type="hidden" name="action" value="rack">
                 <input type="hidden" name="scope" value="{{ scope }}">
-                <select name="value" aria-label="Rack">
-                  <option value="">No rack (unplace)</option>
+                <select name="value" aria-label="{{ _('Rack') }}">
+                  <option value="">{{ _('No rack (unplace)') }}</option>
                   {% for rack in cage_racks.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}
                 </select>
-                <button type="submit" class="btn btn-sm" title="Into the rack without a position; drag on the rack grid to place">Move</button>
+                <button type="submit" class="btn btn-sm" title="{{ _('Into the rack without a position; drag on the rack grid to place') }}">{{ _('Move') }}</button>
               </form>
               <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form>
                 <input type="hidden" name="action" value="shared">
                 <input type="hidden" name="scope" value="{{ scope }}">
-                <select name="value" aria-label="Sharing">
-                  <option value="1">Mark shared</option>
-                  {% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">Share with {{ name }}</option>{% endfor %}
-                  <option value="0">Mark not shared</option>
+                <select name="value" aria-label="{{ _('Sharing') }}">
+                  <option value="1">{{ _('Mark shared') }}</option>
+                  {% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">{{ _('Share with %(group)s', group=name) }}</option>{% endfor %}
+                  <option value="0">{{ _('Mark not shared') }}</option>
                 </select>
-                <button type="submit" class="btn btn-sm">Set</button>
+                <button type="submit" class="btn btn-sm">{{ _('Set') }}</button>
               </form>
               <form method="post" action="{{ url_for('bulk_cages') }}" class="selbar-group" data-selection-form
-                    data-confirm="Retire {n} cage(s)? Each is taken out of its rack and its purpose set to Retired. Cages that still hold living mice are kept. Undo from Batch history.">
+                    data-confirm="{{ _('Retire {n} cage(s)? Each is taken out of its rack and its purpose set to Retired. Cages that still hold living mice are kept. Undo from Batch history.') }}">
                 <input type="hidden" name="action" value="retire">
                 <input type="hidden" name="scope" value="{{ scope }}">
-                <button type="submit" class="btn btn-sm btn-danger">{{ icon('archive') }} Retire</button>
+                <button type="submit" class="btn btn-sm btn-danger">{{ icon('archive') }} {{ _('Retire') }}</button>
               </form>
               <div class="selbar-spacer"></div>
-              <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>Clear</button>
+              <button type="button" class="btn btn-sm btn-ghost" data-selection-clear>{{ _('Clear') }}</button>
             </div>
           </section>
         </div>
@@ -904,49 +903,49 @@
 
 {% call rack_dialog('mouse-rack-dialog', url_for('save_mouse_rack'), url_for('save_mouse_rack'),
                           url_for('delete_mouse_rack', rack_id=0)) %}
-        <label class="col-span-full">Room <input name="room" placeholder="Optional"></label>
+        <label class="col-span-full">{{ _('Room') }} <input name="room" placeholder="{{ _('Optional') }}"></label>
       {% endcall %}
 
       <dialog id="cage-dialog" class="record-dialog" aria-labelledby="cage-dialog-title">
         <form method="post" data-record-form
               data-create-action="{{ url_for('create_cage') }}"
               data-update-action="{{ url_for('update_cage', cage_row_id=0) }}"
-              data-new-title="New cage" data-edit-title="Cage {label}"
-              data-new-submit="Create cage" data-edit-submit="Save">
+              data-new-title="{{ _('New cage') }}" data-edit-title="{{ _('Cage {label}') }}"
+              data-new-submit="{{ _('Create cage') }}" data-edit-submit="{{ _('Save') }}">
           <header class="record-dialog-head">
             <div>
-              <h3 id="cage-dialog-title" data-record-title>New cage</h3>
-              <p class="record-dialog-sub" data-new-only>A new cage gets the next free ID ({{ next_cage_id_value }}); several get consecutive IDs.</p>
+              <h3 id="cage-dialog-title" data-record-title>{{ _('New cage') }}</h3>
+              <p class="record-dialog-sub" data-new-only>{{ _('A new cage gets the next free ID (%(id)s); several get consecutive IDs.', id=next_cage_id_value) }}</p>
             </div>
-            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <fieldset class="record-group">
-              <legend>Where</legend>
-              <label>Rack
-                <select name="rack_id"><option value="">Not in a rack</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
+              <legend>{{ _('Where') }}</legend>
+              <label>{{ _('Rack') }}
+                <select name="rack_id"><option value="">{{ _('Not in a rack') }}</option>{% for rack in cage_racks.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
               </label>
-              <label>Position <input name="position" class="font-mono" placeholder="e.g. D7"></label>
-              <label>Location note <input name="cage_location" list="options-cage_location" placeholder="room, shelf…"></label>
-              <label>Room <input name="room"></label>
-              <label class="col-span-full">Location detail <input name="location_detail"></label>
+              <label>{{ _('Position') }} <input name="position" class="font-mono" placeholder="{{ _('e.g. D7') }}"></label>
+              <label>{{ _('Location note') }} <input name="cage_location" list="options-cage_location" placeholder="{{ _('room, shelf…') }}"></label>
+              <label>{{ _('Room') }} <input name="room"></label>
+              <label class="col-span-full">{{ _('Location detail') }} <input name="location_detail"></label>
             </fieldset>
             <fieldset class="record-group">
-              <legend>Cage</legend>
-              <label data-new-only>How many
+              <legend>{{ _('Cage') }}</legend>
+              <label data-new-only>{{ _('How many') }}
                 <input type="number" name="count" min="1" max="20" value="1"
-                       title="Several new cages get consecutive IDs, and consecutive free positions from the one given">
+                       title="{{ _('Several new cages get consecutive IDs, and consecutive free positions from the one given') }}">
               </label>
-              <label title="What the cage is for: breeding, stock, an experiment…">Purpose <input name="purpose" list="options-purpose"></label>
-              <label title="The number on the facility's own cage card, if it has one">Card ID <input name="card_id"></label>
-              <label title="A short genotype for the cage card, when the mice's own genotypes are too long">Genotype summary <input name="genotype_summary"></label>
-              <label>Litter born <input type="date" name="date_give_birth"></label>
+              <label title="{{ _('What the cage is for: breeding, stock, an experiment…') }}">{{ _('Purpose') }} <input name="purpose" list="options-purpose"></label>
+              <label title="{{ _("The number on the facility's own cage card, if it has one") }}">{{ _('Card ID') }} <input name="card_id"></label>
+              <label title="{{ _("A short genotype for the cage card, when the mice's own genotypes are too long") }}">{{ _('Genotype summary') }} <input name="genotype_summary"></label>
+              <label>{{ _('Litter born') }} <input type="date" name="date_give_birth"></label>
             </fieldset>
-            <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+            <label class="record-wide">{{ _('Notes') }} <textarea name="notes" rows="2"></textarea></label>
           </div>
           <footer class="record-dialog-foot">
-            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
-            <button type="submit" class="btn btn-primary" data-record-submit>Create cage</button>
+            <button type="button" class="btn" data-on-click="close-dialog">{{ _('Cancel') }}</button>
+            <button type="submit" class="btn btn-primary" data-record-submit>{{ _('Create cage') }}</button>
           </footer>
         </form>
       </dialog>
@@ -959,14 +958,14 @@
         <div class="dt-toolbar">
           <div class="dt-toolbar-search">
             {{ icon('search', 'search-icon') }}
-            <input type="text" class="dt-search" placeholder="Search litter, cohort, parents, mouse…"
-                   autocomplete="off" aria-label="Search litters">
+            <input type="text" class="dt-search" placeholder="{{ _('Search litter, cohort, parents, mouse…') }}"
+                   autocomplete="off" aria-label="{{ _('Search litters') }}">
           </div>
           <div class="dt-toolbar-spacer"></div>
           {{ sheet_ui.tools() }}
           <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                   data-record-edit="litter-dialog" data-record-payload="{}">
-            {{ icon('plus') }} New litter
+            {{ icon('plus') }} {{ _('New litter') }}
           </button>
         </div>
         <div class="dt-scroll">
@@ -974,30 +973,30 @@
             <thead>
               <tr>
                 <th class="dt-sortable sheet-pin sheet-pin-0" data-sort-key="litter_id" data-sort-type="text" style="width: 96px; min-width: 96px;">
-                  <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}Litter<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('litter', 'dt-col-icon') }}{{ _('Litter') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 112px;" title="The date of birth of every mouse in the litter">
-                  <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}Born<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="date_of_birth" style="width: 112px;" title="{{ _('The date of birth of every mouse in the litter') }}">
+                  <span class="dt-col-head">{{ icon('born', 'dt-col-icon') }}{{ _('Born') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="cohort_name" style="width: 128px;">
-                  <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}Cohort<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('tag', 'dt-col-icon') }}{{ _('Cohort') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="father_info" style="width: 92px;">
-                  <span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}Father<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('male', 'dt-col-icon') }}{{ _('Father') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="mother_info" style="width: 92px;">
-                  <span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}Mother<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('female', 'dt-col-icon') }}{{ _('Mother') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="total_pups" style="width: 60px;">
-                  <span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}Pups<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('count', 'dt-col-icon') }}{{ _('Pups') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="mice" style="min-width: 152px;" title="Mice linked to the litter; the dot is blue under 8 weeks, green from 8 to 30 weeks, red past 30 weeks, grey once not alive">
-                  <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}Mice<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="mice" style="min-width: 152px;" title="{{ _('Mice linked to the litter; the dot is blue under 8 weeks, green from 8 to 30 weeks, red past 30 weeks, grey once not alive') }}">
+                  <span class="dt-col-head">{{ icon('mouse', 'dt-col-icon') }}{{ _('Mice') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="notes" style="min-width: 168px;">
-                  <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Notes<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}{{ _('Notes') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
+                <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">{{ _('Actions') }}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -1009,28 +1008,28 @@
                     data-mice="{{ litter.mice|length }}"
                     data-mouse-ids="{{ litter.mice|map(attribute='mouse_id')|join(' ') }}"
                     class="{% if locked %}is-locked{% endif %}">
-                  <td class="sheet-pin sheet-pin-0">{{ sheet_ui.id_cell(litter.litter_id, locked=locked, owner='Other members', noun='litter') }}</td>
+                  <td class="sheet-pin sheet-pin-0">{{ sheet_ui.id_cell(litter.litter_id, locked=locked, owner=_('Other members'), noun='litter') }}</td>
                   <td><input type="date" name="date_of_birth" form="{{ f }}" value="{{ litter.date_of_birth }}"
                              data-empty="{{ '0' if litter.date_of_birth else '1' }}" data-autosave="1" data-litter-dob
                              data-original-dob="{{ litter.date_of_birth }}" data-mice-count="{{ litter.mice|length }}"
-                             aria-label="Date of birth" {% if locked %}disabled{% endif %}></td>
-                  <td><input name="cohort_name" form="{{ f }}" value="{{ litter.cohort_name }}" data-autosave="1" aria-label="Cohort" {% if locked %}disabled{% endif %}></td>
-                  <td><input class="ident" name="father_info" form="{{ f }}" value="{{ litter.father_info }}" data-autosave="1" aria-label="Father" {% if locked %}disabled{% endif %}></td>
-                  <td><input class="ident" name="mother_info" form="{{ f }}" value="{{ litter.mother_info }}" data-autosave="1" aria-label="Mother" {% if locked %}disabled{% endif %}></td>
-                  <td><input class="sheet-num" type="number" min="0" max="99" name="total_pups" form="{{ f }}" value="{{ litter.total_pups or '' }}" data-autosave="1" aria-label="Pups" {% if locked %}disabled{% endif %}></td>
-                  <td class="whitespace-normal" title="{{ alive }} of {{ litter.mice|length }} alive">
+                             aria-label="{{ _('Date of birth') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="cohort_name" form="{{ f }}" value="{{ litter.cohort_name }}" data-autosave="1" aria-label="{{ _('Cohort') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="ident" name="father_info" form="{{ f }}" value="{{ litter.father_info }}" data-autosave="1" aria-label="{{ _('Father') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="ident" name="mother_info" form="{{ f }}" value="{{ litter.mother_info }}" data-autosave="1" aria-label="{{ _('Mother') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="sheet-num" type="number" min="0" max="99" name="total_pups" form="{{ f }}" value="{{ litter.total_pups or '' }}" data-autosave="1" aria-label="{{ _('Pups') }}" {% if locked %}disabled{% endif %}></td>
+                  <td class="whitespace-normal" title="{{ _('%(alive)s of %(total)s alive', alive=alive, total=litter.mice|length) }}">
                     {% for mouse in litter.mice %}
                       <a class="litter-mouse" href="{{ url_for('colony', view='mice', scope='all', q=mouse.mouse_id) }}">
                         {%- set st = life_stage('mouse', mouse.age_days) %}
-                        <span class="life-dot{% if mouse.active %} is-alive{% endif %}"{% if st %} data-stage="{{ st }}"{% endif %}></span>{{ mouse.mouse_id }}{% if mouse.gender %} {{ mouse.gender }}{% endif %}</a>
-                    {%- else %}<span class="sheet-empty">none yet</span>{% endfor %}
+                        <span class="life-dot{% if mouse.active %} is-alive{% endif %}"{% if st %} data-stage="{{ st }}"{% endif %}></span>{{ mouse.mouse_id }}{% if mouse.gender %} {{ mouse.gender|tr }}{% endif %}</a>
+                    {%- else %}<span class="sheet-empty">{{ _('none yet') }}</span>{% endfor %}
                   </td>
-                  <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ litter.notes }}" title="{{ litter.notes }}" placeholder="Add a note"
-                             data-autosave="1" aria-label="Notes" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="note-cell" name="notes" form="{{ f }}" value="{{ litter.notes }}" title="{{ litter.notes }}" placeholder="{{ _('Add a note') }}"
+                             data-autosave="1" aria-label="{{ _('Notes') }}" {% if locked %}disabled{% endif %}></td>
                   <td class="sheet-pin sheet-pin-end">
                     <div class="sheet-actions">
                       {% if not locked %}
-                        <button type="button" class="row-icon-btn" title="Add an existing mouse to litter {{ litter.litter_id }}"
+                        <button type="button" class="row-icon-btn" title="{{ _('Add an existing mouse to litter %(id)s', id=litter.litter_id) }}"
                                 data-add-existing-mouse data-litter
                                 data-action="{{ url_for('add_existing_mouse_to_litter', litter_row_id=litter.id) }}"
                                 data-target-label="{{ litter.litter_id }}">{{ icon('plus') }}</button>
@@ -1039,29 +1038,29 @@
                   </td>
                 </tr>
               {% else %}
-                <tr><td class="dt-empty" colspan="9">No litters yet. Use <strong>New litter</strong>, or record a litter from a breeding cage’s card.</td></tr>
+                <tr><td class="dt-empty" colspan="9">{{ _('No litters yet. Use <strong>New litter</strong>, or record a litter from a breeding cage’s card.') }}</td></tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
         {% for litter in litter_rows %}
           <form id="litter-update-{{ litter.id }}" method="post" action="{{ url_for('update_litter', litter_row_id=litter.id) }}"
-                data-record-label="litter {{ litter.litter_id }}"></form>
+                data-record-label="{{ _('litter %(id)s', id=litter.litter_id) }}"></form>
         {% endfor %}
         <div class="dt-bottom-bar">
-          {{ sheet_ui.quick_add(url_for('create_litter'), 'New litter', {'scope': scope}) }}
-          <span class="dt-bottom-count dt-count">{{ litter_rows|length }} {{ 'litter' if litter_rows|length == 1 else 'litters' }}</span>
+          {{ sheet_ui.quick_add(url_for('create_litter'), _('New litter'), {'scope': scope}) }}
+          <span class="dt-bottom-count dt-count">{{ ngettext('%(num)s litter', '%(num)s litters', litter_rows|length) }}</span>
           <div class="dt-bottom-spacer"></div>
           <div class="dt-pagination">
-            <span class="dt-page-label">Page 1</span>
-            <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
-            <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
-            <select class="dt-page-size" aria-label="Rows per page">
+            <span class="dt-page-label">{{ _('Page %(n)s', n=1) }}</span>
+            <button type="button" class="dt-prev" aria-label="{{ _('Previous page') }}">{{ icon('chevron-left') }}</button>
+            <button type="button" class="dt-next" aria-label="{{ _('Next page') }}">{{ icon('chevron-right') }}</button>
+            <select class="dt-page-size" aria-label="{{ _('Rows per page') }}">
               <option value="50">50</option>
               <option value="100" selected>100</option>
-              <option value="100000">All</option>
+              <option value="100000">{{ _('All') }}</option>
             </select>
-            <span>per page</span>
+            <span>{{ _('per page') }}</span>
           </div>
         </div>
       </section>
@@ -1070,28 +1069,28 @@
         <form method="post" data-record-form
               data-create-action="{{ url_for('create_litter') }}"
               data-update-action="{{ url_for('update_litter', litter_row_id=0) }}"
-              data-new-title="New litter" data-edit-title="Litter {label}"
-              data-new-submit="Create litter" data-edit-submit="Save">
+              data-new-title="{{ _('New litter') }}" data-edit-title="{{ _('Litter {label}') }}"
+              data-new-submit="{{ _('Create litter') }}" data-edit-submit="{{ _('Save') }}">
           <input type="hidden" name="scope" value="{{ scope }}">
           <header class="record-dialog-head">
             <div>
-              <h3 id="litter-dialog-title" data-record-title>New litter</h3>
-              <p class="record-dialog-sub">Leave the ID blank for the next free number ({{ next_litter_id_value }}).</p>
+              <h3 id="litter-dialog-title" data-record-title>{{ _('New litter') }}</h3>
+              <p class="record-dialog-sub">{{ _('Leave the ID blank for the next free number (%(id)s).', id=next_litter_id_value) }}</p>
             </div>
-            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <fieldset class="record-group">
-              <legend>Litter</legend>
-              <label>Litter ID <input name="litter_id" class="font-mono" placeholder="{{ next_litter_id_value }}"></label>
-              <label>Born <input type="date" name="date_of_birth"></label>
-              <label class="col-span-full">Cohort <input name="cohort_name"></label>
+              <legend>{{ _('Litter') }}</legend>
+              <label>{{ _('Litter ID') }} <input name="litter_id" class="font-mono" placeholder="{{ next_litter_id_value }}"></label>
+              <label>{{ _('Born') }} <input type="date" name="date_of_birth"></label>
+              <label class="col-span-full">{{ _('Cohort') }} <input name="cohort_name"></label>
             </fieldset>
-            <label class="record-wide">Notes <textarea name="notes" rows="2"></textarea></label>
+            <label class="record-wide">{{ _('Notes') }} <textarea name="notes" rows="2"></textarea></label>
           </div>
           <footer class="record-dialog-foot">
-            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
-            <button type="submit" class="btn btn-primary" data-record-submit>Create litter</button>
+            <button type="button" class="btn" data-on-click="close-dialog">{{ _('Cancel') }}</button>
+            <button type="submit" class="btn btn-primary" data-record-submit>{{ _('Create litter') }}</button>
           </footer>
         </form>
       </dialog>
@@ -1100,27 +1099,27 @@
         <section class="panel breeder-summary-panel">
           <div class="section-head compact-head">
             <div>
-              <h2>Breeder summary</h2>
-              <p>Living breeders by genotype. Young = 8–20 weeks, old = 20–30 weeks. Row colour: green ≤ 20 w, amber 20–30 w, red &gt; 30 w.</p>
+              <h2>{{ _('Breeder summary') }}</h2>
+              <p>{{ _('Living breeders by genotype. Young = 8–20 weeks, old = 20–30 weeks. Row colour: green ≤ 20 w, amber 20–30 w, red &gt; 30 w.') }}</p>
             </div>
           </div>
           <div class="table-wrap">
             <table class="dense-table fit-table breeder-summary-table">
               <thead>
                 <tr>
-                  <th>Genotype</th>
-                  <th>F (8–20 w)</th>
-                  <th>F (20–30 w)</th>
-                  <th>M (8–20 w)</th>
-                  <th>M (20–30 w)</th>
-                  <th>Total</th>
-                  <th>Oldest (w)</th>
+                  <th>{{ _('Genotype') }}</th>
+                  <th>{{ _('F (8–20 w)') }}</th>
+                  <th>{{ _('F (20–30 w)') }}</th>
+                  <th>{{ _('M (8–20 w)') }}</th>
+                  <th>{{ _('M (20–30 w)') }}</th>
+                  <th>{{ _('Total') }}</th>
+                  <th>{{ _('Oldest (w)') }}</th>
                 </tr>
               </thead>
               <tbody>
                 {% for row in breeder_summary %}
                   <tr class="breeder-summary-{{ row.urgency }}">
-                    <td><strong>{{ row.genotype }}</strong></td>
+                    <td><strong>{{ row.genotype|tr }}</strong></td>
                     <td>{{ row.f_young }}</td>
                     <td>{{ row.f_old }}</td>
                     <td>{{ row.m_young }}</td>
@@ -1137,56 +1136,56 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Lab breeders</h2>
-            <p>Every cage whose purpose is breeder or breeding. Search by cage, location, owner, genotype or any mouse field; Pick takes ownership of a breeder.</p>
+            <h2>{{ _('Lab breeders') }}</h2>
+            <p>{{ _('Every cage whose purpose is breeder or breeding. Search by cage, location, owner, genotype or any mouse field; Pick takes ownership of a breeder.') }}</p>
           </div>
         </div>
         <div class="breeder-search-bar">
-          <input id="breeder-search" placeholder="Search by cage, location, owner, genotype, mouse ID, note..." data-on-input="filterBreeders">
-          <label class="inline-check"><input type="checkbox" id="breeder-active-only" data-on-change="filterBreeders"> Alive only</label>
-          <button type="button" data-on-click="resetBreederSearch">Reset</button>
+          <input id="breeder-search" placeholder="{{ _('Search by cage, location, owner, genotype, mouse ID, note...') }}" data-on-input="filterBreeders">
+          <label class="inline-check"><input type="checkbox" id="breeder-active-only" data-on-change="filterBreeders"> {{ _('Alive only') }}</label>
+          <button type="button" data-on-click="resetBreederSearch">{{ _('Reset') }}</button>
           <span id="breeder-count" class="muted-inline"></span>
         </div>
         <div class="cage-stack" id="breeder-stack">
           {% for breeder_group in breeder_rows %}
             <article class="cage-card breeder-card" data-breeder-search="{{ breeder_group.search_blob }}" data-active-count="{{ breeder_group.active_count }}">
               <div class="breeder-head-grid">
-                <div><span>Cage</span><strong><a href="{{ url_for('colony', view='cages', scope='all') }}#cage-{{ breeder_group.id }}" title="Open cage {{ breeder_group.cage_id }}">{{ breeder_group.cage_id }}</a></strong></div>
-                <div><span>Rack</span><strong>{% if breeder_group.rack %}{{ breeder_group.rack }}{% if breeder_group.position %} · {{ breeder_group.position }}{% endif %}{% else %}—{% endif %}</strong></div>
-                <div><span>Location</span><strong>{{ breeder_group.cage_location or '—' }}</strong></div>
-                <div><span>Location detail</span><strong>{{ breeder_group.location_detail or '—' }}</strong></div>
-                <div><span>Room</span><strong>{{ breeder_group.room or '—' }}</strong></div>
-                <div><span>Card</span><strong>{{ breeder_group.card_id or '—' }}</strong></div>
-                <div><span>Genotype</span><strong class="genotype-full">{{ breeder_group.genotype_summary or '—' }}</strong></div>
-                <div><span>Owner</span><strong>{% if breeder_group.owner and breeder_group.owner != 'Unassigned' %}{{ breeder_group.owner | owner_badge }}{% else %}{{ breeder_group.owner }}{% endif %}</strong></div>
-                <div><span>Mice</span><strong>{{ breeder_group.active_count }} alive{% if breeder_group.females or breeder_group.males %} ({{ breeder_group.females }}♀ {{ breeder_group.males }}♂){% endif %} / {{ breeder_group.total_count }} total</strong></div>
+                <div><span>{{ _('Cage') }}</span><strong><a href="{{ url_for('colony', view='cages', scope='all') }}#cage-{{ breeder_group.id }}" title="{{ _('Open cage %(id)s', id=breeder_group.cage_id) }}">{{ breeder_group.cage_id }}</a></strong></div>
+                <div><span>{{ _('Rack') }}</span><strong>{% if breeder_group.rack %}{{ breeder_group.rack }}{% if breeder_group.position %} · {{ breeder_group.position }}{% endif %}{% else %}—{% endif %}</strong></div>
+                <div><span>{{ _('Location') }}</span><strong>{{ breeder_group.cage_location or '—' }}</strong></div>
+                <div><span>{{ _('Location detail') }}</span><strong>{{ breeder_group.location_detail or '—' }}</strong></div>
+                <div><span>{{ _('Room') }}</span><strong>{{ breeder_group.room or '—' }}</strong></div>
+                <div><span>{{ _('Card') }}</span><strong>{{ breeder_group.card_id or '—' }}</strong></div>
+                <div><span>{{ _('Genotype') }}</span><strong class="genotype-full">{{ breeder_group.genotype_summary or '—' }}</strong></div>
+                <div><span>{{ _('Owner') }}</span><strong>{% if breeder_group.owner and breeder_group.owner != 'Unassigned' %}{{ breeder_group.owner | owner_badge }}{% else %}{{ breeder_group.owner|tr }}{% endif %}</strong></div>
+                <div><span>{{ _('Mice') }}</span><strong>{{ _('%(n)s alive', n=breeder_group.active_count) }}{% if breeder_group.females or breeder_group.males %} ({{ breeder_group.females }}♀ {{ breeder_group.males }}♂){% endif %} / {{ _('%(n)s total', n=breeder_group.total_count) }}</strong></div>
               </div>
               <div class="table-wrap">
                 <table class="dense-table fit-table breeder-table">
                   <thead>
                     <tr>
-                      <th>Mouse</th>
-                      <th>Alive</th>
-                      <th>Sex</th>
-                      <th>Age (w)</th>
-                      <th>Born</th>
-                      <th>Status</th>
-                      <th>Genotype</th>
-                      <th>Owner</th>
-                      <th>Litter</th>
-                      <th>Note</th>
-                      <th>Pick</th>
+                      <th>{{ _('Mouse') }}</th>
+                      <th>{{ _('Alive') }}</th>
+                      <th>{{ _('Sex') }}</th>
+                      <th>{{ _('Age (w)') }}</th>
+                      <th>{{ _('Born') }}</th>
+                      <th>{{ _('Status') }}</th>
+                      <th>{{ _('Genotype') }}</th>
+                      <th>{{ _('Owner') }}</th>
+                      <th>{{ _('Litter') }}</th>
+                      <th>{{ _('Note') }}</th>
+                      <th>{{ _('Pick') }}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {% for mouse in breeder_group.mice %}
                       <tr data-mouse-active="{{ 'true' if mouse.active else 'false' }}">
                         <td>{{ mouse.mouse_id }}</td>
-                        <td>{{ 'Yes' if mouse.active else 'No' }}</td>
-                        <td>{{ mouse.gender }}</td>
+                        <td>{{ _('Yes') if mouse.active else _('No') }}</td>
+                        <td>{{ mouse.gender|tr }}</td>
                         <td>{{ mouse.age_weeks if mouse.age_weeks is not none else '' }}</td>
                         <td>{{ mouse.date_of_birth }}</td>
-                        <td>{{ mouse.status }}</td>
+                        <td>{{ mouse.status|tr }}</td>
                         <td class="genotype-full">{{ mouse.genotype_full }}</td>
                         <td>{% if mouse.owner %}{{ mouse.owner | owner_badge }}{% endif %}</td>
                         <td>{{ mouse.litter_id }}</td>
@@ -1194,21 +1193,21 @@
                         <td>
                           {% if mouse.owner != current_user.username %}
                             <form method="post" action="{{ url_for('pick_mouse', mouse_row_id=mouse.id) }}"
-                                  data-confirm="Take mouse {{ mouse.mouse_id }} as yours? {{ mouse.owner or 'Its owner' }} is notified.">
-                              <button type="submit">Pick</button>
+                                  data-confirm="{{ _('Take mouse %(id)s as yours? %(owner)s is notified.', id=mouse.mouse_id, owner=mouse.owner or _('Its owner')) }}">
+                              <button type="submit">{{ _('Pick') }}</button>
                             </form>
-                          {% else %}<span class="text-[11.5px] text-muted">Yours</span>{% endif %}
+                          {% else %}<span class="text-[11.5px] text-muted">{{ _('Yours') }}</span>{% endif %}
                         </td>
                       </tr>
                     {% else %}
-                      <tr><td colspan="11">No mice in this breeder cage.</td></tr>
+                      <tr><td colspan="11">{{ _('No mice in this breeder cage.') }}</td></tr>
                     {% endfor %}
                   </tbody>
                 </table>
               </div>
             </article>
           {% else %}
-            <p>No breeder cages yet. Set a cage's purpose to “breeder” or “breeding” to see it here.</p>
+            <p>{{ _("No breeder cages yet. Set a cage's purpose to “breeder” or “breeding” to see it here.") }}</p>
           {% endfor %}
         </div>
       </section>
@@ -1216,31 +1215,31 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>Experiments</h2>
-            <p>Group mice into cohorts under a shared treatment plan. Each experiment tracks its mice, what is done to them day by day, and their body weights; only its creator (or an admin) can change it.</p>
+            <h2>{{ _('Experiments') }}</h2>
+            <p>{{ _('Group mice into cohorts under a shared treatment plan. Each experiment tracks its mice, what is done to them day by day, and their body weights; only its creator (or an admin) can change it.') }}</p>
           </div>
         </div>
 
         <form method="post" action="{{ url_for('create_experiment') }}" class="inline-create-grid experiment-create-form">
-          <input name="name" placeholder="Experiment name (e.g. 6-OHDA cohort 1)" aria-label="Experiment name" required>
-          <input name="from_cage_id" placeholder="Start with a cage’s mice (optional)" aria-label="Start with the mice of cage" list="cage-id-list">
-          <input type="date" name="start_date" title="Start date" aria-label="Start date">
-          <input name="treatment_plan" placeholder="Treatment (e.g. drug X 10 mg/kg, qd × 14d)" aria-label="Treatment">
-          <button type="submit">{{ icon('plus') }} New experiment</button>
+          <input name="name" placeholder="{{ _('Experiment name (e.g. 6-OHDA cohort 1)') }}" aria-label="{{ _('Experiment name') }}" required>
+          <input name="from_cage_id" placeholder="{{ _('Start with a cage’s mice (optional)') }}" aria-label="{{ _('Start with the mice of cage') }}" list="cage-id-list">
+          <input type="date" name="start_date" title="{{ _('Start date') }}" aria-label="{{ _('Start date') }}">
+          <input name="treatment_plan" placeholder="{{ _('Treatment (e.g. drug X 10 mg/kg, qd × 14d)') }}" aria-label="{{ _('Treatment') }}">
+          <button type="submit">{{ icon('plus') }} {{ _('New experiment') }}</button>
         </form>
         <datalist id="cage-id-list">
           {% for cage_id in cage_ids %}<option value="{{ cage_id }}"></option>{% endfor %}
         </datalist>
 
         {% if experiments_list %}
-          <div class="dt-chips mb-3" role="group" aria-label="Show experiments" data-experiment-chips>
+          <div class="dt-chips mb-3" role="group" aria-label="{{ _('Show experiments') }}" data-experiment-chips>
             <button type="button" class="dt-chip" data-experiment-filter="" aria-pressed="true">
-              All <span class="dt-chip-count">{{ experiments_list|length }}</span>
+              {{ _('All') }} <span class="dt-chip-count">{{ experiments_list|length }}</span>
             </button>
             {% for status in ['active', 'paused', 'done', 'cancelled'] %}
               {% set n = experiments_list|selectattr('status', 'equalto', status)|list|length %}
               <button type="button" class="dt-chip" data-experiment-filter="{{ status }}" aria-pressed="false">
-                {{ status|capitalize }} <span class="dt-chip-count">{{ n }}</span>
+                {% set status_label = status|tr %}{{ status_label|capitalize if status_label == status else status_label }} <span class="dt-chip-count">{{ n }}</span>
               </button>
             {% endfor %}
           </div>
@@ -1249,24 +1248,24 @@
               <a class="experiment-card experiment-status-{{ exp.status }}" data-status="{{ exp.status }}"
                  href="{{ url_for('experiment_detail', experiment_id=exp.id) }}">
                 <div class="experiment-card-head">
-                  <span class="experiment-status-pill" data-status="{{ exp.status }}">{{ exp.status }}</span>
+                  <span class="experiment-status-pill" data-status="{{ exp.status }}">{{ exp.status|tr }}</span>
                   <span class="experiment-card-owner">
-                    {% if not exp.editable %}<span class="sheet-lock" title="{{ exp.owner }}’s experiment: read only">{{ icon('lock') }}</span>{% endif %}
+                    {% if not exp.editable %}<span class="sheet-lock" title="{{ _('%(owner)s’s experiment: read only', owner=exp.owner) }}">{{ icon('lock') }}</span>{% endif %}
                     {{ exp.owner | owner_badge if exp.owner else '' }}
                   </span>
                 </div>
                 <h3>{{ exp.name }}</h3>
                 {% if exp.description %}<p>{{ exp.description }}</p>{% endif %}
                 <div class="experiment-card-meta">
-                  <span>{{ icon('users') }} {{ exp.member_count }} mice</span>
+                  <span>{{ icon('users') }} {{ _('%(n)s mice', n=exp.member_count) }}</span>
                   {% if exp.start_date %}<span>{{ icon('calendar') }} {{ exp.start_date }}</span>{% endif %}
                 </div>
               </a>
             {% endfor %}
           </div>
-          <p class="muted-inline" data-experiment-nomatch hidden>No experiments with that status.</p>
+          <p class="muted-inline" data-experiment-nomatch hidden>{{ _('No experiments with that status.') }}</p>
         {% else %}
-          <p class="muted-inline">No experiments yet. Start one above — name a cage to pull its living mice in.</p>
+          <p class="muted-inline">{{ _('No experiments yet. Start one above — name a cage to pull its living mice in.') }}</p>
         {% endif %}
       </section>
     {% elif active_view == "strains" %}
@@ -1274,8 +1273,7 @@
          mouse sheet suggest these names. #}
       {% if current_user.role != 'admin' %}
         <p class="mb-3 text-[12px] text-muted">
-          {{ icon('info') }} Anyone can add a strain. Renaming or removing one is for whoever added it, or an admin;
-          the others are read only here but can still be picked on every mouse.
+          {{ icon('info') }} {{ _('Anyone can add a strain. Renaming or removing one is for whoever added it, or an admin; the others are read only here but can still be picked on every mouse.') }}
         </p>
       {% endif %}
       <section class="data-table-card sheet" data-table-id="strains-v2"
@@ -1283,14 +1281,14 @@
         <div class="dt-toolbar">
           <div class="dt-toolbar-search">
             {{ icon('search', 'search-icon') }}
-            <input type="text" class="dt-search" placeholder="Search name, number, background, supplier…"
-                   autocomplete="off" aria-label="Search strains">
+            <input type="text" class="dt-search" placeholder="{{ _('Search name, number, background, supplier…') }}"
+                   autocomplete="off" aria-label="{{ _('Search strains') }}">
           </div>
           <div class="dt-toolbar-spacer"></div>
           {{ sheet_ui.tools() }}
           <button type="button" class="btn btn-primary h-8 gap-1.5 px-2.5 text-[12px]"
                   data-record-edit="strain-dialog" data-record-payload="{}">
-            {{ icon('plus') }} New strain
+            {{ icon('plus') }} {{ _('New strain') }}
           </button>
         </div>
         <div class="dt-scroll">
@@ -1298,77 +1296,77 @@
             <thead>
               <tr>
                 <th class="dt-sortable sheet-pin sheet-pin-0" data-sort-key="strain_name" style="width: 190px; min-width: 190px;">
-                  <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}Strain<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('dna', 'dt-col-icon') }}{{ _('Strain') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="dt-sortable" data-sort-key="strain_number" style="width: 92px;" title="Stock number, e.g. JAX 007914">
-                  <span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}Number<span class="dt-sort-indicator"></span></span>
+                <th class="dt-sortable" data-sort-key="strain_number" style="width: 92px;" title="{{ _('Stock number, e.g. JAX 007914') }}">
+                  <span class="dt-col-head">{{ icon('barcode', 'dt-col-icon') }}{{ _('Number') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="strain_background" style="width: 128px;">
-                  <span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}Background<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('sitemap', 'dt-col-icon') }}{{ _('Background') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="supplier" style="width: 112px;">
-                  <span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}Supplier<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('vendor', 'dt-col-icon') }}{{ _('Supplier') }}<span class="dt-sort-indicator"></span></span>
                 </th>
                 <th class="dt-sortable" data-sort-key="description" style="min-width: 220px;">
-                  <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}Description<span class="dt-sort-indicator"></span></span>
+                  <span class="dt-col-head">{{ icon('note', 'dt-col-icon') }}{{ _('Description') }}<span class="dt-sort-indicator"></span></span>
                 </th>
-                <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">Actions</span></th>
+                <th class="sheet-pin sheet-pin-end" style="width: 56px; min-width: 56px;"><span class="sr-only">{{ _('Actions') }}</span></th>
               </tr>
             </thead>
             <tbody>
               {% for strain in strain_rows %}
                 {% set f = 'strain-update-' ~ strain.id %}
                 {% set locked = not strain.editable %}
-                {% set lock_title = ('Added by ' ~ strain.created_by if strain.created_by else 'Added before creators were recorded') ~ ': only they or an admin can change it' %}
+                {% set lock_title = _('Added by %(who)s: only they or an admin can change it', who=strain.created_by) if strain.created_by else _('Added before creators were recorded: only they or an admin can change it') %}
                 <tr data-id="{{ strain.id }}" data-created_by="{{ strain.created_by }}" class="{% if locked %}is-locked{% endif %}">
                   <td class="sheet-pin sheet-pin-0">
                     <div class="strain-name-cell">
-                      <input name="strain_name" form="{{ f }}" value="{{ strain.strain_name }}" data-autosave="1" aria-label="Strain name" required {% if locked %}disabled{% endif %}>
+                      <input name="strain_name" form="{{ f }}" value="{{ strain.strain_name }}" data-autosave="1" aria-label="{{ _('Strain name') }}" required {% if locked %}disabled{% endif %}>
                       {% if locked %}<span class="sheet-lock" title="{{ lock_title }}">{{ icon('lock') }}</span>{% endif %}
                     </div>
                   </td>
-                  <td><input class="ident" name="strain_number" form="{{ f }}" value="{{ strain.strain_number }}" data-autosave="1" aria-label="Number" {% if locked %}disabled{% endif %}></td>
-                  <td><input name="strain_background" form="{{ f }}" value="{{ strain.strain_background }}" data-autosave="1" aria-label="Background" {% if locked %}disabled{% endif %}></td>
-                  <td><input name="supplier" form="{{ f }}" value="{{ strain.supplier }}" data-autosave="1" aria-label="Supplier" {% if locked %}disabled{% endif %}></td>
-                  <td><input class="note-cell" name="description" form="{{ f }}" value="{{ strain.description }}" title="{{ strain.description }}" data-autosave="1" aria-label="Description" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="ident" name="strain_number" form="{{ f }}" value="{{ strain.strain_number }}" data-autosave="1" aria-label="{{ _('Number') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="strain_background" form="{{ f }}" value="{{ strain.strain_background }}" data-autosave="1" aria-label="{{ _('Background') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input name="supplier" form="{{ f }}" value="{{ strain.supplier }}" data-autosave="1" aria-label="{{ _('Supplier') }}" {% if locked %}disabled{% endif %}></td>
+                  <td><input class="note-cell" name="description" form="{{ f }}" value="{{ strain.description }}" title="{{ strain.description }}" data-autosave="1" aria-label="{{ _('Description') }}" {% if locked %}disabled{% endif %}></td>
                   <td class="sheet-pin sheet-pin-end">
                     <div class="sheet-actions">
                       {% if not locked %}
                         <form method="post" action="{{ url_for('delete_strain', strain_row_id=strain.id) }}"
-                              data-confirm="Remove strain {{ strain.strain_name }} from the list? Mice that carry it keep their transgene text.">
-                          <button type="submit" class="row-icon-btn danger-button" title="Remove strain {{ strain.strain_name }}">{{ icon('trash') }}</button>
+                              data-confirm="{{ _('Remove strain %(name)s from the list? Mice that carry it keep their transgene text.', name=strain.strain_name) }}">
+                          <button type="submit" class="row-icon-btn danger-button" title="{{ _('Remove strain %(name)s', name=strain.strain_name) }}">{{ icon('trash') }}</button>
                         </form>
                       {% endif %}
                     </div>
                   </td>
                 </tr>
               {% else %}
-                <tr><td class="dt-empty" colspan="6">No strains yet. Use <strong>New strain</strong> to start the list.</td></tr>
+                <tr><td class="dt-empty" colspan="6">{{ _('No strains yet. Use <strong>New strain</strong> to start the list.') }}</td></tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
         {% for strain in strain_rows %}
           <form id="strain-update-{{ strain.id }}" method="post" action="{{ url_for('update_strain', strain_row_id=strain.id) }}"
-                data-record-label="strain {{ strain.strain_name }}"></form>
+                data-record-label="{{ _('strain %(name)s', name=strain.strain_name) }}"></form>
         {% endfor %}
         <div class="dt-bottom-bar">
           {# A strain needs its name first, so this opens its form. #}
           <button type="button" class="dt-bottom-action is-primary" data-record-edit="strain-dialog" data-record-payload="{}">
-            {{ icon('plus') }} New strain
+            {{ icon('plus') }} {{ _('New strain') }}
           </button>
-          <span class="dt-bottom-count dt-count">{{ strain_rows|length }} {{ 'strain' if strain_rows|length == 1 else 'strains' }}</span>
+          <span class="dt-bottom-count dt-count">{{ ngettext('%(num)s strain', '%(num)s strains', strain_rows|length) }}</span>
           <div class="dt-bottom-spacer"></div>
           <div class="dt-pagination">
-            <span class="dt-page-label">Page 1</span>
-            <button type="button" class="dt-prev" aria-label="Previous page">{{ icon('chevron-left') }}</button>
-            <button type="button" class="dt-next" aria-label="Next page">{{ icon('chevron-right') }}</button>
-            <select class="dt-page-size" aria-label="Rows per page">
+            <span class="dt-page-label">{{ _('Page %(n)s', n=1) }}</span>
+            <button type="button" class="dt-prev" aria-label="{{ _('Previous page') }}">{{ icon('chevron-left') }}</button>
+            <button type="button" class="dt-next" aria-label="{{ _('Next page') }}">{{ icon('chevron-right') }}</button>
+            <select class="dt-page-size" aria-label="{{ _('Rows per page') }}">
               <option value="50">50</option>
               <option value="100" selected>100</option>
-              <option value="100000">All</option>
+              <option value="100000">{{ _('All') }}</option>
             </select>
-            <span>per page</span>
+            <span>{{ _('per page') }}</span>
           </div>
         </div>
       </section>
@@ -1377,79 +1375,79 @@
         <form method="post" data-record-form
               data-create-action="{{ url_for('create_strain') }}"
               data-update-action="{{ url_for('update_strain', strain_row_id=0) }}"
-              data-new-title="New strain" data-edit-title="Strain {label}"
-              data-new-submit="Add strain" data-edit-submit="Save">
+              data-new-title="{{ _('New strain') }}" data-edit-title="{{ _('Strain {label}') }}"
+              data-new-submit="{{ _('Add strain') }}" data-edit-submit="{{ _('Save') }}">
           <header class="record-dialog-head">
-            <div><h3 id="strain-dialog-title" data-record-title>New strain</h3></div>
-            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+            <div><h3 id="strain-dialog-title" data-record-title>{{ _('New strain') }}</h3></div>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <fieldset class="record-group">
-              <legend>Strain</legend>
-              <label>Name <input name="strain_name" required></label>
-              <label>Number <input name="strain_number" class="font-mono" placeholder="e.g. 007914"></label>
-              <label>Background <input name="strain_background" placeholder="e.g. C57BL/6J"></label>
-              <label>Supplier <input name="supplier" placeholder="e.g. JAX"></label>
+              <legend>{{ _('Strain') }}</legend>
+              <label>{{ _('Name') }} <input name="strain_name" required></label>
+              <label>{{ _('Number') }} <input name="strain_number" class="font-mono" placeholder="{{ _('e.g. %(example)s', example='007914') }}"></label>
+              <label>{{ _('Background') }} <input name="strain_background" placeholder="{{ _('e.g. %(example)s', example='C57BL/6J') }}"></label>
+              <label>{{ _('Supplier') }} <input name="supplier" placeholder="{{ _('e.g. %(example)s', example='JAX') }}"></label>
             </fieldset>
-            <label class="record-wide">Description <textarea name="description" rows="2"></textarea></label>
+            <label class="record-wide">{{ _('Description') }} <textarea name="description" rows="2"></textarea></label>
           </div>
           <footer class="record-dialog-foot">
-            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
-            <button type="submit" class="btn btn-primary" data-record-submit>Add strain</button>
+            <button type="button" class="btn" data-on-click="close-dialog">{{ _('Cancel') }}</button>
+            <button type="submit" class="btn btn-primary" data-record-submit>{{ _('Add strain') }}</button>
           </footer>
         </form>
       </dialog>
 {% else %}
       <section class="grid two-col">
         <article class="panel">
-          <h2>Dropdown choices</h2>
-          <p>The choices a column's dropdown offers. Picking a column shows only its choices on the right.</p>
+          <h2>{{ _('Dropdown choices') }}</h2>
+          <p>{{ _("The choices a column's dropdown offers. Picking a column shows only its choices on the right.") }}</p>
           {% if not can_edit_presets %}
-            <p class="preset-readonly-note">{{ icon('lock') }} Only an admin can add, rename or remove choices. You can still pick them everywhere.</p>
+            <p class="preset-readonly-note">{{ icon('lock') }} {{ _('Only an admin can add, rename or remove choices. You can still pick them everywhere.') }}</p>
           {% endif %}
           <form method="post" action="{{ url_for('create_option') }}" class="option-form"{% if not can_edit_presets %} data-presets-locked{% endif %}>
             <label>
-              <span>Column</span>
+              <span>{{ _('Column') }}</span>
               <select name="field_name" id="preset-column-select">
                 {% for field_name in dropdowns.keys() %}
-                  <option value="{{ field_name }}">{{ field_name }}</option>
+                  <option value="{{ field_name }}">{{ field_name|tr }}</option>
                 {% endfor %}
               </select>
             </label>
             {% if can_edit_presets %}
               <label>
-                <span>Choice</span>
+                <span>{{ _('Choice') }}</span>
                 <input name="option_value" required>
               </label>
-              <button type="submit">Add choice</button>
+              <button type="submit">{{ _('Add choice') }}</button>
             {% endif %}
           </form>
         </article>
         <article class="panel">
-          <h2>Current choices <span id="preset-selected-label" class="muted-inline" style="font-weight:normal;"></span></h2>
-          <p>{% if can_edit_presets %}Edit a value inline to rename a preset, or remove it with the delete button.{% else %}The values offered in each column’s dropdown.{% endif %}</p>
+          <h2>{{ _('Current choices') }} <span id="preset-selected-label" class="muted-inline" style="font-weight:normal;"></span></h2>
+          <p>{% if can_edit_presets %}{{ _('Edit a value inline to rename a preset, or remove it with the delete button.') }}{% else %}{{ _('The values offered in each column’s dropdown.') }}{% endif %}</p>
           {% for field_name, options in dropdown_records.items() %}
             <div class="preset-block" data-field-name="{{ field_name }}">
-              <strong>{{ field_name }}</strong>
+              <strong>{{ field_name|tr }}</strong>
               {% if options %}
                 <div class="preset-options">
                   {% for option in options %}
                     <div class="preset-row">
                       <form method="post" action="{{ url_for('update_option', option_id=option.id) }}" class="preset-edit-form">
-                        <input name="option_value" value="{{ option.option_value }}" data-autosave="1" aria-label="Edit preset"
-                               {% if not can_edit_presets %}disabled title="Only an admin can rename presets"{% endif %}>
+                        <input name="option_value" value="{{ option.option_value }}" data-autosave="1" aria-label="{{ _('Edit preset') }}"
+                               {% if not can_edit_presets %}disabled title="{{ _('Only an admin can rename presets') }}"{% endif %}>
                       </form>
                       {% if can_edit_presets %}
                         <form method="post" action="{{ url_for('delete_option', option_id=option.id) }}"
-                              data-confirm="Remove the {{ field_name }} preset “{{ option.option_value }}”?">
-                          <button type="submit" class="danger-button preset-delete">Delete</button>
+                              data-confirm="{{ _('Remove the %(column)s preset “%(value)s”?', column=field_name|tr, value=option.option_value) }}">
+                          <button type="submit" class="danger-button preset-delete">{{ _('Delete') }}</button>
                         </form>
                       {% endif %}
                     </div>
                   {% endfor %}
                 </div>
               {% else %}
-                <p class="muted-inline">No saved values yet.</p>
+                <p class="muted-inline">{{ _('No saved values yet.') }}</p>
               {% endif %}
             </div>
           {% endfor %}
@@ -1468,7 +1466,7 @@
             blocks.forEach((block) => {
               block.style.display = (block.dataset.fieldName === active) ? '' : 'none';
             });
-            if (label) label.textContent = active ? `· ${active}` : '';
+            if (label) label.textContent = active ? `· ${select.selectedOptions[0].textContent}` : '';
           }
           select.addEventListener('change', applyFilter);
           applyFilter();
@@ -1485,10 +1483,10 @@
               data-update-action="{{ url_for('update_mouse', mouse_row_id=0) }}">
           <header class="record-dialog-head">
             <div>
-              <h3 id="mouse-edit-title" data-mouse-title>New mouse</h3>
-              <p class="record-dialog-sub" data-mouse-sub>The next free ID ({{ next_mouse_id_value }}) is assigned when you save.</p>
+              <h3 id="mouse-edit-title" data-mouse-title>{{ _('New mouse') }}</h3>
+              <p class="record-dialog-sub" data-mouse-sub>{{ _('The next free ID (%(id)s) is assigned when you save.', id=next_mouse_id_value) }}</p>
             </div>
-            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+            <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
           </header>
           <div class="record-dialog-body">
             <input type="hidden" name="confirm_cohort_dob_change" value="0">
@@ -1496,45 +1494,45 @@
             <input type="hidden" name="cage_position_was">
             <input type="hidden" name="cage_location_was">
             <fieldset class="record-group">
-              <legend>Identity</legend>
-              <label>Sex
+              <legend>{{ _('Identity') }}</legend>
+              <label>{{ _('Sex') }}
                 <select name="gender">
-                  <option value="">Not set</option>
-                  {% for g_value in mouse_sheet.gender_choices %}<option value="{{ g_value }}">{{ g_value }}</option>{% endfor %}
+                  <option value="">{{ _('Not set') }}</option>
+                  {% for g_value in mouse_sheet.gender_choices %}<option value="{{ g_value }}">{{ g_value|tr }}</option>{% endfor %}
                 </select>
               </label>
-              <label>Status
+              <label>{{ _('Status') }}
                 <select name="status">
-                  <option value="">No status</option>
-                  {% for s_value in mouse_sheet.status_choices %}<option value="{{ s_value }}">{{ s_value }}</option>{% endfor %}
+                  <option value="">{{ _('No status') }}</option>
+                  {% for s_value in mouse_sheet.status_choices %}<option value="{{ s_value }}">{{ s_value|tr }}</option>{% endfor %}
                 </select>
               </label>
-              <label>Owner <input name="owner" list="owner-name-options"></label>
+              <label>{{ _('Owner') }} <input name="owner" list="owner-name-options"></label>
             </fieldset>
             <fieldset class="record-group">
-              <legend>Genotype</legend>
+              <legend>{{ _('Genotype') }}</legend>
               {% for n in range(1, 5) %}
-                <label>Transgene {{ n }} <input name="transgene_{{ n }}" list="strain-name-options"></label>
+                <label>{{ _('Transgene %(n)s', n=n) }} <input name="transgene_{{ n }}" list="strain-name-options"></label>
               {% endfor %}
             </fieldset>
             <fieldset class="record-group">
-              <legend>Housing and dates</legend>
-              <label>Cage <input name="cage_id" placeholder="number, or “new”"></label>
-              <label>Rack
-                <select name="cage_rack"><option value="">Not in a rack</option>{% for rack in mouse_sheet.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
+              <legend>{{ _('Housing and dates') }}</legend>
+              <label>{{ _('Cage') }} <input name="cage_id" placeholder="{{ _('number, or “new”') }}"></label>
+              <label>{{ _('Rack') }}
+                <select name="cage_rack"><option value="">{{ _('Not in a rack') }}</option>{% for rack in mouse_sheet.racks %}<option value="{{ rack.id }}">{{ rack.name }}</option>{% endfor %}</select>
               </label>
-              <label>Position <input name="cage_position" class="font-mono" placeholder="e.g. D7"></label>
-              <label>Location note <input name="cage_location" list="options-cage_location" placeholder="room, shelf…"></label>
-              <label>Litter <input name="litter_id"></label>
-              <label>Born <input type="date" name="date_of_birth"></label>
-              <label>Died <input type="date" name="date_of_death"></label>
+              <label>{{ _('Position') }} <input name="cage_position" class="font-mono" placeholder="{{ _('e.g. D7') }}"></label>
+              <label>{{ _('Location note') }} <input name="cage_location" list="options-cage_location" placeholder="{{ _('room, shelf…') }}"></label>
+              <label>{{ _('Litter') }} <input name="litter_id"></label>
+              <label>{{ _('Born') }} <input type="date" name="date_of_birth"></label>
+              <label>{{ _('Died') }} <input type="date" name="date_of_death"></label>
             </fieldset>
-            <label class="record-wide">Note <textarea name="note" rows="3"></textarea></label>
+            <label class="record-wide">{{ _('Note') }} <textarea name="note" rows="3"></textarea></label>
           </div>
           <footer class="record-dialog-foot">
             <span class="record-dialog-hint" data-mouse-hint></span>
-            <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
-            <button type="submit" class="btn btn-primary" data-mouse-submit>Create mouse</button>
+            <button type="button" class="btn" data-on-click="close-dialog">{{ _('Cancel') }}</button>
+            <button type="submit" class="btn btn-primary" data-mouse-submit>{{ _('Create mouse') }}</button>
           </footer>
         </form>
       </dialog>
@@ -1543,61 +1541,61 @@
 
 <dialog id="existing-mouse-modal" class="mouse-modal">
   <form method="dialog" class="modal-topbar">
-    <h3 data-existing-title>Add existing mouse</h3>
-    <button type="submit" class="ghost-button">Close</button>
+    <h3 data-existing-title>{{ _('Add existing mouse') }}</h3>
+    <button type="submit" class="ghost-button">{{ _('Close') }}</button>
   </form>
   <form method="post" id="existing-mouse-form" class="modal-grid">
-    <label>Mouse <input name="mouse_id" inputmode="numeric" required></label>
-    <label><span data-existing-target-label>Cage</span> <input id="existing-mouse-target" readonly></label>
-    <button type="submit" data-existing-submit>Add</button>
+    <label>{{ _('Mouse') }} <input name="mouse_id" inputmode="numeric" required></label>
+    <label><span data-existing-target-label>{{ _('Cage') }}</span> <input id="existing-mouse-target" readonly></label>
+    <button type="submit" data-existing-submit>{{ _('Add') }}</button>
   </form>
 </dialog>
 
 <dialog id="export-modal" class="mouse-modal">
   <form method="dialog" class="modal-topbar">
-    <h3>Export mice</h3>
-    <button type="submit" class="ghost-button">Close</button>
+    <h3>{{ _('Export mice') }}</h3>
+    <button type="submit" class="ghost-button">{{ _('Close') }}</button>
   </form>
   <div class="export-options">
     {# The file holds the scope you are looking at. #}
     <a class="button-link" href="{{ url_for('export_mice', format='csv', scope=scope) }}">CSV</a>
     <a class="button-link" href="{{ url_for('export_mice', format='excel', scope=scope) }}">Excel</a>
-    <a class="button-link" href="{{ url_for('export_mice', format='pdf', scope=scope) }}" target="_blank">PDF / Print</a>
+    <a class="button-link" href="{{ url_for('export_mice', format='pdf', scope=scope) }}" target="_blank">{{ _('PDF / Print') }}</a>
   </div>
 </dialog>
 
 {# Litter born: the date is confirmed (today unless changed), never assumed. #}
 <dialog id="litter-born-modal" class="mouse-modal">
   <form method="dialog" class="modal-topbar">
-    <h3>Litter born <small id="litter-born-cage" class="muted-inline"></small></h3>
-    <button type="submit" class="ghost-button">Close</button>
+    <h3>{{ _('Litter born') }} <small id="litter-born-cage" class="muted-inline"></small></h3>
+    <button type="submit" class="ghost-button">{{ _('Close') }}</button>
   </form>
   <form method="post" id="litter-born-form" class="modal-grid">
-    <label>Date of birth <input type="date" id="litter-born-date" name="date_give_birth" required></label>
+    <label>{{ _('Date of birth') }} <input type="date" id="litter-born-date" name="date_give_birth" required></label>
     <p class="muted-inline col-span-full" id="litter-born-replaces" hidden></p>
-    <button type="submit">Record the litter</button>
+    <button type="submit">{{ _('Record the litter') }}</button>
   </form>
 </dialog>
 
 <dialog id="genotyping-modal" class="mouse-modal">
   <form method="dialog" class="modal-topbar">
-    <h3>Genotyping</h3>
-    <button type="submit" class="ghost-button">Close</button>
+    <h3>{{ _('Genotyping') }}</h3>
+    <button type="submit" class="ghost-button">{{ _('Close') }}</button>
   </form>
   <form method="post" id="genotyping-form" class="modal-grid">
-    <label>Father <input id="genotyping-father" name="father_info"></label>
-    <label>Mother <input id="genotyping-mother" name="mother_info"></label>
-    <label>Pups <input type="number" min="1" max="40" value="1" name="total_pups" required></label>
-    <button type="submit">Create litter</button>
+    <label>{{ _('Father') }} <input id="genotyping-father" name="father_info"></label>
+    <label>{{ _('Mother') }} <input id="genotyping-mother" name="mother_info"></label>
+    <label>{{ _('Pups') }} <input type="number" min="1" max="40" value="1" name="total_pups" required></label>
+    <button type="submit">{{ _('Create litter') }}</button>
   </form>
 </dialog>
 
 <dialog id="wean-modal" class="mouse-modal wean-modal">
   <form method="dialog" class="modal-topbar">
-    <h3>Wean and distribute pups <small id="wean-cage-label" class="muted-inline"></small></h3>
-    <button type="submit" class="ghost-button">Close</button>
+    <h3>{{ _('Wean and distribute pups') }} <small id="wean-cage-label" class="muted-inline"></small></h3>
+    <button type="submit" class="ghost-button">{{ _('Close') }}</button>
   </form>
-  <p class="muted-inline">Move the pups to new or existing cages, one destination per row: the rows start with this cage's pups, females and males apart. A filled <strong>Existing cage</strong> wins over <strong>Card</strong>; leave both empty for a new cage of yours. Mice not listed in any row stay in the current cage.</p>
+  <p class="muted-inline">{{ _("Move the pups to new or existing cages, one destination per row: the rows start with this cage's pups, females and males apart. A filled <strong>Existing cage</strong> wins over <strong>Card</strong>; leave both empty for a new cage of yours. Mice not listed in any row stay in the current cage.") }}</p>
   <form method="post" id="wean-form">
     {# Set once the person has confirmed weaning pups younger than P{{ min_wean_age_days }}. #}
     <input type="hidden" name="early" value="">
@@ -1605,10 +1603,10 @@
       <table class="dense-table fit-table" id="wean-rows-table">
         <thead>
           <tr>
-            <th style="min-width:136px">Mice (comma-separated)</th>
-            <th>Sex</th>
-            <th>Card (new cage)</th>
-            <th>Existing cage</th>
+            <th style="min-width:136px">{{ _('Mice (comma-separated)') }}</th>
+            <th>{{ _('Sex') }}</th>
+            <th>{{ _('Card (new cage)') }}</th>
+            <th>{{ _('Existing cage') }}</th>
             <th></th>
           </tr>
         </thead>
@@ -1616,10 +1614,10 @@
       </table>
     </div>
     <div class="wean-actions">
-      <button type="button" class="ghost-button" data-on-click="addWeanRow">+ Add row</button>
+      <button type="button" class="ghost-button" data-on-click="addWeanRow">+ {{ _('Add row') }}</button>
       <span class="wean-actions-spacer"></span>
-      <button type="submit" id="wean-submit-self" class="ghost-button" formmethod="post" title="Marks the litter weaned and moves no one: you move the pups yourself">Mark weaned, move pups later</button>
-      <button type="submit" id="wean-submit-distribute" formmethod="post" title="Moves the pups as the rows above say, and marks the litter weaned">Wean and move</button>
+      <button type="submit" id="wean-submit-self" class="ghost-button" formmethod="post" title="{{ _('Marks the litter weaned and moves no one: you move the pups yourself') }}">{{ _('Mark weaned, move pups later') }}</button>
+      <button type="submit" id="wean-submit-distribute" formmethod="post" title="{{ _('Moves the pups as the rows above say, and marks the litter weaned') }}">{{ _('Wean and move') }}</button>
     </div>
   </form>
 </dialog>
@@ -1638,9 +1636,9 @@ document.addEventListener('click', (event) => {
     const form = document.getElementById('existing-mouse-form');
     const litter = add.hasAttribute('data-litter');
     form.action = add.dataset.action;
-    dialog.querySelector('[data-existing-title]').textContent = litter ? 'Add an existing mouse to the litter' : 'Move an existing mouse into the cage';
-    dialog.querySelector('[data-existing-target-label]').textContent = litter ? 'Litter' : 'Cage';
-    dialog.querySelector('[data-existing-submit]').textContent = litter ? 'Add to litter' : 'Move into cage';
+    dialog.querySelector('[data-existing-title]').textContent = litter ? t('Add an existing mouse to the litter') : t('Move an existing mouse into the cage');
+    dialog.querySelector('[data-existing-target-label]').textContent = litter ? t('Litter') : t('Cage');
+    dialog.querySelector('[data-existing-submit]').textContent = litter ? t('Add to litter') : t('Move into cage');
     document.getElementById('existing-mouse-target').value = add.dataset.targetLabel || '';
     form.querySelector('input[name="mouse_id"]').value = '';
     dialog.showModal();
@@ -1652,14 +1650,14 @@ document.addEventListener('click', (event) => {
     const now = new Date();
     const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     document.getElementById('litter-born-form').action = born.dataset.action;
-    document.getElementById('litter-born-cage').textContent = `cage ${born.dataset.cageLabel || ''}`;
+    document.getElementById('litter-born-cage').textContent = t('cage %(id)s', { id: born.dataset.cageLabel || '' });
     const day = document.getElementById('litter-born-date');
     day.value = today;
     day.max = today;
     const note = document.getElementById('litter-born-replaces');
     note.hidden = !born.dataset.born;
     note.textContent = born.dataset.born
-      ? `This cage already has a litter born ${born.dataset.born}; the new date replaces it. Wean those pups first if they are still here.` : '';
+      ? t('This cage already has a litter born %(date)s; the new date replaces it. Wean those pups first if they are still here.', { date: born.dataset.born }) : '';
     document.getElementById('litter-born-modal').showModal();
     day.focus();
     return;
@@ -1683,18 +1681,18 @@ function addWeanRow(prefill) {
   const tr = document.createElement('tr');
   tr.className = 'wean-row';
   tr.innerHTML = `
-    <td><input name="mouse_ids[]" placeholder="e.g. 23, 45, 67" autocomplete="off"></td>
+    <td><input name="mouse_ids[]" placeholder="${t('e.g. 23, 45, 67')}" autocomplete="off"></td>
     <td>
       <select name="gender[]">
         <option value="">—</option>
-        <option value="M">M</option>
-        <option value="F">F</option>
+        <option value="M">${t('M')}</option>
+        <option value="F">${t('F')}</option>
         <option value="Unknown">?</option>
       </select>
     </td>
-    <td><input name="card_id[]" placeholder="optional card label" autocomplete="off"></td>
-    <td><input name="cage_id[]" placeholder="leave empty for new cage" autocomplete="off"></td>
-    <td><button type="button" class="ghost-button" data-on-click="remove-row" title="Remove row">×</button></td>
+    <td><input name="card_id[]" placeholder="${t('optional card label')}" autocomplete="off"></td>
+    <td><input name="cage_id[]" placeholder="${t('leave empty for new cage')}" autocomplete="off"></td>
+    <td><button type="button" class="ghost-button" data-on-click="remove-row" title="${t('Remove row')}">×</button></td>
   `;
   if (prefill && prefill.gender) tr.querySelector('select[name="gender[]"]').value = prefill.gender;
   if (prefill && prefill.mice) tr.querySelector('input[name="mouse_ids[]"]').value = prefill.mice;
@@ -1711,13 +1709,14 @@ async function openWeanModal(button) {
   form.elements.early.value = '';
   if (!Number.isNaN(age) && age < {{ min_wean_age_days | int }}) {
     const ok = await BioDialog.confirm(
-      `The pups in cage ${cageLabel} are ${age < 0 ? 'not born yet by their date' : age + ' days old'}. `
-      + `Weaning is due at P{{ wean_offset_days | int }}.\n\nWean them early anyway?`,
-      { danger: true, okLabel: 'Wean early', title: 'These pups are young' });
+      (age < 0 ? t('The pups in cage %(cage)s are not born yet by their date.', { cage: cageLabel })
+        : t('The pups in cage %(cage)s are %(age)s days old.', { cage: cageLabel, age: age }))
+      + ' ' + t('Weaning is due at P%(days)s.', { days: {{ wean_offset_days | int }} }) + '\n\n' + t('Wean them early anyway?'),
+      { danger: true, okLabel: t('Wean early'), title: t('These pups are young') });
     if (!ok) return;
     form.elements.early.value = '1';
   }
-  document.getElementById('wean-cage-label').textContent = cageLabel ? `· cage ${cageLabel}` : '';
+  document.getElementById('wean-cage-label').textContent = cageLabel ? '· ' + t('cage %(id)s', { id: cageLabel }) : '';
   document.getElementById('wean-submit-distribute').setAttribute('formaction', button.dataset.distributeAction);
   document.getElementById('wean-submit-self').setAttribute('formaction', button.dataset.weanAction);
   // One row for the females and one for the males, filled with this
@@ -1810,7 +1809,7 @@ function refreshLife(formId, activeFromServer) {
   const dot = row.querySelector('.life-dot');
   if (dot) {
     dot.classList.toggle('is-alive', alive);
-    dot.title = alive ? (dot.dataset.aliveTitle || 'Alive') : 'Not alive';
+    dot.title = alive ? (dot.dataset.aliveTitle || t('Alive')) : t('Not alive');
   }
   row.dataset.active = alive ? 'true' : 'false';
   row.classList.toggle('is-inactive', !alive);
@@ -1827,6 +1826,13 @@ function applyStatusChange(select, previous) {
   refreshLife(formId);
 }
 
+/* "Change the date of birth of mouse 12 from … to …?" */
+function dobQuestion(what, from, to) {
+  const values = { what: what, from: from, to: to || t('(blank)') };
+  return from ? t('Change the date of birth of %(what)s from %(from)s to %(to)s?', values)
+    : t('Change the date of birth of %(what)s to %(to)s?', values);
+}
+
 /* Changing a birth date asks first (filling in a blank one doesn't). A
    mouse in a cohort shares its litter's date, so saying yes moves it to a
    litter of its own. */
@@ -1839,10 +1845,11 @@ async function confirmDobChange(input) {
   if (input.hasAttribute('data-litter-dob')) {
     // A litter's date of birth is the age of every mouse in it.
     const n = Number(input.dataset.miceCount || 0);
-    const what = form?.dataset.recordLabel || 'this litter';
-    const message = `Change the date of birth of ${what}${from ? ` from ${from}` : ''} to ${to || '(blank)'}?`
-      + (n ? `\n\nThe age of its ${n} ${n === 1 ? 'mouse' : 'mice'} changes with it.` : '');
-    if (!(await BioDialog.confirm(message, { okLabel: 'Change the date' }))) {
+    const what = form?.dataset.recordLabel || t('this litter');
+    const message = dobQuestion(what, from, to)
+      + (n ? '\n\n' + (n === 1 ? t('The age of its %(n)s mouse changes with it.', { n: n })
+        : t('The age of its %(n)s mice changes with it.', { n: n })) : '');
+    if (!(await BioDialog.confirm(message, { okLabel: t('Change the date') }))) {
       input.value = from;
       input.dataset.empty = from ? '0' : '1';
       return false;
@@ -1850,7 +1857,7 @@ async function confirmDobChange(input) {
     input.dataset.originalDob = to;
     return true;
   }
-  const who = form?.dataset.mouseLabel ? `mouse ${form.dataset.mouseLabel}` : 'this mouse';
+  const who = form?.dataset.mouseLabel ? t('mouse %(id)s', { id: form.dataset.mouseLabel }) : t('this mouse');
   const cohort = input.dataset.originalLitter && from;
   // Filling in a blank date replaces nothing: no question, like any cell.
   if (!from) {
@@ -1860,11 +1867,11 @@ async function confirmDobChange(input) {
     return true;
   }
   const message = cohort
-    ? `Change the date of birth of ${who} from ${from} to ${to || '(blank)'}?\n\n`
-      + `It is in litter ${input.dataset.originalLitter}, so it will move to a new litter of its own. `
-      + 'The other mice in that litter keep their date.'
-    : `Change the date of birth of ${who}${from ? ` from ${from}` : ''} to ${to || '(blank)'}?`;
-  if (!(await BioDialog.confirm(message, { okLabel: 'Change the date' }))) {
+    ? dobQuestion(who, from, to) + '\n\n'
+      + t('It is in litter %(litter)s, so it will move to a new litter of its own. The other mice in that litter keep their date.',
+        { litter: input.dataset.originalLitter })
+    : dobQuestion(who, from, to);
+  if (!(await BioDialog.confirm(message, { okLabel: t('Change the date') }))) {
     input.value = from;
     input.dataset.empty = from ? '0' : '1';
     return false;
@@ -1984,8 +1991,8 @@ document.addEventListener('rack-grid:moved', (event) => {
 async function saveFormInBackground(form) {
   form.dataset.saveState = 'saving';
   savesInFlight += 1;
-  showSaveStatus('saving', 'Saving…');
-  const label = form.dataset.mouseLabel ? `mouse ${form.dataset.mouseLabel}` : (form.dataset.recordLabel || 'this change');
+  showSaveStatus('saving', t('Saving…'));
+  const label = form.dataset.mouseLabel ? t('mouse %(id)s', { id: form.dataset.mouseLabel }) : (form.dataset.recordLabel || t('this change'));
   try {
     const response = await fetch(form.action, {
       method: form.method || 'POST',
@@ -1995,21 +2002,21 @@ async function saveFormInBackground(form) {
     let body = {};
     try { body = await response.json(); } catch (_) { /* a redirect or HTML page */ }
     if (!response.ok || body.ok === false) {
-      throw new Error(body.error || `The server answered ${response.status}.`);
+      throw new Error(body.error || t('The server answered %(status)s.', { status: response.status }));
     }
     form.dataset.saveState = 'saved';
     if (body.cage) syncCage(body.cage, form);
     if (body.mouse) syncMouse(form, body.mouse);
     rowsForForm(form).forEach((el) => el.closest('td')?.classList.remove('has-error'));
     savesInFlight -= 1;
-    if (savesInFlight === 0) showSaveStatus('saved', 'All changes saved');
+    if (savesInFlight === 0) showSaveStatus('saved', t('All changes saved'));
   } catch (error) {
     savesInFlight -= 1;
     form.dataset.saveState = 'error';
     rowsForForm(form).forEach((el) => {
       if (el === document.activeElement || el.dataset.dirty === '1') el.closest('td')?.classList.add('has-error');
     });
-    showSaveStatus('error', `Couldn’t save ${label}: ${error.message}`);
+    showSaveStatus('error', t('Couldn’t save %(what)s: %(error)s', { what: label, error: error.message }));
     console.error(error);
   }
 }
@@ -2061,15 +2068,15 @@ document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
     });
     if (data.id) {
       form.action = form.dataset.updateAction.replace('/0/', `/${data.id}/`);
-      title.textContent = `Mouse ${data.mouse_id}`;
-      sub.textContent = data.locked ? `Read only: this is ${data.owner || 'another member'}’s mouse.` : 'Changes save when you press Save.';
-      submit.textContent = 'Save';
+      title.textContent = t('Mouse %(id)s', { id: data.mouse_id });
+      sub.textContent = data.locked ? t('Read only: this is %(owner)s’s mouse.', { owner: data.owner || t('another member') }) : t('Changes save when you press Save.');
+      submit.textContent = t('Save');
       submit.hidden = Boolean(data.locked);
     } else {
       form.action = form.dataset.createAction;
-      title.textContent = 'New mouse';
+      title.textContent = t('New mouse');
       sub.textContent = createSub;
-      submit.textContent = 'Create mouse';
+      submit.textContent = t('Create mouse');
       submit.hidden = false;
     }
     hint.textContent = '';
@@ -2098,13 +2105,14 @@ document.querySelectorAll('[data-autosave="1"]').forEach((input) => {
     if (!original.id || dob === (original.date_of_birth || '') || !original.date_of_birth) return;
     if (form.dataset.confirmed === '1') { delete form.dataset.confirmed; return; }
     const cohort = original.litter_id && original.date_of_birth && form.elements.litter_id.value === original.litter_id;
+    const who = t('mouse %(id)s', { id: original.mouse_id });
     const message = cohort
-      ? `Change the date of birth of mouse ${original.mouse_id} from ${original.date_of_birth} to ${dob || '(blank)'}?\n\n`
-        + `It is in litter ${original.litter_id}, so it will move to a new litter of its own. The other mice keep their date.`
-      : `Change the date of birth of mouse ${original.mouse_id}${original.date_of_birth ? ` from ${original.date_of_birth}` : ''} to ${dob || '(blank)'}?`;
+      ? dobQuestion(who, original.date_of_birth, dob) + '\n\n'
+        + t('It is in litter %(litter)s, so it will move to a new litter of its own. The other mice keep their date.', { litter: original.litter_id })
+      : dobQuestion(who, original.date_of_birth || '', dob);
     event.preventDefault();
     const submitter = event.submitter;
-    BioDialog.confirm(message, { okLabel: 'Change the date' }).then((ok) => {
+    BioDialog.confirm(message, { okLabel: t('Change the date') }).then((ok) => {
       if (!ok) return;
       if (cohort) form.elements.confirm_cohort_dob_change.value = '1';
       form.dataset.confirmed = '1';
@@ -2175,7 +2183,7 @@ function weanDue(born) {
     sheet.querySelectorAll('tbody tr[data-cage-row-id]').forEach((row) => setOpen(row.dataset.cageRowId, open));
     if (all) {
       all.setAttribute('aria-pressed', open ? 'true' : 'false');
-      all.querySelector('span').textContent = open ? 'Close all' : 'Open all';
+      all.querySelector('span').textContent = open ? t('Close all') : t('Open all');
     }
   };
   let startOpen = true;
@@ -2298,7 +2306,7 @@ function weanDue(born) {
       const card = document.querySelector(`[data-cage-card="${row.dataset.id}"]`);
       const title = card && card.querySelector('.cage-detail-title .ident');
       if (title) title.textContent = values.cage_id;
-      if (card) card.setAttribute('aria-label', `Cage ${values.cage_id}`);
+      if (card) card.setAttribute('aria-label', t('Cage %(id)s', { id: values.cage_id }));
     }
     const rack = row.querySelector('select[name="rack_id"]');
     row.dataset.rack_name = rack && rack.value ? rack.selectedOptions[0].textContent.trim() : '';
@@ -2402,9 +2410,10 @@ function filterBreeders() {
   const counter = document.getElementById('breeder-count');
   if (counter) {
     const total = document.querySelectorAll('.breeder-card').length;
-    let text = visibleCards === total ? `${total} cages` : `${visibleCards} / ${total} cages`;
+    let text = visibleCards === total ? t('%(n)s cages', { n: total })
+      : t('%(shown)s / %(total)s cages', { shown: visibleCards, total: total });
     if (query && totalMatches > 0) {
-      text += ` · ${totalMatches} match${totalMatches === 1 ? '' : 'es'}`;
+      text += ' · ' + (totalMatches === 1 ? t('%(n)s match', { n: totalMatches }) : t('%(n)s matches', { n: totalMatches }));
     }
     counter.textContent = text;
   }

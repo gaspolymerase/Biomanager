@@ -182,8 +182,8 @@
       const close = document.createElement('button');
       close.type = 'button';
       close.className = 'wtab-close';
-      close.title = 'Close tab (Alt+W)';
-      close.setAttribute('aria-label', 'Close ' + (tab.title || tab.url));
+      close.title = t('Close tab (Alt+W)');
+      close.setAttribute('aria-label', t('Close %(name)s', { name: tab.title || tab.url }));
       close.insertAdjacentHTML('beforeend', svgIcon('close', 'wtab-close-icon'));
       close.addEventListener('click', (event) => {
         event.preventDefault();

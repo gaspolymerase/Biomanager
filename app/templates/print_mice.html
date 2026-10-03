@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ 'zh-CN' if current_language() == 'zh' else 'en' }}">
   <head>
     <meta charset="utf-8">
-    <title>Mouse Export</title>
+    <title>{{ _('Mouse Export') }}</title>
     <style>
       body { font-family: Arial, sans-serif; margin: 20px; }
       h1 { margin-bottom: 6px; }
@@ -15,9 +15,9 @@
   <script src="{{ url_for('static', filename='actions.js') }}?v={{ asset_version('actions.js') }}"></script>
   </head>
   <body>
-    <button data-on-click="print">Print / Save as PDF</button>
-    <h1>Mouse Export</h1>
-    <p>Printed on {{ printed_on }}</p>
+    <button data-on-click="print">{{ _('Print / Save as PDF') }}</button>
+    <h1>{{ _('Mouse Export') }}</h1>
+    <p>{{ _('Printed on %(date)s', date=printed_on) }}</p>
     <table>
       <thead>
         <tr>

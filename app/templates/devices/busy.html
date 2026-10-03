@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="3"><title>One moment</title>
+<html lang="{{ 'zh-CN' if current_language() == 'zh' else 'en' }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="3"><title>{{ _('One moment') }}</title>
 <style nonce="{{ csp_nonce() }}">body{font:15px -apple-system,system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;margin:0;background:#f5f4f0;color:#2b2a26}
 @media (prefers-color-scheme: dark){body{background:#1c1c1e;color:#e6e4dc}}</style></head>
-<body><p>This computer is opening the lab's master copy. One moment…</p></body></html>
+<body><p>{{ _("This computer is opening the lab's master copy. One moment…") }}</p></body></html>

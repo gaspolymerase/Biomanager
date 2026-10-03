@@ -24,9 +24,15 @@
     events: '#17a38f', tasks: '#007aff', auto: '#ff9500', subs: '#34c759', done: '#8e8e93',
   }, DATA.colors || {});
   const LAYER_NAMES = {
-    events: 'Event', tasks: 'To-do', auto: 'Colony', stocks: 'Stocks & organisms', supplies: 'Supplies',
-    protocols: 'Protocol', bookings: 'Equipment booking', away: 'Time away', subs: 'Connected calendar',
+    events: t('Event'), tasks: t('To-do'), auto: t('Colony'), stocks: t('Stocks & organisms'), supplies: t('Supplies'),
+    protocols: t('Protocol'), bookings: t('Equipment booking'), away: t('Time away'), subs: t('Connected calendar'),
   };
+  // Dates, months and weekdays in the page's language (app/i18n.py); the
+  // browser's own when the page is in English.
+  const LOCALE = window.BM_LANG === 'zh' ? 'zh-CN' : undefined;
+  const weekdayNames = (style) => [0, 1, 2, 3, 4, 5, 6].map((i) => new Date(2023, 0, 1 + i).toLocaleDateString(LOCALE, { weekday: style }));
+  const DAY_NAMES = LOCALE ? weekdayNames('short') : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MINI_DAY_NAMES = LOCALE ? weekdayNames('narrow') : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   // Colony items say what they are in their id ("auto-cage-12-wean").
   const AUTO_ICONS = { wean: 'baby', geno: 'microscope', sac: 'age', start: 'flask', end: 'flask' };
 
@@ -224,7 +230,7 @@
 
   waitForTui().then((status) => {
     if (status !== 'ready') {
-      tuiHost.innerHTML = `<div class="cal-empty">The calendar didn't load (${status}). Run <code>npm run build:calendar</code> and reload.</div>`;
+      tuiHost.innerHTML = `<div class="cal-empty">${t("The calendar didn't load (%(status)s). Run <code>npm run build:calendar</code> and reload.", { status })}</div>`;
       return;
     }
     calendar = new window.tui.Calendar('#biocal-tui', {
@@ -234,8 +240,8 @@
       useFormPopup: false,
       useDetailPopup: false,
       isReadOnly: false,
-      month: { visibleEventCount: 6, dayNames: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] },
-      week: { taskView: false, eventView: ['allday', 'time'], hourStart: 0, hourEnd: 24 },
+      month: { visibleEventCount: 6, dayNames: DAY_NAMES },
+      week: { taskView: false, eventView: ['allday', 'time'], hourStart: 0, hourEnd: 24, dayNames: DAY_NAMES },
       template: {
         allday: chip,
         time(ev) {
@@ -250,13 +256,13 @@
         task(ev) {
           const done = ev.raw && ev.raw.done;
           return `<span class="cal-chip cal-chip-task ${done ? 'is-done' : ''}" data-item-id="${ev.id}">
-              <input type="checkbox" class="biocal-task-cb" ${done ? 'checked' : ''} data-item-id="${ev.id}" aria-label="Done">
+              <input type="checkbox" class="biocal-task-cb" ${done ? 'checked' : ''} data-item-id="${ev.id}" aria-label="${t('Done')}">
               <span class="cal-chip-t">${escapeHtml(ev.title || '')}</span></span>`;
         },
-        monthMoreTitleDate(more) { return `<span class="cal-more-date">${more.ymd ? new Date(more.ymd + 'T00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : ''}</span>`; },
-        monthGridHeaderExceed(hidden) { return `<span class="cal-more">+${hidden} more</span>`; },
-        alldayTitle() { return '<span class="cal-panel-title">All day</span>'; },
-        taskTitle() { return '<span class="cal-panel-title">To-dos</span>'; },
+        monthMoreTitleDate(more) { return `<span class="cal-more-date">${more.ymd ? new Date(more.ymd + 'T00:00').toLocaleDateString(LOCALE, { weekday: 'long', month: 'long', day: 'numeric' }) : ''}</span>`; },
+        monthGridHeaderExceed(hidden) { return `<span class="cal-more">${t('+%(n)s more', { n: hidden })}</span>`; },
+        alldayTitle() { return `<span class="cal-panel-title">${t('All day')}</span>`; },
+        taskTitle() { return `<span class="cal-panel-title">${t('To-dos')}</span>`; },
       },
     });
 
@@ -292,7 +298,7 @@
           isAllday: !!next.isAllday, backgroundColor: item.backgroundColor, body: item.body,
         });
       }
-      saving.then((j) => { if (!j.ok) toast(j.error || "Couldn't move it."); fetchAndRender(); });
+      saving.then((j) => { if (!j.ok) toast(j.error || t("Couldn't move it.")); fetchAndRender(); });
     });
 
     calendar.on('clickEvent', ({ event, nativeEvent }) => {
@@ -393,16 +399,16 @@
     const d = currentDate();
     let html;
     if (currentView === 'month') {
-      html = `${d.toLocaleDateString(undefined, { month: 'long' })} <span class="cal-title-sub">${d.getFullYear()}</span>`;
+      html = `${d.toLocaleDateString(LOCALE, { month: 'long' })} <span class="cal-title-sub">${d.getFullYear()}</span>`;
     } else if (currentView === 'week' && calendar) {
       const s = tuiToDate(calendar.getDateRangeStart());
       const e = tuiToDate(calendar.getDateRangeEnd());
       const sameMonth = s.getMonth() === e.getMonth();
-      html = `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, sameMonth ? { day: 'numeric' } : { month: 'short', day: 'numeric' })} <span class="cal-title-sub">${e.getFullYear()}</span>`;
+      html = `${s.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(LOCALE, sameMonth ? { day: 'numeric' } : { month: 'short', day: 'numeric' })} <span class="cal-title-sub">${e.getFullYear()}</span>`;
     } else if (currentView === 'day') {
-      html = `${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} <span class="cal-title-sub">${d.getFullYear()}</span>`;
+      html = `${d.toLocaleDateString(LOCALE, { weekday: 'long', month: 'long', day: 'numeric' })} <span class="cal-title-sub">${d.getFullYear()}</span>`;
     } else {
-      html = `From ${d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })} <span class="cal-title-sub">6 weeks</span>`;
+      html = `${t('From %(date)s', { date: d.toLocaleDateString(LOCALE, { month: 'long', day: 'numeric' }) })} <span class="cal-title-sub">${t('6 weeks')}</span>`;
     }
     titleEl.innerHTML = html;
   }
@@ -465,7 +471,7 @@
       return end >= s && d <= e;
     }).sort((a, b) => a.start.localeCompare(b.start) || (b.isAllday - a.isAllday));
     if (!rows.length) {
-      listHost.innerHTML = '<div class="cal-empty">Nothing in these six weeks.</div>';
+      listHost.innerHTML = `<div class="cal-empty">${t('Nothing in these six weeks.')}</div>`;
       return;
     }
     const groups = new Map();
@@ -479,12 +485,12 @@
     const today = ymd(new Date());
     listHost.innerHTML = Array.from(groups.entries()).map(([day, dayItems]) => {
       const d = new Date(day + 'T00:00');
-      const rel = day === today ? '<span class="cal-list-rel">Today</span>'
-        : day === ymd(addDays(new Date(), 1)) ? '<span class="cal-list-rel">Tomorrow</span>' : '';
+      const rel = day === today ? `<span class="cal-list-rel">${t('Today')}</span>`
+        : day === ymd(addDays(new Date(), 1)) ? `<span class="cal-list-rel">${t('Tomorrow')}</span>` : '';
       return `<section class="cal-list-day${day === today ? ' is-today' : ''}">
           <header class="cal-list-date">
             <span class="cal-list-num">${d.getDate()}</span>
-            <span class="cal-list-dow">${d.toLocaleDateString(undefined, { weekday: 'long' })}<small>${d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</small></span>
+            <span class="cal-list-dow">${d.toLocaleDateString(LOCALE, { weekday: 'long' })}<small>${d.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' })}</small></span>
             ${rel}
           </header>
           <ul class="cal-list-rows">${dayItems.map(listRow).join('')}</ul>
@@ -497,10 +503,10 @@
     const done = it.kind === 'task' && it.raw && it.raw.done;
     const time = it.isAllday ? spanLabel(it) : `${fmtTime(it.start)} – ${fmtTime(it.end)}`;
     const lead = it.kind === 'task'
-      ? `<input type="checkbox" class="biocal-list-cb" data-item-id="${it.id}" ${done ? 'checked' : ''} ${it.raw && it.raw.readOnly ? 'disabled' : ''} aria-label="Done">`
+      ? `<input type="checkbox" class="biocal-list-cb" data-item-id="${it.id}" ${done ? 'checked' : ''} ${it.raw && it.raw.readOnly ? 'disabled' : ''} aria-label="${t('Done')}">`
       : `<span class="cal-list-icon" style="--edge:${painted.borderColor};--fill:${painted.backgroundColor}">${svgIcon(iconFor(it) || 'calendar')}</span>`;
-    const whose = it.kind === 'task' && it.raw && it.raw.audienceLabel ? `${it.raw.audienceLabel}’s` : '';
-    const meta = [(it.raw && it.raw.group) || LAYER_NAMES[layerOf(it)], whose, it.body].filter(Boolean).join(' · ');
+    const whose = it.kind === 'task' && it.raw && it.raw.audienceLabel ? t('%(whose)s’s', { whose: t(it.raw.audienceLabel) }) : '';
+    const meta = [(it.raw && it.raw.group && t(it.raw.group)) || LAYER_NAMES[layerOf(it)], whose, it.body].filter(Boolean).join(' · ');
     return `<li class="cal-list-row${done ? ' is-done' : ''}" data-item-id="${it.id}" tabindex="0">
         ${lead}
         <span class="cal-list-time">${time}</span>
@@ -510,8 +516,8 @@
 
   function spanLabel(it) {
     const s = new Date(it.start), e = new Date(it.end);
-    if (ymd(s) === ymd(e)) return 'All day';
-    return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    if (ymd(s) === ymd(e)) return t('All day');
+    return `${s.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })}`;
   }
 
   listHost.addEventListener('click', (e) => {
@@ -536,12 +542,12 @@
 
   function renderMini() {
     const grid = $('#cal-mini-grid');
-    $('#cal-mini-title').textContent = miniMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    $('#cal-mini-title').textContent = miniMonth.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
     const busy = new Set(allItems.filter(visible).map((it) => (it.start || '').slice(0, 10)));
     const start = addDays(miniMonth, -miniMonth.getDay());
     const today = ymd(new Date());
     const selected = ymd(currentDate());
-    let html = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => `<span class="cal-mini-dow">${d}</span>`).join('');
+    let html = MINI_DAY_NAMES.map((d) => `<span class="cal-mini-dow">${d}</span>`).join('');
     for (let i = 0; i < 42; i++) {
       const d = addDays(start, i);
       const key = ymd(d);
@@ -550,7 +556,7 @@
       if (key === today) cls.push('is-today');
       if (key === selected) cls.push('is-selected');
       if (busy.has(key)) cls.push('has-items');
-      html += `<button type="button" class="${cls.join(' ')}" data-day="${key}" aria-label="${d.toDateString()}">${d.getDate()}</button>`;
+      html += `<button type="button" class="${cls.join(' ')}" data-day="${key}" aria-label="${LOCALE ? d.toLocaleDateString(LOCALE, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : d.toDateString()}">${d.getDate()}</button>`;
     }
     grid.innerHTML = html;
   }
@@ -565,10 +571,10 @@
     const list = $('#cal-equip-list');
     const eq = DATA.equipment || [];
     list.innerHTML = eq.length
-      ? eq.map((e) => `<li><button type="button" class="cal-equip-item" data-equipment="${e.id}" title="Book ${escapeHtml(e.name)}">
+      ? eq.map((e) => `<li><button type="button" class="cal-equip-item" data-equipment="${e.id}" title="${t('Book %(name)s', { name: escapeHtml(e.name) })}">
             <span class="cal-dot" style="background:${e.color}"></span><span class="cal-equip-name">${escapeHtml(e.name)}</span>
             ${e.location ? `<small>${escapeHtml(e.location)}</small>` : ''}</button></li>`).join('')
-      : '<li class="cal-muted">No instruments yet.</li>';
+      : `<li class="cal-muted">${t('No instruments yet.')}</li>`;
     const select = $('#cal-equipment-select');
     select.innerHTML = eq.map((e) => `<option value="${e.id}">${escapeHtml(e.name)}${e.location ? ' · ' + escapeHtml(e.location) : ''}</option>`).join('');
   }
@@ -584,16 +590,16 @@
       const last = r.steps.length ? r.steps[r.steps.length - 1].to : 0;
       return ymd(addDays(new Date(r.start_date + 'T00:00'), last)) >= today;
     });
-    const buttons = `<li><button type="button" class="cal-link-btn cal-start-run" data-new="protocol">${svgIcon('plus')} Start a protocol</button></li>`;
+    const buttons = `<li><button type="button" class="cal-link-btn cal-start-run" data-new="protocol">${svgIcon('plus')} ${t('Start a protocol')}</button></li>`;
     if (!live.length) {
-      list.innerHTML = (protocols.templates.length ? '' : '<li class="cal-muted">Write one under Edit, then start it on a day 0.</li>') + buttons;
+      list.innerHTML = (protocols.templates.length ? '' : `<li class="cal-muted">${t('Write one under Edit, then start it on a day 0.')}</li>`) + buttons;
       return;
     }
     list.innerHTML = live.slice(0, 6).map((r) => {
       const start = new Date(r.start_date + 'T00:00');
       const dayN = Math.round((startOfDay(new Date()) - start) / 86400000);
       const total = r.steps.length ? r.steps[r.steps.length - 1].to : 0;
-      const when = dayN < 0 ? `starts ${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : `day ${dayN} of ${total}`;
+      const when = dayN < 0 ? t('starts %(date)s', { date: start.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' }) }) : t('day %(n)s of %(total)s', { n: dayN, total });
       const pct = total > 0 ? Math.max(0, Math.min(100, (dayN / total) * 100)) : 0;
       return `<li><button type="button" class="cal-run-item" data-run="${r.id}" style="--tone:${r.color}">
           <span class="cal-run-name">${escapeHtml(r.label || r.name)}</span>
@@ -611,22 +617,22 @@
     const list = $('#cal-cover-list');
     box.hidden = !coverReport.length;
     if (!coverReport.length) return;
-    const options = (selected, owner) => ['<option value="">No one yet</option>']
+    const options = (selected, owner) => [`<option value="">${t('No one yet')}</option>`]
       .concat((DATA.people || []).filter((p) => p.username !== owner)
         .map((p) => `<option value="${escapeHtml(p.username)}"${p.username === selected ? ' selected' : ''}>${escapeHtml(p.name)}</option>`)).join('');
     list.innerHTML = coverReport.map((a) => {
       const s = new Date(a.start + 'T00:00'), e = new Date(a.end + 'T00:00');
-      const span = a.start === a.end ? s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-        : `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+      const span = a.start === a.end ? s.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })
+        : `${s.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })}`;
       const needs = a.count && !a.cover;
-      const jobs = a.jobs.slice(0, 3).map((j) => `<li><span>${new Date(j.date + 'T00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>${escapeHtml(j.title)}</li>`).join('');
+      const jobs = a.jobs.slice(0, 3).map((j) => `<li><span>${new Date(j.date + 'T00:00').toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })}</span>${escapeHtml(j.title)}</li>`).join('');
       const coverCtl = a.editable
-        ? `<label class="cal-cover-pick">Covered by <select data-cover="${a.id}">${options(a.cover, a.owner)}</select></label>`
-        : `<p class="cal-cover-who">${a.cover ? 'Covered by ' + escapeHtml(a.cover_name) : 'No cover chosen yet'}</p>`;
+        ? `<label class="cal-cover-pick">${t('Covered by')} <select data-cover="${a.id}">${options(a.cover, a.owner)}</select></label>`
+        : `<p class="cal-cover-who">${a.cover ? t('Covered by %(name)s', { name: escapeHtml(a.cover_name) }) : t('No cover chosen yet')}</p>`;
       return `<article class="cal-cover-card${needs ? ' needs-cover' : ''}">
           <header><b>${escapeHtml(a.name)}</b><span>${span}</span></header>
-          ${a.count ? `<p class="cal-cover-count">${a.count} ${a.count === 1 ? 'thing' : 'things'} due while away</p><ul class="cal-cover-jobs">${jobs}</ul>`
-                    : '<p class="cal-cover-count">Nothing of theirs falls due.</p>'}
+          ${a.count ? `<p class="cal-cover-count">${t(a.count === 1 ? '%(n)s thing due while away' : '%(n)s things due while away', { n: a.count })}</p><ul class="cal-cover-jobs">${jobs}</ul>`
+                    : `<p class="cal-cover-count">${t('Nothing of theirs falls due.')}</p>`}
           ${coverCtl}
         </article>`;
     }).join('');
@@ -635,8 +641,8 @@
     const sel = e.target.closest('[data-cover]');
     if (!sel) return;
     postJson(`/calendar/away/${sel.dataset.cover}/cover`, { cover: sel.value }).then((j) => {
-      if (!j.ok) toast(j.error || "Couldn't save that.");
-      else toast(sel.value ? 'Cover saved; they have been told.' : 'Cover cleared.');
+      if (!j.ok) toast(j.error || t("Couldn't save that."));
+      else toast(sel.value ? t('Cover saved; they have been told.') : t('Cover cleared.'));
       fetchAndRender();
     });
   });
@@ -691,11 +697,11 @@
     const raw = item.raw || {};
     switch (item.kind) {
       case 'task':
-        if (raw.readOnly) return toast(`${item.title}: ${raw.audienceLabel ? raw.audienceLabel + '’s to-do' : `${raw.owner || 'someone else'}’s to-do`}, read only.`);
+        if (raw.readOnly) return toast(t('%(title)s: %(whose)s’s to-do, read only.', { title: item.title, whose: raw.audienceLabel ? t(raw.audienceLabel) : raw.owner || t('someone else') }));
         // falls through
       case 'event':
         if (item.kind === 'event' && raw.readOnly) {
-          return toast(`${item.title}${item.body ? ': ' + item.body : ''}. Only ${raw.owner || 'the person who added it'} or an admin can change it.`);
+          return toast(t('%(what)s. Only %(who)s or an admin can change it.', { what: `${item.title}${item.body ? ': ' + item.body : ''}`, who: raw.owner || t('the person who added it') }));
         }
         return openItem({
           kind: item.kind, id: item.id.split('@')[0], occurrence: raw.occurrence || '', title: item.title,
@@ -704,7 +710,7 @@
           audience: raw.audience || '0',
         });
       case 'booking':
-        if (item.isReadOnly) return toast(`${item.title}${raw.purpose ? ': ' + raw.purpose : ''}. Only the person who booked it can change it.`);
+        if (item.isReadOnly) return toast(t('%(what)s. Only the person who booked it can change it.', { what: `${item.title}${raw.purpose ? ': ' + raw.purpose : ''}` }));
         return openItem({ kind: 'booking', id: raw.bookingId, equipmentId: raw.equipmentId, purpose: raw.purpose,
           bookingStart: toLocalInput(new Date(item.start)), bookingEnd: toLocalInput(new Date(item.end)) });
       case 'away':
@@ -740,12 +746,12 @@
   const delOneBtn = $('#cal-delete-one');
   const dupBtn = $('#cal-duplicate');
   const changeOneBtn = $('#cal-change-one');
-  const ORDINALS = ['first', 'second', 'third', 'fourth', 'last'];
+  const ORDINALS = [t('first'), t('second'), t('third'), t('fourth'), t('last')];
   const repeatFreq = $('#cal-repeat-freq');
   const dueCustom = $('#biocal-due-custom');
   const duePresets = $$('.biocal-due-btn', form);
-  const KIND_TITLES = { event: ['New event', 'Edit event'], task: ['New to-do', 'Edit to-do'],
-    booking: ['Book equipment', 'Change booking'], away: ['Time away', 'Change time away'] };
+  const KIND_TITLES = { event: [t('New event'), t('Edit event')], task: [t('New to-do'), t('Edit to-do')],
+    booking: [t('Book equipment'), t('Change booking')], away: [t('Time away'), t('Change time away')] };
 
   function showError(el, message) { el.textContent = message || ''; el.hidden = !message; }
 
@@ -802,7 +808,7 @@
       const audience = form.elements.audience;
       // A group the to-do is for but this person can't pick still shows as itself.
       if (item.audience && !Array.from(audience.options).some((o) => o.value === item.audience)) {
-        audience.add(new Option('A project group’s', item.audience));
+        audience.add(new Option(t('A project group’s'), item.audience));
       }
       // New: an event is the lab's, a to-do yours, unless chosen otherwise.
       audience.value = item.audience || (kind === 'event' ? '1' : '0');
@@ -829,7 +835,7 @@
 
     fillPeople($('#cal-away-owner'), item.awayOwner || DATA.me);
     $('#cal-away-owner').disabled = !DATA.admin || (editing && kind === 'away');
-    fillPeople($('#cal-away-cover'), item.awayCover || '', 'No one yet');
+    fillPeople($('#cal-away-cover'), item.awayCover || '', t('No one yet'));
     form.elements.away_start.value = item.awayStart || '';
     form.elements.away_end.value = item.awayEnd || '';
     form.elements.away_kind.value = item.awayKind || 'leave';
@@ -838,7 +844,7 @@
     setSelectedSwatch(item.color || '#a4c8f0');
     form.elements.body.value = item.body || '';
     delBtn.hidden = !editing;
-    delBtn.innerHTML = `${svgIcon('trash')} ${rep ? 'Delete all' : kind === 'booking' ? 'Cancel booking' : 'Delete'}`;
+    delBtn.innerHTML = `${svgIcon('trash')} ${rep ? t('Delete all') : kind === 'booking' ? t('Cancel booking') : t('Delete')}`;
     delOneBtn.hidden = !(editing && rep && item.occurrence);
     changeOneBtn.hidden = !(editing && rep && item.occurrence && kind === 'event');
     dupBtn.hidden = !(editing && kind === 'booking');
@@ -876,13 +882,36 @@
     const freq = repeatFreq.value;
     $('#cal-repeat-more').hidden = !freq;
     const n = Number(form.elements.repeat_interval.value) || 1;
-    const unit = { daily: 'day', weekly: 'week', monthly: 'month', nthweekday: 'month' }[freq] || 'week';
+    const unit = REPEAT_UNITS[freq] || REPEAT_UNITS.weekly;
     // "Every month on the same weekday" says which: "the first Monday".
     const first = form.elements.start.value ? new Date(`${form.elements.start.value.slice(0, 10)}T12:00`) : null;
     $('#cal-repeat-nth').textContent = first
-      ? `Every month on the ${ORDINALS[Math.min(4, Math.floor((first.getDate() - 1) / 7))]} ${first.toLocaleDateString(undefined, { weekday: 'long' })}`
-      : 'Every month on the same weekday';
-    $('#cal-repeat-unit').textContent = n === 1 ? unit : unit + 's';
+      ? t('Every month on the %(nth)s %(weekday)s', { nth: ORDINALS[Math.min(4, Math.floor((first.getDate() - 1) / 7))], weekday: first.toLocaleDateString(LOCALE, { weekday: 'long' }) })
+      : t('Every month on the same weekday');
+    $('#cal-repeat-unit').textContent = n === 1 ? unit[0] : unit[1];
+  }
+  // The word after "every N" in the dialog, one and several.
+  const REPEAT_UNITS = { daily: [t('day'), t('days')], weekly: [t('week'), t('weeks')], monthly: [t('month'), t('months')], nthweekday: [t('month'), t('months')] };
+
+  /* How an event repeats, for its hover card: the server says it in English
+     (lab_calendar.repeat_summary); in another language it is said here. */
+  function repeatText(rep, item) {
+    if (!LOCALE) return rep.text || '';
+    const n = Number(rep.interval) || 1;
+    const every = n <= 1
+      ? { daily: t('Every day'), weekly: t('Every week') }[rep.freq] || t('Every month')
+      : t({ daily: 'Every %(n)s days', weekly: 'Every %(n)s weeks' }[rep.freq] || 'Every %(n)s months', { n });
+    let text = every;
+    if (rep.freq === 'nthweekday') {
+      const d = new Date(item.start);
+      text = t('%(every)s on the %(nth)s %(weekday)s', { every, nth: ORDINALS[Math.min(4, Math.floor((d.getDate() - 1) / 7))],
+        weekday: d.toLocaleDateString(LOCALE, { weekday: 'long' }) });
+    }
+    if (rep.until) {
+      text = t('%(every)s until %(date)s', { every: text,
+        date: new Date(`${rep.until}T12:00`).toLocaleDateString(LOCALE, { year: 'numeric', month: 'short', day: 'numeric' }) });
+    }
+    return text;
   }
   repeatFreq.addEventListener('change', syncRepeat);
   form.elements.repeat_interval.addEventListener('input', syncRepeat);
@@ -941,13 +970,13 @@
       request = postJson('/calendar/away', { id: id || null, owner: f.away_owner.value, start: f.away_start.value,
         end: f.away_end.value || f.away_start.value, kind: f.away_kind.value, note: f.away_note.value, cover: f.away_cover.value });
     } else {
-      if (!f.title.value.trim()) return showError(formError, 'Give it a title.');
+      if (!f.title.value.trim()) return showError(formError, t('Give it a title.'));
       let start, end, isAllday;
       if (kind === 'task') {
         const day = dueCustom.value || ymd(new Date());
         start = `${day}T00:00:00`; end = `${day}T23:59:59`; isAllday = true;
       } else {
-        if (!f.start.value) return showError(formError, 'Choose when it starts.');
+        if (!f.start.value) return showError(formError, t('Choose when it starts.'));
         start = f.start.value.length === 16 ? f.start.value + ':00' : f.start.value;
         end = f.end.value ? (f.end.value.length === 16 ? f.end.value + ':00' : f.end.value) : start;
         isAllday = f.isAllday.checked;
@@ -965,7 +994,7 @@
       }
     }
     request.then((j) => {
-      if (!j.ok) return showError(formError, j.error || "Couldn't save that.");
+      if (!j.ok) return showError(formError, j.error || t("Couldn't save that."));
       modal.close();
       fetchAndRender();
       return undefined;
@@ -1000,8 +1029,8 @@
      the dialog now says, and the series leaves the date out. */
   changeOneBtn.addEventListener('click', () => {
     const f = form.elements;
-    if (!f.title.value.trim()) return showError(formError, 'Give it a title.');
-    if (!f.start.value) return showError(formError, 'Choose when it starts.');
+    if (!f.title.value.trim()) return showError(formError, t('Give it a title.'));
+    if (!f.start.value) return showError(formError, t('Choose when it starts.'));
     const start = f.start.value.length === 16 ? f.start.value + ':00' : f.start.value;
     const end = f.end.value ? (f.end.value.length === 16 ? f.end.value + ':00' : f.end.value) : start;
     postJson('/calendar/items', {
@@ -1009,7 +1038,7 @@
       backgroundColor: f.color.value, body: f.body.value,
       split_from: { event_id: Number(String(f.id.value).split('-')[1]), date: f.occurrence.value },
     }).then((j) => {
-      if (!j.ok) return showError(formError, j.error || "Couldn't save that.");
+      if (!j.ok) return showError(formError, j.error || t("Couldn't save that."));
       modal.close();
       fetchAndRender();
       return undefined;
@@ -1022,13 +1051,13 @@
     const id = f.id.value;
     if (!id) return;
     const repeat = repeatFreq.value && kind === 'event';
-    const question = kind === 'booking' ? 'Cancel this booking?' : kind === 'away' ? 'Remove this time away?'
-      : repeat ? 'Delete every repeat of this event?' : 'Delete this?';
+    const question = kind === 'booking' ? t('Cancel this booking?') : kind === 'away' ? t('Remove this time away?')
+      : repeat ? t('Delete every repeat of this event?') : t('Delete this?');
     if (!(await BioDialog.confirm(question, { danger: true }))) return;
     const url = kind === 'booking' ? `/calendar/bookings/${id}/delete` : kind === 'away' ? `/calendar/away/${id}/delete`
       : `/calendar/items/${id}/delete`;
     postJson(url, {}).then((j) => {
-      if (j.ok === false) return showError(formError, j.error || "Couldn't delete that.");
+      if (j.ok === false) return showError(formError, j.error || t("Couldn't delete that."));
       modal.close();
       fetchAndRender();
       return undefined;
@@ -1038,7 +1067,7 @@
   delOneBtn.addEventListener('click', () => {
     const rowId = form.elements.id.value.split('-')[1];
     postJson(`/calendar/events/${rowId}/skip`, { date: form.elements.occurrence.value }).then((j) => {
-      if (!j.ok) return showError(formError, j.error || "Couldn't take that date out.");
+      if (!j.ok) return showError(formError, j.error || t("Couldn't take that date out."));
       modal.close();
       fetchAndRender();
       return undefined;
@@ -1068,16 +1097,16 @@
   }
 
   function openRun(run) {
-    if (!run && !protocols.templates.length) return openTemplates(null, 'Write a protocol first; then you can start it on a day 0.');
+    if (!run && !protocols.templates.length) return openTemplates(null, t('Write a protocol first; then you can start it on a day 0.'));
     runForm.reset();
     showError($('#cal-run-error'), '');
     const f = runForm.elements;
     f.id.value = run ? run.id : '';
-    $('#cal-run-title').textContent = run ? (run.label ? `${run.name} · ${run.label}` : run.name) : 'Start a protocol';
+    $('#cal-run-title').textContent = run ? (run.label ? `${run.name} · ${run.label}` : run.name) : t('Start a protocol');
     const templateSelect = $('#cal-run-template');
-    templateSelect.innerHTML = protocols.templates.map((t) => `<option value="${t.id}">${escapeHtml(t.name)} (${t.days} days)</option>`).join('');
+    templateSelect.innerHTML = protocols.templates.map((tpl) => `<option value="${tpl.id}">${t('%(name)s (%(n)s days)', { name: escapeHtml(tpl.name), n: tpl.days })}</option>`).join('');
     $('#cal-run-template-wrap').hidden = !!run;
-    $('#cal-run-experiment').innerHTML = ['<option value="">None</option>']
+    $('#cal-run-experiment').innerHTML = [`<option value="">${t('None')}</option>`]
       .concat((DATA.experiments || []).map((x) => `<option value="${x.id}">${escapeHtml(x.name)}</option>`)).join('');
     f.start_date.value = run ? run.start_date : ymd(new Date());
     f.label.value = run ? run.label : '';
@@ -1102,11 +1131,11 @@
     $('#cal-run-preview').innerHTML = steps.length ? steps.map((s) => {
       const a = day0 ? addDays(day0, s.from) : null;
       const b = day0 ? addDays(day0, s.to) : null;
-      const fmt = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      const fmt = (d) => d.toLocaleDateString(LOCALE, { weekday: 'short', month: 'short', day: 'numeric' });
       const when = !a ? '' : s.from === s.to ? fmt(a) : `${fmt(a)} – ${fmt(b)}`;
-      const days = s.from === s.to ? `Day ${s.from}` : `Days ${s.from}–${s.to}`;
+      const days = s.from === s.to ? t('Day %(n)s', { n: s.from }) : t('Days %(from)s–%(to)s', { from: s.from, to: s.to });
       return `<li><span class="cal-step-day">${days}</span><span class="cal-step-title">${escapeHtml(s.title)}</span><span class="cal-step-date">${when}</span></li>`;
-    }).join('') : '<li class="cal-muted">This protocol has no steps.</li>';
+    }).join('') : `<li class="cal-muted">${t('This protocol has no steps.')}</li>`;
   }
   ['template_id', 'start_date'].forEach((name) => runForm.elements[name].addEventListener('change', previewRun));
 
@@ -1115,7 +1144,7 @@
     const f = runForm.elements;
     postJson('/calendar/protocols/runs', { id: f.id.value || null, template_id: f.template_id.value, start_date: f.start_date.value,
       label: f.label.value, experiment_id: f.experiment_id.value, notes: f.notes.value }).then((j) => {
-      if (!j.ok) return showError($('#cal-run-error'), j.error || "Couldn't save that.");
+      if (!j.ok) return showError($('#cal-run-error'), j.error || t("Couldn't save that."));
       runModal.close();
       loadProtocols();
       fetchAndRender();
@@ -1124,9 +1153,9 @@
   });
   $('#cal-run-delete').addEventListener('click', async () => {
     const id = runForm.elements.id.value;
-    if (!id || !(await BioDialog.confirm('Remove this protocol run and all its steps from the calendar?', { danger: true }))) return;
+    if (!id || !(await BioDialog.confirm(t('Remove this protocol run and all its steps from the calendar?'), { danger: true }))) return;
     postJson(`/calendar/protocols/runs/${id}/delete`, {}).then((j) => {
-      if (!j.ok) return showError($('#cal-run-error'), j.error || "Couldn't remove it.");
+      if (!j.ok) return showError($('#cal-run-error'), j.error || t("Couldn't remove it."));
       runModal.close();
       loadProtocols();
       fetchAndRender();
@@ -1146,10 +1175,10 @@
   }
 
   function renderTemplateList() {
-    $('#cal-tpl-list').innerHTML = protocols.templates.map((t) => `
-      <li><button type="button" class="cal-tpl-item${tplSelected && tplSelected.id === t.id ? ' is-active' : ''}" data-tpl="${t.id}">
-        <span class="cal-dot" style="background:${t.color}"></span><span>${escapeHtml(t.name)}</span><small>${t.steps.length} steps · ${t.days} d</small>
-      </button></li>`).join('') || '<li class="cal-muted">None yet.</li>';
+    $('#cal-tpl-list').innerHTML = protocols.templates.map((tpl) => `
+      <li><button type="button" class="cal-tpl-item${tplSelected && tplSelected.id === tpl.id ? ' is-active' : ''}" data-tpl="${tpl.id}">
+        <span class="cal-dot" style="background:${tpl.color}"></span><span>${escapeHtml(tpl.name)}</span><small>${t('%(steps)s steps · %(days)s d', { steps: tpl.steps.length, days: tpl.days })}</small>
+      </button></li>`).join('') || `<li class="cal-muted">${t('None yet.')}</li>`;
   }
   $('#cal-tpl-list').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-tpl]');
@@ -1171,17 +1200,17 @@
     $$('.cal-tpl-edit input, .cal-tpl-edit button', tplForm).forEach((el) => { el.disabled = !editable; });
     tplForm.querySelector('[type="submit"]').hidden = !editable;
     $('#cal-tpl-delete').hidden = !(tpl && tpl.editable);
-    showError($('#cal-tpl-error'), editable ? '' : 'Only the person who wrote this protocol can change it.');
+    showError($('#cal-tpl-error'), editable ? '' : t('Only the person who wrote this protocol can change it.'));
     renderTemplateList();
   }
 
   function addStepRow(step) {
     const li = document.createElement('li');
     li.className = 'cal-step-row';
-    li.innerHTML = `<input type="number" name="step_from" value="${step.from}" min="-365" max="3650" aria-label="From day">
-      <input type="number" name="step_to" value="${step.to}" min="-365" max="3650" aria-label="To day">
-      <input type="text" name="step_title" value="${escapeHtml(step.title)}" placeholder="e.g. Tamoxifen i.p." aria-label="Step">
-      <button type="button" class="cal-icon-btn" data-remove-step aria-label="Remove step">${svgIcon('close')}</button>`;
+    li.innerHTML = `<input type="number" name="step_from" value="${step.from}" min="-365" max="3650" aria-label="${t('From day')}">
+      <input type="number" name="step_to" value="${step.to}" min="-365" max="3650" aria-label="${t('To day')}">
+      <input type="text" name="step_title" value="${escapeHtml(step.title)}" placeholder="${t('e.g. Tamoxifen i.p.')}" aria-label="${t('Step')}">
+      <button type="button" class="cal-icon-btn" data-remove-step aria-label="${t('Remove step')}">${svgIcon('close')}</button>`;
     $('#cal-tpl-steps').appendChild(li);
   }
   $('#cal-tpl-add-step').addEventListener('click', () => {
@@ -1218,17 +1247,17 @@
     }));
     postJson('/calendar/protocols/templates', { id: f.id.value || null, name: f.name.value, description: f.description.value,
       color: f.color.value, steps }).then((j) => {
-      if (!j.ok) return showError($('#cal-tpl-error'), j.error || "Couldn't save the protocol.");
+      if (!j.ok) return showError($('#cal-tpl-error'), j.error || t("Couldn't save the protocol."));
       loadProtocols().then(() => editTemplate(protocols.templates.find((t) => t.id === j.template.id)));
-      toast('Protocol saved.');
+      toast(t('Protocol saved.'));
       return undefined;
     });
   });
   $('#cal-tpl-delete').addEventListener('click', async () => {
     const id = tplForm.elements.id.value;
-    if (!id || !(await BioDialog.confirm('Delete this protocol? Runs already started keep their steps.', { danger: true }))) return;
+    if (!id || !(await BioDialog.confirm(t('Delete this protocol? Runs already started keep their steps.'), { danger: true }))) return;
     postJson(`/calendar/protocols/templates/${id}/delete`, {}).then((j) => {
-      if (!j.ok) return showError($('#cal-tpl-error'), j.error || "Couldn't delete it.");
+      if (!j.ok) return showError($('#cal-tpl-error'), j.error || t("Couldn't delete it."));
       loadProtocols().then(() => editTemplate(protocols.templates[0] || null));
       return undefined;
     });
@@ -1244,9 +1273,9 @@
     $('#cal-equip-manage-list').innerHTML = (DATA.equipment || []).map((e) => `
       <li><span class="cal-dot" style="background:${e.color}"></span>
         <span class="cal-equip-name">${escapeHtml(e.name)}${e.location ? `<small>${escapeHtml(e.location)}</small>` : ''}</span>
-        ${e.editable ? `<button type="button" class="btn btn-sm btn-ghost" data-equip-edit="${e.id}">Edit</button>
-          <button type="button" class="btn btn-sm" data-retire="${e.id}">Remove</button>` : ''}</li>`).join('')
-      || '<li class="cal-muted">No instruments yet. Add the first below.</li>';
+        ${e.editable ? `<button type="button" class="btn btn-sm btn-ghost" data-equip-edit="${e.id}">${t('Edit')}</button>
+          <button type="button" class="btn btn-sm" data-retire="${e.id}">${t('Remove')}</button>` : ''}</li>`).join('')
+      || `<li class="cal-muted">${t('No instruments yet. Add the first below.')}</li>`;
   }
   // Edit: the form below takes the instrument's name, place and colour, and
   // Save changes it (a new name keeps its bookings).
@@ -1258,7 +1287,7 @@
     f.name.value = eq ? eq.name : '';
     f.location.value = eq ? eq.location || '' : '';
     if (eq && eq.color) f.color.value = eq.color;
-    if (eq) equipSubmit.textContent = 'Save changes';
+    if (eq) equipSubmit.textContent = t('Save changes');
     else equipSubmit.innerHTML = addLabel;
     $('#cal-equip-cancel-edit').hidden = !eq;
     if (eq) f.name.focus();
@@ -1271,9 +1300,9 @@
       return;
     }
     const btn = e.target.closest('[data-retire]');
-    if (!btn || !(await BioDialog.confirm('Remove this instrument? Its past bookings stay on the calendar.', { danger: true }))) return;
+    if (!btn || !(await BioDialog.confirm(t('Remove this instrument? Its past bookings stay on the calendar.'), { danger: true }))) return;
     postJson(`/calendar/equipment/${btn.dataset.retire}/delete`, {}).then((j) => {
-      if (!j.ok) return showError($('#cal-equip-error'), j.error || "Couldn't remove it.");
+      if (!j.ok) return showError($('#cal-equip-error'), j.error || t("Couldn't remove it."));
       DATA.equipment = DATA.equipment.filter((x) => x.id !== Number(btn.dataset.retire));
       renderEquipManage();
       renderEquipment();
@@ -1285,7 +1314,7 @@
     const f = equipForm.elements;
     const renamed = !!f.id.value;
     postJson('/calendar/equipment', { id: f.id.value || undefined, name: f.name.value, location: f.location.value, color: f.color.value }).then((j) => {
-      if (!j.ok) return showError($('#cal-equip-error'), j.error || "Couldn't save it.");
+      if (!j.ok) return showError($('#cal-equip-error'), j.error || t("Couldn't save it."));
       DATA.equipment = (DATA.equipment || []).filter((x) => x.id !== j.equipment.id).concat([j.equipment])
         .sort((a, b) => a.name.localeCompare(b.name));
       equipForm.reset();
@@ -1310,7 +1339,7 @@
     feedModal.showModal();
   });
   function showFeed(j) {
-    if (!j || j.ok === false) return showError($('#cal-feed-error'), (j && j.error) || "Couldn't load your link.");
+    if (!j || j.ok === false) return showError($('#cal-feed-error'), (j && j.error) || t("Couldn't load your link."));
     showError($('#cal-feed-error'), '');
     const on = !!j.url;
     $('#cal-feed-on').hidden = !on;
@@ -1328,16 +1357,16 @@
     if ($('#cal-feed-url').value) feedCall(postJson('/calendar/phone-feed', { action: 'create', scope: feedScope() }));
   }));
   $('#cal-feed-reset').addEventListener('click', async () => {
-    if (!(await BioDialog.confirm('Make a new link? The old one stops working, so calendars subscribed to it need the new one.', { danger: true }))) return;
+    if (!(await BioDialog.confirm(t('Make a new link? The old one stops working, so calendars subscribed to it need the new one.'), { danger: true }))) return;
     feedCall(postJson('/calendar/phone-feed', { action: 'reset', scope: feedScope() }));
   });
   $('#cal-feed-stop').addEventListener('click', async () => {
-    if (!(await BioDialog.confirm('Stop sharing? Calendars subscribed to the link stop updating.', { danger: true }))) return;
+    if (!(await BioDialog.confirm(t('Stop sharing? Calendars subscribed to the link stop updating.'), { danger: true }))) return;
     feedCall(postJson('/calendar/phone-feed', { action: 'stop' }));
   });
   $('#cal-feed-copy').addEventListener('click', () => {
     const input = $('#cal-feed-url');
-    const done = () => toast('Link copied.');
+    const done = () => toast(t('Link copied.'));
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(input.value).then(done, () => { input.select(); document.execCommand('copy'); done(); });
     } else {
@@ -1362,17 +1391,17 @@
     const raw = item.raw || {};
     const s = new Date(item.start), e = new Date(item.end);
     const when = item.isAllday
-      ? (ymd(s) === ymd(e) ? s.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-        : `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`)
-      : `${s.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(item.start)} – ${fmtTime(item.end)}`;
-    const extra = [raw.repeat ? raw.repeat.text : '', raw.location || ''].filter(Boolean).join(' · ');
+      ? (ymd(s) === ymd(e) ? s.toLocaleDateString(LOCALE, { weekday: 'long', month: 'long', day: 'numeric' })
+        : `${s.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })}`)
+      : `${s.toLocaleDateString(LOCALE, { weekday: 'short', month: 'short', day: 'numeric' })}, ${fmtTime(item.start)} – ${fmtTime(item.end)}`;
+    const extra = [raw.repeat ? repeatText(raw.repeat, item) : '', raw.location || ''].filter(Boolean).join(' · ');
     hoverCard.innerHTML = `
       <div class="biocal-hover-strip" style="background:${painted.borderColor}"></div>
       <div class="biocal-hover-body">
-        <div class="biocal-hover-title">${escapeHtml(item.title || '(untitled)')}</div>
+        <div class="biocal-hover-title">${escapeHtml(item.title || t('(untitled)'))}</div>
         <div class="biocal-hover-date">${escapeHtml(when)}${extra ? ' · ' + escapeHtml(extra) : ''}</div>
         <div class="biocal-hover-tag"><span class="biocal-hover-dot" style="background:${painted.borderColor}"></span>
-          ${escapeHtml(raw.group || LAYER_NAMES[layerOf(item)] || '')}${raw.href ? ' · click to open' : ''}</div>
+          ${escapeHtml((raw.group && t(raw.group)) || LAYER_NAMES[layerOf(item)] || '')}${raw.href ? ' · ' + t('click to open') : ''}</div>
         ${item.body ? `<div class="biocal-hover-notes">${escapeHtml(item.body)}</div>` : ''}
       </div>`;
     hoverCard.hidden = false;
@@ -1413,7 +1442,7 @@
     e.preventDefault();
     const fd = new FormData(subsAddForm);
     postJson('/calendar/subscriptions', { name: fd.get('name'), url: fd.get('url'), color: fd.get('color') }).then((j) => {
-      if (j && j.ok) { subsAddForm.reset(); loadSubscriptions(); fetchAndRender(); } else toast("Couldn't add it: " + ((j && j.error) || 'unknown error'));
+      if (j && j.ok) { subsAddForm.reset(); loadSubscriptions(); fetchAndRender(); } else toast(t("Couldn't add it: %(error)s", { error: (j && j.error) || t('unknown error') }));
     });
   });
 
@@ -1421,7 +1450,7 @@
     fetch('/calendar/subscriptions').then((r) => r.json()).then((j) => {
       const subs = (j && j.subscriptions) || [];
       if (!subs.length) {
-        subsListEl.innerHTML = '<li class="biocal-subs-empty">No subscriptions yet. Paste an iCal URL above to add one.</li>';
+        subsListEl.innerHTML = `<li class="biocal-subs-empty">${t('No subscriptions yet. Paste an iCal URL above to add one.')}</li>`;
         return;
       }
       subsListEl.innerHTML = subs.map((s) => `
@@ -1430,12 +1459,12 @@
           <div class="biocal-sub-main">
             <div class="biocal-sub-name">${escapeHtml(s.name)}</div>
             <div class="biocal-sub-url">${escapeHtml(s.url)}</div>
-            <div class="biocal-sub-meta">Last fetched: ${s.last_fetched_at ? new Date(s.last_fetched_at).toLocaleString() : '—'}</div>
+            <div class="biocal-sub-meta">${t('Last fetched: %(when)s', { when: s.last_fetched_at ? new Date(s.last_fetched_at).toLocaleString(LOCALE) : '—' })}</div>
             ${s.last_error ? `<div class="biocal-sub-error">${escapeHtml(s.last_error)}</div>` : ''}
           </div>
-          <label class="biocal-sub-toggle" title="Show or hide"><input type="checkbox" data-action="toggle" ${s.enabled ? 'checked' : ''}></label>
-          <button type="button" class="biocal-btn" data-action="refresh" title="Refresh now">${svgIcon('refresh')}</button>
-          <button type="button" class="biocal-btn" data-action="delete" title="Remove">${svgIcon('trash')}</button>
+          <label class="biocal-sub-toggle" title="${t('Show or hide')}"><input type="checkbox" data-action="toggle" ${s.enabled ? 'checked' : ''}></label>
+          <button type="button" class="biocal-btn" data-action="refresh" title="${t('Refresh now')}">${svgIcon('refresh')}</button>
+          <button type="button" class="biocal-btn" data-action="delete" title="${t('Remove')}">${svgIcon('trash')}</button>
         </li>`).join('');
     });
   }
@@ -1450,7 +1479,7 @@
     if (!btn || !row || btn.dataset.action === 'toggle') return;
     if (btn.dataset.action === 'refresh') {
       postJson(`/calendar/subscriptions/${row.dataset.id}/refresh`, {}).then(() => { loadSubscriptions(); fetchAndRender(); });
-    } else if (btn.dataset.action === 'delete' && (await BioDialog.confirm('Remove this subscription?', { danger: true }))) {
+    } else if (btn.dataset.action === 'delete' && (await BioDialog.confirm(t('Remove this subscription?'), { danger: true }))) {
       postJson(`/calendar/subscriptions/${row.dataset.id}/delete`, {}).then(() => { loadSubscriptions(); fetchAndRender(); });
     }
   });
@@ -1458,28 +1487,27 @@
   function loadGoogleStatus() {
     fetch('/calendar/google/status').then((r) => (r.ok ? r.json() : null)).then((j) => {
       if (!j) {
-        googleStatusEl.innerHTML = '<span class="muted-inline">Google Calendar isn\'t set up on this server.</span>';
+        googleStatusEl.innerHTML = `<span class="muted-inline">${t("Google Calendar isn't set up on this server.")}</span>`;
       } else if (j.connected) {
         googleStatusEl.innerHTML = `
           <div class="biocal-google-connected">
-            <div><strong>Connected as ${escapeHtml(j.email || 'Google account')}</strong>
-              <div class="muted-inline">Last sync: ${j.last_synced_at ? new Date(j.last_synced_at).toLocaleString() : '—'}</div></div>
-            <button type="button" class="biocal-btn" data-google="refresh">Refresh</button>
-            <button type="button" class="biocal-btn" data-google="disconnect">Disconnect</button>
+            <div><strong>${t('Connected as %(email)s', { email: escapeHtml(j.email || t('Google account')) })}</strong>
+              <div class="muted-inline">${t('Last sync: %(when)s', { when: j.last_synced_at ? new Date(j.last_synced_at).toLocaleString(LOCALE) : '—' })}</div></div>
+            <button type="button" class="biocal-btn" data-google="refresh">${t('Refresh')}</button>
+            <button type="button" class="biocal-btn" data-google="disconnect">${t('Disconnect')}</button>
           </div>`;
       } else if (j.configured) {
-        googleStatusEl.innerHTML = `<a href="/calendar/google/connect" class="biocal-btn is-primary biocal-google-connect">Connect Google Calendar</a>
-          <div class="muted-inline cal-gap">Only read access to your events is requested.</div>`;
+        googleStatusEl.innerHTML = `<a href="/calendar/google/connect" class="biocal-btn is-primary biocal-google-connect">${t('Connect Google Calendar')}</a>
+          <div class="muted-inline cal-gap">${t('Only read access to your events is requested.')}</div>`;
       } else {
-        googleStatusEl.innerHTML = `<div class="biocal-google-unconfigured">Google Calendar isn't configured on this server yet. An admin sets
-          <code>GOOGLE_OAUTH_CLIENT_ID</code> and <code>GOOGLE_OAUTH_CLIENT_SECRET</code> in <code>.env</code>.</div>`;
+        googleStatusEl.innerHTML = `<div class="biocal-google-unconfigured">${t("Google Calendar isn't configured on this server yet. An admin sets <code>GOOGLE_OAUTH_CLIENT_ID</code> and <code>GOOGLE_OAUTH_CLIENT_SECRET</code> in <code>.env</code>.")}</div>`;
       }
     });
   }
   googleStatusEl.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-google]');
     if (!btn) return;
-    if (btn.dataset.google === 'disconnect' && !(await BioDialog.confirm('Disconnect Google Calendar?', { danger: true }))) return;
+    if (btn.dataset.google === 'disconnect' && !(await BioDialog.confirm(t('Disconnect Google Calendar?'), { danger: true }))) return;
     postJson(`/calendar/google/${btn.dataset.google}`, {}).then(() => { loadGoogleStatus(); fetchAndRender(); });
   });
 
@@ -1488,7 +1516,7 @@
   function postJson(url, body) {
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
       .then((r) => r.json().catch(() => ({ ok: r.ok })).then((j) => Object.assign({ ok: r.ok }, j)))
-      .catch(() => ({ ok: false, error: 'The server did not answer. Check the connection and try again.' }));
+      .catch(() => ({ ok: false, error: t('The server did not answer. Check the connection and try again.') }));
   }
 
   let toastTimer = null;
@@ -1524,7 +1552,7 @@
     const dt = tuiToDate(v);
     return `${toLocalInput(dt)}:${pad(dt.getSeconds())}`;
   }
-  function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''; }
+  function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' }) : ''; }
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   }

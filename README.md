@@ -617,6 +617,16 @@ mouse, zebrafish, *C. elegans*, *Drosophila*, cryobox, microtube or petri
 dish, in one of six macaron colours. The browser tab and sidebar show it,
 and the app's accent colour follows it.
 
+### 🌏 English or 中文
+
+BioManager is in English and Simplified Chinese. It follows the language a
+person's computer or browser asks for first; each person can choose for
+themselves in **Settings → Language** (or the **中文 / English** switch on the
+sign-in page). Names, notes and everything people type stay as written. The
+sidebar, Home, the mouse colony, the calendar, Settings and the sheets are in
+Chinese so far; the other databases' pages follow. The
+website has a Chinese version too, at [biomanager.org/zh](https://biomanager.org/zh/).
+
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/home.webp" alt="Home in light mode"></td>

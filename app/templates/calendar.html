@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block page_title %}Calendar{% endblock %}
-{% block page_heading %}Calendar{% endblock %}
-{% block page_subtitle %}Experiments, colony dates, bookings and who's away, on one timeline{% endblock %}
+{% block page_title %}{{ _('Calendar') }}{% endblock %}
+{% block page_heading %}{{ _('Calendar') }}{% endblock %}
+{% block page_subtitle %}{{ _("Experiments, colony dates, bookings and who's away, on one timeline") }}{% endblock %}
 {% block page_shell_class %}shell-page-wide{% endblock %}
 
 {% block head_extra %}
@@ -27,38 +27,38 @@
 <div class="cal" id="cal">
 
   {# ================= Sidebar ================= #}
-  <aside class="cal-side" id="cal-side" aria-label="Calendar options">
+  <aside class="cal-side" id="cal-side" aria-label="{{ _('Calendar options') }}">
     <div class="cal-new">
-      <button type="button" class="btn btn-primary cal-new-main" data-new="event">{{ icon('plus') }} New event</button>
+      <button type="button" class="btn btn-primary cal-new-main" data-new="event">{{ icon('plus') }} {{ _('New event') }}</button>
       <button type="button" class="btn btn-primary cal-new-more" id="cal-new-more" aria-haspopup="menu"
-              aria-expanded="false" aria-label="Other kinds">{{ icon('chevron-down') }}</button>
+              aria-expanded="false" aria-label="{{ _('Other kinds') }}">{{ icon('chevron-down') }}</button>
       <div class="menu cal-new-menu" id="cal-new-menu" role="menu" hidden>
-        <button type="button" class="menu-item" role="menuitem" data-new="event">{{ icon('calendar') }} Event</button>
-        <button type="button" class="menu-item" role="menuitem" data-new="task">{{ icon('list-check') }} To-do</button>
-        <button type="button" class="menu-item" role="menuitem" data-new="booking">{{ icon('calendar-clock') }} Book equipment</button>
-        <button type="button" class="menu-item" role="menuitem" data-new="away">{{ icon('user') }} Time away</button>
-        <button type="button" class="menu-item" role="menuitem" data-new="protocol">{{ icon('protocol') }} Start a protocol</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="event">{{ icon('calendar') }} {{ _('Event') }}</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="task">{{ icon('list-check') }} {{ _('To-do') }}</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="booking">{{ icon('calendar-clock') }} {{ _('Book equipment') }}</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="away">{{ icon('user') }} {{ _('Time away') }}</button>
+        <button type="button" class="menu-item" role="menuitem" data-new="protocol">{{ icon('protocol') }} {{ _('Start a protocol') }}</button>
       </div>
     </div>
 
-    <section class="cal-mini" aria-label="Pick a day">
+    <section class="cal-mini" aria-label="{{ _('Pick a day') }}">
       <header class="cal-mini-head">
         <span class="cal-mini-title" id="cal-mini-title"></span>
-        <button type="button" class="cal-icon-btn" id="cal-mini-prev" aria-label="Previous month">{{ icon('chevron-left') }}</button>
-        <button type="button" class="cal-icon-btn" id="cal-mini-next" aria-label="Next month">{{ icon('chevron-right') }}</button>
+        <button type="button" class="cal-icon-btn" id="cal-mini-prev" aria-label="{{ _('Previous month') }}">{{ icon('chevron-left') }}</button>
+        <button type="button" class="cal-icon-btn" id="cal-mini-next" aria-label="{{ _('Next month') }}">{{ icon('chevron-right') }}</button>
       </header>
       <div class="cal-mini-grid" id="cal-mini-grid"></div>
     </section>
 
     <section class="cal-section">
-      <h3 class="cal-section-h">Show</h3>
+      <h3 class="cal-section-h">{{ _('Show') }}</h3>
       <ul class="cal-layers">
         {% for key, label, icon_name, on in layers %}
           <li>
             <label class="cal-layer" data-layer="{{ key }}">
               <input type="checkbox" data-layer-toggle="{{ key }}" {% if on %}checked{% endif %}>
               <span class="cal-layer-box" aria-hidden="true">{{ icon('check') }}</span>
-              <span class="cal-layer-name">{{ label }}</span>
+              <span class="cal-layer-name">{{ label|tr }}</span>
               <span class="cal-layer-count" data-layer-count="{{ key }}"></span>
             </label>
           </li>
@@ -67,34 +67,34 @@
           <label class="cal-layer cal-layer-quiet" data-layer="done">
             <input type="checkbox" data-layer-toggle="done">
             <span class="cal-layer-box" aria-hidden="true">{{ icon('check') }}</span>
-            <span class="cal-layer-name">Finished to-dos</span>
+            <span class="cal-layer-name">{{ _('Finished to-dos') }}</span>
           </label>
         </li>
       </ul>
     </section>
 
     <section class="cal-section" id="cal-cover" hidden>
-      <h3 class="cal-section-h">Away soon</h3>
+      <h3 class="cal-section-h">{{ _('Away soon') }}</h3>
       <div class="cal-cover-list" id="cal-cover-list"></div>
     </section>
 
     <section class="cal-section">
-      <h3 class="cal-section-h">Equipment
-        <button type="button" class="cal-link-btn" id="cal-equip-manage">Manage</button>
+      <h3 class="cal-section-h">{{ _('Equipment') }}
+        <button type="button" class="cal-link-btn" id="cal-equip-manage">{{ _('Manage') }}</button>
       </h3>
       <ul class="cal-equip-list" id="cal-equip-list"></ul>
     </section>
 
     <section class="cal-section">
-      <h3 class="cal-section-h">Protocols
-        <button type="button" class="cal-link-btn" id="cal-templates-btn">Edit</button>
+      <h3 class="cal-section-h">{{ _('Protocols') }}
+        <button type="button" class="cal-link-btn" id="cal-templates-btn">{{ _('Edit') }}</button>
       </h3>
-      <ul class="cal-run-list" id="cal-run-list"><li class="cal-muted">Loading…</li></ul>
+      <ul class="cal-run-list" id="cal-run-list"><li class="cal-muted">{{ _('Loading…') }}</li></ul>
     </section>
 
     <footer class="cal-side-foot">
-      <button type="button" class="cal-foot-btn" id="cal-feed-btn">{{ icon('link') }} On your phone</button>
-      <button type="button" class="cal-foot-btn" id="biocal-subs-btn">{{ icon('rss') }} Connected calendars</button>
+      <button type="button" class="cal-foot-btn" id="cal-feed-btn">{{ icon('link') }} {{ _('On your phone') }}</button>
+      <button type="button" class="cal-foot-btn" id="biocal-subs-btn">{{ icon('rss') }} {{ _('Connected calendars') }}</button>
     </footer>
   </aside>
 
@@ -102,18 +102,18 @@
   <section class="cal-main">
     <header class="cal-head">
       <button type="button" class="btn btn-icon cal-side-toggle" id="cal-side-toggle"
-              aria-controls="cal-side" aria-expanded="false" aria-label="Show calendar options">{{ icon('sliders') }}</button>
+              aria-controls="cal-side" aria-expanded="false" aria-label="{{ _('Show calendar options') }}">{{ icon('sliders') }}</button>
       <h2 class="cal-title" id="biocal-title">&nbsp;</h2>
       <div class="cal-nav">
-        <button type="button" class="btn btn-icon" id="biocal-prev" aria-label="Previous">{{ icon('chevron-left') }}</button>
-        <button type="button" class="btn" id="biocal-today">Today</button>
-        <button type="button" class="btn btn-icon" id="biocal-next" aria-label="Next">{{ icon('chevron-right') }}</button>
+        <button type="button" class="btn btn-icon" id="biocal-prev" aria-label="{{ _('Previous') }}">{{ icon('chevron-left') }}</button>
+        <button type="button" class="btn" id="biocal-today">{{ _('Today') }}</button>
+        <button type="button" class="btn btn-icon" id="biocal-next" aria-label="{{ _('Next') }}">{{ icon('chevron-right') }}</button>
       </div>
-      <div class="seg cal-views" role="tablist" aria-label="View">
-        <button type="button" class="seg-item biocal-view-btn is-active" data-view="month">Month</button>
-        <button type="button" class="seg-item biocal-view-btn" data-view="week">Week</button>
-        <button type="button" class="seg-item biocal-view-btn" data-view="day">Day</button>
-        <button type="button" class="seg-item biocal-view-btn" data-view="list">List</button>
+      <div class="seg cal-views" role="tablist" aria-label="{{ _('View') }}">
+        <button type="button" class="seg-item biocal-view-btn is-active" data-view="month">{{ _('Month') }}</button>
+        <button type="button" class="seg-item biocal-view-btn" data-view="week">{{ _('Week') }}</button>
+        <button type="button" class="seg-item biocal-view-btn" data-view="day">{{ _('Day') }}</button>
+        <button type="button" class="seg-item biocal-view-btn" data-view="list">{{ _('List') }}</button>
       </div>
     </header>
     <div class="cal-body">
@@ -127,139 +127,139 @@
 <dialog id="biocal-modal" class="record-dialog cal-dialog" aria-labelledby="biocal-modal-title">
   <form id="biocal-form" novalidate>
     <header class="record-dialog-head">
-      <div><h3 id="biocal-modal-title">New event</h3></div>
-      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="biocal-modal" aria-label="Close">{{ icon('close') }}</button>
+      <div><h3 id="biocal-modal-title">{{ _('New event') }}</h3></div>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="biocal-modal" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id" id="biocal-id">
       <input type="hidden" name="occurrence" id="biocal-occurrence">
 
-      <div class="seg self-start cal-kinds" role="radiogroup" aria-label="Kind">
-        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="event" checked> Event</label>
-        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="task"> To-do</label>
-        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="booking"> Booking</label>
-        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="away"> Away</label>
+      <div class="seg self-start cal-kinds" role="radiogroup" aria-label="{{ _('Kind') }}">
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="event" checked> {{ _('Event') }}</label>
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="task"> {{ _('To-do') }}</label>
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="booking"> {{ _('Booking') }}</label>
+        <label class="seg-item biocal-kind"><input type="radio" name="kind" value="away"> {{ _('Away') }}</label>
       </div>
 
-      <label data-for="event task">Title <input name="title" id="biocal-title-input" autocomplete="off"></label>
+      <label data-for="event task">{{ _('Title') }} <input name="title" id="biocal-title-input" autocomplete="off"></label>
 
       {# Event: a range or all day, and how it repeats. #}
       <div class="record-group" data-for="event">
-        <label>Starts <input type="datetime-local" name="start"></label>
-        <label>Ends <input type="datetime-local" name="end"></label>
-        <label class="cal-check record-wide"><input type="checkbox" name="isAllday"> All day</label>
+        <label>{{ _('Starts') }} <input type="datetime-local" name="start"></label>
+        <label>{{ _('Ends') }} <input type="datetime-local" name="end"></label>
+        <label class="cal-check record-wide"><input type="checkbox" name="isAllday"> {{ _('All day') }}</label>
       </div>
       <fieldset class="cal-repeat" data-for="event">
-        <legend>Repeats</legend>
+        <legend>{{ _('Repeats') }}</legend>
         <div class="cal-repeat-row">
-          <select name="repeat_freq" id="cal-repeat-freq" aria-label="Repeats">
-            <option value="">Doesn't repeat</option>
-            <option value="daily">Every day</option>
-            <option value="weekly">Every week</option>
-            <option value="monthly">Every month</option>
-            <option value="nthweekday" id="cal-repeat-nth">Every month on the same weekday</option>
+          <select name="repeat_freq" id="cal-repeat-freq" aria-label="{{ _('Repeats') }}">
+            <option value="">{{ _("Doesn't repeat") }}</option>
+            <option value="daily">{{ _('Every day') }}</option>
+            <option value="weekly">{{ _('Every week') }}</option>
+            <option value="monthly">{{ _('Every month') }}</option>
+            <option value="nthweekday" id="cal-repeat-nth">{{ _('Every month on the same weekday') }}</option>
           </select>
           <span class="cal-repeat-more" id="cal-repeat-more" hidden>
-            <span>every</span>
-            <input type="number" name="repeat_interval" min="1" max="99" value="1" aria-label="Interval">
-            <span id="cal-repeat-unit">weeks</span>
-            <span>until</span>
-            <input type="date" name="repeat_until" aria-label="Until">
+            <span>{{ _('every') }}</span>
+            <input type="number" name="repeat_interval" min="1" max="99" value="1" aria-label="{{ _('Interval') }}">
+            <span id="cal-repeat-unit">{{ _('weeks') }}</span>
+            <span>{{ _('until') }}</span>
+            <input type="date" name="repeat_until" aria-label="{{ _('Until') }}">
           </span>
         </div>
-        <p class="cal-hint" id="cal-repeat-hint" hidden>Save changes every repeat. To change only this date, use Change this one only; to take it out, Delete this one.</p>
+        <p class="cal-hint" id="cal-repeat-hint" hidden>{{ _('Save changes every repeat. To change only this date, use Change this one only; to take it out, Delete this one.') }}</p>
       </fieldset>
 
       {# To-do: a due day from presets or a date. #}
       <div data-for="task">
-        <span class="field-label">Due</span>
+        <span class="field-label">{{ _('Due') }}</span>
         <div class="biocal-due-presets" id="biocal-due-presets">
-          <button type="button" class="biocal-due-btn is-active" data-due="today">Today</button>
-          <button type="button" class="biocal-due-btn" data-due="tomorrow">Tomorrow</button>
-          <button type="button" class="biocal-due-btn" data-due="next-week">Next week</button>
-          <button type="button" class="biocal-due-btn" data-due="custom">Pick a date</button>
+          <button type="button" class="biocal-due-btn is-active" data-due="today">{{ _('Today') }}</button>
+          <button type="button" class="biocal-due-btn" data-due="tomorrow">{{ _('Tomorrow') }}</button>
+          <button type="button" class="biocal-due-btn" data-due="next-week">{{ _('Next week') }}</button>
+          <button type="button" class="biocal-due-btn" data-due="custom">{{ _('Pick a date') }}</button>
         </div>
-        <input type="date" name="due_custom" id="biocal-due-custom" class="field mt-2 w-auto" hidden aria-label="Due date">
+        <input type="date" name="due_custom" id="biocal-due-custom" class="field mt-2 w-auto" hidden aria-label="{{ _('Due date') }}">
       </div>
 
       {# Whose it is (app/groups.py): yours alone, the lab's or a project group's.
          A shared event is everyone's to see, its owner's and admins' to change;
          a shared to-do anyone it is for may tick off. #}
       <label class="mt-3 block" data-for="task event">
-        <span class="field-label">Who sees it</span>
+        <span class="field-label">{{ _('Who sees it') }}</span>
         <select name="audience" id="cal-audience" class="field mt-1 w-auto">
-          <option value="0">Only me</option>
-          <option value="1">Everyone in the lab</option>
+          <option value="0">{{ _('Only me') }}</option>
+          <option value="1">{{ _('Everyone in the lab') }}</option>
           {% for gid, name in groups_api.choices() %}<option value="g{{ gid }}">{{ name }}</option>{% endfor %}
         </select>
-        <span class="cal-hint" data-for="task">Anyone who sees a shared to-do can tick it off.</span>
-        <span class="cal-hint" data-for="event">Only you and the lab's admins can change a shared event.</span>
+        <span class="cal-hint" data-for="task">{{ _('Anyone who sees a shared to-do can tick it off.') }}</span>
+        <span class="cal-hint" data-for="event">{{ _("Only you and the lab's admins can change a shared event.") }}</span>
       </label>
 
       {# Booking: an instrument and a slot. #}
       <div class="record-group" data-for="booking">
-        <label class="record-wide">Instrument
+        <label class="record-wide">{{ _('Instrument') }}
           <select name="equipment_id" id="cal-equipment-select"></select>
         </label>
-        <label>From <input type="datetime-local" name="booking_start"></label>
-        <label>To <input type="datetime-local" name="booking_end"></label>
-        <label class="record-wide">What for <input name="purpose" autocomplete="off" placeholder="e.g. Slice imaging, PV-Cre;Ai14"></label>
+        <label>{{ _('From') }} <input type="datetime-local" name="booking_start"></label>
+        <label>{{ _('To') }} <input type="datetime-local" name="booking_end"></label>
+        <label class="record-wide">{{ _('What for') }} <input name="purpose" autocomplete="off" placeholder="{{ _('e.g. Slice imaging, PV-Cre;Ai14') }}"></label>
         {# A new booking can repeat; each repeat is then a booking of its own. #}
         <div class="record-wide cal-repeat-row" id="cal-booking-repeat">
-          <select name="booking_repeat" aria-label="Repeats">
-            <option value="">Doesn't repeat</option>
-            <option value="daily">Every day</option>
-            <option value="weekdays">Every weekday</option>
-            <option value="weekly">Every week</option>
+          <select name="booking_repeat" aria-label="{{ _('Repeats') }}">
+            <option value="">{{ _("Doesn't repeat") }}</option>
+            <option value="daily">{{ _('Every day') }}</option>
+            <option value="weekdays">{{ _('Every weekday') }}</option>
+            <option value="weekly">{{ _('Every week') }}</option>
           </select>
           <span class="cal-repeat-more" id="cal-booking-until" hidden>
-            <span>until</span> <input type="date" name="booking_until" aria-label="Until">
+            <span>{{ _('until') }}</span> <input type="date" name="booking_until" aria-label="{{ _('Until') }}">
           </span>
         </div>
       </div>
-      <p class="cal-hint" data-for="booking" id="cal-no-equipment" hidden>No instruments yet. Add one under Equipment → Manage.</p>
+      <p class="cal-hint" data-for="booking" id="cal-no-equipment" hidden>{{ _('No instruments yet. Add one under Equipment → Manage.') }}</p>
 
       {# Time away: who, when, and who covers. #}
       <div class="record-group" data-for="away">
-        <label class="record-wide" id="cal-away-owner-wrap">Who
+        <label class="record-wide" id="cal-away-owner-wrap">{{ _('Who') }}
           <select name="away_owner" id="cal-away-owner"></select>
         </label>
-        <label>First day <input type="date" name="away_start"></label>
-        <label>Last day <input type="date" name="away_end"></label>
-        <label>Reason
+        <label>{{ _('First day') }} <input type="date" name="away_start"></label>
+        <label>{{ _('Last day') }} <input type="date" name="away_end"></label>
+        <label>{{ _('Reason') }}
           <select name="away_kind">
-            <option value="leave">Leave</option>
-            <option value="conference">Conference</option>
-            <option value="other">Other</option>
+            <option value="leave">{{ _('Leave') }}</option>
+            <option value="conference">{{ _('Conference') }}</option>
+            <option value="other">{{ _('Other') }}</option>
           </select>
         </label>
-        <label>Covered by
+        <label>{{ _('Covered by') }}
           <select name="away_cover" id="cal-away-cover"></select>
         </label>
-        <label class="record-wide">Note <input name="away_note" autocomplete="off" placeholder="e.g. SfN, Chicago"></label>
+        <label class="record-wide">{{ _('Note') }} <input name="away_note" autocomplete="off" placeholder="{{ _('e.g. SfN, Chicago') }}"></label>
       </div>
 
       <div data-for="event task">
-        <span class="field-label">Colour</span>
+        <span class="field-label">{{ _('Colour') }}</span>
         <input type="hidden" name="color" id="biocal-color-val" value="#a4c8f0">
         <div class="biocal-color-swatches" id="biocal-color-swatches">
           {% for hex, name in [("#f9a8a8", "Rose"), ("#fcb77e", "Apricot"), ("#fbe89e", "Lemon"), ("#b6e2a1", "Pistachio"), ("#a3e0d8", "Mint"), ("#a4c8f0", "Sky"), ("#c4b5fd", "Lavender"), ("#f4b8d8", "Pink")] %}
-            <button type="button" class="biocal-color-swatch" data-color="{{ hex }}" style="background:{{ hex }}" aria-label="{{ name }}" title="{{ name }}"></button>
+            <button type="button" class="biocal-color-swatch" data-color="{{ hex }}" style="background:{{ hex }}" aria-label="{{ name|tr }}" title="{{ name|tr }}"></button>
           {% endfor %}
         </div>
       </div>
 
-      <label data-for="event task">Notes <textarea name="body" rows="3"></textarea></label>
+      <label data-for="event task">{{ _('Notes') }} <textarea name="body" rows="3"></textarea></label>
       <p class="cal-error" id="cal-form-error" role="alert" hidden></p>
     </div>
     <footer class="record-dialog-foot">
-      <button type="button" class="btn btn-danger" id="biocal-delete" hidden>{{ icon('trash') }} Delete</button>
-      <button type="button" class="btn" id="cal-delete-one" hidden>Delete this one</button>
-      <button type="button" class="btn" id="cal-change-one" hidden title="Save what the dialog says for this date only; the other repeats stay as they are">Change this one only</button>
-      <button type="button" class="btn" id="cal-duplicate" hidden title="A new booking like this one: change the day or time, then Save">{{ icon('copy') }} Duplicate</button>
+      <button type="button" class="btn btn-danger" id="biocal-delete" hidden>{{ icon('trash') }} {{ _('Delete') }}</button>
+      <button type="button" class="btn" id="cal-delete-one" hidden>{{ _('Delete this one') }}</button>
+      <button type="button" class="btn" id="cal-change-one" hidden title="{{ _('Save what the dialog says for this date only; the other repeats stay as they are') }}">{{ _('Change this one only') }}</button>
+      <button type="button" class="btn" id="cal-duplicate" hidden title="{{ _('A new booking like this one: change the day or time, then Save') }}">{{ icon('copy') }} {{ _('Duplicate') }}</button>
       <span class="mr-auto"></span>
-      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="biocal-modal">Cancel</button>
-      <button type="submit" class="btn btn-primary">Save</button>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="biocal-modal">{{ _('Cancel') }}</button>
+      <button type="submit" class="btn btn-primary">{{ _('Save') }}</button>
     </footer>
   </form>
 </dialog>
@@ -269,35 +269,35 @@
   <form id="cal-run-form" novalidate>
     <header class="record-dialog-head">
       <div>
-        <h3 id="cal-run-title">Start a protocol</h3>
-        <p class="record-dialog-sub">Every step lands on the calendar, counted from day 0. Move day 0 and they all move.</p>
+        <h3 id="cal-run-title">{{ _('Start a protocol') }}</h3>
+        <p class="record-dialog-sub">{{ _('Every step lands on the calendar, counted from day 0. Move day 0 and they all move.') }}</p>
       </div>
-      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-run-modal" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-run-modal" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <input type="hidden" name="id">
       <div class="record-group">
-        <label class="record-wide" id="cal-run-template-wrap">Protocol
+        <label class="record-wide" id="cal-run-template-wrap">{{ _('Protocol') }}
           <select name="template_id" id="cal-run-template"></select>
         </label>
-        <label>Day 0 <input type="date" name="start_date" required></label>
-        <label>For <input name="label" placeholder="e.g. Cohort B, 6 mice" autocomplete="off"></label>
-        <label class="record-wide">Experiment
+        <label>{{ _('Day 0') }} <input type="date" name="start_date" required></label>
+        <label>{{ _('For') }} <input name="label" placeholder="{{ _('e.g. Cohort B, 6 mice') }}" autocomplete="off"></label>
+        <label class="record-wide">{{ _('Experiment') }}
           <select name="experiment_id" id="cal-run-experiment"></select>
         </label>
       </div>
       <div>
-        <span class="field-label">Steps</span>
+        <span class="field-label">{{ _('Steps') }}</span>
         <ol class="cal-steps-preview" id="cal-run-preview"></ol>
       </div>
-      <label>Notes <textarea name="notes" rows="2"></textarea></label>
+      <label>{{ _('Notes') }} <textarea name="notes" rows="2"></textarea></label>
       <p class="cal-error" id="cal-run-error" role="alert" hidden></p>
     </div>
     <footer class="record-dialog-foot">
-      <button type="button" class="btn btn-danger" id="cal-run-delete" hidden>{{ icon('trash') }} Remove</button>
+      <button type="button" class="btn btn-danger" id="cal-run-delete" hidden>{{ icon('trash') }} {{ _('Remove') }}</button>
       <span class="mr-auto"></span>
-      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-run-modal">Cancel</button>
-      <button type="submit" class="btn btn-primary">Save</button>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-run-modal">{{ _('Cancel') }}</button>
+      <button type="submit" class="btn btn-primary">{{ _('Save') }}</button>
     </footer>
   </form>
 </dialog>
@@ -307,29 +307,29 @@
   <form id="cal-tpl-form" novalidate>
     <header class="record-dialog-head">
       <div>
-        <h3 id="cal-tpl-title">Protocols</h3>
-        <p class="record-dialog-sub">A protocol is a list of steps counted in days from day 0. Runs already under way keep the steps they started with.</p>
+        <h3 id="cal-tpl-title">{{ _('Protocols') }}</h3>
+        <p class="record-dialog-sub">{{ _('A protocol is a list of steps counted in days from day 0. Runs already under way keep the steps they started with.') }}</p>
       </div>
-      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-tpl-modal" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-tpl-modal" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body cal-tpl-body">
-      <nav class="cal-tpl-nav" aria-label="Protocols">
+      <nav class="cal-tpl-nav" aria-label="{{ _('Protocols') }}">
         <ul id="cal-tpl-list"></ul>
-        <button type="button" class="btn btn-sm" id="cal-tpl-new">{{ icon('plus') }} New protocol</button>
+        <button type="button" class="btn btn-sm" id="cal-tpl-new">{{ icon('plus') }} {{ _('New protocol') }}</button>
       </nav>
       <div class="cal-tpl-edit">
         <input type="hidden" name="id">
-        <label>Name <input name="name" placeholder="e.g. Tamoxifen → photometry" autocomplete="off"></label>
-        <label>What it's for <input name="description" autocomplete="off"></label>
+        <label>{{ _('Name') }} <input name="name" placeholder="{{ _('e.g. Tamoxifen → photometry') }}" autocomplete="off"></label>
+        <label>{{ _("What it's for") }} <input name="description" autocomplete="off"></label>
         <div>
-          <span class="field-label">Steps</span>
-          <div class="cal-steps-head" aria-hidden="true"><span>From day</span><span>To day</span><span>Step</span></div>
+          <span class="field-label">{{ _('Steps') }}</span>
+          <div class="cal-steps-head" aria-hidden="true"><span>{{ _('From day') }}</span><span>{{ _('To day') }}</span><span>{{ _('Step') }}</span></div>
           <ol class="cal-steps" id="cal-tpl-steps"></ol>
-          <button type="button" class="btn btn-sm" id="cal-tpl-add-step">{{ icon('plus') }} Add a step</button>
+          <button type="button" class="btn btn-sm" id="cal-tpl-add-step">{{ icon('plus') }} {{ _('Add a step') }}</button>
         </div>
         <input type="hidden" name="color" id="cal-tpl-color">
         <div>
-          <span class="field-label">Colour</span>
+          <span class="field-label">{{ _('Colour') }}</span>
           <div class="biocal-color-swatches" id="cal-tpl-swatches">
             {% for hex in ["#5856d6", "#af52de", "#ff2d55", "#ff9500", "#34c759", "#30b0c7", "#007aff", "#8e8e93"] %}
               <button type="button" class="biocal-color-swatch" data-color="{{ hex }}" style="background:{{ hex }}" aria-label="{{ hex }}"></button>
@@ -340,10 +340,10 @@
       </div>
     </div>
     <footer class="record-dialog-foot">
-      <button type="button" class="btn btn-danger" id="cal-tpl-delete" hidden>{{ icon('trash') }} Delete protocol</button>
+      <button type="button" class="btn btn-danger" id="cal-tpl-delete" hidden>{{ icon('trash') }} {{ _('Delete protocol') }}</button>
       <span class="mr-auto"></span>
-      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-tpl-modal">Close</button>
-      <button type="submit" class="btn btn-primary">Save protocol</button>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-tpl-modal">{{ _('Close') }}</button>
+      <button type="submit" class="btn btn-primary">{{ _('Save protocol') }}</button>
     </footer>
   </form>
 </dialog>
@@ -353,26 +353,26 @@
   <form id="cal-equip-form" novalidate>
     <header class="record-dialog-head">
       <div>
-        <h3 id="cal-equip-title">Equipment</h3>
-        <p class="record-dialog-sub">Shared instruments people book time on. Two bookings of one instrument can't overlap.</p>
+        <h3 id="cal-equip-title">{{ _('Equipment') }}</h3>
+        <p class="record-dialog-sub">{{ _("Shared instruments people book time on. Two bookings of one instrument can't overlap.") }}</p>
       </div>
-      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-equip-modal" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-equip-modal" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <ul class="cal-equip-manage" id="cal-equip-manage-list"></ul>
       <div class="record-group">
         <input type="hidden" name="id" value="">
-        <label>Name <input name="name" placeholder="e.g. Confocal (LSM 900)" autocomplete="off"></label>
-        <label>Where <input name="location" placeholder="e.g. Room 4.12" autocomplete="off"></label>
-        <label class="cal-check">Colour <input type="color" name="color" value="#30b0c7"></label>
+        <label>{{ _('Name') }} <input name="name" placeholder="{{ _('e.g. Confocal (LSM 900)') }}" autocomplete="off"></label>
+        <label>{{ _('Where') }} <input name="location" placeholder="{{ _('e.g. Room 4.12') }}" autocomplete="off"></label>
+        <label class="cal-check">{{ _('Colour') }} <input type="color" name="color" value="#30b0c7"></label>
       </div>
       <p class="cal-error" id="cal-equip-error" role="alert" hidden></p>
     </div>
     <footer class="record-dialog-foot">
       <span class="mr-auto"></span>
-      <button type="button" class="btn" id="cal-equip-cancel-edit" hidden>Cancel edit</button>
-      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-equip-modal">Close</button>
-      <button type="submit" class="btn btn-primary" id="cal-equip-submit">{{ icon('plus') }} Add instrument</button>
+      <button type="button" class="btn" id="cal-equip-cancel-edit" hidden>{{ _('Cancel edit') }}</button>
+      <button type="button" class="btn" data-on-click="close-dialog-id" data-arg="cal-equip-modal">{{ _('Close') }}</button>
+      <button type="submit" class="btn btn-primary" id="cal-equip-submit">{{ icon('plus') }} {{ _('Add instrument') }}</button>
     </footer>
   </form>
 </dialog>
@@ -382,39 +382,39 @@
   <div class="cal-dialog-inner">
     <header class="record-dialog-head">
       <div>
-        <h3 id="cal-feed-title">The calendar on your phone</h3>
-        <p class="record-dialog-sub">A private link that Apple, Google or Outlook Calendar subscribes to. It updates by itself, about every hour.</p>
+        <h3 id="cal-feed-title">{{ _('The calendar on your phone') }}</h3>
+        <p class="record-dialog-sub">{{ _('A private link that Apple, Google or Outlook Calendar subscribes to. It updates by itself, about every hour.') }}</p>
       </div>
-      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-feed-modal" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog-id" data-arg="cal-feed-modal" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       <fieldset class="cal-feed-scope">
-        <legend class="field-label">What it shows</legend>
+        <legend class="field-label">{{ _('What it shows') }}</legend>
         <label class="cal-radio"><input type="radio" name="feed_scope" value="mine" checked>
-          <span><b>Just mine</b><small>Your events, to-dos, animals, vials, protocols, bookings, and time away you cover</small></span></label>
+          <span><b>{{ _('Just mine') }}</b><small>{{ _('Your events, to-dos, animals, vials, protocols, bookings, and time away you cover') }}</small></span></label>
         <label class="cal-radio"><input type="radio" name="feed_scope" value="lab">
-          <span><b>The whole lab calendar</b><small>Everything on this page except calendars you connected</small></span></label>
+          <span><b>{{ _('The whole lab calendar') }}</b><small>{{ _('Everything on this page except calendars you connected') }}</small></span></label>
       </fieldset>
       <div id="cal-feed-on" hidden>
-        <span class="field-label">Your link</span>
+        <span class="field-label">{{ _('Your link') }}</span>
         <div class="cal-feed-url">
-          <input type="text" id="cal-feed-url" readonly aria-label="Calendar link">
-          <button type="button" class="btn" id="cal-feed-copy">{{ icon('copy') }} Copy</button>
+          <input type="text" id="cal-feed-url" readonly aria-label="{{ _('Calendar link') }}">
+          <button type="button" class="btn" id="cal-feed-copy">{{ icon('copy') }} {{ _('Copy') }}</button>
         </div>
         <ul class="cal-feed-how">
-          <li><b>iPhone:</b> Settings → Calendar → Calendar Accounts → Add Account → Other → Add Subscribed Calendar, then paste.</li>
-          <li><b>Google Calendar:</b> Other calendars → + → From URL. Google fetches it from the internet, so it works only when the server is open to the internet.</li>
-          <li><b>Outlook:</b> Add calendar → Subscribe from web.</li>
+          <li>{% trans %}<b>iPhone:</b> Settings → Calendar → Calendar Accounts → Add Account → Other → Add Subscribed Calendar, then paste.{% endtrans %}</li>
+          <li>{% trans %}<b>Google Calendar:</b> Other calendars → + → From URL. Google fetches it from the internet, so it works only when the server is open to the internet.{% endtrans %}</li>
+          <li>{% trans %}<b>Outlook:</b> Add calendar → Subscribe from web.{% endtrans %}</li>
         </ul>
-        <p class="cal-hint">Anyone with the link can read this calendar. If it ends up somewhere it shouldn't, make a new one and the old link stops working.</p>
+        <p class="cal-hint">{{ _("Anyone with the link can read this calendar. If it ends up somewhere it shouldn't, make a new one and the old link stops working.") }}</p>
       </div>
       <p class="cal-error" id="cal-feed-error" role="alert" hidden></p>
     </div>
     <footer class="record-dialog-foot">
-      <button type="button" class="btn btn-danger" id="cal-feed-stop" hidden>Stop sharing</button>
-      <button type="button" class="btn" id="cal-feed-reset" hidden>Make a new link</button>
+      <button type="button" class="btn btn-danger" id="cal-feed-stop" hidden>{{ _('Stop sharing') }}</button>
+      <button type="button" class="btn" id="cal-feed-reset" hidden>{{ _('Make a new link') }}</button>
       <span class="mr-auto"></span>
-      <button type="button" class="btn btn-primary" id="cal-feed-create">Make my link</button>
+      <button type="button" class="btn btn-primary" id="cal-feed-create">{{ _('Make my link') }}</button>
     </footer>
   </div>
 </dialog>
@@ -423,29 +423,29 @@
 <dialog id="biocal-subs-modal" class="record-dialog biocal-subs-modal" aria-labelledby="biocal-subs-title">
   <header class="record-dialog-head">
     <div>
-      <h3 id="biocal-subs-title">Connected calendars</h3>
-      <p class="record-dialog-sub">Show events from Google Calendar or any iCal feed alongside your own. They are read-only here.</p>
+      <h3 id="biocal-subs-title">{{ _('Connected calendars') }}</h3>
+      <p class="record-dialog-sub">{{ _('Show events from Google Calendar or any iCal feed alongside your own. They are read-only here.') }}</p>
     </div>
-    <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+    <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
   </header>
   <div class="record-dialog-body">
     <section class="biocal-subs-section">
-      <h4>Google Calendar</h4>
+      <h4>{{ _('Google Calendar') }}</h4>
       <div id="biocal-google-status" class="biocal-google-status">
-        <span class="muted-inline">Loading…</span>
+        <span class="muted-inline">{{ _('Loading…') }}</span>
       </div>
     </section>
     <section class="biocal-subs-section">
-      <h4>iCal subscriptions</h4>
-      <p class="muted-inline">Paste a feed URL: Apple, Outlook, a university calendar, or Google's secret iCal address.</p>
+      <h4>{{ _('iCal subscriptions') }}</h4>
+      <p class="muted-inline">{{ _("Paste a feed URL: Apple, Outlook, a university calendar, or Google's secret iCal address.") }}</p>
       <form id="biocal-subs-add" class="biocal-subs-add">
-        <input type="text" name="name" placeholder="Label, e.g. Lab meetings" required aria-label="Label">
-        <input type="url" name="url" placeholder="https://… .ics or webcal://…" required aria-label="Feed URL">
-        <input type="color" name="color" value="#34c759" aria-label="Colour">
-        <button type="submit" class="btn btn-primary">Add</button>
+        <input type="text" name="name" placeholder="{{ _('Label, e.g. Lab meetings') }}" required aria-label="{{ _('Label') }}">
+        <input type="url" name="url" placeholder="{{ _('https://… .ics or webcal://…') }}" required aria-label="{{ _('Feed URL') }}">
+        <input type="color" name="color" value="#34c759" aria-label="{{ _('Colour') }}">
+        <button type="submit" class="btn btn-primary">{{ _('Add') }}</button>
       </form>
       <ul id="biocal-subs-list" class="biocal-subs-list">
-        <li class="biocal-subs-empty">Loading…</li>
+        <li class="biocal-subs-empty">{{ _('Loading…') }}</li>
       </ul>
     </section>
   </div>

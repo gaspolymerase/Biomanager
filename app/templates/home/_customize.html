@@ -4,11 +4,11 @@
   <form method="post" action="{{ url_for('set_home_cards') }}" data-home-customize>
     <header class="record-dialog-head">
       <div>
-        <h3 id="home-customize-title">Customize Home</h3>
-        <p class="record-dialog-sub">Tick the cards you want and put them in your order; <b>Wide</b> spans both columns.
-          Only you see Home this way. The Tracks and Freezer layouts show the For you card above them.</p>
+        <h3 id="home-customize-title">{{ _('Customize Home') }}</h3>
+        <p class="record-dialog-sub">{% trans trimmed %}Tick the cards you want and put them in your order; <b>Wide</b> spans both columns.
+          Only you see Home this way. The Tracks and Freezer layouts show the For you card above them.{% endtrans %}</p>
       </div>
-      <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="Close">{{ icon('close') }}</button>
+      <button type="button" class="modal-close" data-on-click="close-dialog" aria-label="{{ _('Close') }}">{{ icon('close') }}</button>
     </header>
     <div class="record-dialog-body">
       {% set offered_keys = offered_cards | map(attribute='key') | list %}
@@ -20,12 +20,12 @@
             <input type="hidden" name="order" value="{{ key }}">
             <span class="home-cust-grip" aria-hidden="true">⋮⋮</span>
             <label class="home-cust-show"><input type="checkbox" name="show" value="{{ key }}" {% if key not in home_cards.hidden %}checked{% endif %}>
-              {{ icon(c.icon) }} {{ c.label }}</label>
-            <label class="home-cust-wide" title="Span both columns"><input type="checkbox" name="wide" value="{{ key }}" {% if key in home_cards.wide %}checked{% endif %}> Wide</label>
+              {{ icon(c.icon) }} {{ c.label|tr }}</label>
+            <label class="home-cust-wide" title="{{ _('Span both columns') }}"><input type="checkbox" name="wide" value="{{ key }}" {% if key in home_cards.wide %}checked{% endif %}> {{ _('Wide') }}</label>
             <span class="home-cust-move">
-              <button type="button" class="row-icon-btn" data-move="top" title="To the top" aria-label="Move {{ c.label }} to the top">{{ icon('arrow-up') }}{{ icon('arrow-up') }}</button>
-              <button type="button" class="row-icon-btn" data-move="-1" aria-label="Move {{ c.label }} up">{{ icon('arrow-up') }}</button>
-              <button type="button" class="row-icon-btn" data-move="1" aria-label="Move {{ c.label }} down">{{ icon('arrow-down') }}</button>
+              <button type="button" class="row-icon-btn" data-move="top" title="{{ _('To the top') }}" aria-label="{{ _('Move %(name)s to the top', name=c.label|tr) }}">{{ icon('arrow-up') }}{{ icon('arrow-up') }}</button>
+              <button type="button" class="row-icon-btn" data-move="-1" aria-label="{{ _('Move %(name)s up', name=c.label|tr) }}">{{ icon('arrow-up') }}</button>
+              <button type="button" class="row-icon-btn" data-move="1" aria-label="{{ _('Move %(name)s down', name=c.label|tr) }}">{{ icon('arrow-down') }}</button>
             </span>
           </li>
         {% endfor %}
@@ -39,10 +39,10 @@
     </div>
     <footer class="record-dialog-foot">
       <button type="submit" name="reset" value="1" class="btn" formnovalidate
-              data-confirm="Put Home back as it comes: every card in its usual place, and your order and choices gone?">Back to the usual</button>
+              data-confirm="{{ _('Put Home back as it comes: every card in its usual place, and your order and choices gone?') }}">{{ _('Back to the usual') }}</button>
       <span class="mr-auto"></span>
-      <button type="button" class="btn" data-on-click="close-dialog">Cancel</button>
-      <button type="submit" class="btn btn-primary">Save</button>
+      <button type="button" class="btn" data-on-click="close-dialog">{{ _('Cancel') }}</button>
+      <button type="submit" class="btn btn-primary">{{ _('Save') }}</button>
     </footer>
   </form>
 </dialog>

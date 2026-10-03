@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block page_title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title|tr }}{% endblock %}
 
 {% block content %}
 <article class="card mx-auto mt-6 max-w-[520px] p-6">
-  <h1 class="text-[17px]">{{ title }}</h1>
-  <p class="mt-2 text-[13px] leading-snug text-muted">{{ message }}</p>
+  <h1 class="text-[17px]">{{ title|tr }}</h1>
+  <p class="mt-2 text-[13px] leading-snug text-muted">{{ message|tr }}</p>
   <div class="mt-5 flex flex-wrap gap-2">
-    <a class="btn btn-primary" href="{{ url_for('home_dashboard') }}">{{ icon('home') }} Go home</a>
+    <a class="btn btn-primary" href="{{ url_for('home_dashboard') }}">{{ icon('home') }} {{ _('Go home') }}</a>
     {% if request.referrer and request.referrer.startswith(request.host_url) %}
-      <a class="btn" href="{{ request.referrer }}">{{ icon('back') }} Back</a>
+      <a class="btn" href="{{ request.referrer }}">{{ icon('back') }} {{ _('Back') }}</a>
     {% endif %}
   </div>
 </article>

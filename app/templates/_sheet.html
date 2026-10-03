@@ -15,7 +15,8 @@
                  alive_title='Available', dead_title='Not available', stage='', stage_title='') %}
   {# stage: "young", "adult" or "old" colours a living animal's dot blue,
      green or red (app/life_stage.py); "expired" makes it red. #}
-  {% set alive_title = [alive_title, stage_title] | select | join(' · ') %}
+  {% set alive_title = [alive_title|tr, stage_title|tr] | select | join(' · ') %}
+  {% set dead_title = dead_title|tr %}
   <span class="sheet-id">
     {% if alive is not none %}
       <span class="life-dot{% if alive %} is-alive{% endif %}"{% if stage %} data-stage="{{ stage }}"{% endif %}
@@ -23,7 +24,7 @@
             title="{{ alive_title if alive else dead_title }}"></span>
     {% endif %}
     <span class="ident">{{ code }}</span>
-    {% if locked %}<span class="sheet-lock" title="{{ owner or 'Someone else' }}’s {{ noun }}: read only">{{ icon('lock') }}</span>{% endif %}
+    {% if locked %}<span class="sheet-lock" title="{{ _('%(owner)s’s %(noun)s: read only', owner=owner or _('Someone else'), noun=noun|tr) }}">{{ icon('lock') }}</span>{% endif %}
   </span>
 {% endmacro %}
 
@@ -31,7 +32,7 @@
   <div class="owner-cell-wrap{% if value %} has-badge{% endif %}">
     {% if value %}{{ value | owner_badge }}{% endif %}
     <input name="{{ name }}" form="{{ form_id }}" value="{{ value or '' }}" list="{{ list_id }}"
-           data-autosave="1" aria-label="{{ label }}" {% if locked %}disabled{% endif %}>
+           data-autosave="1" aria-label="{{ label|tr }}" {% if locked %}disabled{% endif %}>
   </div>
 {% endmacro %}
 
@@ -41,10 +42,10 @@
 
 {% macro tools(export=True, print=True) %}
   <span class="sheet-save" data-save-status aria-live="polite"></span>
-  <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} Sort</button>
-  <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} Columns</button>
-  {% if export %}<button type="button" class="dt-toolbar-btn dt-btn-export" title="Download the rows shown as CSV">{{ icon('download') }} Export</button>{% endif %}
-  {% if print %}<button type="button" class="dt-toolbar-btn dt-btn-print" title="Print the rows shown">{{ icon('print') }} Print</button>{% endif %}
+  <button type="button" class="dt-toolbar-btn dt-btn-sort">{{ icon('sort') }} {{ _('Sort') }}</button>
+  <button type="button" class="dt-toolbar-btn dt-btn-hide">{{ icon('columns') }} {{ _('Columns') }}</button>
+  {% if export %}<button type="button" class="dt-toolbar-btn dt-btn-export" title="{{ _('Download the rows shown as CSV') }}">{{ icon('download') }} {{ _('Export') }}</button>{% endif %}
+  {% if print %}<button type="button" class="dt-toolbar-btn dt-btn-print" title="{{ _('Print the rows shown') }}">{{ icon('print') }} {{ _('Print') }}</button>{% endif %}
 {% endmacro %}
 
 {# The bottom bar's New button (bottom left, staying in view as the sheet
@@ -56,6 +57,6 @@
 {% macro quick_add(action, label, fields={}) %}
   <form method="post" action="{{ action }}" class="dt-quick-add" data-quick-add>
     {% for name, value in fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-    <button type="submit" class="dt-bottom-action is-primary" title="Add an empty row at the bottom to type in">{{ icon('plus') }} {{ label }}</button>
+    <button type="submit" class="dt-bottom-action is-primary" title="{{ _('Add an empty row at the bottom to type in') }}">{{ icon('plus') }} {{ label|tr }}</button>
   </form>
 {% endmacro %}

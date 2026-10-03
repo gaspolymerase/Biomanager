@@ -41,7 +41,7 @@
       var form = el("form");
       form.method = "dialog";
       var head = el("header", "record-dialog-head");
-      var title = el("h3", null, o.title || (o.kind === "alert" ? "BioManager" : o.kind === "prompt" ? "" : "Are you sure?"));
+      var title = el("h3", null, o.title || (o.kind === "alert" ? "BioManager" : o.kind === "prompt" ? "" : t("Are you sure?")));
       title.id = "bio-dialog-title";
       head.appendChild(el("div")).appendChild(title);
       var body = el("div", "record-dialog-body bio-dialog-body");
@@ -76,11 +76,11 @@
       var foot = el("footer", "record-dialog-foot");
       var cancel = null;
       if (o.kind !== "alert") {
-        cancel = el("button", "btn", o.cancelLabel || "Cancel");
+        cancel = el("button", "btn", o.cancelLabel || t("Cancel"));
         cancel.type = "button";
         foot.appendChild(cancel);
       }
-      var ok = el("button", "btn " + (o.danger ? "btn-danger" : "btn-primary"), o.okLabel || "OK");
+      var ok = el("button", "btn " + (o.danger ? "btn-danger" : "btn-primary"), o.okLabel || t("OK"));
       ok.type = "submit";
       foot.appendChild(ok);
       if (title.textContent) form.appendChild(head);
@@ -124,7 +124,10 @@
       var o = Object.assign({ kind: "confirm", message: message }, options || {});
       // "Delete reagent #7?" gets a "Delete" button, not "OK".
       var verb = /^(Delete|Remove|Revoke|Retire|Discard|Disable|Clear|End|Stop|Disconnect|Cancel this)\b/.exec(String(message || ""));
-      if (!o.okLabel && o.danger && verb) o.okLabel = verb[1] === "Cancel this" ? "Cancel it" : verb[1];
+      if (!o.okLabel && o.danger && verb) o.okLabel = t(verb[1] === "Cancel this" ? "Cancel it" : verb[1]);
+      // The same, for a question asked in Chinese ("删除 V12？" gets 删除).
+      var zhVerb = /^(删除|移除|撤销|清空|清除|丢弃|停用|结束|停止|断开)/.exec(String(message || ""));
+      if (!o.okLabel && o.danger && zhVerb) o.okLabel = zhVerb[1];
       return open(o);
     },
     prompt: function (message, value, options) {
@@ -135,7 +138,8 @@
     },
     // A question that deletes, removes or ends something gets a red button.
     looksDestructive: function (text) {
-      return /\b(delete|remove|revoke|retire|sac|end now|discard|disable|clear|cancel this)\b/i.test(text || "");
+      return /\b(delete|remove|revoke|retire|sac|end now|discard|disable|clear|cancel this)\b/i.test(text || "") ||
+        /删除|移除|吊销|处死|立即结束|丢弃|停用|清空|清除|取消这/.test(text || "");
     },
   };
 })();

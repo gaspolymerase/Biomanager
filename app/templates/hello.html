@@ -1,7 +1,7 @@
 <!doctype html>
 {# The page before signing in (app.py hello): what BioManager is, what this
    lab keeps in it, where the guide is, and the way in. #}
-<html lang="en">
+<html lang="{{ 'zh-CN' if current_language() == 'zh' else 'en' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -21,9 +21,9 @@
       <span>BioManager</span>
       {% if lab_title %}<span class="hello-lab">{{ lab_title }}</span>{% endif %}
     </a>
-    <nav class="hello-nav" aria-label="Help and sign in">
-      <a href="{{ guide_url }}" target="_blank" rel="noopener">User guide</a>
-      {% if not first_account %}<a class="btn btn-primary" href="{{ url_for('login') }}">Sign in</a>{% endif %}
+    <nav class="hello-nav" aria-label="{{ _('Help and sign in') }}">
+      <a href="{{ guide_url }}" target="_blank" rel="noopener">{{ _('User guide') }}</a>
+      {% if not first_account %}<a class="btn btn-primary" href="{{ url_for('login') }}">{{ _('Sign in') }}</a>{% endif %}
     </nav>
   </header>
 
@@ -31,120 +31,108 @@
     <section class="hello-hero">
       <div class="hello-hero-text">
         {% if first_account %}
-          <p class="hello-eyebrow">A new BioManager</p>
-          <h1>Let's set up your lab.</h1>
-          <p class="hello-lede">The first account you create becomes the lab's admin. A short survey then asks what the lab
-            keeps — mice, fish, flies, plasmids, samples, orders — and sets up just those.</p>
+          <p class="hello-eyebrow">{{ _('A new BioManager') }}</p>
+          <h1>{{ _("Let's set up your lab.") }}</h1>
+          <p class="hello-lede">{{ _("The first account you create becomes the lab's admin. A short survey then asks what the lab keeps — mice, fish, flies, plasmids, samples, orders — and sets up just those.") }}</p>
           <div class="hello-actions">
-            <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}">Create the admin account</a>
-            <a class="btn btn-lg" href="{{ guide_url }}#first-run" target="_blank" rel="noopener">How setting up works</a>
+            <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}">{{ _('Create the admin account') }}</a>
+            <a class="btn btn-lg" href="{{ guide_url }}#first-run" target="_blank" rel="noopener">{{ _('How setting up works') }}</a>
           </div>
           {% if config.LOCAL_SETUP %}
-            <p class="hello-fine">Setting BioManager up for a whole lab, on a server everyone signs in to?
-              <a href="{{ url_for('server_setup.page') }}">Set up a lab server</a> from here instead.</p>
+            <p class="hello-fine">{% trans url=url_for('server_setup.page') %}Setting BioManager up for a whole lab, on a server everyone signs in to? <a href="{{ url }}">Set up a lab server</a> from here instead.{% endtrans %}</p>
           {% endif %}
           {% if needs_setup_code %}
-            <p class="hello-fine">You'll need the <b>setup code</b> printed in the server's log when BioManager started, so nobody else on
-              the network can claim the admin account first.</p>
+            <p class="hello-fine">{% trans %}You'll need the <b>setup code</b> printed in the server's log when BioManager started, so nobody else on the network can claim the admin account first.{% endtrans %}</p>
           {% endif %}
         {% else %}
-          <p class="hello-eyebrow">{{ 'Welcome to ' ~ lab_title if lab_title else 'Welcome' }}</p>
-          <h1>The lab's animals, stocks and supplies, in one place.</h1>
-          <p class="hello-lede">BioManager replaces the spreadsheets, whiteboards and paper cage cards a lab runs on. Edit records
-            like a spreadsheet; underneath is a database that knows which mouse is in which cage, when a litter needs weaning and
-            which antibody is about to expire, and tells you.</p>
+          <p class="hello-eyebrow">{{ _('Welcome to %(lab)s', lab=lab_title) if lab_title else _('Welcome') }}</p>
+          <h1>{{ _("The lab's animals, stocks and supplies, in one place.") }}</h1>
+          <p class="hello-lede">{{ _('BioManager replaces the spreadsheets, whiteboards and paper cage cards a lab runs on. Edit records like a spreadsheet; underneath is a database that knows which mouse is in which cage, when a litter needs weaning and which antibody is about to expire, and tells you.') }}</p>
           <div class="hello-actions">
-            <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">Sign in</a>
-            <a class="btn btn-lg" href="{{ url_for('register') }}">Create an account</a>
+            <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">{{ _('Sign in') }}</a>
+            <a class="btn btn-lg" href="{{ url_for('register') }}">{{ _('Create an account') }}</a>
           </div>
-          <p class="hello-fine">New to the lab? Create an account and an admin approves it. Visiting with a guest code?
-            <a href="{{ url_for('guests.enter') }}">Enter it here</a>.</p>
+          <p class="hello-fine">{% trans url=url_for('guests.enter') %}New to the lab? Create an account and an admin approves it. Visiting with a guest code? <a href="{{ url }}">Enter it here</a>.{% endtrans %}</p>
         {% endif %}
       </div>
       <figure class="hello-shot">
         <picture>
           <source srcset="{{ url_for('static', filename='hello/home-dark.webp') }}" media="(prefers-color-scheme: dark)">
           <img src="{{ url_for('static', filename='hello/home.webp') }}" width="2000" height="1250"
-               alt="BioManager's Home page: mice over 30 weeks, upcoming weanings, the genotyping queue, flies and worms due, expiring reagents">
+               alt="{{ _("BioManager's Home page: mice over 30 weeks, upcoming weanings, the genotyping queue, flies and worms due, expiring reagents") }}">
         </picture>
       </figure>
     </section>
 
     {% if databases %}
       <section class="hello-section hello-kept" aria-labelledby="kept-title">
-        <h2 id="kept-title">In this lab</h2>
+        <h2 id="kept-title">{{ _('In this lab') }}</h2>
         <ul class="hello-chips">
-          {% for d in databases %}<li>{{ icon(d.icon) }}{{ d.label }}</li>{% endfor %}
-          {% if 'calendar' in functions %}<li>{{ icon('calendar') }}Calendar</li>{% endif %}
-          {% if 'notebook' in functions %}<li>{{ icon('notebook') }}Notebook</li>{% endif %}
+          {% for d in databases %}<li>{{ icon(d.icon) }}{{ d.label|tr }}</li>{% endfor %}
+          {% if 'calendar' in functions %}<li>{{ icon('calendar') }}{{ _('Calendar') }}</li>{% endif %}
+          {% if 'notebook' in functions %}<li>{{ icon('notebook') }}{{ _('Notebook') }}</li>{% endif %}
         </ul>
       </section>
     {% endif %}
 
     <section class="hello-section" aria-labelledby="does-title">
-      <h2 id="does-title">What it does for you</h2>
+      <h2 id="does-title">{{ _('What it does for you') }}</h2>
       <div class="hello-grid">
         <article class="hello-card">
           <span class="hello-card-icon">{{ icon('mouse') }}</span>
-          <h3>Colonies and stocks</h3>
-          <p>Mice, zebrafish, flies, worms or any organism: who is in which cage, which litter needs weaning, which vials need
-            flipping, which breeders are getting old.</p>
+          <h3>{{ _('Colonies and stocks') }}</h3>
+          <p>{{ _('Mice, zebrafish, flies, worms or any organism: who is in which cage, which litter needs weaning, which vials need flipping, which breeders are getting old.') }}</p>
         </article>
         <article class="hello-card">
           <span class="hello-card-icon">{{ icon('qrcode') }}</span>
-          <h3>At the rack</h3>
-          <p>Cage cards with a QR code. Scan one with your phone and that cage opens, ready to edit, without walking back to a
-            computer.</p>
+          <h3>{{ _('At the rack') }}</h3>
+          <p>{{ _('Cage cards with a QR code. Scan one with your phone and that cage opens, ready to edit, without walking back to a computer.') }}</p>
         </article>
         <article class="hello-card">
           <span class="hello-card-icon">{{ icon('plasmid') }}</span>
-          <h3>Plasmids and supplies</h3>
-          <p>Plasmid maps, samples in freezer boxes, orders from request to shelf, and reagents that warn you before they
-            expire.</p>
+          <h3>{{ _('Plasmids and supplies') }}</h3>
+          <p>{{ _('Plasmid maps, samples in freezer boxes, orders from request to shelf, and reagents that warn you before they expire.') }}</p>
         </article>
         <article class="hello-card">
           <span class="hello-card-icon">{{ icon('calendar-clock') }}</span>
-          <h3>A calendar that fills itself</h3>
-          <p>Weanings, genotyping, flips and expiry dates appear on their own, beside equipment bookings, protocol timelines and
-            who's away.</p>
+          <h3>{{ _('A calendar that fills itself') }}</h3>
+          <p>{{ _("Weanings, genotyping, flips and expiry dates appear on their own, beside equipment bookings, protocol timelines and who's away.") }}</p>
         </article>
         <article class="hello-card">
           <span class="hello-card-icon">{{ icon('notebook') }}</span>
-          <h3>A notebook you write together</h3>
-          <p>Experiments, protocols to run at the bench, data sheets with plots and statistics, all linked to the animals they
-            describe.</p>
+          <h3>{{ _('A notebook you write together') }}</h3>
+          <p>{{ _('Experiments, protocols to run at the bench, data sheets with plots and statistics, all linked to the animals they describe.') }}</p>
         </article>
         <article class="hello-card">
           <span class="hello-card-icon">{{ icon('users') }}</span>
-          <h3>Made for a whole lab</h3>
-          <p>You edit your own records and see everyone's. Every change is kept with who made it, and bulk changes can be
-            undone.</p>
+          <h3>{{ _('Made for a whole lab') }}</h3>
+          <p>{{ _("You edit your own records and see everyone's. Every change is kept with who made it, and bulk changes can be undone.") }}</p>
         </article>
       </div>
     </section>
 
     <section class="hello-section" aria-labelledby="start-title">
-      <h2 id="start-title">Getting started</h2>
+      <h2 id="start-title">{{ _('Getting started') }}</h2>
       <div class="hello-links">
         <a class="hello-link" href="{{ guide_url }}" target="_blank" rel="noopener">
           <span class="hello-link-icon">{{ icon('info') }}</span>
-          <span><b>Read the user guide</b><small>Every function, step by step, in five short parts.</small></span>
+          <span><b>{{ _('Read the user guide') }}</b><small>{{ _('Every function, step by step, in five short parts.') }}</small></span>
         </a>
         <a class="hello-link" href="{{ guide_url }}#excel" target="_blank" rel="noopener">
           <span class="hello-link-icon">{{ icon('table') }}</span>
-          <span><b>Coming from Excel?</b><small>What your spreadsheet becomes, and moving in in about half an hour.</small></span>
+          <span><b>{{ _('Coming from Excel?') }}</b><small>{{ _('What your spreadsheet becomes, and moving in in about half an hour.') }}</small></span>
         </a>
         <a class="hello-link" href="{{ guide_url }}#phones" target="_blank" rel="noopener">
           <span class="hello-link-icon">{{ icon('qrcode') }}</span>
-          <span><b>On your phone</b><small>Add BioManager to your home screen, or install the Android app.</small></span>
+          <span><b>{{ _('On your phone') }}</b><small>{{ _('Add BioManager to your home screen, or install the Android app.') }}</small></span>
         </a>
       </div>
     </section>
   </main>
 
   <footer class="hello-foot">
-    <span>BioManager · free and open source · the lab's data stays with the lab</span>
-    <a href="https://biomanager.org/" target="_blank" rel="noopener">About BioManager</a>
+    <span>{{ _("BioManager · free and open source · the lab's data stays with the lab") }}</span>
+    <a href="https://biomanager.org/" target="_blank" rel="noopener">{{ _('About BioManager') }}</a>
   </footer>
 </body>
 </html>

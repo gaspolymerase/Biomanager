@@ -7,37 +7,37 @@
   <section class="panel">
     <div class="section-head">
       <div>
-        <h2>Experiments</h2>
-        <p>Put {{ place.nouns }} under a shared treatment plan: record what is done to them each day, and follow a readout
-          ({{ t.readouts | map(attribute='label') | join(', ') | lower }}, or your own). Only its creator (or an admin) can change it.</p>
+        <h2>{{ _('Experiments') }}</h2>
+        <p>{% trans trimmed nouns=place.nouns|tr, readouts=t.readouts | map(attribute='label') | map('tr') | join(_(', ')) | lower %}Put {{ nouns }} under a shared treatment plan: record what is done to them each day, and follow a readout
+          ({{ readouts }}, or your own). Only its creator (or an admin) can change it.{% endtrans %}</p>
       </div>
     </div>
 
     <form method="post" action="{{ url_for('experiments.create', db_key=place.key) }}" class="inline-create-grid experiment-create-form">
-      <input name="name" placeholder="Experiment name (e.g. {{ {'fish': 'Tricaine dose response', 'fly': 'Paraquat survival', 'worm': 'daf-2 RNAi lifespan'}.get(place.family, 'Cohort 1') }})" aria-label="Experiment name" required>
+      <input name="name" placeholder="{{ _('Experiment name (e.g. %(example)s)', example={'fish': 'Tricaine dose response', 'fly': 'Paraquat survival', 'worm': 'daf-2 RNAi lifespan'}.get(place.family, 'Cohort 1')|tr) }}" aria-label="{{ _('Experiment name') }}" required>
       {% if t.groups %}
-        <select name="from_group" aria-label="Start with the {{ place.nouns }} of a {{ place.housing }}">
-          <option value="">Start with a {{ place.housing }}’s {{ place.nouns }} (optional)</option>
-          {% for value, label, n in t.groups %}<option value="{{ value }}">{{ label }} · {{ n }} {{ place.noun if n == 1 else place.nouns }}</option>{% endfor %}
+        <select name="from_group" aria-label="{{ _('Start with the %(nouns)s of a %(housing)s', nouns=place.nouns|tr, housing=place.housing|tr) }}">
+          <option value="">{{ _('Start with a %(housing)s’s %(nouns)s (optional)', housing=place.housing|tr, nouns=place.nouns|tr) }}</option>
+          {% for value, label, n in t.groups %}<option value="{{ value }}">{{ label }} · {{ n }} {{ (place.noun if n == 1 else place.nouns)|tr }}</option>{% endfor %}
         </select>
       {% endif %}
-      <input type="date" name="start_date" value="{{ t.today }}" title="Start date (day 1)" aria-label="Start date">
-      <select name="readout" aria-label="Readout">
-        {% for r in t.readouts %}<option value="{{ r.key }}">{{ r.label }}{% if r.unit %} ({{ r.unit }}){% endif %}</option>{% endfor %}
+      <input type="date" name="start_date" value="{{ t.today }}" title="{{ _('Start date (day 1)') }}" aria-label="{{ _('Start date') }}">
+      <select name="readout" aria-label="{{ _('Readout') }}">
+        {% for r in t.readouts %}<option value="{{ r.key }}">{{ r.label|tr }}{% if r.unit %} ({{ r.unit|tr }}){% endif %}</option>{% endfor %}
       </select>
-      <input name="treatment_plan" placeholder="Treatment, in words (optional)" aria-label="Treatment">
-      <button type="submit">{{ icon('plus') }} New experiment</button>
+      <input name="treatment_plan" placeholder="{{ _('Treatment, in words (optional)') }}" aria-label="{{ _('Treatment') }}">
+      <button type="submit">{{ icon('plus') }} {{ _('New experiment') }}</button>
     </form>
 
     {% if t.cards %}
-      <div class="dt-chips mb-3" role="group" aria-label="Show experiments">
+      <div class="dt-chips mb-3" role="group" aria-label="{{ _('Show experiments') }}">
         <button type="button" class="dt-chip" data-experiment-filter="" aria-pressed="true">
-          All <span class="dt-chip-count">{{ t.cards|length }}</span>
+          {{ _('All') }} <span class="dt-chip-count">{{ t.cards|length }}</span>
         </button>
         {% for status in t.statuses %}
           {% set n = t.cards|selectattr('status', 'equalto', status)|list|length %}
           <button type="button" class="dt-chip" data-experiment-filter="{{ status }}" aria-pressed="false">
-            {{ status|capitalize }} <span class="dt-chip-count">{{ n }}</span>
+            {% set status_label = status|tr %}{{ status_label|capitalize if status_label == status else status_label }} <span class="dt-chip-count">{{ n }}</span>
           </button>
         {% endfor %}
       </div>
@@ -45,23 +45,23 @@
         {% for exp in t.cards %}
           <a class="experiment-card experiment-status-{{ exp.status }}" data-status="{{ exp.status }}" href="{{ exp.url }}">
             <div class="experiment-card-head">
-              <span class="experiment-status-pill" data-status="{{ exp.status }}">{{ exp.status }}</span>
+              <span class="experiment-status-pill" data-status="{{ exp.status }}">{{ exp.status|tr }}</span>
               <span class="experiment-card-owner">
-                {% if not exp.editable %}<span class="sheet-lock" title="{{ exp.owner }}’s experiment: read only">{{ icon('lock') }}</span>{% endif %}
+                {% if not exp.editable %}<span class="sheet-lock" title="{{ _('%(owner)s’s experiment: read only', owner=exp.owner) }}">{{ icon('lock') }}</span>{% endif %}
                 {{ exp.owner | owner_badge if exp.owner else '' }}
               </span>
             </div>
             <h3>{{ exp.name }}</h3>
             {% if exp.description %}<p>{{ exp.description }}</p>{% endif %}
             <div class="experiment-card-meta">
-              <span>{{ icon('users') }} {{ exp.count }} {{ place.noun if exp.count == 1 else place.nouns }}</span>
-              <span>{{ icon('chart') }} {{ exp.readout }}</span>
+              <span>{{ icon('users') }} {{ exp.count }} {{ (place.noun if exp.count == 1 else place.nouns)|tr }}</span>
+              <span>{{ icon('chart') }} {{ exp.readout|tr }}</span>
               {% if exp.start_date %}<span>{{ icon('calendar') }} {{ exp.start_date }}</span>{% endif %}
             </div>
           </a>
         {% endfor %}
       </div>
-      <p class="muted-inline" data-experiment-nomatch hidden>No experiments with that status.</p>
+      <p class="muted-inline" data-experiment-nomatch hidden>{{ _('No experiments with that status.') }}</p>
       <script nonce="{{ csp_nonce() }}">
         /* Experiment cards: status chips. */
         document.querySelectorAll('[data-experiment-filter]').forEach((chip) => {
@@ -79,7 +79,7 @@
         });
       </script>
     {% else %}
-      <p class="muted-inline">No experiments yet. Start one above, then add {{ place.nouns }} to it.</p>
+      <p class="muted-inline">{{ _('No experiments yet. Start one above, then add %(nouns)s to it.', nouns=place.nouns|tr) }}</p>
     {% endif %}
   </section>
 {% endmacro %}
