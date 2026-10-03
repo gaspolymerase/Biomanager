@@ -3,11 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BioManager — lab colony, stock and inventory management</title>
+  <title>BioManager — free lab management app: mouse colony, plasmids, inventory</title>
   <meta name="description" content="One place for a biology lab's mice, zebrafish, flies, worms, plasmids, samples, orders, reagents, calendar and notebook. Free apps for macOS, Windows, Linux and Android.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)">
+  <link rel="canonical" href="https://gaspolymerase.github.io/biomanager/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="BioManager">
+  <meta property="og:url" content="https://gaspolymerase.github.io/biomanager/">
   <meta property="og:title" content="BioManager">
   <meta property="og:description" content="Your lab's animals, stocks and supplies — in one place, instead of twenty spreadsheets.">
   <meta property="og:image" content="https://biomanager.org/assets/social-card.png">
@@ -19,6 +23,26 @@
   <link rel="icon" href="assets/icon-192.png" sizes="192x192" type="image/png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "BioManager",
+    "alternateName": "BioManager lab management app",
+    "description": "A free, open-source lab database for a biology lab's mouse colony, zebrafish, flies, worms, plasmids, samples, orders, reagents, calendar and notebook, as desktop apps or a lab server.",
+    "url": "https://gaspolymerase.github.io/biomanager/",
+    "applicationCategory": "BusinessApplication",
+    "applicationSubCategory": "Laboratory management",
+    "operatingSystem": "macOS, Windows 10 and 11, Linux, Android",
+    "downloadUrl": "https://github.com/gaspolymerase/biomanager/releases/latest",
+    "screenshot": "https://gaspolymerase.github.io/biomanager/assets/screenshots/home.webp",
+    "image": "https://gaspolymerase.github.io/biomanager/assets/social-card.png",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "sameAs": ["https://github.com/gaspolymerase/biomanager"]
+  }
+  </script>
 </head>
 <body>
 
@@ -361,6 +385,9 @@
       <details><summary>Does it work for organisms other than mice?</summary>
         <p>Zebrafish, Drosophila and C. elegans have their own modules. For anything else, <b>Add database</b>
           lets you describe the organism — its words, how it's counted, what it needs — without any programming.</p></details>
+      <details><summary>Is it related to BiocManager, the R package?</summary>
+        <p>No. BiocManager is Bioconductor's installer for R packages. BioManager is a separate app for running a
+          lab: its animals, stocks, supplies, calendar and notebook. You don't need R to use it.</p></details>
       <details><summary>Is it really free?</summary>
         <p>Yes. BioManager is released under the MIT licence: use it, share it, change it.</p></details>
       <details><summary>I found a bug or want a feature.</summary>
