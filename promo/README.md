@@ -19,7 +19,7 @@ count who actually uses it.
 
 - [x] **One public repository**: `gaspolymerase/biomanager` holds the
   code, the releases, the issues and the website (`site/`, at
-  gaspolymerase.github.io/biomanager). The old biomanager-app is archived:
+  biomanager.org). The old biomanager-app is archived:
   it redirects, and holds only 0.10.1 for desktop apps from before the move.
 - [x] **A PostHog project** (US, project 638885), *Discard client IP data*
   on, its public key in `PROJECT_KEY` in `app/telemetry.py`. Counts start

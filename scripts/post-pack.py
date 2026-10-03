@@ -57,7 +57,7 @@ def version() -> str:
 
 
 def tagged(url: str, source: str, day: int) -> str:
-    if not url or "github.io" not in url:
+    if not url or "biomanager.org" not in url:
         return url
     return f"{url}?{urlencode({'utm_source': source, 'utm_medium': 'social', 'utm_campaign': f'launch-day{day}'})}"
 

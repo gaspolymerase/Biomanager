@@ -300,7 +300,7 @@ def outro_html(colours):
 .ask {{ display:inline-block; margin:0 34px; font-size:40px; font-weight:700; opacity:0; animation: popin .5s ease-out forwards; }}
 .ask span {{ display:block; font-size:96px; margin-bottom:8px; }}
 </style>{blobs()}<div class="logo">{ICON_SVG}</div><div class="big">永久免费 · <em>开源</em></div>
-<div class="urlrow"><span class="url">gaspolymerase.github.io/biomanager</span></div><div class="hint">链接在简介里 · 有问题欢迎评论区留言</div>
+<div class="urlrow"><span class="url">biomanager.org</span></div><div class="hint">链接在简介里 · 有问题欢迎评论区留言</div>
 <div class="asks">{ask_html}</div>"""
 
 

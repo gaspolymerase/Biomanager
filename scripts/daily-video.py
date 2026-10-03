@@ -112,7 +112,7 @@ def outro_html(colours, lang):
 .ask span {{ display:block; font-size:92px; margin-bottom:6px; }}
 .ask.wide span {{ display:inline-block; font-size:64px; vertical-align:middle; margin:0 18px 0 0; }}
 </style>{ev.blobs()}<div class="logo">{ev.ICON_SVG}</div><div class="big">{w['free']}</div>
-<div class="urlrow"><span class="url">gaspolymerase.github.io/biomanager</span></div>
+<div class="urlrow"><span class="url">biomanager.org</span></div>
 <div class="hint">{w['hint']}</div><div class="asks">{asks}</div>"""
 
 
