@@ -29,6 +29,18 @@ RELEASES_URL = "https://github.com/gaspolymerase/biomanager/releases/tag/v{versi
 
 # Newest first. Each line is plain text; **bold** names a button or a page.
 NOTES: dict[str, dict[str, list[str]]] = {
+    "1.0.4": {
+        "new": [
+            "**What's new**: this note, once after each update. **Help → What's new** opens it again.",
+        ],
+        "changed": [
+            "**Litter born** asks for the date of birth (today unless you change it) before recording the litter.",
+            "Any shared cage now says **Shared**, not only breeder cages.",
+        ],
+        "fixed": [
+            "In an open cage, the mouse table's header no longer covers the first mouse.",
+        ],
+    },
     "1.0.3": {
         "new": [
             "**Project groups** (More → Project groups): share cages, stock, databases, to-dos and notebook "
