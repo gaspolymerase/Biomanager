@@ -337,6 +337,13 @@ def load_current_user():
         if session.get("lang_for") != user.id:
             i18n.remember(i18n.preference(db_session, user.username))
             session["lang_for"] = user.id
+        # Remember the language they see, to write their notifications in it
+        # (its own session: committing this one would detach g.user).
+        if session.get("lang_seen") != i18n.current():
+            with SessionLocal() as seen_session:
+                i18n.note_seen(seen_session, user.username, i18n.current())
+                seen_session.commit()
+            session["lang_seen"] = i18n.current()
 
 
 # Cookies, upload limits, the cross-site check and security headers. After

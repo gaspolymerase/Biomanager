@@ -184,3 +184,34 @@ class DatesAndNotes(AppTestCase):
         missing = [line for note in whats_new.NOTES.values() for key in ("new", "changed", "fixed")
                    for line in note.get(key, []) if line not in zh]
         self.assertEqual(missing, [])
+
+
+class NotificationsInTheRecipientsLanguage(AppTestCase):
+    def test_each_recipient_reads_it_in_their_language(self):
+        from app import notify
+        from app.db import SessionLocal
+        from app.models import NotificationRecord
+        zh_reader, en_reader = make_user(uniq("zhread")), make_user(uniq("enread"))
+        i18n.catalog("zh")["%(who)s shared a page with you"] = "%(who)s 和你共享了一个页面"
+        try:
+            with SessionLocal() as s:
+                from app import inventory_service
+                inventory_service.set_setting(s, i18n.preference_key(zh_reader), "zh")
+                s.commit()
+                for who in (zh_reader, en_reader):
+                    notify.send(s, who, "%(who)s shared a page with you", "Notes typed by Sam",
+                                category="notebook", values={"who": "Sam"})
+                s.commit()
+                titles = {n.recipient_username: (n.title, n.message) for n in s.query(NotificationRecord)
+                          .filter(NotificationRecord.recipient_username.in_([zh_reader, en_reader]))}
+        finally:
+            del i18n.catalog("zh")["%(who)s shared a page with you"]
+        self.assertEqual(titles[zh_reader], ("Sam 和你共享了一个页面", "Notes typed by Sam"))
+        self.assertEqual(titles[en_reader], ("Sam shared a page with you", "Notes typed by Sam"))
+
+    def test_the_language_last_seen_is_remembered(self):
+        who = make_user(uniq("seen"))
+        client_for(who).get("/settings", headers={"Accept-Language": ZH})
+        from app.db import SessionLocal
+        with SessionLocal() as s:
+            self.assertEqual(i18n.language_for(s, who), "zh")

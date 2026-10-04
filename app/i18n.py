@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 from flask import g, has_request_context, request, session
@@ -39,8 +40,24 @@ def catalog(lang: str) -> dict[str, str]:
     return _catalogs[lang]
 
 
+_override: list[str] = []
+
+
+@contextmanager
+def using(lang: str):
+    """Write text in `lang` for a while: a notification or an email in its
+    recipient's language, whoever's page is being made."""
+    _override.append(lang if lang in LANGUAGES else DEFAULT)
+    try:
+        yield
+    finally:
+        _override.pop()
+
+
 def current() -> str:
     """The language of the page being made (English outside a request)."""
+    if _override:
+        return _override[-1]
     if not has_request_context():
         return DEFAULT
     lang = g.get("lang")
@@ -83,6 +100,29 @@ def preference(db_session, username: str) -> str:
     from . import inventory_service
     value = inventory_service.get_setting(db_session, preference_key(username), "")
     return value if value in LANGUAGES else ""
+
+
+def seen_key(username: str) -> str:
+    return f"language.seen.{username}"
+
+
+def note_seen(db_session, username: str, lang: str) -> None:
+    """The language this person's browser last showed BioManager in, for what
+    is written to them when they aren't looking (notifications, emails)."""
+    from . import inventory_service
+    if lang in LANGUAGES and inventory_service.get_setting(db_session, seen_key(username), "") != lang:
+        inventory_service.set_setting(db_session, seen_key(username), lang)
+
+
+def language_for(db_session, username: str) -> str:
+    """The language to write to someone in: their choice in Settings, else
+    the one their browser last asked for, else English."""
+    from . import inventory_service
+    chosen = preference(db_session, username)
+    if chosen:
+        return chosen
+    seen = inventory_service.get_setting(db_session, seen_key(username), "")
+    return seen if seen in LANGUAGES else DEFAULT
 
 
 def set_preference(db_session, username: str, lang: str) -> str:

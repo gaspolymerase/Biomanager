@@ -444,9 +444,17 @@ def deliver(session, notes: list[dict]) -> int:
 
 
 def send(session, recipient: str, title: str, message: str = "", category: str = "general",
-         link: str = "", actor: str = "") -> bool:
+         link: str = "", actor: str = "", values: dict | None = None,
+         message_values: dict | None = None) -> bool:
     """One notification, if the recipient exists, is active, wants this
-    category, and is not the person who caused it."""
+    category, and is not the person who caused it.
+
+    Written in the recipient's language (app/i18n.py language_for): `title`
+    is an English text with `%(name)s` places filled from `values`, looked up
+    in the catalogs; `message` is translated the same way only when
+    `message_values` is given (`{}` for a fixed text), and otherwise kept as
+    it is (what someone typed). A title passed without `values` is still
+    translated when it has an entry."""
     if not recipient or recipient == actor:
         return False
     user = session.scalar(select(UserAccount).where(UserAccount.username == recipient))
@@ -454,23 +462,33 @@ def send(session, recipient: str, title: str, message: str = "", category: str =
         return False
     if getattr(user, f"notify_{category}", True) is False:
         return False
+    from . import i18n
+    with i18n.using(i18n.language_for(session, recipient)):
+        title = i18n.gettext(title, **(values or {}))
+        if message_values is not None:
+            message = i18n.gettext(message, **message_values)
     session.add(NotificationRecord(recipient_username=recipient, title=title[:200], message=message,
                                    category=category, link=link[:300], actor=actor))
     return True
 
 
-def tell_lab(session, actor: str, title: str, message: str = "", link: str = "") -> int:
-    """A "lab" notification for every active member but the actor."""
+def tell_lab(session, actor: str, title: str, message: str = "", link: str = "",
+             values: dict | None = None, message_values: dict | None = None) -> int:
+    """A "lab" notification for every active member but the actor, each in
+    their own language (see send)."""
     from . import lab
-    return sum(send(session, name, title, message, category="lab", link=link, actor=actor)
+    return sum(send(session, name, title, message, category="lab", link=link, actor=actor,
+                    values=values, message_values=message_values)
                for name in lab.everyone_but(session, actor))
 
 
-def tell_group(session, group_id: int, actor: str, title: str, message: str = "", link: str = "") -> int:
+def tell_group(session, group_id: int, actor: str, title: str, message: str = "", link: str = "",
+               values: dict | None = None, message_values: dict | None = None) -> int:
     """A "lab" notification for a project group's members but the actor."""
     from . import groups, lab
     members = groups.members_of(group_id)
-    return sum(send(session, name, title, message, category="lab", link=link, actor=actor)
+    return sum(send(session, name, title, message, category="lab", link=link, actor=actor,
+                    values=values, message_values=message_values)
                for name in lab.everyone_but(session, actor) if name in members)
 
 

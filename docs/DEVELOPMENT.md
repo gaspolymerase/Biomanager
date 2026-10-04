@@ -1182,6 +1182,20 @@ written in English and wrapped, and the Chinese is looked up by the English:
 - **Python** (flash messages, labels made in code): `gettext("…")` and
   `ngettext(singular, plural, n)`, imported from `app.i18n`. Not `_`: many
   modules use `_` as a throwaway name.
+- **The same English, two meanings**: `pgettext("experiment", "active")` and
+  `{{ status|tr("experiment") }}` look for a `"experiment::active"` entry
+  first, so an experiment can be 进行中 while an account is 正常.
+- **Dates**: `{{ day|date_format('%a %d %b') }}` and `i18n.strftime(day, "%b %d, %Y")`
+  instead of `.strftime()` with month or weekday names: the same English
+  patterns come out as a Chinese reader writes them (10月3日, 2026年10月3日 周六).
+  `fmt_day` and `relative_day` already follow the language.
+- **Notifications and emails** are written in their recipient's language,
+  not the sender's: `notify.send(s, who, "%(who)s shared “%(title)s” with you",
+  values={…})` translates the English title for each recipient
+  (`i18n.language_for`: their choice in Settings, else the language their
+  browser last showed). The message is translated only when
+  `message_values` is given; otherwise it is kept as typed. Anything else
+  written for someone else: `with i18n.using(lang): …`.
 - **Page scripts**: `t("Saved")`, `t("%(n)s mice", {n: 3})` (`base.html`
   defines it before any page script).
 - **The Chinese**: `app/translations/zh/<area>.json`, `{"English": "中文"}`,
