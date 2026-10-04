@@ -238,3 +238,12 @@ class FiltersOnQuotedText(AppTestCase):
             self.assertEqual(tpl.render(d=date(2026, 10, 3)), "小鼠 10月")
         with app.test_request_context(headers={"Accept-Language": "en"}):
             self.assertEqual(tpl.render(d=date(2026, 10, 3)), "Mouse Oct")
+
+
+class TheApiStaysEnglish(AppTestCase):
+    def test_a_chinese_client_still_gets_english_from_the_api(self):
+        r = app.test_client().get("/api/v1/mice", headers={"Accept-Language": ZH})
+        self.assertNotIn("登录", r.get_data(as_text=True))
+        with app.test_request_context("/api/v1/mice", headers={"Accept-Language": ZH}):
+            app.preprocess_request()
+            self.assertEqual(i18n.current(), "en")

@@ -1212,6 +1212,12 @@ written in English and wrapped, and the Chinese is looked up by the English:
   `%(name)s` values of its English, and the same English is never given two
   different Chinese. So adding text to a translated page means adding its
   Chinese too.
+- **Kept in English**: what is stored (starter pages, default titles a
+  record is saved with, audit text), the JSON API (`/api/v1` answers in
+  English whoever asks; page scripts translate its labels for display), CSV
+  and Excel headers, printed labels, logs and the usage report. A word a
+  page script needs goes in a `js-*.json` file even when a server catalog
+  already has it (only those reach the browser), with the same Chinese.
 
 ## The website
 
