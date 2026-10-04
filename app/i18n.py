@@ -270,8 +270,21 @@ def translate_value(value, context: str = "") -> str:
 
 
 def init_app(app) -> None:
-    app.jinja_env.filters["tr"] = translate_value
-    app.jinja_env.filters["date_format"] = strftime
+    # pass_context: the language is the request's, so Jinja must not work a
+    # filter on a quoted string out once at compile time ('Rack'|tr would
+    # stay in whichever language the template was first shown in).
+    from jinja2 import pass_context
+
+    @pass_context
+    def tr_filter(_ctx, value, context: str = "") -> str:
+        return translate_value(value, context)
+
+    @pass_context
+    def date_format_filter(_ctx, value, pattern: str) -> str:
+        return strftime(value, pattern)
+
+    app.jinja_env.filters["tr"] = tr_filter
+    app.jinja_env.filters["date_format"] = date_format_filter
     app.jinja_env.add_extension("jinja2.ext.i18n")
     app.jinja_env.install_gettext_callables(_lookup, _nlookup, newstyle=True)
     app.jinja_env.globals.update(languages=LANGUAGES, current_language=current, js_catalog=js_catalog,

@@ -225,3 +225,16 @@ class NotificationsInTheRecipientsLanguage(AppTestCase):
         from app.db import SessionLocal
         with SessionLocal() as s:
             self.assertEqual(i18n.language_for(s, who), "zh")
+
+
+class FiltersOnQuotedText(AppTestCase):
+    """{{ 'Rack'|tr }} is worked out per page, not once when the template is
+    compiled: a Chinese page first must not leave English pages in Chinese."""
+
+    def test_each_page_gets_its_own_language(self):
+        tpl = app.jinja_env.from_string("{{ 'Mouse'|tr }} {{ d|date_format('%b') }}")
+        from datetime import date
+        with app.test_request_context(headers={"Accept-Language": "zh-CN"}):
+            self.assertEqual(tpl.render(d=date(2026, 10, 3)), "小鼠 10月")
+        with app.test_request_context(headers={"Accept-Language": "en"}):
+            self.assertEqual(tpl.render(d=date(2026, 10, 3)), "Mouse Oct")
