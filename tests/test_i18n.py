@@ -114,13 +114,23 @@ class TheTranslations(unittest.TestCase):
 
     def test_every_gettext_in_python_has_its_chinese(self):
         zh = i18n.catalog("zh")
-        call = re.compile(r'\bgettext\(\s*"((?:[^"\\]|\\.)*)"')
+        lit = r'"((?:[^"\\]|\\.)*)"'
+        plain = re.compile(r'(?<![\w.])gettext\(\s*' + lit)
+        plural = re.compile(r'\bngettext\(\s*' + lit + r'\s*,\s*' + lit)
+        context = re.compile(r'\bpgettext\(\s*' + lit + r'\s*,\s*' + lit)
+
+        def clean(text):
+            return text.encode().decode("unicode_escape") if "\\" in text else text
+
         missing = []
         for path in sorted((ROOT / "app").glob("*.py")):
-            for text in call.findall(path.read_text(encoding="utf-8")):
-                text = text.encode().decode("unicode_escape") if "\\" in text else text
-                if text not in zh:
-                    missing.append(f"{path.name}: {text!r}")
+            source = path.read_text(encoding="utf-8")
+            wanted = [clean(t) for t in plain.findall(source)]
+            for one, many in plural.findall(source):
+                wanted += [clean(one), clean(many)]
+            for ctx, text in context.findall(source):
+                wanted.append(f"{clean(ctx)}::{clean(text)}" if f"{clean(ctx)}::{clean(text)}" in zh else clean(text))
+            missing += [f"{path.name}: {text!r}" for text in wanted if text not in zh]
         self.assertEqual(missing, [], "\n".join(missing[:40]))
 
 
