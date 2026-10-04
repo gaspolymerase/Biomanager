@@ -155,3 +155,32 @@ class Plurals(AppTestCase):
             self.assertEqual(i18n.ngettext("%(num)s mouse", "%(num)s mice", 2), "2 mice")
             self.assertEqual(i18n.ngettext("%(num)s mouse in %(cage)s", "%(num)s mice in %(cage)s", 1, cage="C1"),
                              "1 mouse in C1")
+
+
+class DatesAndNotes(AppTestCase):
+    def test_dates_read_as_a_chinese_reader_writes_them(self):
+        from datetime import date, datetime
+        d = date(2026, 10, 3)
+        with app.test_request_context(headers={"Accept-Language": "zh-CN"}):
+            self.assertEqual(i18n.strftime(d, "%b %d"), "10月3日")
+            self.assertEqual(i18n.strftime(d, "%A, %b %d, %Y"), "2026年10月3日 星期六")
+            self.assertEqual(i18n.strftime(d, "%a %d %b %Y"), "2026年10月3日 周六")
+            self.assertEqual(i18n.strftime(datetime(2026, 10, 3, 9, 5), "%Y-%m-%d %H:%M"), "2026-10-03 09:05")
+        with app.test_request_context(headers={"Accept-Language": "en"}):
+            self.assertEqual(i18n.strftime(d, "%b %d"), "Oct 03")
+
+    def test_a_word_can_mean_two_things(self):
+        with app.test_request_context(headers={"Accept-Language": "zh-CN"}):
+            i18n.catalog("zh")["experiment::Active"] = "进行中"
+            try:
+                self.assertEqual(i18n.pgettext("experiment", "Active"), "进行中")
+                self.assertEqual(app.jinja_env.from_string("{{ s|tr('experiment') }}").render(s="Active"), "进行中")
+            finally:
+                del i18n.catalog("zh")["experiment::Active"]
+
+    def test_every_release_note_line_has_its_chinese(self):
+        from app import whats_new
+        zh = i18n.catalog("zh")
+        missing = [line for note in whats_new.NOTES.values() for key in ("new", "changed", "fixed")
+                   for line in note.get(key, []) if line not in zh]
+        self.assertEqual(missing, [])

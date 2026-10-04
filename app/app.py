@@ -930,15 +930,15 @@ def relative_day_filter(value) -> str:
         value = value.date()
     days = (value - date.today()).days
     if days == 0:
-        return "today"
+        return gettext("today")
     if days == 1:
-        return "tomorrow"
+        return gettext("tomorrow")
     if days == -1:
-        return "yesterday"
+        return gettext("yesterday")
     if 1 < days <= 13:
-        return f"in {days} d"
+        return gettext("in %(n)s d", n=days)
     if -13 <= days < -1:
-        return f"{-days} d ago"
+        return gettext("%(n)s d ago", n=-days)
     return fmt_day(value)
 
 
@@ -967,6 +967,9 @@ def fmt_day(value, with_time: bool = False) -> str:
     style = _lab_date_style()
     if style == "iso":
         text = day.isoformat()
+    elif i18n.current() == "zh":
+        # A Chinese reader writes the month first, whatever the lab's style.
+        text = f"{day.month}月{day.day}日" if day.year == date.today().year else f"{day.year}年{day.month}月{day.day}日"
     else:
         this_year = day.year == date.today().year
         if style == "day":
@@ -1871,7 +1874,7 @@ def home_dashboard():
         organism_due=organism_due[:12],
         organism_due_total=len(organism_due),
         greeting=greeting,
-        today_str=today.strftime("%A, %b %d, %Y"),
+        today_str=i18n.strftime(today, "%A, %b %d, %Y"),
         counts={
             "total_mice": total_mice,
             "active_mice": active_mice,

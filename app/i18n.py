@@ -102,6 +102,18 @@ def remember(lang: str) -> None:
     g.lang = choose()
 
 
+def pgettext(context: str, message: str, **values) -> str:
+    """`message` as it reads in `context`, when the same English means two
+    things ("active" experiment 进行中, "active" account 正常). The catalog
+    entry is "context::English"; without one, the plain translation."""
+    if current() != DEFAULT:
+        words = catalog(current())
+        text = words.get(f"{context}::{message}") or words.get(message, message)
+    else:
+        text = message
+    return text % values if values else text
+
+
 def gettext(message: str, **values) -> str:
     text = catalog(current()).get(message, message) if current() != DEFAULT else message
     return text % values if values else text
@@ -151,22 +163,76 @@ def placeholders(text: str) -> set[str]:
     return set(_PLACEHOLDER.findall(text))
 
 
-def translate_value(value) -> str:
+WEEKDAYS_ZH = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+WEEKDAYS_LONG_ZH = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+# English date patterns and how a Chinese reader writes the same thing.
+_ZH_PATTERNS = {
+    "%b %d": "%-m月%-d日", "%d %b": "%-m月%-d日", "%b %d, %Y": "%Y年%-m月%-d日",
+    "%d %b %Y": "%Y年%-m月%-d日", "%A, %b %d, %Y": "%Y年%-m月%-d日 %A",
+    "%a %d %b": "%-m月%-d日 %a", "%a %d %b %Y": "%Y年%-m月%-d日 %a",
+    "%a %d %b %H:%M": "%-m月%-d日 %a %H:%M", "%b %d, %Y %H:%M": "%Y年%-m月%-d日 %H:%M",
+    "%a %d": "%-d日 %a", "%b": "%-m月", "%B": "%-m月", "%b %Y": "%Y年%-m月", "%B %Y": "%Y年%-m月",
+    "%a": "%a", "%A": "%A",
+}
+
+
+def strftime(value, pattern: str) -> str:
+    """`value.strftime(pattern)` in the page's language. English patterns
+    with month or weekday names ("%b %d", "%a %d %b %Y"…) come out as a
+    Chinese reader writes them ("10月3日", "2026年10月3日 周六"); a pattern of
+    numbers only ("%Y-%m-%d %H:%M") is the same in both."""
+    if value is None:
+        return ""
+    if current() == DEFAULT or not any(code in pattern for code in ("%a", "%A", "%b", "%B")):
+        return value.strftime(pattern)
+    zh = _ZH_PATTERNS.get(pattern, pattern)
+    out = []
+    i = 0
+    while i < len(zh):
+        if zh[i] == "%" and i + 1 < len(zh):
+            code = zh[i + 1]
+            if code == "-" and i + 2 < len(zh):
+                code = zh[i + 2]
+                out.append(str({"m": value.month, "d": value.day}.get(code, "")))
+                i += 3
+                continue
+            if code == "a":
+                out.append(WEEKDAYS_ZH[value.weekday()])
+            elif code == "A":
+                out.append(WEEKDAYS_LONG_ZH[value.weekday()])
+            elif code in ("b", "B"):
+                out.append(f"{value.month}月")
+            else:
+                out.append(value.strftime("%" + code))
+            i += 2
+            continue
+        out.append(zh[i])
+        i += 1
+    return "".join(out)
+
+
+def translate_value(value, context: str = "") -> str:
     """`{{ label|tr }}`: a label that arrives as a value (from Python, or a
     built-in name a lab may have renamed) in the page's language. The text
     of a known label gets its translation; anything else — what a lab typed —
     comes back unchanged. Plain text, so the template still escapes it, and no
-    %-formatting, so "GC %" is safe. (`_(value)` would do neither.)"""
+    %-formatting, so "GC %" is safe. (`_(value)` would do neither.)
+    `{{ status|tr("experiment") }}` prefers the "experiment::active" entry.)"""
     if value is None:
         return ""
     text = str(value)
     if current() == DEFAULT:
         return text
-    return catalog(current()).get(text, text)
+    words = catalog(current())
+    if context and f"{context}::{text}" in words:
+        return words[f"{context}::{text}"]
+    return words.get(text, text)
 
 
 def init_app(app) -> None:
     app.jinja_env.filters["tr"] = translate_value
+    app.jinja_env.filters["date_format"] = strftime
     app.jinja_env.add_extension("jinja2.ext.i18n")
     app.jinja_env.install_gettext_callables(_lookup, _nlookup, newstyle=True)
-    app.jinja_env.globals.update(languages=LANGUAGES, current_language=current, js_catalog=js_catalog)
+    app.jinja_env.globals.update(languages=LANGUAGES, current_language=current, js_catalog=js_catalog,
+                                  pgettext=pgettext)
